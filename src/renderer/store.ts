@@ -40,6 +40,8 @@ class Store {
   /** Position where the current recording started. */
   recordStart = 0;
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
+  /** Repeat: playback loops the selected time range. Remembered across launches. */
+  repeat = readRepeatSetting();
   view: View = 'edit';
   /** Waveform data of media files: coarse peak levels, plus fine levels and samples in tiles. */
   waves = new WaveCache(api, () => this.notify('peaks'));
@@ -181,3 +183,21 @@ class Store {
 }
 
 export const store = new Store();
+
+const REPEAT_KEY = 'wavepod.transport.repeat';
+
+function readRepeatSetting(): boolean {
+  try {
+    return localStorage.getItem(REPEAT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveRepeatSetting(on: boolean): void {
+  try {
+    localStorage.setItem(REPEAT_KEY, on ? '1' : '0');
+  } catch {
+    // not remembered, still works for this session
+  }
+}

@@ -142,6 +142,7 @@ driver; pick **ASIO** as audio system if it is offered.
 | --- | --- |
 | `Space` | Play / stop |
 | `R` | Record / stop recording |
+| `L` | Repeat: loop playback of the selected time range |
 | `M` | Chapter marker at playhead |
 | `E` | Edit marker at playhead |
 | `S` | Split clips at playhead (selected clips' tracks, or all) |

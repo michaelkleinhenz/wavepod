@@ -7,16 +7,49 @@ import { muteSelection as muteEnvelopeRange } from '../core/envelope';
 import { uid } from '../shared/time';
 import { baseName, decodeFile } from './audioFiles';
 import { errorMessage, toast } from './dom';
-import { api, store } from './store';
+import { api, saveRepeatSetting, store } from './store';
 
 export async function togglePlay(): Promise<void> {
   const t = store.transport;
   try {
-    if (t.state === 'stopped') await api().play(t.position);
+    if (t.state === 'stopped') {
+      // With Repeat on, a playhead outside the selection starts at the selection so it loops right away.
+      const loop = loopRange();
+      const from = loop && (t.position < loop[0] || t.position >= loop[1]) ? loop[0] : t.position;
+      await api().play(from);
+    }
     else await stop();
   } catch (e) {
     toast(errorMessage(e), 'error');
   }
+}
+
+/** The range playback repeats: the selected time range while Repeat is on. */
+export function loopRange(): [number, number] | null {
+  const r = store.selection.range;
+  if (!store.repeat || !r) return null;
+  const start = Math.max(0, Math.round(Math.min(r[0], r[1])));
+  const end = Math.round(Math.max(r[0], r[1]));
+  return end > start ? [start, end] : null;
+}
+
+let sentLoop = '';
+
+/** Tells the engine the current repeat range; call when Repeat or the selection changes. */
+export function syncLoop(): void {
+  const loop = loopRange();
+  const key = loop ? loop.join(':') : '';
+  if (key === sentLoop) return;
+  sentLoop = key;
+  void api().setLoop(loop);
+}
+
+export function toggleRepeat(): void {
+  store.repeat = !store.repeat;
+  saveRepeatSetting(store.repeat);
+  syncLoop();
+  store.notify('transport');
+  if (store.repeat && !store.selection.range) toast('Repeat on: select a time range to loop it');
 }
 
 export async function stop(): Promise<void> {

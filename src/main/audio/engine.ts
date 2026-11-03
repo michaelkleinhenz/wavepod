@@ -99,6 +99,8 @@ export class AudioEngine extends EventEmitter {
 
   private state: TransportState = 'stopped';
   private playPos = 0;
+  /** Repeat range [start, end) in frames: playback that reaches `end` continues at `start`. */
+  private loop: [number, number] | null = null;
   private recordStart = 0;
   private recordedFrames = 0;
   private recorders: Recorder[] = [];
@@ -107,6 +109,8 @@ export class AudioEngine extends EventEmitter {
   private inputPeaks: number[] = [];
   private outputPeaks = [0, 0];
   private mixBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  /** Scratch for the part of a buffer that follows a jump back to the repeat start. */
+  private loopBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private outBuf = new Float32Array(0);
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
@@ -282,6 +286,26 @@ export class AudioEngine extends EventEmitter {
     this.state = 'playing';
     if (!this.output) this.startFallbackClock();
     this.emitTransport();
+  }
+
+  /** Sets (or clears) the range that playback repeats. Recording is never looped. */
+  setLoop(range: [number, number] | null): void {
+    const start = range ? Math.max(0, Math.round(range[0])) : 0;
+    const end = range ? Math.round(range[1]) : 0;
+    this.loop = range && end > start ? [start, end] : null;
+  }
+
+  /** Frames to render before the repeat jump, or `frames` if there is none in this block. */
+  private framesUntilLoopEnd(frames: number): number {
+    const loop = this.state === 'playing' ? this.loop : null;
+    // only playback that is inside or before the range wraps; starting after it just plays on
+    return loop && this.playPos < loop[1] ? Math.min(frames, loop[1] - this.playPos) : frames;
+  }
+
+  /** Advances the playhead, jumping back to the repeat start when it reaches the end. */
+  private advance(frames: number): void {
+    this.playPos += frames;
+    if (this.state === 'playing' && this.loop && this.playPos === this.loop[1]) this.playPos = this.loop[0];
   }
 
   /** Starts recording all armed tracks at the playhead. Returns the files being written. */
@@ -510,13 +534,29 @@ export class AudioEngine extends EventEmitter {
     let tracks = audibleTracks(this.project);
     // While recording, don't play back what is being recorded (avoids hearing yourself late).
     if (this.state === 'recording') tracks = tracks.filter((t) => !this.armedTrackIds.has(t.id));
+    // While recording this keeps overdub playback moving along with the take.
+    for (let done = 0; done < frames; ) {
+      const n = this.framesUntilLoopEnd(frames - done);
+      this.renderChunk(n, done, tracks);
+      done += n;
+      this.advance(n);
+    }
+  }
+
+  /** Mixes `frames` at the playhead into mixBuf starting at `offset` (non-zero after a repeat jump). */
+  private renderChunk(frames: number, offset: number, tracks: ReturnType<typeof audibleTracks>): void {
     try {
-      this.mixer.render(this.playPos, frames, this.mixBuf, tracks);
+      if (offset === 0) {
+        this.mixer.render(this.playPos, frames, this.mixBuf, tracks);
+        return;
+      }
+      if (this.loopBuf[0].length < frames) this.loopBuf = [new Float32Array(frames), new Float32Array(frames)];
+      this.mixer.render(this.playPos, frames, this.loopBuf, tracks);
+      this.mixBuf[0].set(this.loopBuf[0].subarray(0, frames), offset);
+      this.mixBuf[1].set(this.loopBuf[1].subarray(0, frames), offset);
     } catch (e) {
       this.reportError(`Playback: ${(e as Error).message}`);
     }
-    // While recording this keeps overdub playback moving along with the take.
-    this.playPos += frames;
   }
 
   private renderVoices(frames: number): void {
@@ -555,7 +595,11 @@ export class AudioEngine extends EventEmitter {
       const now = performance.now();
       const frames = Math.round(((now - last) / 1000) * this.project.sampleRate);
       last = now;
-      if (this.state === 'playing') this.playPos += frames;
+      for (let left = frames; this.state === 'playing' && left > 0; ) {
+        const n = this.framesUntilLoopEnd(left);
+        this.advance(n);
+        left -= n;
+      }
     }, 20);
   }
 

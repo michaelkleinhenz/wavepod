@@ -75,6 +75,8 @@ export interface WavePodApi {
   stop(): Promise<RecordedTake[]>;
   record(): Promise<string[]>;
   seek(position: number): Promise<void>;
+  /** Range in frames that playback repeats (the selection while Repeat is on), or null. */
+  setLoop(range: [number, number] | null): Promise<void>;
 
   // project
   currentProject(): Promise<OpenedProject>;
@@ -171,6 +173,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'stop',
   'record',
   'seek',
+  'setLoop',
   'currentProject',
   'newProject',
   'openProject',

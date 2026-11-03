@@ -192,6 +192,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   stop: () => engine.stop(),
   record: () => engine.record(),
   seek: (pos: number) => engine.seek(pos),
+  setLoop: (range: [number, number] | null) => engine.setLoop(range),
 
   currentProject: () => current,
   newProject: () => {
