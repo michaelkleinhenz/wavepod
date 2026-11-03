@@ -61,7 +61,38 @@ export class Mixer {
   private trackChains = new Map<string, ChainState>();
   private masterChain: ChainState | null = null;
 
-  constructor(public project: Project, readonly readers: ReaderCache) {}
+  private _project: Project;
+
+  constructor(project: Project, readonly readers: ReaderCache) {
+    this._project = project;
+  }
+
+  get project(): Project {
+    return this._project;
+  }
+
+  /** Swaps in an edited project; filter state of tracks that still exist is kept. */
+  set project(p: Project) {
+    this._project = p;
+    for (const [id, s] of this.trackChains) {
+      if (!p.tracks.some((t) => t.id === id && t.fx?.some((f) => f.enabled))) {
+        s.chain.dispose();
+        this.trackChains.delete(id);
+      }
+    }
+    if (this.masterChain && !p.masterFx?.some((f) => f.enabled)) {
+      this.masterChain.chain.dispose();
+      this.masterChain = null;
+    }
+  }
+
+  /** Releases filter resources (VST3 instances). */
+  dispose(): void {
+    for (const s of this.trackChains.values()) s.chain.dispose();
+    this.trackChains.clear();
+    this.masterChain?.chain.dispose();
+    this.masterChain = null;
+  }
 
   /**
    * Mixes all audible tracks for [position, position + frames) into `out`
@@ -69,6 +100,7 @@ export class Mixer {
    */
   render(position: number, frames: number, out: Float32Array[], tracks = audibleTracks(this.project)): Float32Array[] {
     const state = this.chainState(this.masterChain, this.project.masterFx);
+    if (!state && this.masterChain) this.masterChain.chain.dispose();
     this.masterChain = state;
     if (!state) {
       this.renderBus(position, frames, out, tracks);
@@ -126,7 +158,10 @@ export class Mixer {
   renderTrackInto(track: Track, position: number, frames: number, out: Float32Array[]): void {
     const state = this.chainState(this.trackChains.get(track.id), track.fx);
     if (state) this.trackChains.set(track.id, state);
-    else this.trackChains.delete(track.id);
+    else if (this.trackChains.has(track.id)) {
+      this.trackChains.get(track.id)!.chain.dispose();
+      this.trackChains.delete(track.id);
+    }
     if (this.pre[0].length < frames) this.pre = [new Float32Array(frames), new Float32Array(frames)];
     const [pl, pr] = this.pre;
     let stereo: boolean;

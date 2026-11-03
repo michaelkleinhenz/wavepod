@@ -243,3 +243,15 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .fx-param input[type=range] { width: 100%; }
 .fx-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
 .fx-curve { display: block; margin: 2px 0 8px; border-radius: 6px; }
+.fx-tag { margin-left: 6px; font-size: 9px; font-weight: 700; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; vertical-align: 1px; }
+.fx-note { margin: 2px 0; font-size: 11px; }
+.fx-more { margin-top: 6px; width: 100%; }
+.fx-param input[type=checkbox] { justify-self: start; }
+.vst-picker { border-bottom: 1px solid var(--border); padding: 8px 14px 10px; display: flex; flex-direction: column; gap: 6px; max-height: 45%; }
+.vst-picker-head { display: flex; gap: 6px; }
+.vst-picker-head input { flex: 1; min-width: 0; }
+.vst-list { overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.vst-list p { margin: 4px 0; }
+.vst-item { display: flex; flex-direction: column; align-items: flex-start; text-align: left; height: auto; padding: 5px 8px; gap: 1px; }
+.vst-name { font-weight: 600; }
+.vst-vendor { font-size: 10px; color: var(--muted); }

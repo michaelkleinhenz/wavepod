@@ -3,13 +3,16 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { IPC, type InvokeMethod, type MenuCommand, type OpenedProject } from '../shared/api';
-import type { DeviceConfig, ExportOptions, ExportResult, LoudnessReport, Project, RecordedTake } from '../shared/types';
+import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
 import { writeWavFile } from '../core/wav';
 import { AudioEngine, defaultConfig } from './audio/engine';
 import { RtAudioBackend } from './audio/rtaudioBackend';
+import { VstHostProcess, vstHostExecutable } from './vst/host';
+import { defaultVstDirs, scanVstPlugins } from './vst/scan';
+import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
 import { createProjectDir, isProjectDir, loadProject, saveProject } from './projectStore';
 
 interface Settings {
@@ -78,7 +81,9 @@ function flushSave(): void {
 
 function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise<T> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(path.join(__dirname, 'exportWorker.js'), { workerData: data });
+    const worker = new Worker(path.join(__dirname, 'exportWorker.js'), {
+      workerData: { ...(data as object), vstExe, vstBridge: path.join(__dirname, 'vstBridge.js') },
+    });
     worker.on('message', (msg: { type: string; result?: T; progress?: unknown; message?: string }) => {
       if (msg.type === 'progress') onProgress?.(msg.progress);
       else if (msg.type === 'done') resolve(msg.result as T);
@@ -191,7 +196,42 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   measureLoudness: () => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir }),
   revealFile: (p: string) => shell.showItemInFolder(p),
+
+  vstStatus: () => ({ available: !!vstExe, dirs: defaultVstDirs() }),
+  vstScan: (force?: boolean) => {
+    if (!vstExe) throw new Error('VST3 support is not included in this build.');
+    return scanVstPlugins(vstExe, defaultVstDirs(), path.join(app.getPath('userData'), 'vst3-cache.json'), !!force);
+  },
+  vstDescribe: (plugin: VstPluginRef) => {
+    if (!vstHost) throw new Error('VST3 support is not included in this build.');
+    const inst = vstHost.create({ plugin }, current.project.sampleRate, 4096);
+    try {
+      const state = Buffer.from(inst.getState()).toString('base64');
+      return { params: inst.params, state, latency: inst.latency };
+    } finally {
+      inst.destroy();
+    }
+  },
+  vstFormat: (fx: Fx, paramId: number, value: number) => {
+    if (!vstHost || !fx.plugin) return '';
+    const key = `${fx.plugin.path}|${fx.plugin.cid}|${fx.state ?? ''}`;
+    let shadow = vstShadows.get(fx.id);
+    if (!shadow || shadow.key !== key || !shadow.inst.alive) {
+      shadow?.inst.destroy();
+      const inst = vstHost.create(fx, current.project.sampleRate, 4096);
+      const state = decodeState(fx.state);
+      if (state?.length) inst.setState(state);
+      shadow = { key, inst };
+      vstShadows.set(fx.id, shadow);
+    }
+    return shadow.inst.format(paramId, value);
+  },
 };
+
+// Instances used only to turn parameter values into the plug-in's own text, per filter id.
+const vstShadows = new Map<string, { key: string; inst: VstInstance }>();
+let vstExe: string | null = null;
+let vstHost: VstHostProcess | null = null;
 
 function registerIpc(): void {
   ipcMain.handle(IPC.invoke, async (_e, method: InvokeMethod, ...args: unknown[]) => {
@@ -278,6 +318,11 @@ app.whenReady().then(() => {
   settings = loadSettings();
   const useNative = process.env.SOUNDPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
+  vstExe = vstHostExecutable(app.getAppPath(), process.resourcesPath);
+  if (vstExe) {
+    vstHost = new VstHostProcess(vstExe, path.join(__dirname, 'vstBridge.js'));
+    setVstHost(vstHost, (_id, message) => engine.reportError(message));
+  }
   engine.on('transport', (u) => send(IPC.transport, u));
   engine.on('status', (s) => send(IPC.status, s));
   engine.on('recordingFinished', (takes: RecordedTake[]) => {

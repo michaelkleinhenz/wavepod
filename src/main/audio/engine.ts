@@ -223,7 +223,7 @@ export class AudioEngine extends EventEmitter {
     return s;
   }
 
-  private reportError(message: string): void {
+  reportError(message: string): void {
     this.error = message;
     this.emit('status', this.status());
   }
@@ -246,7 +246,10 @@ export class AudioEngine extends EventEmitter {
     }
     this.project = project;
     // keep the mixer (and its filter state) across edits; a new folder or rate needs a new one
-    if (this.mixer.readers !== this.readers || this.mixer.project.sampleRate !== project.sampleRate) this.mixer = new Mixer(project, this.readers);
+    if (this.mixer.readers !== this.readers || this.mixer.project.sampleRate !== project.sampleRate) {
+      this.mixer.dispose();
+      this.mixer = new Mixer(project, this.readers);
+    }
     else this.mixer.project = project;
     this.armedTrackIds = new Set(project.tracks.filter((t) => t.armed).map((t) => t.id));
   }

@@ -125,6 +125,20 @@ export function createFx(type: FxType, params: Record<string, number> = {}): Fx 
 
 /** Fills missing parameters with defaults and clamps values into range. */
 export function normalizeFx(fx: Partial<Fx>): Fx | null {
+  if (fx.type === 'vst3') {
+    if (!fx.plugin?.path || !fx.plugin.cid) return null;
+    const params: Record<string, number> = {};
+    for (const [k, v] of Object.entries(fx.params ?? {})) if (Number.isFinite(Number(v))) params[k] = Math.min(1, Math.max(0, Number(v)));
+    return {
+      id: fx.id ?? uid('fx'),
+      type: 'vst3',
+      enabled: fx.enabled !== false,
+      params,
+      plugin: { path: fx.plugin.path, cid: fx.plugin.cid, name: fx.plugin.name ?? 'VST3', vendor: fx.plugin.vendor ?? '' },
+      paramInfo: Array.isArray(fx.paramInfo) ? fx.paramInfo : [],
+      ...(fx.state ? { state: fx.state } : {}),
+    };
+  }
   if (!fx.type || !FX_DEFINITIONS.some((d) => d.type === fx.type)) return null;
   const def = fxDefinition(fx.type);
   const params: Record<string, number> = {};

@@ -34,6 +34,16 @@
       "**/node_modules/audify/**"
     ],
     "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": "native/vsthost/bin",
+        "to": "vsthost",
+        "filter": [
+          "soundpod-vsthost",
+          "soundpod-vsthost.exe"
+        ]
+      }
+    ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "linux": {
       "target": [

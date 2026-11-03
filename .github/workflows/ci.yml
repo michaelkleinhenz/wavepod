@@ -27,6 +27,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2t64 libpulse0
       - run: npm ci
       - run: npm run typecheck
+      # The VST3 host helper plus the SDK's sample plug-ins, so the host tests run for real.
+      - name: Build VST3 host and sample plug-ins
+        shell: bash
+        run: |
+          cmake -S native/vsthost -B native/vsthost/build -DCMAKE_BUILD_TYPE=Release -DSOUNDPOD_VST3_SAMPLES=ON
+          cmake --build native/vsthost/build --config Release --parallel --target soundpod-vsthost test_plugins
       - run: npm test
       - run: npm run build
       # Runners have no audio devices, so only check that the prebuilt binary loads.

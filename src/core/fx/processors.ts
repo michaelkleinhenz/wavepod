@@ -1,5 +1,6 @@
 // Filter processors. Each works in place on two planar channels and keeps its own state.
-import type { FxType } from '../../shared/types';
+import type { Fx, FxType } from '../../shared/types';
+import { VstProcessor } from './vst';
 import { Biquad } from './biquad';
 import { PeakLimiter, UltraschallDynamics } from './ultraschallDynamics';
 
@@ -9,6 +10,8 @@ export interface FxProcessor {
   setParams(params: Record<string, number>): void;
   process(L: Float32Array, R: Float32Array, n: number): void;
   reset(): void;
+  /** Frees external resources (VST3 instances). */
+  dispose?(): void;
 }
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
@@ -257,8 +260,10 @@ class Limiter implements FxProcessor {
   }
 }
 
-export function createProcessor(type: FxType, sampleRate: number): FxProcessor {
+export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxProcessor {
   switch (type) {
+    case 'vst3':
+      return new VstProcessor(fx ?? { id: '', type, enabled: true, params: {} }, sampleRate);
     case 'highpass':
       return new HighPass(sampleRate);
     case 'eq':

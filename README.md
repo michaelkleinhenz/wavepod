@@ -23,7 +23,10 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
 - **Filters** on every track and the master: high-pass, EQ, noise gate,
   compressor, de-esser, limiter and Ultraschall Dynamics (target-loudness
   leveler with noise gate). Add, bypass, tweak while playing and reorder
-  them in the FX panel; they apply live and in the export.
+  them in the FX panel; they apply live and in the export. Installed
+  **VST3 plug-ins** work in the same stack, with plain sliders instead of
+  the plug-in's own window; they run in a separate process, so a crashing
+  plug-in can't take a recording down.
 - **Loudness**: EBU R128 analysis per track and mix, normalisation to −16 /
   −19 / −23 LUFS with a peak ceiling.
 - **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter
@@ -42,7 +45,10 @@ make test      # unit + engine tests
 make help      # all targets
 ```
 
-Requires Node.js 22. On Linux the app needs `libasound2` and `libpulse0`
+Requires Node.js 22. VST3 support needs the helper in `native/vsthost`:
+`make vsthost` builds it (CMake 3.25+ and a C++17 compiler; it downloads
+Steinberg's VST3 SDK), and `make dist*` builds it automatically. Without it
+SoundPod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`
 (present on normal desktop installs).
 
 ### Using a RØDECaster Pro II

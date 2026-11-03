@@ -1,10 +1,21 @@
 // Filter stack editor for a track or the master bus: add, bypass, tweak, reorder and remove filters.
-import type { Fx, FxType } from '../shared/types';
+import { VST_PARAM_BYPASS, VST_PARAM_HIDDEN, VST_PARAM_READONLY, type Fx, type FxType, type VstParamInfo, type VstPluginInfo } from '../shared/types';
 import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/definitions';
-import { MASTER, addFx, fxList, moveFx, removeFx, updateFx, type FxTarget } from '../core/fx/stack';
+import { MASTER, addFx, fxList, insertFx, moveFx, removeFx, updateFx, type FxTarget } from '../core/fx/stack';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
-import { clear, h } from './dom';
-import { store } from './store';
+import { uid } from '../shared/time';
+import { clear, errorMessage, h, toast } from './dom';
+import { api, store } from './store';
+
+const VST_OPTION = '__vst3';
+/** Plug-ins with many parameters show this many sliders until "Show all" is clicked. */
+const VST_COLLAPSED_PARAMS = 12;
+const VST_SKIP_FLAGS = VST_PARAM_HIDDEN | VST_PARAM_READONLY | VST_PARAM_BYPASS;
+
+/** Parameters SoundPod shows as sliders. Plug-in editors are never opened. */
+export function visibleVstParams<T extends VstParamInfo>(params: T[]): T[] {
+  return params.filter((p) => (p.flags & VST_SKIP_FLAGS) === 0);
+}
 
 /** A starting point that mirrors Ultraschall's voice chain (without its noise reduction and reverb). */
 const VOICE_CHAIN: FxType[] = ['highpass', 'deesser', 'dynamics'];
@@ -30,10 +41,24 @@ export class FxPanel {
   target: FxTarget | null = null;
   private dragId: string | null = null;
   private structure = '';
+  private vstAvailable: boolean | null = null;
+  private picker: { plugins: VstPluginInfo[] | null; query: string; busy: string | null } | null = null;
+  private expanded = new Set<string>();
 
   open(target: FxTarget): void {
     this.target = target;
     this.structure = '';
+    this.picker = null;
+    if (this.vstAvailable === null) {
+      this.vstAvailable = false;
+      api()
+        .vstStatus()
+        .then((s) => {
+          this.vstAvailable = s.available;
+          if (s.available && this.target) this.render();
+        })
+        .catch(() => {});
+    }
     this.render();
     document.getElementById('app')!.append(this.el);
   }
@@ -78,12 +103,14 @@ export class FxPanel {
       {
         class: 'fx-add',
         onchange: (e: Event) => {
-          const type = (e.target as HTMLSelectElement).value as FxType;
-          if (type) this.edit((p) => addFx(p, target, type).project);
+          const type = (e.target as HTMLSelectElement).value;
+          if (type === VST_OPTION) return this.openPicker();
+          if (type) this.edit((p) => addFx(p, target, type as FxType).project);
         },
       },
       h('option', { value: '' }, '+ Add filter…'),
       ...FX_DEFINITIONS.map((d) => h('option', { value: d.type, title: d.description }, d.name)),
+      this.vstAvailable ? h('option', { value: VST_OPTION, title: 'Add an installed VST3 effect' }, 'VST3 plug-in…') : null,
     );
     this.el.append(
       h(
@@ -94,6 +121,7 @@ export class FxPanel {
       ),
       h('div', { class: 'fx-toolbar' }, add, list.length === 0 && target !== MASTER ? h('button', { class: 'small', title: 'High-pass, De-esser and Ultraschall Dynamics', onclick: () => this.addVoiceChain() }, 'Voice chain') : null),
     );
+    if (this.picker) this.el.append(this.renderPicker(target));
     const cards = h('div', { class: 'fx-list' });
     if (!list.length) {
       cards.append(h('p', { class: 'muted fx-empty' }, target === MASTER ? 'No filters on the master bus. A limiter here keeps the mix below a ceiling.' : 'No filters yet. Filters run top to bottom, before the track gain and pan.'));
@@ -108,7 +136,10 @@ export class FxPanel {
   }
 
   private card(target: FxTarget, fx: Fx, index: number, count: number): HTMLElement {
-    const def = fxDefinition(fx.type);
+    const vst = fx.type === 'vst3';
+    const def = vst ? null : fxDefinition(fx.type);
+    const name = vst ? (fx.plugin?.name ?? 'VST3 plug-in') : def!.name;
+    const description = vst ? `VST3 · ${fx.plugin?.vendor ?? ''}`.trim() : def!.description;
     const curve = fx.type === 'dynamics' ? h('canvas', { class: 'fx-curve', width: 240, height: 160 }) : null;
     const drawCurve = () => curve && drawDynamicsCurve(curve, fx.params);
     const card = h(
@@ -124,13 +155,13 @@ export class FxPanel {
           title: fx.enabled ? 'On (uncheck to bypass)' : 'Bypassed',
           onchange: (e: Event) => this.edit((p) => updateFx(p, target, fx.id, { enabled: (e.target as HTMLInputElement).checked })),
         }),
-        h('span', { class: 'fx-name', title: def.description }, def.name),
+        h('span', { class: 'fx-name', title: description }, name, vst ? h('span', { class: 'fx-tag' }, 'VST3') : null),
         h('button', { class: 'toggle', title: 'Move up', disabled: index === 0, onclick: () => this.edit((p) => moveFx(p, target, fx.id, index - 1)) }, '↑'),
         h('button', { class: 'toggle', title: 'Move down', disabled: index === count - 1, onclick: () => this.edit((p) => moveFx(p, target, fx.id, index + 1)) }, '↓'),
         h('button', { class: 'toggle remove', title: 'Remove filter', onclick: () => this.edit((p) => removeFx(p, target, fx.id)) }, '×'),
       ),
       curve,
-      ...def.params.map((spec) => this.paramRow(target, fx, spec, drawCurve)),
+      ...(vst ? this.vstParamRows(target, fx) : def!.params.map((spec) => this.paramRow(target, fx, spec, drawCurve))),
     );
     drawCurve();
     card.addEventListener('dragstart', (e) => {
@@ -167,6 +198,164 @@ export class FxPanel {
       card.draggable = (e.target as HTMLElement).classList.contains('fx-grip');
     });
     return card;
+  }
+
+  private openPicker(): void {
+    this.picker = { plugins: null, query: '', busy: 'Looking for plug-ins…' };
+    this.render();
+    this.scan(false);
+  }
+
+  private scan(force: boolean): void {
+    if (!this.picker) return;
+    this.picker.busy = force ? 'Rescanning plug-ins…' : 'Looking for plug-ins…';
+    this.render();
+    api()
+      .vstScan(force)
+      .then((plugins) => {
+        if (!this.picker) return;
+        this.picker.plugins = plugins;
+        this.picker.busy = null;
+        this.render();
+      })
+      .catch((e) => {
+        if (this.picker) this.picker.busy = null;
+        toast(errorMessage(e), 'error');
+        this.render();
+      });
+  }
+
+  private renderPicker(target: FxTarget): HTMLElement {
+    const picker = this.picker!;
+    const q = picker.query.trim().toLowerCase();
+    const plugins = (picker.plugins ?? []).filter((p) => !q || `${p.name} ${p.vendor} ${p.categories}`.toLowerCase().includes(q));
+    const list = h('div', { class: 'vst-list' });
+    if (picker.busy) list.append(h('p', { class: 'muted' }, picker.busy));
+    else if (!picker.plugins?.length) list.append(h('p', { class: 'muted' }, 'No VST3 effects found in the standard plug-in folders.'));
+    else if (!plugins.length) list.append(h('p', { class: 'muted' }, 'No plug-in matches.'));
+    for (const p of plugins) {
+      list.append(
+        h(
+          'button',
+          { class: 'vst-item', title: p.path, onclick: () => this.addVst(target, p) },
+          h('span', { class: 'vst-name' }, p.name),
+          h('span', { class: 'vst-vendor' }, [p.vendor, p.categories.replace(/^Fx\|?/, '')].filter(Boolean).join(' · ')),
+        ),
+      );
+    }
+    const search = h('input', {
+      type: 'search',
+      placeholder: 'Search plug-ins',
+      value: picker.query,
+      oninput: (e: Event) => {
+        picker.query = (e.target as HTMLInputElement).value;
+        const next = this.renderPicker(target);
+        this.el.querySelector('.vst-picker')?.replaceWith(next);
+        (next.querySelector('input[type=search]') as HTMLInputElement | null)?.focus();
+      },
+    });
+    return h(
+      'div',
+      { class: 'vst-picker' },
+      h('div', { class: 'vst-picker-head' }, search, h('button', { class: 'small', disabled: !!picker.busy, title: 'Scan the plug-in folders again', onclick: () => this.scan(true) }, 'Rescan'), h('button', { class: 'small', onclick: () => ((this.picker = null), this.render()) }, 'Cancel')),
+      list,
+    );
+  }
+
+  private async addVst(target: FxTarget, plugin: VstPluginInfo): Promise<void> {
+    if (!this.picker) return;
+    this.picker.busy = `Loading ${plugin.name}…`;
+    this.render();
+    try {
+      const ref = { path: plugin.path, cid: plugin.cid, name: plugin.name, vendor: plugin.vendor };
+      const desc = await api().vstDescribe(ref);
+      const shown = visibleVstParams(desc.params);
+      const fx: Fx = {
+        id: uid('fx'),
+        type: 'vst3',
+        enabled: true,
+        plugin: ref,
+        paramInfo: shown.map(({ id, title, units, steps, default: d, flags }) => ({ id, title, units, steps, default: d, flags })),
+        params: Object.fromEntries(shown.map((p) => [String(p.id), p.value])),
+        state: desc.state,
+      };
+      this.picker = null;
+      this.edit((p) => insertFx(p, target, fx));
+    } catch (e) {
+      if (this.picker) this.picker.busy = null;
+      toast(`${plugin.name}: ${errorMessage(e)}`, 'error');
+      this.render();
+    }
+  }
+
+  /** Sliders generated from the plug-in's parameter list (0..1 normalized values). */
+  private vstParamRows(target: FxTarget, fx: Fx): HTMLElement[] {
+    const params = visibleVstParams(fx.paramInfo ?? []);
+    if (!params.length) return [h('p', { class: 'muted fx-note' }, 'This plug-in has no adjustable parameters.')];
+    const all = this.expanded.has(fx.id) || params.length <= VST_COLLAPSED_PARAMS + 2;
+    const rows = (all ? params : params.slice(0, VST_COLLAPSED_PARAMS)).map((info) => this.vstParamRow(target, fx, info));
+    if (params.length > VST_COLLAPSED_PARAMS + 2) {
+      rows.push(
+        h(
+          'button',
+          {
+            class: 'small fx-more',
+            onclick: () => {
+              if (all) this.expanded.delete(fx.id);
+              else this.expanded.add(fx.id);
+              this.render();
+            },
+          },
+          all ? 'Show fewer' : `Show all ${params.length} parameters`,
+        ),
+      );
+    }
+    return rows;
+  }
+
+  private vstParamRow(target: FxTarget, fx: Fx, info: VstParamInfo): HTMLElement {
+    const key = String(info.id);
+    const current = () => fx.params[key] ?? info.default;
+    const fallback = (v: number) => (info.steps === 1 ? (v >= 0.5 ? 'On' : 'Off') : `${Math.round(v * 100)}%`);
+    const value = h('span', { class: 'fx-value' }, fallback(current()));
+    let seq = 0;
+    const label = (v: number) => {
+      const mine = ++seq;
+      api()
+        .vstFormat(fx, info.id, v)
+        .then((text) => {
+          if (mine === seq && text) value.textContent = info.units && !text.includes(info.units) ? `${text} ${info.units}` : text;
+        })
+        .catch(() => {});
+    };
+    const snap = (v: number) => (info.steps > 0 ? Math.round(v * info.steps) / info.steps : v);
+    const set = (v: number, commit: boolean) => {
+      v = snap(v);
+      fx.params = { ...fx.params, [key]: v };
+      value.textContent = fallback(v);
+      label(v);
+      store.editLive((p) => updateFx(p, target, fx.id, { params: { [key]: v } }));
+      if (commit) store.commitLive();
+    };
+    label(current());
+    const control =
+      info.steps === 1
+        ? h('input', { type: 'checkbox', checked: current() >= 0.5, onchange: (e: Event) => set((e.target as HTMLInputElement).checked ? 1 : 0, true) })
+        : h('input', {
+            type: 'range',
+            min: '0',
+            max: '1',
+            step: info.steps > 0 ? String(1 / info.steps) : '0.001',
+            value: String(current()),
+            title: 'Double-click to reset',
+            oninput: (e: Event) => set(Number((e.target as HTMLInputElement).value), false),
+            onchange: () => store.commitLive(),
+            ondblclick: (e: Event) => {
+              (e.target as HTMLInputElement).value = String(info.default);
+              set(info.default, true);
+            },
+          });
+    return h('label', { class: 'fx-param' }, h('span', { class: 'fx-label', title: info.title }, info.title), control, value);
   }
 
   private paramRow(target: FxTarget, fx: Fx, spec: FxParamSpec, onChange: () => void): HTMLElement {

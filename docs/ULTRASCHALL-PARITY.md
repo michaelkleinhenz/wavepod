@@ -65,7 +65,7 @@ about it; the priority is explained in section 3.
 | Ripple editing modes when moving clips (off / per track / all tracks) | Moving a clip never shifts others | **P2** Modifier-drag: move clip plus everything after it on the track or on all tracks, markers follow in all-tracks mode |
 | Automatic crossfade when clips overlap, fade curve shapes | Fades are linear and per clip, overlaps just sum | **P2** Auto crossfade on overlap; linear / equal-power / S-curve |
 | Variable playback speed with constant pitch for listening through | Missing | **P2** 1×–2× playback speed (WSOLA time-stretch in the playback path only; export is always 1×) |
-| Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. Noise reduction, reverb and VST3 plugins later |
+| Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. VST3 plug-ins in the same stack (generated sliders, no plug-in editors). Noise reduction and reverb later |
 | Normalise selected clips (`Alt+Shift+N`) | Only whole-mix normalisation at export | **P2** Clip loudness normalisation via clip gain |
 | Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
 | Drag-and-drop media import, drop on empty space creates a track | Import via menu | **P2** |
@@ -123,8 +123,16 @@ stays in place on the timeline. "Voice chain" adds High-pass, De-esser and
 Ultraschall Dynamics, mirroring Ultraschall's default track chain without
 its noise reduction and reverb.
 
-Next: VST3 plugins in the same stack, shown with generated sliders only
-(never the plugin's own editor).
+**VST3 plug-ins ✅** can go into the same stacks ("VST3 plug-in…" in the add
+menu, with search and rescan). SoundPod never opens a plug-in's own editor;
+it builds sliders from the plug-in's parameter list (switches for on/off
+parameters, the plug-in's own value text, "Show all" for long lists) and
+stores the plug-in state in the project. Plug-ins run in a separate helper
+process (`native/vsthost`, built on Steinberg's VST3 SDK), so a crashing or
+hanging plug-in is bypassed with a message instead of stopping playback or a
+recording. Scanning also happens in throwaway processes, one per module.
+Plug-in folders: the platform's standard VST3 folders plus
+`SOUNDPOD_VST3_PATH`.
 
 ### Phase 5 — Recording essentials (P1)
 

@@ -26,6 +26,15 @@ export function addFx(project: Project, target: FxTarget, type: FxType, index?: 
   return { project: p, fx };
 }
 
+/** Inserts a ready-made filter (e.g. a described VST3 plug-in). */
+export function insertFx(project: Project, target: FxTarget, fx: Fx, index?: number): Project {
+  return withList(project, target, (l) => {
+    const next = [...l];
+    next.splice(index ?? next.length, 0, fx);
+    return next;
+  });
+}
+
 export function updateFx(project: Project, target: FxTarget, id: string, patch: Partial<Pick<Fx, 'enabled' | 'params'>>): Project {
   return withList(project, target, (l) => l.map((f) => (f.id === id ? { ...f, ...patch, params: { ...f.params, ...(patch.params ?? {}) } } : f)));
 }

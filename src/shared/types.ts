@@ -40,7 +40,7 @@ export interface Track {
   fx?: Fx[];
 }
 
-export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics';
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'vst3';
 
 /** One filter in a track's or the master's filter stack. */
 export interface Fx {
@@ -48,8 +48,44 @@ export interface Fx {
   type: FxType;
   /** false = bypassed. */
   enabled: boolean;
+  /** Built-in filters: values by parameter key. VST3: normalized 0..1 values by parameter id. */
   params: Record<string, number>;
+  /** VST3 only: which plug-in this is. */
+  plugin?: VstPluginRef;
+  /** VST3 only: the plug-in's parameters, for the generated sliders. */
+  paramInfo?: VstParamInfo[];
+  /** VST3 only: the plug-in's own state (base64), restored before the parameters. */
+  state?: string;
 }
+
+export interface VstPluginRef {
+  /** Path of the .vst3 module. */
+  path: string;
+  /** Class id (32 hex digits). */
+  cid: string;
+  name: string;
+  vendor: string;
+}
+
+export interface VstPluginInfo extends VstPluginRef {
+  version: string;
+  categories: string;
+}
+
+export interface VstParamInfo {
+  id: number;
+  title: string;
+  units: string;
+  /** 0 = continuous, 1 = toggle, n = n+1 discrete values. */
+  steps: number;
+  default: number;
+  flags: number;
+}
+
+/** VST3 ParameterInfo flags SoundPod cares about. */
+export const VST_PARAM_READONLY = 1 << 1;
+export const VST_PARAM_HIDDEN = 1 << 4;
+export const VST_PARAM_BYPASS = 1 << 16;
 
 export type MuteRegion = [Frames, Frames];
 
