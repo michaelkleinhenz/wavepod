@@ -108,6 +108,8 @@ export interface Marker {
   position: Frames;
   title: string;
   url?: string;
+  /** Chapter image, relative to the project folder ("images/…"). */
+  image?: string;
 }
 
 export interface SoundboardSlot {
@@ -130,6 +132,8 @@ export interface EpisodeMetadata {
   episode: string;
   description: string;
   year: string;
+  /** Episode cover (JPEG or PNG), relative to the project folder ("images/…"). */
+  artwork?: string;
 }
 
 export type BitDepth = 16 | 24 | 32;
@@ -287,7 +291,7 @@ export interface ExportOptions {
   mp3Bitrate: number;
   normalize: boolean;
   targetLufs: number;
-  /** Ceiling for sample peaks in dBFS after normalisation. */
+  /** Ceiling for true peaks in dBTP after normalisation. */
   peakCeiling: number;
   stems: boolean;
   chapterFiles: boolean;

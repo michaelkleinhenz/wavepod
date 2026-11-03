@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Project } from '../shared/types';
 import { createProject, normalizeProject } from '../core/project';
+import { imageMime } from '../core/id3';
 
 export const PROJECT_FILE = 'project.json';
 
@@ -32,4 +33,23 @@ export function createProjectDir(root: string, sampleRate: number, date = new Da
   const project = createProject(path.basename(dir), sampleRate);
   saveProject(dir, project);
   return { dir, project };
+}
+
+/**
+ * Copies a JPEG or PNG into `<projectDir>/images/` (unless it is already inside the project
+ * folder) and returns its path relative to the project folder.
+ */
+export function importImage(projectDir: string, src: string): string {
+  const data = fs.readFileSync(src);
+  if (!imageMime(data)) throw new Error('Please choose a JPEG or PNG image.');
+  const abs = path.resolve(src);
+  const rel = path.relative(projectDir, abs);
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) return rel.split(path.sep).join('/');
+  const ext = path.extname(abs).toLowerCase() || (imageMime(data) === 'image/png' ? '.png' : '.jpg');
+  const stem = path.basename(abs, path.extname(abs)).replace(/[^\p{L}\p{N}_ -]+/gu, '_') || 'image';
+  fs.mkdirSync(path.join(projectDir, 'images'), { recursive: true });
+  let name = `images/${stem}${ext}`;
+  for (let i = 2; fs.existsSync(path.join(projectDir, name)); i++) name = `images/${stem}-${i}${ext}`;
+  fs.writeFileSync(path.join(projectDir, name), data);
+  return name;
 }

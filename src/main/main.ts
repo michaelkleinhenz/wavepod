@@ -13,7 +13,7 @@ import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
-import { createProjectDir, isProjectDir, loadProject, saveProject } from './projectStore';
+import { createProjectDir, importImage, isProjectDir, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
@@ -263,6 +263,17 @@ const handlers: Record<InvokeMethod, Handler> = {
     if (res.canceled || !res.filePath) return null;
     fs.writeFileSync(res.filePath, text);
     return res.filePath;
+  },
+
+  pickImage: async (title: string) => {
+    const res = await dialog.showOpenDialog(win!, {
+      title,
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }],
+    });
+    const src = res.filePaths[0];
+    if (res.canceled || !src) return null;
+    return importImage(current.dir, src);
   },
 
   loadSound: (id: string, channels: Float32Array[]) => engine.loadSound(id, channels),

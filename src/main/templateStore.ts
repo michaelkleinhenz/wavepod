@@ -45,6 +45,23 @@ function copySounds(slots: SoundboardSlot[], fromDir: string, destDir: string): 
   });
 }
 
+/** Copies the episode cover into `destDir` (same relative path) so the template or new project has its own copy. */
+function copyArtwork(rel: string | undefined, fromDir: string, destDir: string): string | undefined {
+  if (!rel) return undefined;
+  const src = path.resolve(fromDir, rel);
+  if (!fs.existsSync(src)) return undefined;
+  const name = `images/${path.basename(src)}`;
+  fs.mkdirSync(path.join(destDir, 'images'), { recursive: true });
+  const dest = path.join(destDir, name);
+  if (path.resolve(dest) !== src) fs.copyFileSync(src, dest);
+  return name;
+}
+
+function withArtwork<T extends { artwork?: string }>(meta: T, artwork: string | undefined): T {
+  const { artwork: _a, ...rest } = meta;
+  return (artwork ? { ...rest, artwork } : rest) as T;
+}
+
 export function listTemplates(root: string): TemplateSummary[] {
   if (!fs.existsSync(root)) return [];
   const out: TemplateSummary[] = [];
@@ -80,6 +97,7 @@ export function saveTemplate(root: string, project: Project, projectDir: string,
   try {
     const template = projectToTemplate(project, clean, inputDevice);
     template.soundboard = copySounds(template.soundboard, projectDir, staging);
+    template.metadata = withArtwork(template.metadata, copyArtwork(template.metadata.artwork, projectDir, staging));
     writeJsonAtomic(path.join(staging, TEMPLATE_FILE), template);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.renameSync(staging, dir);
@@ -108,6 +126,7 @@ export function createProjectFromTemplate(
   const { dir } = createProjectDir(projectsRoot, sampleRate, date);
   const project = projectFromTemplate(template, path.basename(dir), sampleRate);
   project.soundboard = copySounds(project.soundboard, templateDir(templatesRoot, id), dir);
+  project.metadata = withArtwork(project.metadata, copyArtwork(project.metadata.artwork, templateDir(templatesRoot, id), dir));
   saveProject(dir, project);
   return { dir, project };
 }

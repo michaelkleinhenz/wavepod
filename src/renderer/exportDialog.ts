@@ -4,6 +4,7 @@ import type { ExportOptions, ExportProgress, LiveLoudness, LoudnessReport } from
 import { clear, errorMessage, h, toast } from './dom';
 import { LOUDNESS_PRESETS, loudnessTiles } from './loudnessDialog';
 import { api, store } from './store';
+import { chapterWarningList } from './chaptersView';
 
 const PRESETS = LOUDNESS_PRESETS;
 const WAVE_HEIGHT = 72;
@@ -172,9 +173,9 @@ export class ExportDialog {
           h('label', { class: 'field' }, h('span', null, 'MP3 bitrate'),
             h('select', { disabled: !o.formats.includes('mp3'), onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
               ...[64, 96, 128, 160, 192, 256].map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps`)))),
-          check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => (o.chapterFiles = v)),
+          check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }),
           check('Stems (one WAV per track)', o.stems, (v) => (o.stems = v)),
-          check(range ? `Only the selected range` : 'Only the selected range (none selected)', this.useRange && !!range, (v) => (this.useRange = v), !range),
+          check(range ? `Only the selected range` : 'Only the selected range (none selected)', this.useRange && !!range, (v) => { this.useRange = v; this.render(); }, !range),
         ),
         h('div', null, h('h3', null, 'Loudness'),
           check('Normalise loudness', o.normalize, (v) => { o.normalize = v; this.render(); }),
@@ -183,10 +184,11 @@ export class ExportDialog {
               ...PRESETS.map((p) => h('option', { value: String(p.value), selected: p.value === o.targetLufs }, p.label)))),
           h('label', { class: 'field' }, h('span', null, 'Peak ceiling'),
             h('select', { disabled: !o.normalize, onchange: (e: Event) => (o.peakCeiling = Number((e.target as HTMLSelectElement).value)) },
-              ...[-0.1, -1, -2, -3].map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBFS`)))),
+              ...[-0.1, -1, -2, -3].map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`)))),
           h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.mix ? 'Analyse again' : 'Analyse loudness'),
         ),
       ),
+      this.chapterNotes(range),
       // only the mix matters for the export; per-track figures are in the Loudness dialog
       this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target)) : null,
       this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
@@ -198,6 +200,22 @@ export class ExportDialog {
     );
     this.overlay.append(dialog);
     if (this.exported) this.wave.draw();
+  }
+
+  /** Chapter problems and a missing cover, checked before the MP3 is written (Ultraschall warns about these too). */
+  private chapterNotes(range: [number, number] | null): HTMLElement | null {
+    if (!this.opts.formats.includes('mp3') && !this.opts.chapterFiles) return null;
+    const r = this.useRange && range ? range : null;
+    const list = chapterWarningList(r ? r[0] : 0, r ? r[1] : Infinity, () => this.render());
+    const noCover = this.opts.formats.includes('mp3') && !store.project.metadata.artwork;
+    if (!list && !noCover) return null;
+    return h(
+      'div',
+      { class: 'export-notes' },
+      h('h3', null, 'Before you export'),
+      list,
+      noCover ? h('p', { class: 'muted' }, 'No episode cover set. Add one under Chapters › Episode to embed it in the MP3.') : null,
+    );
   }
 
   private progress(p: ExportProgress): void {

@@ -1,5 +1,5 @@
 // Pure project-editing operations. They return a new project and never touch the input.
-import type { Clip, EnvelopePoint, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
+import type { Clip, EnvelopePoint, Frames, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
 import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
@@ -263,7 +263,12 @@ export function removeMarker(project: Project, markerId: string): Project {
 export function markersToChapters(project: Project, offsetFrames = 0): Chapter[] {
   return project.markers
     .filter((m) => m.kind === 'chapter' && m.position >= offsetFrames)
-    .map((m) => ({ start: (m.position - offsetFrames) / project.sampleRate, title: m.title, ...(m.url ? { url: m.url } : {}) }));
+    .map((m) => ({
+      start: (m.position - offsetFrames) / project.sampleRate,
+      title: m.title,
+      ...(m.url ? { url: m.url } : {}),
+      ...(m.image ? { image: m.image } : {}),
+    }));
 }
 
 export function chaptersToMarkers(project: Project, chapters: Chapter[], replace = true): Project {
@@ -276,6 +281,7 @@ export function chaptersToMarkers(project: Project, chapters: Chapter[], replace
       position: Math.round(c.start * p.sampleRate),
       title: c.title,
       ...(c.url ? { url: c.url } : {}),
+      ...(c.image ? { image: c.image } : {}),
     });
   }
   p.markers.sort((a, b) => a.position - b.position);
@@ -320,4 +326,41 @@ export class History {
     this.past = [];
     this.future = [];
   }
+}
+
+export interface ChapterWarning {
+  kind: 'no-start' | 'untitled';
+  message: string;
+  /** Marker the warning is about (untitled chapters). */
+  markerId?: string;
+}
+
+/**
+ * Problems podcatchers show to listeners: no chapter at the start of the episode (or of the
+ * exported range) and chapters without a title. Nothing to report when there are no chapters.
+ */
+export function chapterWarnings(project: Project, rangeStart: Frames = 0, rangeEnd = Infinity): ChapterWarning[] {
+  const chapters = project.markers.filter((m) => m.kind === 'chapter' && m.position >= rangeStart && m.position < rangeEnd);
+  if (!chapters.length) return [];
+  const out: ChapterWarning[] = [];
+  // within 0.5 s of the start counts as "at the start"
+  const first = Math.min(...chapters.map((m) => m.position));
+  if (first - rangeStart > project.sampleRate / 2) {
+    out.push({ kind: 'no-start', message: 'The first chapter does not start at 0:00, so podcatchers show no chapter before it.' });
+  }
+  for (const m of chapters.sort((a, b) => a.position - b.position)) {
+    if (!m.title.trim()) {
+      const t = (m.position - rangeStart) / project.sampleRate;
+      out.push({ kind: 'untitled', markerId: m.id, message: `The chapter at ${formatClock(t)} has no title.` });
+    }
+  }
+  return out;
+}
+
+function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return hh ? `${hh}:${String(mm).padStart(2, '0')}:${ss}` : `${mm}:${ss}`;
 }

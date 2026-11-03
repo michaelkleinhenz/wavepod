@@ -5,7 +5,7 @@ import { Mp3Encoder } from '@breezystack/lamejs';
 import type { ExportOptions, ExportProgress, ExportResult, ExportWave, LiveLoudness, LoudnessStats, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from './chapters';
-import { buildId3Tag } from './id3';
+import { buildId3Tag, imageMime, type Id3Chapter, type Id3Picture } from './id3';
 import { LoudnessMeter, normalizationGain } from './loudness';
 import { Mixer, ReaderCache, projectLength } from './mixer';
 import { markersToChapters } from './project';
@@ -121,6 +121,38 @@ function safeName(s: string): string {
   return s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'track';
 }
 
+/** Reads a JPEG or PNG from the project folder; null if it is missing or another format. */
+export function loadPicture(projectDir: string, rel: string | undefined): Id3Picture | null {
+  if (!rel) return null;
+  try {
+    const data = fs.readFileSync(path.resolve(projectDir, rel));
+    const mime = imageMime(data);
+    return mime ? { mime, data } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Copies chapter images next to the export ("<base>-chapter-01.jpg", …) and returns the chapters
+ * with `image` set to those file names, for the chapter files. Missing images are left out.
+ */
+function exportChapterImages(chapters: Id3Chapter[], projectDir: string, outputBase: string, files: string[]): Id3Chapter[] {
+  return chapters.map((c, i) => {
+    if (!c.image) return c;
+    const src = path.resolve(projectDir, c.image);
+    if (!c.picture || !fs.existsSync(src)) {
+      const { image: _i, ...rest } = c;
+      return rest;
+    }
+    const name = `${path.basename(outputBase)}-chapter-${String(i + 1).padStart(2, '0')}${c.picture.mime === 'image/png' ? '.png' : '.jpg'}`;
+    const dest = path.join(path.dirname(outputBase), name);
+    fs.copyFileSync(src, dest);
+    files.push(dest);
+    return { ...c, image: name };
+  });
+}
+
 export function exportProject(project: Project, projectDir: string, opts: ExportOptions, progress: ProgressFn = () => {}): ExportResult {
   const readers = new ReaderCache(projectDir);
   const files: string[] = [];
@@ -137,14 +169,21 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     renderRange(mixer, start, end, null, (b, n) => measureTap.push(b, n), (f) => progress({ phase: 'Measuring loudness', fraction: f, ...measureTap.take() }));
     const loudness = meter.integrated();
     const peakDb = meter.peakDb();
-    const appliedGainDb = opts.normalize ? normalizationGain(loudness, peakDb, opts.targetLufs, opts.peakCeiling) : 0;
+    // The ceiling is in dBTP, like the loudness analysis: the peaks between samples count too.
+    const appliedGainDb = opts.normalize ? normalizationGain(loudness, meter.truePeakDb(), opts.targetLufs, opts.peakCeiling) : 0;
     const gain = dbToGain(appliedGainDb);
 
     // Pass 2: write outputs.
     const wav = opts.formats.includes('wav') ? new WavWriter(`${opts.outputBase}.wav`, 2, project.sampleRate, 24, 1 << 20) : null;
     let mp3Fd: number | null = null;
     let encoder: Mp3Encoder | null = null;
-    const chapters = markersToChapters(project, start).filter((c) => c.start < durationSeconds);
+    const chapters: Id3Chapter[] = markersToChapters(project, start)
+      .filter((c) => c.start < durationSeconds)
+      .map((c) => {
+        const picture = loadPicture(projectDir, c.image);
+        return picture ? { ...c, picture } : c;
+      });
+    const cover = loadPicture(projectDir, project.metadata.artwork);
     if (opts.formats.includes('mp3')) {
       const mp3Path = `${opts.outputBase}.mp3`;
       mp3Fd = fs.openSync(mp3Path, 'w');
@@ -157,6 +196,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         track: m.episode,
         comment: m.description,
         genre: 'Podcast',
+        ...(cover ? { cover } : {}),
         chapters,
         durationSeconds,
       });
@@ -211,9 +251,10 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     }
 
     if (opts.chapterFiles && chapters.length) {
+      const listed = exportChapterImages(chapters, projectDir, opts.outputBase, files);
       for (const fmt of CHAPTER_FORMATS) {
         const p = `${opts.outputBase}.${fmt.ext}`;
-        fs.writeFileSync(p, exportChapters(chapters, fmt.id, durationSeconds));
+        fs.writeFileSync(p, exportChapters(listed, fmt.id, durationSeconds));
         files.push(p);
       }
     }

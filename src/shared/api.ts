@@ -104,6 +104,8 @@ export interface WavePodApi {
   importAudio(name: string, channels: Float32Array[], sampleRate: number): Promise<ImportedAudio>;
   openTextFile(title: string, extensions: string[]): Promise<{ path: string; text: string } | null>;
   saveTextFile(defaultName: string, text: string): Promise<string | null>;
+  /** Lets the user choose a JPEG or PNG and copies it into the project's images folder; returns its relative path. */
+  pickImage(title: string): Promise<string | null>;
 
   // soundboard
   loadSound(id: string, channels: Float32Array[]): Promise<void>;
@@ -187,6 +189,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'importAudio',
   'openTextFile',
   'saveTextFile',
+  'pickImage',
   'loadSound',
   'playSound',
   'stopSounds',

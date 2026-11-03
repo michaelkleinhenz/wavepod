@@ -82,8 +82,8 @@ about it; the priority is explained in section 3.
 
 | Ultraschall feature | Gap in WavePod | Plan |
 | --- | --- | --- |
-| Episode artwork (JPG/PNG) in the MP3, recently used images | Missing | **P1** ID3 `APIC` cover, picker in the metadata form |
-| Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | URL only, no images, no validation | **P1** Chapter image (embedded as `APIC` inside `CHAP`, written to PSC/JSON as file reference), validation warnings in the Chapters view and export dialog, offer a chapter at 0:00 |
+| Episode artwork (JPG/PNG) in the MP3, recently used images | ✅ Episode cover in the Episode card, embedded as ID3 `APIC`, kept by templates | Done (no "recently used" list) |
+| Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | ✅ Image per chapter, embedded as `APIC` inside `CHAP`, copied next to the chapter files and referenced from PSC (`image`) and JSON (`img`); warnings in the Chapters view and export dialog with "Add chapter at 0:00" | Done |
 | Formats FLAC, OGG Vorbis, AIFF in addition to WAV/MP3 | WAV and MP3 | **P2** FLAC (WASM encoder) and Opus/Ogg; AIFF not planned |
 | Export regions (split a long recording into several files) | One range at a time | **P3** Regions as a third marker kind, "export each region" |
 | Export presets, file name patterns | Fixed naming | **P3** Remember last settings per project (presets only if asked for) |
@@ -197,7 +197,7 @@ came up during testing).
 
 ### Phase 7 — Sound and export (P1/P2)
 
-12. **Artwork and chapter images (P1).** Episode cover and per-chapter image
+12. ✅ **Artwork and chapter images (P1).** Episode cover and per-chapter image
     and URL in the Chapters view; ID3 `APIC`, `CHAP` with `APIC` and `WXXX`
     subframes; image references in PSC and Podcasting 2.0 JSON; validation
     of unnamed chapters before export.

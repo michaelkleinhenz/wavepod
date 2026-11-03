@@ -2,11 +2,35 @@
 import type { EpisodeMetadata, Marker } from '../shared/types';
 import { formatTimestamp, parseTimestamp } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from '../core/chapters';
-import { addMarker, markersToChapters, removeMarker, updateMarker } from '../core/project';
+import { addMarker, chapterWarnings, markersToChapters, removeMarker, updateMarker } from '../core/project';
 import { projectLength } from '../core/project';
 import { clear, errorMessage, h, toast } from './dom';
 import { importChapterFile, seek } from './actions';
 import { api, store } from './store';
+import { thumbnail } from './images';
+
+/** Asks for an image and copies it into the project; null if cancelled or failed (failure is shown). */
+async function chooseImage(title: string): Promise<string | null> {
+  try {
+    return await api().pickImage(title);
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+    return null;
+  }
+}
+
+/** Image picker cell: thumbnail (click to change) and a remove button, or an "Image…" button. */
+export function imagePicker(current: string | undefined, title: string, size: 'small' | 'large', set: (rel: string | undefined) => void): HTMLElement {
+  const choose = async () => {
+    const rel = await chooseImage(title);
+    if (rel) set(rel);
+  };
+  if (!current) return h('button', { class: 'small', title, onclick: () => void choose() }, size === 'large' ? 'Choose image…' : 'Image…');
+  const img = thumbnail(current, `thumb ${size}`);
+  img.title = `${current} (click to change)`;
+  img.onclick = () => void choose();
+  return h('div', { class: 'image-pick' }, img, h('button', { class: 'small danger', title: 'Remove image', onclick: () => set(undefined) }, '×'));
+}
 
 export class ChaptersView {
   readonly el = h('div', { class: 'view chapters-view' });
@@ -62,6 +86,9 @@ export class ChaptersView {
               }),
             )
           : null,
+        withUrl
+          ? h('td', { class: 'image' }, imagePicker(m.image, 'Chapter image', 'small', (image) => store.edit((p) => updateMarker(p, m.id, { image }))))
+          : null,
         h(
           'td',
           { class: 'actions' },
@@ -109,10 +136,11 @@ export class ChaptersView {
         ? h(
             'table',
             { class: 'markers' },
-            h('thead', null, h('tr', null, h('th', null, 'Start'), h('th', null, 'Title'), h('th', null, 'Link'), h('th', null, ''))),
+            h('thead', null, h('tr', null, h('th', null, 'Start'), h('th', null, 'Title'), h('th', null, 'Link'), h('th', null, 'Image'), h('th', null, ''))),
             h('tbody', null, ...chapters.map((m) => row(m, true))),
           )
         : h('p', { class: 'muted' }, 'Press M while recording or playing to drop a chapter marker at the playhead. Chapters are embedded in the MP3 export and written as chapter files.'),
+      chapterWarningList(),
     );
 
     const editCard = h(
@@ -157,10 +185,52 @@ export class ChaptersView {
         field('year', 'Year'),
       ),
       field('description', 'Description', true),
+      h(
+        'div',
+        { class: 'field artwork' },
+        h('span', null, 'Episode cover'),
+        imagePicker(meta.artwork, 'Episode cover (JPEG or PNG, square, ideally 1400–3000 px)', 'large', (artwork) =>
+          store.edit((p) => {
+            const { artwork: _a, ...rest } = p.metadata;
+            return { ...p, metadata: artwork ? { ...rest, artwork } : rest };
+          }),
+        ),
+        h('small', { class: 'muted' }, 'Embedded in the MP3. Shown by podcatchers that read the file.'),
+      ),
     );
 
     this.el.append(h('div', { class: 'columns' }, h('div', null, chapterCard, editCard), h('div', null, metaCard)));
   }
+}
+
+/** Warnings about the chapter list (no chapter at 0:00, untitled chapters), with a quick fix for the first. */
+export function chapterWarningList(rangeStart = 0, rangeEnd = Infinity, after?: () => void): HTMLElement | null {
+  const warnings = chapterWarnings(store.project, rangeStart, rangeEnd);
+  if (!warnings.length) return null;
+  return h(
+    'ul',
+    { class: 'chapter-warnings' },
+    ...warnings.map((w) =>
+      h(
+        'li',
+        { class: 'warning' },
+        w.message,
+        w.kind === 'no-start'
+          ? h(
+              'button',
+              {
+                class: 'small',
+                onclick: () => {
+                  store.edit((p) => addMarker(p, rangeStart, 'chapter', 'Intro').project);
+                  after?.();
+                },
+              },
+              `Add chapter at ${rangeStart ? 'range start' : '0:00'}`,
+            )
+          : null,
+      ),
+    ),
+  );
 }
 
 function safe(s: string): string {

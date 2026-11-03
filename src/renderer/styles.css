@@ -352,3 +352,16 @@ button.icon-btn:focus-visible { outline: 1px solid var(--accent); outline-offset
 .mcp-port { width: 90px; }
 .mcp-state.ok { color: var(--ok); }
 .mcp-card .hint { margin-top: 10px; }
+
+/* episode cover and chapter images */
+.image-pick { display: inline-flex; align-items: center; gap: 4px; }
+img.thumb { display: block; object-fit: cover; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-2); cursor: pointer; }
+img.thumb.small { width: 32px; height: 32px; }
+img.thumb.large { width: 120px; height: 120px; }
+img.thumb.missing { border-color: var(--warn); }
+.field.artwork { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+table.markers td.image { width: 1%; white-space: nowrap; }
+ul.chapter-warnings { margin: 8px 0 0; padding-left: 18px; }
+ul.chapter-warnings li { margin: 4px 0; }
+ul.chapter-warnings button { margin-left: 8px; }
+.export-notes { margin-top: 8px; }
