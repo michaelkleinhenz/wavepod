@@ -8,7 +8,9 @@
 //    RØDECaster) failed to open because RtAudio passed no channel map;
 //  - one global error callback shared by all streams was released while other
 //    streams' audio threads still used it (SIGSEGV when reopening devices);
-//  - a JS exception in a stream callback ended in std::terminate (SIGABRT).
+//  - a JS exception in a stream callback ended in std::terminate (SIGABRT);
+//  - PulseAudio playback used a ~2 s buffer refilled in bursts, so audify's
+//    write queue underran and playback ran slow and crackled.
 // The prebuilt binary that audify downloads has none of these fixes, so we
 // compile it here.
 //
