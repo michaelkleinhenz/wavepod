@@ -20,9 +20,12 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   edges on other tracks, markers and the playhead (toolbar `Snap`, hold
   `Alt` to drag freely). Time selections can be resized by dragging their
   edges.
-- **Volume line** per track (`Vol` in the track header): double-click to add
-  points, drag points or the line up and down. `Ctrl+Y` silences the
-  selected range on the tracks it was dragged across.
+- **Volume line** per clip (hover a clip and click `Vol` at its top left):
+  double-click to add points, drag points or the line up and down; the
+  waveform shows the result. `Ctrl+Y` silences the selected range on the
+  tracks it was dragged across.
+- Dragging a clip straight up or down to another track keeps its time
+  position, so the tracks stay in sync.
 - **Chapter markers** while recording (`M`), edit markers for later fixes (`E`).
 - **Soundboard** for jingles (keys `1`–`9`) with loop and soft fade-in.
   Jingles played while recording land on a Soundboard track, so they are

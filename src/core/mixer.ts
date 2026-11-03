@@ -217,13 +217,6 @@ export class Mixer {
     const ramp = Math.round(MUTE_RAMP_SECONDS * this.project.sampleRate);
     // only the mute regions touching this block, so the per-sample lookup stays short
     const muted = regionsOverlap(track, position, end) ? track.muteRegions!.filter(([a, b]) => a < end && b > position) : null;
-    // volume line, evaluated once per block
-    let env: Float32Array | null = null;
-    if (!isUnityEnvelope(track.envelope)) {
-      if (this.envBuf.length < frames) this.envBuf = new Float32Array(frames);
-      env = this.envBuf;
-      fillEnvelope(track.envelope!, position, frames, env);
-    }
     for (const clip of track.clips) {
       const reader = this.readers.get(clip.file);
       if (!reader) continue;
@@ -242,10 +235,17 @@ export class Mixer {
       const src = reader.read(clip.offset + (from - cStart), n, this.scratch);
       const g = dbToGain(clip.gain);
       const outOffset = from - position;
+      // the clip's volume line, evaluated once per block in source frames
+      let env: Float32Array | null = null;
+      if (!isUnityEnvelope(clip.envelope)) {
+        if (this.envBuf.length < n) this.envBuf = new Float32Array(n);
+        env = this.envBuf;
+        fillEnvelope(clip.envelope!, clip.offset + (from - cStart), n, env);
+      }
       for (let i = 0; i < n; i++) {
         let gain = g * clipEnvelope(clip, from - cStart + i);
         if (muted) gain *= muteGainAt(muted, from + i, ramp);
-        if (env) gain *= env[outOffset + i];
+        if (env) gain *= env[i];
         const l = src[0][i];
         buf[0][outOffset + i] += l * gain;
         buf[1][outOffset + i] += (stereo ? src[1][i] : l) * gain;
