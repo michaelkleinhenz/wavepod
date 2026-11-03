@@ -1,8 +1,9 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import { LevelMeter } from './levelMeter';
 import { selectionSpan } from '../core/navigation';
-import type { Clip, EnvelopePoint, PeakLevel, Track } from '../shared/types';
+import type { Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
 import { formatTick } from '../shared/time';
+import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
 import { FADE_SHAPES, fadeCurve, type FadeShape } from '../core/dsp';
@@ -49,7 +50,7 @@ const TICK_STEPS = [
 const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
 
 type Drag =
-  | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean }
+  | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean; ripple?: RippleSet }
   | { kind: 'trim'; clipId: string; side: 'left' | 'right'; startX: number; orig: Clip; delta: number }
   | { kind: 'fade'; clipId: string; side: 'in' | 'out'; startX: number; orig: Clip; moved: boolean }
   | { kind: 'range'; startFrame: number; endFrame: number; startTrack: number | null; endTrack: number | null }
@@ -523,7 +524,7 @@ export class TimelineView {
     // markers
     ctx.textBaseline = 'middle';
     for (const m of store.project.markers) {
-      const pos = this.drag?.kind === 'marker' && this.drag.markerId === m.id ? this.drag.origPos + Math.round((this.drag.dx / this.pxPerSec) * this.sr) : m.position;
+      const pos = this.markerPos(m);
       const x = Math.round(this.xOf(pos)) + 0.5;
       if (x < -200 || x > w + 2) continue;
       const color = m.kind === 'chapter' ? '#ffca28' : '#ef5350';
@@ -659,7 +660,7 @@ export class TimelineView {
     }
     // marker lines
     for (const m of store.project.markers) {
-      const x = Math.round(this.xOf(m.position)) + 0.5;
+      const x = Math.round(this.xOf(this.markerPos(m))) + 0.5;
       if (x < 0 || x > w) continue;
       ctx.strokeStyle = m.kind === 'chapter' ? 'rgba(255,202,40,0.45)' : 'rgba(239,83,80,0.45)';
       ctx.setLineDash([4, 4]);
@@ -671,6 +672,14 @@ export class TimelineView {
     }
     this.drawPlayhead(ctx, height);
     this.drawSnapLine(ctx, height);
+  }
+
+  /** A marker's position, following a marker drag or a ripple move across all tracks. */
+  private markerPos(m: Marker): number {
+    const d = this.drag;
+    if (d?.kind === 'marker' && d.markerId === m.id) return d.origPos + Math.round((d.dx / this.pxPerSec) * this.sr);
+    if (d?.kind === 'clip' && d.moved && d.ripple?.markerIds.has(m.id)) return m.position + d.delta;
+    return m.position;
   }
 
   private isDragged(clipId: string): boolean {
@@ -1356,7 +1365,13 @@ export class TimelineView {
         return;
       }
       // 5. clips: trim edges or move
-      if (hit) {
+      if (hit && !hit.edge && (e.ctrlKey || e.metaKey)) {
+        // ripple move: Ctrl-drag takes later clips on the track along, Ctrl+Shift-drag everything later
+        const ids = store.selection.clipIds.has(hit.clip.id) ? new Set(store.selection.clipIds) : new Set([hit.clip.id]);
+        store.select({ clipIds: ids, range: null, rangeTracks: null, markerId: null });
+        const ripple = rippleSet(store.project, ids, e.shiftKey ? 'all' : 'track');
+        this.drag = { kind: 'clip', clipId: hit.clip.id, ids: ripple.clipIds, startX: e.clientX, startY: e.clientY, delta: 0, dTrack: 0, minDTrack: 0, maxDTrack: 0, moved: false, ripple };
+      } else if (hit) {
         const sel = new Set(e.shiftKey ? store.selection.clipIds : []);
         if (e.shiftKey && sel.has(hit.clip.id)) sel.delete(hit.clip.id);
         else sel.add(hit.clip.id);
@@ -1408,7 +1423,7 @@ export class TimelineView {
         if (clip && d.moved && !locked) delta += this.snapDelta([clip.start + delta, clip.start + clip.length + delta], d.ids, e);
         // no selected clip may move before zero
         const minStart = Math.min(...store.project.tracks.flatMap((t) => t.clips.filter((c) => d.ids.has(c.id)).map((c) => c.start)));
-        d.delta = Math.max(-minStart, delta);
+        d.delta = Math.max(d.ripple ? rippleMinDelta(store.project, d.ripple) : -minStart, delta);
         this.draw();
       } else if (d.kind === 'trim') {
         let delta = framesOf(e.clientX - d.startX);
@@ -1470,7 +1485,10 @@ export class TimelineView {
       this.drag = null;
       this.snapLine = null;
       if (!d) return;
-      if (d.kind === 'clip' && d.moved) {
+      if (d.kind === 'clip' && d.moved && d.ripple) {
+        const ripple = d.ripple;
+        store.edit((p) => rippleMove(p, ripple, d.delta));
+      } else if (d.kind === 'clip' && d.moved) {
         store.edit((p) => {
           let q = p;
           for (const id of d.ids) {

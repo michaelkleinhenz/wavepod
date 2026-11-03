@@ -65,7 +65,7 @@ about it; the priority is explained in section 3.
 | Check cuts: jump to next/previous clip edge or edit marker and play with preroll | ✅ `Alt+←/→` clip edges, `Shift+Alt+←/→` markers, `P` plays 2 s before to 2 s after the playhead and returns | Done (pre/postroll fixed at 2 s) |
 | Zoom to selection and back (`Shift+Z`), zoom whole project | ✅ `Shift+Z` zooms to the selected range or clips and back; "Zoom to fit" shows the whole episode | Done |
 | Copy/cut/paste of clips and ranges; ripple cut on `Ctrl+X` | ✅ `Ctrl+C` copies selected clips or the selected range (its tracks), `Ctrl+X` ripple-cuts into the clipboard, `Ctrl+V` pastes at the playhead, `Ctrl+Shift+V` pastes and moves everything after it (markers too) | Done |
-| Ripple editing modes when moving clips (off / per track / all tracks) | Moving a clip never shifts others | **P2** Modifier-drag: move clip plus everything after it on the track or on all tracks, markers follow in all-tracks mode |
+| Ripple editing modes when moving clips (off / per track / all tracks) | ✅ `Ctrl`-drag moves a clip plus everything after it on its track; `Ctrl+Shift`-drag moves everything after it on all tracks, with markers and mute regions | Done |
 | Automatic crossfade when clips overlap, fade curve shapes | ✅ Overlapping clips on a track crossfade with equal-power curves (drawn in yellow); double-click a fade handle to switch linear / equal power / S-curve | Done |
 | Variable playback speed with constant pitch for listening through | ✅ Speed selector next to the clock: 1×, 1.25×, 1.5×, 1.75×, 2× (WSOLA, pitch kept; recording and export stay at 1×) | Done |
 | Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. VST3 plug-ins in the same stack (generated sliders, no plug-in editors). Noise reduction and reverb later |
@@ -184,7 +184,7 @@ came up during testing).
    (`Alt+←/→`, `Ctrl+Alt+←/→`), "preview cut" plays from preroll to
    postroll around the playhead, `Shift+Z` zoom to selection / back, zoom to
    project, project overview strip.
-8. **Clipboard and ripple moves (P2).** ✅ Clipboard done; modifier-drag ripple moves still open. Copy/cut/paste for clips and time
+8. ✅ **Clipboard and ripple moves (P2).** Copy/cut/paste for clips and time
    ranges across all tracks, `Ctrl+X` = ripple cut. Modifier-drag to move a
    clip with everything after it (track or all tracks, markers follow).
 9. ✅ **Crossfades (P2).** Overlapping clips on a track crossfade automatically;
