@@ -351,3 +351,22 @@ button.icon-btn:focus-visible { outline: 1px solid var(--accent); outline-offset
 .mcp-port { width: 90px; }
 .mcp-state.ok { color: var(--ok); }
 .mcp-card .hint { margin-top: 10px; }
+
+/* slider values: click the number to type one */
+.editable-value { cursor: text; border-radius: 3px; }
+.editable-value:hover, .editable-value:focus-visible { background: var(--panel-2); color: var(--text); outline: 1px dashed var(--border); }
+input.value-edit {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+}
+.th-row input.value-edit { width: 54px; flex: none; }

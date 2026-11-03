@@ -42,7 +42,10 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   each filter shows live in/out levels and how much gain it is applying. Installed
   **VST3 plug-ins** work in the same stack, with plain sliders instead of
   the plug-in's own window; they run in a separate process, so a crashing
-  plug-in can't take a recording down.
+  plug-in can't take a recording down. Every slider's value (filter
+  parameters, VST3 parameters, track gain) can be clicked to type an exact
+  number, e.g. `-3,5 dB`, `1.2 kHz` or `250 ms`; Enter applies it (kept within
+  the slider's range), Escape cancels.
 - **Templates**: save an episode's setup (tracks and their input channels,
   filter stacks including Master FX and VST3 settings, soundboard jingles)
   with File › Save as Template…, and start the next episode from it with

@@ -13,6 +13,7 @@ import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, set
 import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
+import { editableNumber, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
 const TRACK_H = 84;
@@ -215,6 +216,8 @@ export class TimelineView {
   }
 
   renderHeaders(): void {
+    // don't pull a value field away while it is being typed into; it re-renders when it closes
+    if (isEditingValue(this.headers)) return;
     clear(this.headers);
     this.trackMeters.clear();
     const status = store.status;
@@ -320,7 +323,15 @@ export class TimelineView {
               },
               t.fx?.some((f) => f.enabled) ? `FX ${t.fx.filter((f) => f.enabled).length}` : 'FX',
             ),
-            h('span', { class: 'gain-label', title: 'Track gain' }, `${t.gain > 0 ? '+' : ''}${t.gain.toFixed(1)} dB`),
+            editableNumber(h('span', { class: 'gain-label', title: 'Track gain (click to type a value)' }, `${t.gain > 0 ? '+' : ''}${t.gain.toFixed(1)} dB`), {
+              min: -24,
+              max: 12,
+              unit: 'dB',
+              precision: 0.1,
+              get: () => t.gain,
+              commit: (gain) => store.edit((p) => updateTrack(p, t.id, { gain })),
+              onClose: () => this.renderHeaders(),
+            }),
             h('input', {
               type: 'range',
               class: 'gain',

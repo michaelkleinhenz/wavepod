@@ -13,6 +13,7 @@ import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
+import { leadingNumber, searchNormalized } from '../core/numberInput';
 import { createProjectDir, isProjectDir, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
@@ -293,6 +294,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   vstDescribe: (plugin: VstPluginRef) => describeVst(plugin),
   vstFormat: (fx: Fx, paramId: number, value: number) => formatVst(fx, paramId, value),
+  vstParse: (fx: Fx, paramId: number, text: string) => parseVst(fx, paramId, text),
 };
 
 function describeVst(plugin: VstPluginRef) {
@@ -307,7 +309,24 @@ function describeVst(plugin: VstPluginRef) {
 }
 
 function formatVst(fx: Fx, paramId: number, value: number): string {
-  if (!vstHost || !fx.plugin) return '';
+  const inst = vstShadow(fx);
+  return inst ? inst.format(paramId, value) : '';
+}
+
+/** Typed text to a normalized value: the plug-in's own parser, else a search over its display text. */
+function parseVst(fx: Fx, paramId: number, text: string): number | null {
+  const inst = vstShadow(fx);
+  if (!inst) return null;
+  const own = inst.parse?.(paramId, text) ?? null;
+  if (own !== null && Number.isFinite(own)) return Math.min(1, Math.max(0, own));
+  const target = leadingNumber(text);
+  if (target === null) return null;
+  return searchNormalized(target, (v) => leadingNumber(inst.format(paramId, v)));
+}
+
+/** A plug-in instance used only to format and parse parameter text, per filter id. */
+function vstShadow(fx: Fx): VstInstance | null {
+  if (!vstHost || !fx.plugin) return null;
   const key = `${fx.plugin.path}|${fx.plugin.cid}|${fx.state ?? ''}`;
   let shadow = vstShadows.get(fx.id);
   if (!shadow || shadow.key !== key || !shadow.inst.alive) {
@@ -318,7 +337,7 @@ function formatVst(fx: Fx, paramId: number, value: number): string {
     shadow = { key, inst };
     vstShadows.set(fx.id, shadow);
   }
-  return shadow.inst.format(paramId, value);
+  return shadow.inst;
 }
 
 // Instances used only to turn parameter values into the plug-in's own text, per filter id.

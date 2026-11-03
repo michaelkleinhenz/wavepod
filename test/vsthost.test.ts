@@ -64,6 +64,11 @@ describe.skipIf(!ready)('VST3 host helper', () => {
     run();
     expect(run()).toBeGreaterThan(0.1);
     expect(inst.format(gain.id, 0.5).length).toBeGreaterThan(0);
+    // typed text back to a normalized value, through the plug-in's own parser
+    const shown = inst.format(gain.id, 0.5);
+    const parsed = inst.parse!(gain.id, shown);
+    expect(parsed).not.toBeNull();
+    expect(inst.format(gain.id, parsed!)).toBe(shown);
 
     // state round trip
     const state = inst.getState();
