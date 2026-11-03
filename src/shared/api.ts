@@ -129,6 +129,8 @@ export interface WavePodApi {
   setPlaybackSpeed(speed: number): Promise<void>;
   /** Output preset: Pre-show (only the soundboard is heard) or Show. */
   setPreShow(on: boolean): Promise<void>;
+  /** Range in frames that playback repeats (the selection while Repeat is on), or null. */
+  setLoop(range: [number, number] | null): Promise<void>;
 
   // project
   currentProject(): Promise<OpenedProject>;
@@ -249,6 +251,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'seek',
   'setPlaybackSpeed',
   'setPreShow',
+  'setLoop',
   'currentProject',
   'newProject',
   'openProject',

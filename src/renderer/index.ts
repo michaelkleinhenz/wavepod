@@ -22,6 +22,7 @@ import {
   seek,
   splitAtPlayhead,
   stop,
+  syncLoop,
   togglePlay,
   toggleRecord,
   dropNamedChapter,
@@ -32,6 +33,7 @@ import {
   stepPlayhead,
   copySelection,
   pasteClipboard,
+  toggleRepeat,
 } from './actions';
 import { ChaptersView } from './chaptersView';
 import { resetAllMeters } from './levelMeter';
@@ -39,6 +41,7 @@ import { PLAYBACK_SPEEDS } from '../core/timeStretch';
 import { selectionSpan } from '../core/navigation';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
+import { iconButton } from './icons';
 import { MenuBar } from './menuBar';
 import { midi } from './midi';
 import { SetupView } from './setupView';
@@ -89,6 +92,7 @@ async function main(): Promise<void> {
   const recBtn = h('button', { class: 'transport rec', title: 'Record (R)', onclick: () => void toggleRecord() }, '●');
   const playBtn = h('button', { class: 'transport play', title: 'Play / Stop (Space)', onclick: () => void togglePlay() }, '▶');
   const stopBtn = h('button', { class: 'transport', title: 'Stop', onclick: () => void stop() }, '■');
+  const repeatBtn = iconButton('repeat', { label: 'Repeat', shortcut: 'L', detail: 'Loop playback of the selected time range' }, toggleRepeat, 'transport repeat');
   const homeBtn = h('button', { class: 'transport', title: 'To start (Home)', onclick: () => seek(0) }, '⏮');
   // listening speed (pitch kept); playback only, remembered on this computer
   const SPEED_KEY = 'wavepod.playbackSpeed';
@@ -137,7 +141,7 @@ async function main(): Promise<void> {
     null,
     h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
-    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, timeEl, speedSel),
+    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, repeatBtn, timeEl, speedSel),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
     masterFxBtn,
     preShowBtn,
@@ -182,6 +186,8 @@ async function main(): Promise<void> {
     recBtn.classList.toggle('on', t.state === 'recording');
     playBtn.classList.toggle('on', t.state === 'playing');
     playBtn.textContent = t.state === 'playing' ? '❚❚' : '▶';
+    repeatBtn.classList.toggle('on', store.repeat);
+    repeatBtn.setAttribute('aria-pressed', String(store.repeat));
     for (const [el, v] of [
       [masterL, t.outputPeaks[0] ?? 0],
       [masterR, t.outputPeaks[1] ?? 0],
@@ -211,6 +217,7 @@ async function main(): Promise<void> {
       if (store.view === 'setup') setup.render();
       if (store.view === 'edit') timeline.renderHeaders();
     }
+    if (kinds.has('selection') || kinds.has('project')) syncLoop();
     if (kinds.has('selection') && store.view === 'chapters') chapters.render();
     if (kinds.has('transport')) {
       renderTransport();
@@ -352,6 +359,10 @@ async function main(): Promise<void> {
       case 'r':
       case 'R':
         void toggleRecord();
+        break;
+      case 'l':
+      case 'L':
+        toggleRepeat();
         break;
       case 'm':
       case 'M':

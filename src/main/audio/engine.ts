@@ -19,7 +19,7 @@ import { dbToGain, uid } from '../../shared/time';
 import { interleavedPeaks } from '../../core/dsp';
 import { MipmapBuilder, PEAK_TILE, SAMPLE_TILE, TILED_MAX_SPP, encodePeaks, headerSize, mixToMono, parsePeakHeader, type PeakFileLayout } from '../../core/peaks';
 import { Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
-import { createProject } from '../../core/project';
+import { clipsEnd, createProject } from '../../core/project';
 import { TimeStretcher } from '../../core/timeStretch';
 import {
   JINGLE_PANIC_SECONDS,
@@ -106,6 +106,8 @@ export class AudioEngine extends EventEmitter {
   private speed = 1;
   private stretcher: TimeStretcher | null = null;
   private stretchTracks: Track[] = [];
+  /** Repeat range [start, end) in frames: playback that reaches `end` continues at `start`. */
+  private loop: [number, number] | null = null;
   private recordStart = 0;
   private recordedFrames = 0;
   private recorders: Recorder[] = [];
@@ -118,6 +120,8 @@ export class AudioEngine extends EventEmitter {
   private sbBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   /** Pre-show preset: outputs carry only the soundboard. */
   private preShow = false;
+  /** Scratch for the part of a buffer that follows a jump back to the repeat start. */
+  private loopBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private outBuf = new Float32Array(0);
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
@@ -326,6 +330,43 @@ export class AudioEngine extends EventEmitter {
     this.state = 'playing';
     if (!this.output) this.startFallbackClock();
     this.emitTransport();
+  }
+
+  /** Sets (or clears) the range that playback repeats. Recording is never looped. */
+  setLoop(range: [number, number] | null): void {
+    const start = range ? Math.max(0, Math.round(range[0])) : 0;
+    const end = range ? Math.round(range[1]) : 0;
+    this.loop = range && end > start ? [start, end] : null;
+  }
+
+  /** Whether playback is inside or before the repeat range, so it wraps instead of running on. */
+  private get looping(): boolean {
+    return this.state === 'playing' && !!this.loop && this.playPos < this.loop[1];
+  }
+
+  /** Frames to render before the repeat jump or the end of the last clip, or `frames` if neither is in this block. */
+  private framesUntilJump(frames: number): number {
+    if (this.state !== 'playing') return frames;
+    const until = this.looping ? this.loop![1] : this.clipsEnd();
+    return this.playPos < until ? Math.min(frames, until - this.playPos) : frames;
+  }
+
+  /** Advances the playhead: jumps back to the repeat start, or stops at the end of the last clip. */
+  private advance(frames: number): void {
+    const wasLooping = this.looping;
+    this.playPos += frames;
+    if (this.state !== 'playing') return;
+    if (wasLooping && this.playPos === this.loop![1]) this.playPos = this.loop![0];
+    else if (!wasLooping && this.playPos >= this.clipsEnd()) {
+      this.state = 'stopped';
+      this.stopFallbackClock();
+      this.emitTransport();
+    }
+  }
+
+  /** Where the last clip on the timeline ends; playback stops there. */
+  private clipsEnd(): number {
+    return clipsEnd(this.project);
   }
 
   /** Starts recording all armed tracks at the playhead. Returns the files being written. */
@@ -609,16 +650,50 @@ export class AudioEngine extends EventEmitter {
       } catch (e) {
         this.reportError(`Playback: ${(e as Error).message}`);
       }
-      this.playPos = this.stretcher.position;
+      this.afterStretch(this.stretcher.position);
       return;
     }
+    // While recording this keeps overdub playback moving along with the take.
+    for (let done = 0; done < frames && this.transportState !== 'stopped'; ) {
+      const n = this.framesUntilJump(frames - done);
+      this.renderChunk(n, done, tracks);
+      done += n;
+      this.advance(n);
+    }
+  }
+
+  /**
+   * Moves the playhead to where the time-stretched playback got to. The stretcher reads ahead in
+   * blocks, so the repeat jump and the stop at the end land within one buffer of the exact spot.
+   */
+  private afterStretch(pos: number): void {
+    const wasLooping = this.looping;
+    this.playPos = pos;
+    if (wasLooping && pos >= this.loop![1]) {
+      this.playPos = this.loop![0];
+      this.stretcher = null;
+    } else if (!wasLooping && pos >= this.clipsEnd()) {
+      this.state = 'stopped';
+      this.stretcher = null;
+      this.stopFallbackClock();
+      this.emitTransport();
+    }
+  }
+
+  /** Mixes `frames` at the playhead into mixBuf starting at `offset` (non-zero after a repeat jump). */
+  private renderChunk(frames: number, offset: number, tracks: ReturnType<typeof audibleTracks>): void {
     try {
-      this.mixer.render(this.playPos, frames, this.mixBuf, tracks);
+      if (offset === 0) {
+        this.mixer.render(this.playPos, frames, this.mixBuf, tracks);
+        return;
+      }
+      if (this.loopBuf[0].length < frames) this.loopBuf = [new Float32Array(frames), new Float32Array(frames)];
+      this.mixer.render(this.playPos, frames, this.loopBuf, tracks);
+      this.mixBuf[0].set(this.loopBuf[0].subarray(0, frames), offset);
+      this.mixBuf[1].set(this.loopBuf[1].subarray(0, frames), offset);
     } catch (e) {
       this.reportError(`Playback: ${(e as Error).message}`);
     }
-    // While recording this keeps overdub playback moving along with the take.
-    this.playPos += frames;
   }
 
   private renderVoices(frames: number): void {
@@ -657,7 +732,11 @@ export class AudioEngine extends EventEmitter {
       const now = performance.now();
       const frames = Math.round(((now - last) / 1000) * this.project.sampleRate);
       last = now;
-      if (this.state === 'playing') this.playPos += Math.round(frames * this.speed);
+      for (let left = this.state === 'playing' ? Math.round(frames * this.speed) : 0; this.state === 'playing' && left > 0; ) {
+        const n = this.framesUntilJump(left);
+        this.advance(n);
+        left -= n;
+      }
     }, 20);
   }
 

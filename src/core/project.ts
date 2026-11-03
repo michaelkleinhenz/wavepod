@@ -33,6 +33,13 @@ export function audibleTracks(project: Project): Track[] {
 }
 
 /** Length of the project in frames (end of the last clip or marker). */
+/** Where the last clip on the timeline ends (playback stops there). */
+export function clipsEnd(project: Project): number {
+  let end = 0;
+  for (const t of project.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.length);
+  return end;
+}
+
 export function projectLength(project: Project): number {
   let end = 0;
   for (const t of project.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.length);

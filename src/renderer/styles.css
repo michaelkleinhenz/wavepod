@@ -63,6 +63,8 @@ nav { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radiu
 .transport.rec { color: var(--rec); font-size: 18px; }
 .transport.rec.on { background: var(--rec); color: #fff; animation: pulse 1s infinite; }
 .transport.play.on { background: var(--ok); border-color: var(--ok); }
+button.icon-btn.transport { width: 36px; height: 32px; }
+.transport.repeat.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 @keyframes pulse { 50% { opacity: 0.65; } }
 .time-display {
   font: 600 20px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -177,6 +179,7 @@ table.markers td.actions { white-space: nowrap; text-align: right; width: 1%; }
 .ruler-canvas { display: block; cursor: pointer; }
 .tracks-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 body.panning, body.panning * { cursor: grabbing !important; }
+body.scrubbing, body.scrubbing * { cursor: ew-resize !important; }
 .tracks-body { display: flex; }
 .track-headers { width: 290px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); }
 .tracks-canvas { display: block; }

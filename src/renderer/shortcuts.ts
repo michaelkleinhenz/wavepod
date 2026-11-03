@@ -36,6 +36,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       ['S', 'Split at the playhead'],
       ['F', 'Fade the selected clips'],
       ['P', 'Preview: play across the selection as if it were cut'],
+      ['L', 'Repeat: loop playback of the selection'],
       [`${mod}+X`, 'Ripple cut (closes the gap)'],
       [`${mod}+C / ${mod}+V`, 'Copy / paste at the playhead'],
       [`${mod}+Shift+V`, 'Paste and move later material'],

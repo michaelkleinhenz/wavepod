@@ -294,6 +294,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   seek: (pos: number) => engine.seek(pos),
   setPlaybackSpeed: (speed: number) => engine.setPlaybackSpeed(speed),
   setPreShow: (on: boolean) => engine.setPreShow(on),
+  setLoop: (range: [number, number] | null) => engine.setLoop(range),
 
   currentProject: () => current,
   newProject: () => {
