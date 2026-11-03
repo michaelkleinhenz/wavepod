@@ -71,6 +71,8 @@ export class TimelineView {
   pxPerSec = 40;
   private width = 800;
   private drag: Drag | null = null;
+  /** Middle-mouse pan in progress (Reaper style): where it started and the view at that moment. */
+  private pan: { startX: number; startY: number; viewStart: number; scrollTop: number } | null = null;
   private lastFollowPos = 0;
   /** Snap dragged edges to clip edges, markers and the playhead. */
   private snapping = readSnapSetting();
@@ -386,7 +388,7 @@ export class TimelineView {
     const t = store.transport;
     const moved = t.position !== this.lastFollowPos;
     this.lastFollowPos = t.position;
-    if (this.drag || (t.state === 'stopped' && !moved)) return;
+    if (this.drag || this.pan || (t.state === 'stopped' && !moved)) return;
     const x = this.xOf(t.position);
     if (x > this.width * 0.92 || x < 0) {
       this.viewStart = Math.max(0, t.position / this.sr - (this.width * 0.1) / this.pxPerSec);
@@ -1060,6 +1062,35 @@ export class TimelineView {
     this.canvas.addEventListener('wheel', (e) => onWheel(e, this.canvas), { passive: false });
     this.rulerCanvas.addEventListener('wheel', (e) => onWheel(e, this.rulerCanvas), { passive: false });
 
+    // Middle mouse button drag pans the view, horizontally and vertically, like in Reaper.
+    const startPan = (e: MouseEvent) => {
+      if (e.button !== 1) return;
+      e.preventDefault(); // no autoscroll cursor or middle-click paste
+      e.stopImmediatePropagation();
+      this.drag = null;
+      this.snapLine = null;
+      this.pan = { startX: e.clientX, startY: e.clientY, viewStart: this.viewStart, scrollTop: this.scroll.scrollTop };
+      document.body.classList.add('panning');
+    };
+    this.canvas.addEventListener('mousedown', startPan, { capture: true });
+    this.rulerCanvas.addEventListener('mousedown', startPan, { capture: true });
+    window.addEventListener('mousemove', (e) => {
+      const p = this.pan;
+      if (!p) return;
+      this.viewStart = Math.max(0, p.viewStart - (e.clientX - p.startX) / this.pxPerSec);
+      this.scroll.scrollTop = p.scrollTop - (e.clientY - p.startY);
+      this.draw();
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button !== 1 || !this.pan) return;
+      this.pan = null;
+      document.body.classList.remove('panning');
+    });
+    window.addEventListener('blur', () => {
+      this.pan = null;
+      document.body.classList.remove('panning');
+    });
+
     this.rulerCanvas.addEventListener('mousedown', (e) => {
       const { x, y } = local(e, this.rulerCanvas);
       if (y >= RULER_H) {
@@ -1081,7 +1112,7 @@ export class TimelineView {
       this.drag = { kind: 'range', startFrame: f, endFrame: f, startTrack: null, endTrack: null };
     });
     this.rulerCanvas.addEventListener('mousemove', (e) => {
-      if (this.drag) return;
+      if (this.drag || this.pan) return;
       const { x, y } = local(e, this.rulerCanvas);
       const onEdge = !(y >= RULER_H && this.hitMarker(x)) && this.hitRangeEdge(x, null);
       this.rulerCanvas.style.cursor = onEdge ? 'ew-resize' : '';
@@ -1104,7 +1135,7 @@ export class TimelineView {
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
-      if (this.drag) return;
+      if (this.drag || this.pan) return;
       const { x, y } = local(e, this.canvas);
       const hit = this.hitClip(x, y);
       const hover = hit?.clip.id ?? null;

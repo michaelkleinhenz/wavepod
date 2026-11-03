@@ -169,6 +169,7 @@ table.markers td.actions { white-space: nowrap; text-align: right; width: 1%; }
 .ruler-corner { display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 8px 5px; background: var(--panel); border-right: 1px solid var(--border); font-size: 11px; flex-shrink: 0; }
 .ruler-canvas { display: block; cursor: pointer; }
 .tracks-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
+body.panning, body.panning * { cursor: grabbing !important; }
 .tracks-body { display: flex; }
 .track-headers { width: 250px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); }
 .tracks-canvas { display: block; }
