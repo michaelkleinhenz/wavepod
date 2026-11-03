@@ -18,7 +18,7 @@ import { dbToGain, uid } from '../../shared/time';
 import { interleavedPeaks } from '../../core/dsp';
 import { MipmapBuilder, PEAK_TILE, SAMPLE_TILE, TILED_MAX_SPP, encodePeaks, headerSize, mixToMono, parsePeakHeader, type PeakFileLayout } from '../../core/peaks';
 import { Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
-import { createProject } from '../../core/project';
+import { clipsEnd, createProject } from '../../core/project';
 import {
   JINGLE_PANIC_SECONDS,
   JINGLE_STOP_SECONDS,
@@ -295,17 +295,34 @@ export class AudioEngine extends EventEmitter {
     this.loop = range && end > start ? [start, end] : null;
   }
 
-  /** Frames to render before the repeat jump, or `frames` if there is none in this block. */
-  private framesUntilLoopEnd(frames: number): number {
-    const loop = this.state === 'playing' ? this.loop : null;
-    // only playback that is inside or before the range wraps; starting after it just plays on
-    return loop && this.playPos < loop[1] ? Math.min(frames, loop[1] - this.playPos) : frames;
+  /** Whether playback is inside or before the repeat range, so it wraps instead of running on. */
+  private get looping(): boolean {
+    return this.state === 'playing' && !!this.loop && this.playPos < this.loop[1];
   }
 
-  /** Advances the playhead, jumping back to the repeat start when it reaches the end. */
+  /** Frames to render before the repeat jump or the end of the last clip, or `frames` if neither is in this block. */
+  private framesUntilJump(frames: number): number {
+    if (this.state !== 'playing') return frames;
+    const until = this.looping ? this.loop![1] : this.clipsEnd();
+    return this.playPos < until ? Math.min(frames, until - this.playPos) : frames;
+  }
+
+  /** Advances the playhead: jumps back to the repeat start, or stops at the end of the last clip. */
   private advance(frames: number): void {
+    const wasLooping = this.looping;
     this.playPos += frames;
-    if (this.state === 'playing' && this.loop && this.playPos === this.loop[1]) this.playPos = this.loop[0];
+    if (this.state !== 'playing') return;
+    if (wasLooping && this.playPos === this.loop![1]) this.playPos = this.loop![0];
+    else if (!wasLooping && this.playPos >= this.clipsEnd()) {
+      this.state = 'stopped';
+      this.stopFallbackClock();
+      this.emitTransport();
+    }
+  }
+
+  /** Where the last clip on the timeline ends; playback stops there. */
+  private clipsEnd(): number {
+    return clipsEnd(this.project);
   }
 
   /** Starts recording all armed tracks at the playhead. Returns the files being written. */
@@ -535,8 +552,8 @@ export class AudioEngine extends EventEmitter {
     // While recording, don't play back what is being recorded (avoids hearing yourself late).
     if (this.state === 'recording') tracks = tracks.filter((t) => !this.armedTrackIds.has(t.id));
     // While recording this keeps overdub playback moving along with the take.
-    for (let done = 0; done < frames; ) {
-      const n = this.framesUntilLoopEnd(frames - done);
+    for (let done = 0; done < frames && this.transportState !== 'stopped'; ) {
+      const n = this.framesUntilJump(frames - done);
       this.renderChunk(n, done, tracks);
       done += n;
       this.advance(n);
@@ -596,7 +613,7 @@ export class AudioEngine extends EventEmitter {
       const frames = Math.round(((now - last) / 1000) * this.project.sampleRate);
       last = now;
       for (let left = frames; this.state === 'playing' && left > 0; ) {
-        const n = this.framesUntilLoopEnd(left);
+        const n = this.framesUntilJump(left);
         this.advance(n);
         left -= n;
       }

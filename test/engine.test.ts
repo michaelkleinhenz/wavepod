@@ -264,6 +264,21 @@ describe('AudioEngine repeat', () => {
     frames(1);
     expect(engine.position).toBe(1456);
   });
+
+  it('stops at the end of the last clip, unless it is repeating a range past it', () => {
+    const { frames } = setup(256);
+    engine.play(48000 - 300);
+    frames(1);
+    expect(engine.transportState).toBe('playing');
+    frames(1);
+    expect(engine.transportState).toBe('stopped');
+    expect(engine.position).toBe(48000);
+    engine.setLoop([47900, 48100]);
+    engine.play(47900);
+    frames(4);
+    expect(engine.transportState).toBe('playing');
+    expect(engine.position).toBe(47900 + (1024 % 200));
+  });
 });
 
 describe('AudioEngine with a native backend', () => {

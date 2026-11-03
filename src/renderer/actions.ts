@@ -1,6 +1,6 @@
 // Commands shared by keyboard shortcuts, menus and buttons.
 import type { MarkerKind } from '../shared/types';
-import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt } from '../core/project';
+import { addClip, addMarker, clipsEnd, addTrack, chaptersToMarkers, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt } from '../core/project';
 import { importChapters } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
@@ -15,7 +15,9 @@ export async function togglePlay(): Promise<void> {
     if (t.state === 'stopped') {
       // With Repeat on, a playhead outside the selection starts at the selection so it loops right away.
       const loop = loopRange();
-      const from = loop && (t.position < loop[0] || t.position >= loop[1]) ? loop[0] : t.position;
+      let from = loop && (t.position < loop[0] || t.position >= loop[1]) ? loop[0] : t.position;
+      // Playback stops at the end of the last clip, so Play from there starts over.
+      if (!loop && from >= clipsEnd(store.project)) from = 0;
       await api().play(from);
     }
     else await stop();
