@@ -390,9 +390,18 @@ export interface MidiTrigger {
   device: string;
 }
 
+/**
+ * How a button reports presses. `momentary` buttons send "on" when pressed and "off" when released, so
+ * only the "on" counts. `toggle` (latching) buttons send "on" on one press and "off" on the next, like the
+ * RØDECaster's latching pads, so every message is a press.
+ */
+export type MidiButtonMode = 'momentary' | 'toggle';
+
 export interface MidiBinding {
   action: MidiAction;
   trigger: MidiTrigger;
+  /** Missing means momentary. */
+  mode?: MidiButtonMode;
 }
 
 /** Stored in the app settings (not per project): the same controller drives every episode. */

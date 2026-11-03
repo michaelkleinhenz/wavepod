@@ -1,8 +1,8 @@
 // MIDI controller mapping: parsing incoming messages and matching them against learned bindings.
 // Pure logic, shared by the renderer (Web MIDI input) and the main process (settings validation).
-import type { MidiAction, MidiBinding, MidiMessageType, MidiSettings, MidiTrigger } from '../shared/types';
+import type { MidiAction, MidiBinding, MidiButtonMode, MidiMessageType, MidiSettings, MidiTrigger } from '../shared/types';
 
-export type { MidiAction, MidiBinding, MidiMessageType, MidiSettings, MidiTrigger };
+export type { MidiAction, MidiBinding, MidiButtonMode, MidiMessageType, MidiSettings, MidiTrigger };
 
 export const MIDI_ACTIONS: Array<{ action: MidiAction; label: string }> = [
   { action: 'record-start', label: 'Start recording' },
@@ -25,7 +25,10 @@ export interface MidiEvent {
   channel: number;
   number: number;
   value: number;
-  /** True for note-on, a controller going to ≥ 64 or a program change; false for note-off / controller release. */
+  /**
+   * True for note-on, a controller above 0 or a program change; false for note-off / a controller at 0.
+   * Controllers count any value above 0 because some devices (the RØDECaster's own buttons) send 1.
+   */
   pressed: boolean;
 }
 
@@ -47,7 +50,7 @@ export function parseMidiMessage(data: ArrayLike<number>): MidiEvent | null {
       return { type: 'note', channel, number, value, pressed: false };
     case 0xb0:
       if (data.length < 3) return null;
-      return { type: 'cc', channel, number, value, pressed: value >= 64 };
+      return { type: 'cc', channel, number, value, pressed: value > 0 };
     case 0xc0:
       return { type: 'program', channel, number, value: 0, pressed: true };
     default:
@@ -73,29 +76,36 @@ export function triggerMatches(trigger: MidiTrigger, ev: MidiEvent, device: stri
   return sameTrigger(trigger, { type: ev.type, channel: ev.channel, number: ev.number, device });
 }
 
+/** Whether a message counts as a press, for a button in each mode. */
+export type MidiPress = Record<MidiButtonMode, boolean>;
+
 /**
- * Turns raw messages into presses. Controllers fire once when they cross from below 64 to 64 or above,
- * so buttons that send 127/0 fire once per press and a knob or fader turned up fires only once.
+ * Turns raw messages into presses. It remembers the last value of every note and controller so that:
+ * - a momentary button fires once per press (its release is ignored), a knob or fader turned up fires
+ *   once when it leaves 0, and a button that sends the same "on" value on every press still fires;
+ * - a toggle (latching) button fires on every message, because it sends "on" and "off" on alternate presses.
  */
 export class MidiPressDetector {
-  private ccState = new Map<string, boolean>();
+  private last = new Map<string, number>();
 
-  /** The event if it is a new press, otherwise null. */
-  press(ev: MidiEvent, device: string): MidiEvent | null {
-    if (ev.type === 'cc') {
-      const key = `${normalizeDeviceName(device)}|${ev.channel}|${ev.number}`;
-      const was = this.ccState.get(key) ?? false;
-      this.ccState.set(key, ev.pressed);
-      return ev.pressed && !was ? ev : null;
-    }
-    return ev.pressed ? ev : null;
+  /** Records the message and says whether it is a press. */
+  press(ev: MidiEvent, device: string): MidiPress {
+    if (ev.type === 'program') return { momentary: true, toggle: true };
+    const key = `${normalizeDeviceName(device)}|${ev.type}|${ev.channel}|${ev.number}`;
+    const prev = this.last.get(key);
+    const value = ev.pressed ? ev.value || 1 : 0;
+    this.last.set(key, value);
+    const momentary = ev.type === 'note' ? ev.pressed : ev.pressed && (prev === undefined || prev === 0 || prev === value);
+    return { momentary, toggle: true };
   }
 }
 
-/** The actions bound to a press, in binding order. */
-export function actionsFor(settings: MidiSettings, ev: MidiEvent, device: string): MidiAction[] {
+export const modeOf = (b: MidiBinding): MidiButtonMode => b.mode ?? 'momentary';
+
+/** The actions a message triggers, in binding order. `press` comes from a MidiPressDetector. */
+export function actionsFor(settings: MidiSettings, ev: MidiEvent, device: string, press: MidiPress = { momentary: ev.pressed, toggle: true }): MidiAction[] {
   if (!settings.enabled) return [];
-  return settings.bindings.filter((b) => triggerMatches(b.trigger, ev, device)).map((b) => b.action);
+  return settings.bindings.filter((b) => press[modeOf(b)] && triggerMatches(b.trigger, ev, device)).map((b) => b.action);
 }
 
 /**
@@ -103,10 +113,15 @@ export function actionsFor(settings: MidiSettings, ev: MidiEvent, device: string
  * learned for a new action is taken away from the old one. Returns the new settings and the action
  * that lost the trigger, if any.
  */
-export function bindTrigger(settings: MidiSettings, action: MidiAction, trigger: MidiTrigger): { settings: MidiSettings; replaced: MidiAction | null } {
+export function bindTrigger(
+  settings: MidiSettings,
+  action: MidiAction,
+  trigger: MidiTrigger,
+  mode: MidiButtonMode = 'momentary',
+): { settings: MidiSettings; replaced: MidiAction | null } {
   const replaced = settings.bindings.find((b) => b.action !== action && sameTrigger(b.trigger, trigger))?.action ?? null;
   const bindings = settings.bindings.filter((b) => b.action !== action && !sameTrigger(b.trigger, trigger));
-  bindings.push({ action, trigger: { ...trigger } });
+  bindings.push(mode === 'toggle' && trigger.type !== 'program' ? { action, trigger: { ...trigger }, mode } : { action, trigger: { ...trigger } });
   return { settings: { ...settings, bindings: sortBindings(bindings) }, replaced };
 }
 
@@ -146,7 +161,7 @@ export function normalizeMidiSettings(raw: unknown): MidiSettings {
     if (t.type !== 'note' && t.type !== 'cc' && t.type !== 'program') continue;
     if (!isInt(t.channel, 0, 15) || !isInt(t.number, 0, 127)) continue;
     const trigger: MidiTrigger = { type: t.type, channel: t.channel, number: t.number, device: typeof t.device === 'string' ? t.device : '' };
-    settings = bindTrigger(settings, b.action, trigger).settings;
+    settings = bindTrigger(settings, b.action, trigger, b.mode === 'toggle' ? 'toggle' : 'momentary').settings;
   }
   return settings;
 }
