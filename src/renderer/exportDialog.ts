@@ -1,7 +1,7 @@
 // Export dialog: formats, loudness target, stems, chapter files, range, progress.
 // While the mix renders, the progress bar is its waveform and the loudness so far runs beside it.
 import type { ExportOptions, ExportProgress, LiveLoudness, LoudnessReport } from '../shared/types';
-import { clear, errorMessage, h, toast } from './dom';
+import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { LOUDNESS_PRESETS, loudnessTiles } from './loudnessDialog';
 import { api, store } from './store';
 import { regionOutputBase } from '../core/regions';
@@ -155,6 +155,10 @@ export class ExportDialog {
   }
 
   private render(): void {
+    keepScroll(this.overlay, () => this.build());
+  }
+
+  private build(): void {
     clear(this.overlay);
     const o = this.opts;
     const range = store.selection.range;

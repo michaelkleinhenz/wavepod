@@ -3,7 +3,7 @@ import type { Clip, LoudnessReport, LoudnessStats } from '../shared/types';
 import { normalizationGain, normalizedClipGain, type LoudnessTarget } from '../core/loudness';
 import { findClip, updateClip } from '../core/project';
 import { formatTimestamp } from '../shared/time';
-import { clear, errorMessage, h, toast } from './dom';
+import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
 
 export const LOUDNESS_PRESETS = [
@@ -227,6 +227,10 @@ export class LoudnessDialog {
   }
 
   private render(): void {
+    keepScroll(this.overlay, () => this.build());
+  }
+
+  private build(): void {
     clear(this.overlay);
     const t = this.target;
     const clips = this.clipIds.length > 0;

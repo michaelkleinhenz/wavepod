@@ -1,6 +1,6 @@
 // File › Send to Auphonic…: API key, preset, and the upload of stems, chapters, metadata and cover.
 import type { AuphonicInfo, ExportProgress } from '../shared/types';
-import { clear, errorMessage, h, toast } from './dom';
+import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
 
 export class AuphonicDialog {
@@ -91,6 +91,10 @@ export class AuphonicDialog {
   }
 
   private render(): void {
+    keepScroll(this.overlay, () => this.build());
+  }
+
+  private build(): void {
     clear(this.overlay);
     const info = this.info;
     const tracks = store.project.tracks.filter((t) => t.clips.length);

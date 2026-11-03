@@ -4,7 +4,7 @@ import { formatTimestamp, parseTimestamp } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from '../core/chapters';
 import { addMarker, chapterWarnings, markersToChapters, removeMarker, updateMarker } from '../core/project';
 import { projectLength } from '../core/project';
-import { clear, errorMessage, h, toast } from './dom';
+import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { importChapterFile, seek } from './actions';
 import { api, store } from './store';
 
@@ -40,6 +40,10 @@ export class ChaptersView {
   readonly el = h('div', { class: 'view chapters-view' });
 
   render(): void {
+    keepScroll(this.el, () => this.build());
+  }
+
+  private build(): void {
     clear(this.el);
     const sr = store.sampleRate;
     const chapters = store.project.markers.filter((m) => m.kind === 'chapter');

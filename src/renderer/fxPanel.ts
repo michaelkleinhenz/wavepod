@@ -4,7 +4,7 @@ import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/defin
 import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, updateFx, type FxTarget } from '../core/fx/stack';
 import { createVstFx, visibleVstParams } from '../core/fx/vst';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
-import { clear, errorMessage, h, toast } from './dom';
+import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
 import { updateTrack } from '../core/project';
 import { DUCK_DEFAULT_DEPTH } from '../core/ducking';
@@ -89,6 +89,10 @@ export class FxPanel {
   }
 
   private render(): void {
+    keepScroll(this.el, () => this.build());
+  }
+
+  private build(): void {
     const target = this.target;
     if (!target) return;
     const list = fxList(store.project, target);

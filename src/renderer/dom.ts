@@ -38,6 +38,39 @@ export function clear(el: Element): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
+/**
+ * Runs a re-render that rebuilds `root`'s contents, keeping every scrolled area where it was. Without
+ * this, emptying and rebuilding a view (or replacing its scrolling list) jumps it back to the top.
+ * Scrolled elements are matched by tag and class, in document order.
+ */
+export function keepScroll(root: HTMLElement, rebuild: () => void): void {
+  const keyOf = (el: Element) => `${el.tagName}.${el.getAttribute('class') ?? ''}`;
+  const index = (els: Element[]) => {
+    const seen = new Map<string, number>();
+    return els.map((el) => {
+      const k = keyOf(el);
+      const n = seen.get(k) ?? 0;
+      seen.set(k, n + 1);
+      return `${k}#${n}`;
+    });
+  };
+  const before = [root, ...root.querySelectorAll('*')];
+  const keys = index(before);
+  const saved = new Map<string, [number, number]>();
+  before.forEach((el, i) => {
+    if (el.scrollTop || el.scrollLeft) saved.set(keys[i], [el.scrollTop, el.scrollLeft]);
+  });
+  rebuild();
+  if (!saved.size) return;
+  const after = [root, ...root.querySelectorAll('*')];
+  index(after).forEach((k, i) => {
+    const pos = saved.get(k);
+    if (!pos) return;
+    after[i].scrollTop = pos[0];
+    after[i].scrollLeft = pos[1];
+  });
+}
+
 export function isTyping(e: Event): boolean {
   const t = e.target as HTMLElement | null;
   if (!t) return false;
