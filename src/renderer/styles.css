@@ -177,6 +177,7 @@ table.markers td.actions { white-space: nowrap; text-align: right; width: 1%; }
 .ruler-canvas { display: block; cursor: pointer; }
 .tracks-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 body.panning, body.panning * { cursor: grabbing !important; }
+body.scrubbing, body.scrubbing * { cursor: ew-resize !important; }
 .tracks-body { display: flex; }
 .track-headers { width: 250px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); }
 .tracks-canvas { display: block; }
