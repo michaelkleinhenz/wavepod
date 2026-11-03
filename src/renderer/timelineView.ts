@@ -10,6 +10,7 @@ import { coughDown, coughUp, dropMarker, importAudioFiles, muteSelection, ripple
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeDbAt, setEnvelope } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
+import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
 
 const TRACK_H = 84;
@@ -66,6 +67,8 @@ export class TimelineView {
   private snapBtn = h('button', { class: 'small snap-btn' }, 'Snap');
   /** Opens the filter stack of a track. */
   onOpenFx: (trackId: string) => void = () => {};
+  /** Opens the loudness analysis. */
+  onOpenLoudness: () => void = () => {};
 
   constructor(private footer: HTMLElement) {
     const rulerRow = h(
@@ -127,6 +130,8 @@ export class TimelineView {
       btn('Ripple cut', 'Remove the selected time range from all tracks and close the gap (Ctrl+X or Shift+Delete)', rippleCut),
       btn('Mute range', 'Silence the selected range on the selected tracks using their volume lines (Ctrl+Y)', muteSelection),
       btn('Fade', 'Add short fades to selected clips (F); or drag the top corners of a clip', () => this.fadeSelected()),
+      btn('Normalise', 'Set the clip gain of the selected clips so each reaches the loudness target, −16 LUFS by default (Alt+Shift+N)', () => void normalizeClips([...store.selection.clipIds])),
+      btn('Loudness…', 'Loudness analysis of the selected clips, or of the mix and every track when no clip is selected (Shift+Ctrl+L)', () => this.onOpenLoudness()),
       this.snapBtn,
       h('span', { class: 'sep' }),
       btn('⚑ Chapter', 'Add a chapter marker at the playhead (M)', () => dropMarker('chapter'), 'chapter'),
