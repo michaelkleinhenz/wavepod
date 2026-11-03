@@ -223,6 +223,19 @@ export interface TransportUpdate {
   jingles?: PlayingJingle[];
   /** While recording: jingles of this take that have finished (they become clips when recording stops). */
   recordedJingles?: Array<{ slotId: string; start: Frames; length: Frames }>;
+  /** While playing: what each active filter did since the previous update, by filter id. */
+  fxMeters?: Record<string, FxMeter>;
+}
+
+/** Live activity of one filter, for its meters. */
+export interface FxMeter {
+  /** Peak level going in and coming out (linear, 1 = 0 dBFS). */
+  in: number;
+  out: number;
+  /** Gain change in dB with the largest magnitude (negative = reduction), for dynamic filters. */
+  gain?: number;
+  /** Level the detector sees in dB (Ultraschall Dynamics: the input of its curve). */
+  level?: number;
 }
 
 export interface PlayingJingle {

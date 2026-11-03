@@ -93,7 +93,7 @@ export class AudioEngine extends EventEmitter {
   project: Project = createProject();
   projectDir = '';
   private readers = new ReaderCache('');
-  private mixer = new Mixer(this.project, this.readers);
+  private mixer = Object.assign(new Mixer(this.project, this.readers), { metering: true });
 
   private state: TransportState = 'stopped';
   private playPos = 0;
@@ -248,7 +248,7 @@ export class AudioEngine extends EventEmitter {
     // keep the mixer (and its filter state) across edits; a new folder or rate needs a new one
     if (this.mixer.readers !== this.readers || this.mixer.project.sampleRate !== project.sampleRate) {
       this.mixer.dispose();
-      this.mixer = new Mixer(project, this.readers);
+      this.mixer = Object.assign(new Mixer(project, this.readers), { metering: true });
     }
     else this.mixer.project = project;
     this.armedTrackIds = new Set(project.tracks.filter((t) => t.armed).map((t) => t.id));
@@ -579,6 +579,10 @@ export class AudioEngine extends EventEmitter {
       if (this.jingleTakes.length) {
         update.recordedJingles = this.jingleTakes.map((t) => ({ slotId: t.slotId, start: t.clip.start, length: t.clip.length }));
       }
+    }
+    if (this.state !== 'stopped') {
+      const meters = this.mixer.takeFxMeters();
+      if (Object.keys(meters).length) update.fxMeters = meters;
     }
     if (this.voices.length) update.jingles = this.voices.map((v): PlayingJingle => ({
       slotId: v.slotId,

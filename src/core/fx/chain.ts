@@ -1,5 +1,5 @@
 // A running filter stack: keeps processor instances (and their state) in sync with a Fx[] list.
-import type { Fx } from '../../shared/types';
+import type { Fx, FxMeter } from '../../shared/types';
 import { createProcessor, type FxProcessor } from './processors';
 
 function pluginKey(fx: Fx): string {
@@ -12,11 +12,26 @@ interface Slot {
   type: Fx['type'];
   enabled: boolean;
   proc: FxProcessor;
+  /** Peaks in and out since the last meter read. */
+  inPeak: number;
+  outPeak: number;
+  metered: boolean;
+}
+
+function peak(L: Float32Array, R: Float32Array, n: number): number {
+  let p = 0;
+  for (let i = 0; i < n; i++) {
+    const a = Math.abs(L[i]);
+    const b = Math.abs(R[i]);
+    if (a > p) p = a;
+    if (b > p) p = b;
+  }
+  return p;
 }
 
 export class FxChain {
   private slots: Slot[] = [];
-  private active: FxProcessor[] = [];
+  private active: Slot[] = [];
   private list: Fx[] | undefined;
   latency = 0;
 
@@ -32,20 +47,48 @@ export class FxChain {
       proc.setParams(fx.params);
       // a bypassed filter starts from a clean state when it is switched back on
       if (!fx.enabled && old?.enabled) proc.reset();
-      return { id: fx.id, type: fx.type, key: pluginKey(fx), enabled: fx.enabled, proc };
+      return { id: fx.id, type: fx.type, key: pluginKey(fx), enabled: fx.enabled, proc, inPeak: old?.inPeak ?? 0, outPeak: old?.outPeak ?? 0, metered: old?.metered ?? false };
     });
     for (const s of this.slots) if (!next.some((x) => x.proc === s.proc)) s.proc.dispose?.();
     this.slots = next;
-    this.active = this.slots.filter((s) => s.enabled).map((s) => s.proc);
-    this.latency = this.active.reduce((sum, p) => sum + p.latency, 0);
+    this.active = this.slots.filter((s) => s.enabled);
+    this.latency = this.active.reduce((sum, s) => sum + s.proc.latency, 0);
   }
 
   get empty(): boolean {
     return this.active.length === 0;
   }
 
-  process(L: Float32Array, R: Float32Array, n: number): void {
-    for (const p of this.active) p.process(L, R, n);
+  /** Runs the stack. With `meter`, also measures each filter's input and output peaks. */
+  process(L: Float32Array, R: Float32Array, n: number, meter = false): void {
+    if (!meter) {
+      for (const s of this.active) s.proc.process(L, R, n);
+      return;
+    }
+    let level = peak(L, R, n);
+    for (const s of this.active) {
+      s.proc.process(L, R, n);
+      const out = peak(L, R, n);
+      if (level > s.inPeak) s.inPeak = level;
+      if (out > s.outPeak) s.outPeak = out;
+      s.metered = true;
+      level = out;
+    }
+  }
+
+  /** Adds the meters of filters that ran with metering since the last call to `into`, then starts over. */
+  takeMeters(into: Record<string, FxMeter>): void {
+    for (const s of this.active) {
+      if (!s.metered) continue;
+      const m: FxMeter = { in: s.inPeak, out: s.outPeak };
+      const gain = s.proc.takeGain?.();
+      if (gain !== undefined) m.gain = gain;
+      const level = s.proc.detectorLevel?.();
+      if (level !== undefined) m.level = level;
+      into[s.id] = m;
+      s.inPeak = s.outPeak = 0;
+      s.metered = false;
+    }
   }
 
   reset(): void {

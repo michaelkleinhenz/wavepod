@@ -259,3 +259,13 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 /* timeline: snapping toggle and volume line button */
 .snap-btn.on { color: #ffd54f; border-color: #6b5b23; }
 .env-btn.active { color: #69f0ae; border-color: #2e6b4f; }
+.fx-meter { display: flex; flex-direction: column; gap: 3px; margin: 0 0 8px; padding: 6px 8px; background: #121419; border-radius: 6px; }
+.fxm-row { display: grid; grid-template-columns: 30px 1fr 52px; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+.fxm-track { position: relative; height: 6px; background: #22262f; border-radius: 3px; overflow: hidden; }
+.fxm-fill { height: 100%; width: 0; background: #5c8dff; transition: width 60ms linear; }
+.fxm-fill.hot { background: #e57373; }
+.fxm-gain { height: 8px; }
+.fxm-gain.centred::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #4a5060; }
+.fxm-gain-fill { position: absolute; top: 0; bottom: 0; width: 0; background: #ffb74d; transition: width 60ms linear, left 60ms linear; }
+.fxm-gain-fill.boost { background: #81c784; }
+.fxm-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }

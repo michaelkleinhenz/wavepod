@@ -155,6 +155,7 @@ async function main(): Promise<void> {
       timeline.follow();
       if (store.view === 'edit') timeline.updateMeters();
       soundboard.updatePlaying(store.transport.jingles);
+      fxPanel.updateMeters(store.transport.fxMeters);
       if (store.view === 'setup') setup.updateMeters();
     }
     if (store.view === 'edit') timeline.draw();

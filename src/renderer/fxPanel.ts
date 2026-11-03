@@ -1,5 +1,5 @@
 // Filter stack editor for a track or the master bus: add, bypass, tweak, reorder and remove filters.
-import { VST_PARAM_BYPASS, VST_PARAM_HIDDEN, VST_PARAM_READONLY, type Fx, type FxType, type VstParamInfo, type VstPluginInfo } from '../shared/types';
+import { VST_PARAM_BYPASS, VST_PARAM_HIDDEN, VST_PARAM_READONLY, type Fx, type FxMeter, type FxType, type VstParamInfo, type VstPluginInfo } from '../shared/types';
 import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/definitions';
 import { MASTER, addFx, fxList, insertFx, moveFx, removeFx, updateFx, type FxTarget } from '../core/fx/stack';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
@@ -44,6 +44,7 @@ export class FxPanel {
   private vstAvailable: boolean | null = null;
   private picker: { plugins: VstPluginInfo[] | null; query: string; busy: string | null } | null = null;
   private expanded = new Set<string>();
+  private meters = new Map<string, LiveMeter>();
 
   open(target: FxTarget): void {
     this.target = target;
@@ -98,6 +99,7 @@ export class FxPanel {
     const list = fxList(store.project, target);
     this.structure = JSON.stringify(list) + this.title();
     clear(this.el);
+    this.meters.clear();
     const add = h(
       'select',
       {
@@ -141,7 +143,9 @@ export class FxPanel {
     const name = vst ? (fx.plugin?.name ?? 'VST3 plug-in') : def!.name;
     const description = vst ? `VST3 · ${fx.plugin?.vendor ?? ''}`.trim() : def!.description;
     const curve = fx.type === 'dynamics' ? h('canvas', { class: 'fx-curve', width: 240, height: 160 }) : null;
-    const drawCurve = () => curve && drawDynamicsCurve(curve, fx.params);
+    const meter = fx.enabled ? new LiveMeter(fx, curve) : null;
+    if (meter) this.meters.set(fx.id, meter);
+    const drawCurve = () => (meter ? meter.drawCurve() : curve && drawDynamicsCurve(curve, fx.params));
     const card = h(
       'section',
       { class: `fx-card${fx.enabled ? '' : ' bypassed'}`, draggable: 'true' },
@@ -160,6 +164,7 @@ export class FxPanel {
         h('button', { class: 'toggle', title: 'Move down', disabled: index === count - 1, onclick: () => this.edit((p) => moveFx(p, target, fx.id, index + 1)) }, '↓'),
         h('button', { class: 'toggle remove', title: 'Remove filter', onclick: () => this.edit((p) => removeFx(p, target, fx.id)) }, '×'),
       ),
+      meter?.el ?? null,
       curve,
       ...(vst ? this.vstParamRows(target, fx) : def!.params.map((spec) => this.paramRow(target, fx, spec, drawCurve))),
     );
@@ -198,6 +203,12 @@ export class FxPanel {
       card.draggable = (e.target as HTMLElement).classList.contains('fx-grip');
     });
     return card;
+  }
+
+  /** Feeds live filter activity from a transport update into the cards' meters. */
+  updateMeters(meters: Record<string, FxMeter> | undefined): void {
+    if (!this.target) return;
+    for (const [id, m] of this.meters) m.update(meters?.[id]);
   }
 
   private openPicker(): void {
@@ -391,8 +402,95 @@ export class FxPanel {
   }
 }
 
-/** Input→output curve of Ultraschall Dynamics with target, noise floor and gate marked. */
-function drawDynamicsCurve(c: HTMLCanvasElement, p: Record<string, number>): void {
+const METER_FLOOR = -60;
+/** Scale of the gain meter: ±GAIN_RANGE dB. */
+const GAIN_RANGE = 24;
+const PEAK_DECAY = 0.8;
+const toDb = (v: number) => (v > 1e-6 ? Math.max(METER_FLOOR, 20 * Math.log10(v)) : METER_FLOOR);
+/** Filters that change gain dynamically show a gain meter; the others show in/out levels only. */
+const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamics']);
+
+/**
+ * Live meters of one filter card: input and output level, and for dynamic filters the gain they
+ * apply right now (reduction in orange, boost in green). Ultraschall Dynamics also gets a moving
+ * point on its curve.
+ */
+class LiveMeter {
+  readonly el: HTMLElement;
+  private inBar = h('div', { class: 'fxm-fill' });
+  private outBar = h('div', { class: 'fxm-fill' });
+  private gainBar = h('div', { class: 'fxm-gain-fill' });
+  private gainText = h('span', { class: 'fxm-num' }, '0.0 dB');
+  private inDb = METER_FLOOR;
+  private outDb = METER_FLOOR;
+  private gain = 0;
+  private level: number | null = null;
+  private hasGain: boolean;
+  /** Dynamics boosts as well as cuts, so its gain meter is centred. */
+  private centred: boolean;
+
+  constructor(
+    private fx: Fx,
+    private curve: HTMLCanvasElement | null,
+  ) {
+    this.hasGain = GAIN_TYPES.has(fx.type);
+    this.centred = fx.type === 'dynamics';
+    const row = (label: string, bar: HTMLElement) => h('div', { class: 'fxm-row' }, h('span', { class: 'fxm-label' }, label), h('div', { class: 'fxm-track' }, bar));
+    this.el = h(
+      'div',
+      { class: 'fx-meter', title: 'Live while playing' },
+      row('In', this.inBar),
+      row('Out', this.outBar),
+      this.hasGain
+        ? h(
+            'div',
+            { class: 'fxm-row' },
+            h('span', { class: 'fxm-label' }, fx.type === 'dynamics' ? 'Gain' : 'GR'),
+            h('div', { class: `fxm-track fxm-gain${this.centred ? ' centred' : ''}` }, this.gainBar),
+            this.gainText,
+          )
+        : null,
+    );
+    this.paint();
+  }
+
+  update(m: FxMeter | undefined): void {
+    // peaks fall back smoothly; gain releases towards the new value
+    this.inDb = Math.max(m ? toDb(m.in) : METER_FLOOR, this.inDb + 20 * Math.log10(PEAK_DECAY));
+    this.outDb = Math.max(m ? toDb(m.out) : METER_FLOOR, this.outDb + 20 * Math.log10(PEAK_DECAY));
+    const g = m?.gain ?? 0;
+    this.gain = Math.abs(g) >= Math.abs(this.gain) ? g : this.gain * 0.7 + g * 0.3;
+    if (Math.abs(this.gain) < 0.05) this.gain = 0;
+    this.level = m?.level ?? (m ? this.level : null);
+    this.paint();
+    if (this.curve) this.drawCurve();
+  }
+
+  drawCurve(): void {
+    if (!this.curve) return;
+    const live = this.level !== null && this.level > METER_FLOOR - 20 ? { in: this.level, gain: this.gain } : null;
+    drawDynamicsCurve(this.curve, this.fx.params, live);
+  }
+
+  private paint(): void {
+    const pct = (db: number) => `${((Math.max(METER_FLOOR, Math.min(0, db)) - METER_FLOOR) / -METER_FLOOR) * 100}%`;
+    this.inBar.style.width = pct(this.inDb);
+    this.outBar.style.width = pct(this.outDb);
+    this.inBar.classList.toggle('hot', this.inDb > -1);
+    this.outBar.classList.toggle('hot', this.outDb > -1);
+    if (!this.hasGain) return;
+    const g = Math.max(-GAIN_RANGE, Math.min(GAIN_RANGE, this.gain));
+    const width = (Math.abs(g) / GAIN_RANGE) * (this.centred ? 50 : 100);
+    this.gainBar.style.width = `${width}%`;
+    // reduction grows leftwards from the right edge (or from the centre); boost grows rightwards
+    this.gainBar.style.left = g < 0 ? `${(this.centred ? 50 : 100) - width}%` : this.centred ? '50%' : '0';
+    this.gainBar.classList.toggle('boost', g > 0);
+    this.gainText.textContent = `${g > 0 ? '+' : ''}${(Math.abs(g) < 0.05 ? 0 : g).toFixed(1)} dB`;
+  }
+}
+
+/** Input→output curve of Ultraschall Dynamics with target, noise floor and gate marked; `live` adds the current operating point. */
+function drawDynamicsCurve(c: HTMLCanvasElement, p: Record<string, number>, live: { in: number; gain: number } | null = null): void {
   const dpr = window.devicePixelRatio || 1;
   const w = 240;
   const hgt = 160;
@@ -458,4 +556,20 @@ function drawDynamicsCurve(c: HTMLCanvasElement, p: Record<string, number>): voi
   ctx.fillText('in → out (dB)', 4, 4);
   ctx.fillStyle = 'rgba(129,199,132,0.9)';
   ctx.fillText(`target ${p.target} LUFS`, w - 92, Math.max(2, y(p.target) - 13));
+  if (live) {
+    const xi = Math.max(lo, Math.min(0, live.in));
+    const yo = Math.max(lo, Math.min(0, live.in + live.gain));
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x(xi) + 0.5, hgt);
+    ctx.lineTo(x(xi) + 0.5, y(yo));
+    ctx.lineTo(0, y(yo) + 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x(xi), y(yo), 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }

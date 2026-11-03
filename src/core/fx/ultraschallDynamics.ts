@@ -14,6 +14,7 @@
 // - The audio is delayed by 100 ms before the gain is applied (lookahead), so the gain reacts
 //   before a loud word arrives. SoundPod compensates this latency on the timeline.
 // - A peak limiter with a ceiling of -0.1 dBFS follows.
+import { GainMeter } from './meter';
 import type { FxProcessor } from './processors';
 
 export const DYNAMICS_DB_BOTTOM = -108;
@@ -201,6 +202,7 @@ export class UltraschallDynamics implements FxProcessor {
     const dl = this.delayL;
     const dr = this.delayR;
     const lat = this.latency;
+    let minLimit = 1;
     for (let i = 0; i < n; i++) {
       const l = L[i];
       const r = R[i];
@@ -241,7 +243,20 @@ export class UltraschallDynamics implements FxProcessor {
       const lg = this.limiter.gain(ol, or);
       L[i] = ol * lg;
       R[i] = or * lg;
+      if (lg < minLimit) minLimit = lg;
     }
+    // the gain the curve applies (boost or cut) together with the limiter's reduction
+    this.meter.note(20 * Math.log10(Math.max(1e-6, this.gain * minLimit)));
+  }
+
+  private meter = new GainMeter();
+  takeGain(): number {
+    return this.meter.take();
+  }
+
+  /** RMS level the detector sees, in dB (the input to the curve). */
+  detectorLevel(): number {
+    return this.env > 1e-6 ? 20 * Math.log10(this.env) : -120;
   }
 
   reset(): void {

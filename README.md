@@ -30,7 +30,8 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
 - **Filters** on every track and the master: high-pass, EQ, noise gate,
   compressor, de-esser, limiter and Ultraschall Dynamics (target-loudness
   leveler with noise gate). Add, bypass, tweak while playing and reorder
-  them in the FX panel; they apply live and in the export. Installed
+  them in the FX panel; they apply live and in the export. While playing,
+  each filter shows live in/out levels and how much gain it is applying. Installed
   **VST3 plug-ins** work in the same stack, with plain sliders instead of
   the plug-in's own window; they run in a separate process, so a crashing
   plug-in can't take a recording down.
