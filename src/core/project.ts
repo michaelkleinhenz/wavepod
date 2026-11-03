@@ -43,6 +43,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
   p.metadata = { ...base.metadata, ...(raw.metadata ?? {}) };
   p.tracks = (p.tracks ?? []).map((t, i) => ({
     id: t.id ?? uid('trk'),
+    ...(t.kind === 'soundboard' ? { kind: 'soundboard' as const } : {}),
     name: t.name ?? `Track ${i + 1}`,
     color: t.color ?? TRACK_COLORS[i % TRACK_COLORS.length],
     inputChannels: t.inputChannels ?? [],

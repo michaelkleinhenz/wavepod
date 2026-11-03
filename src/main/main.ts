@@ -5,6 +5,7 @@ import { Worker } from 'node:worker_threads';
 import { IPC, type InvokeMethod, type MenuCommand, type OpenedProject } from '../shared/api';
 import type { DeviceConfig, ExportOptions, ExportResult, LoudnessReport, Project, RecordedTake } from '../shared/types';
 import { addClip } from '../core/project';
+import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
 import { writeWavFile } from '../core/wav';
 import { AudioEngine, defaultConfig } from './audio/engine';
@@ -282,6 +283,7 @@ app.whenReady().then(() => {
   engine.on('recordingFinished', (takes: RecordedTake[]) => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
     let project = current.project;
+    if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) project = ensureSoundboardTrack(project);
     for (const t of takes) project = addClip(project, t.trackId, t.clip);
     current.project = project;
     engine.setProject(project);

@@ -4,6 +4,7 @@ import { formatTimestamp } from '../shared/time';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
 import { fadeGain, toDb } from '../core/dsp';
+import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { deleteSelection, dropMarker, importAudioFiles, seek, splitAtPlayhead } from './actions';
 import { store } from './store';
@@ -166,7 +167,7 @@ export class TimelineView {
               value: t.name,
               onchange: (e: Event) => store.edit((p) => updateTrack(p, t.id, { name: (e.target as HTMLInputElement).value })),
             }),
-            toggle('armed', '●', 'Arm for recording'),
+            t.kind === 'soundboard' ? h('span', { class: 'toggle placeholder' }) : toggle('armed', '●', 'Arm for recording'),
             toggle('mute', 'M', 'Mute'),
             toggle('solo', 'S', 'Solo'),
             h(
@@ -182,7 +183,9 @@ export class TimelineView {
               '×',
             ),
           ),
-          h(
+          t.kind === 'soundboard'
+            ? h('div', { class: 'th-row muted th-hint' }, 'Jingles played while recording')
+            : h(
             'div',
             { class: 'th-row' },
             h(
@@ -406,6 +409,7 @@ export class TimelineView {
       ctx.fillStyle = i % 2 ? '#191b21' : '#1b1d23';
       ctx.fillRect(0, y, w, TRACK_H - 1);
       for (const clip of t.clips) this.drawClip(ctx, t, i, clip);
+      if (recording && t.kind === 'soundboard') this.drawLiveJingles(ctx, y);
       if (recording && t.armed && t.inputChannels.length) {
         const x0 = this.xOf(store.recordStart);
         const x1 = this.xOf(store.transport.position);
@@ -439,6 +443,28 @@ export class TimelineView {
       ctx.setLineDash([]);
     }
     this.drawPlayhead(ctx, height);
+  }
+
+  /** Jingles triggered during the current recording, until they become clips when it stops. */
+  private drawLiveJingles(ctx: CanvasRenderingContext2D, y: number): void {
+    const t = store.transport;
+    const live = [
+      ...(t.recordedJingles ?? []),
+      ...(t.jingles ?? []).flatMap((j) => (j.recordStart === undefined ? [] : [{ slotId: j.slotId, start: j.recordStart, length: j.played }])),
+    ];
+    for (const j of live) {
+      const slot = store.project.soundboard.find((s) => s.id === j.slotId);
+      const x0 = this.xOf(j.start);
+      const x1 = this.xOf(j.start + j.length);
+      ctx.fillStyle = 'rgba(229,57,53,0.25)';
+      ctx.fillRect(x0, y + 4, Math.max(1, x1 - x0), TRACK_H - 9);
+      ctx.fillStyle = slot?.color ?? '#90a4ae';
+      ctx.fillRect(x0, y + 4, Math.max(1, x1 - x0), 3);
+      ctx.fillStyle = '#ffcdd2';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`♪ ${slot?.name ?? 'Jingle'}`, Math.max(4, x0 + 4), y + 10, Math.max(10, x1 - x0 - 8));
+    }
   }
 
   /** Draws the waveform of a take that is still being recorded, starting at x0. */
@@ -545,7 +571,8 @@ export class TimelineView {
       ctx.fillStyle = '#c9cdd6';
       ctx.font = '10px system-ui, sans-serif';
       ctx.textBaseline = 'top';
-      const name = clip.file.split('/').pop() ?? '';
+      const jingle = track.kind === 'soundboard' ? store.project.soundboard.find((s) => jingleMediaFile(s.id, this.sr) === clip.file) : undefined;
+      const name = jingle ? `♪ ${jingle.name}` : clip.file.split('/').pop() ?? '';
       ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
     }
     ctx.globalAlpha = 1;

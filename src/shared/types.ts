@@ -20,6 +20,8 @@ export interface Clip {
 
 export interface Track {
   id: string;
+  /** 'soundboard' marks the track that receives jingles triggered while recording. */
+  kind?: 'soundboard';
   name: string;
   color: string;
   /** Zero-based device input channels; one entry = mono, two = stereo. */
@@ -51,6 +53,10 @@ export interface SoundboardSlot {
   file: string;
   gain: number;
   color: string;
+  /** Repeat until stopped. */
+  loop?: boolean;
+  /** Soft fade-in (up to 5 s) when triggered. */
+  fadeIn?: boolean;
 }
 
 export interface EpisodeMetadata {
@@ -147,6 +153,21 @@ export interface TransportUpdate {
   recordedFrames: Frames;
   /** While recording: new waveform buckets per recording track since the previous update. */
   recordingPeaks?: LivePeaks[];
+  /** Jingles currently playing. */
+  jingles?: PlayingJingle[];
+  /** While recording: jingles of this take that have finished (they become clips when recording stops). */
+  recordedJingles?: Array<{ slotId: string; start: Frames; length: Frames }>;
+}
+
+export interface PlayingJingle {
+  slotId: string;
+  /** Frames left in the current pass (a looping jingle starts over). */
+  remaining: Frames;
+  /** Timeline position where it was triggered, if it is being recorded. */
+  recordStart?: Frames;
+  /** Frames played so far (all passes). */
+  played: Frames;
+  stopping: boolean;
 }
 
 /** Incremental waveform of a take that is still being recorded. */

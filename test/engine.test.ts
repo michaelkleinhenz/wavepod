@@ -92,6 +92,42 @@ describe('AudioEngine with virtual devices', () => {
     expect(updates.filter((u) => u.state !== 'recording').every((u) => !u.recordingPeaks)).toBe(true);
   });
 
+  it('records jingles triggered while recording onto the Soundboard track', async () => {
+    engine = new AudioEngine(null);
+    engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480 });
+    const dir = tmpDir();
+    let p = addTrack(createProject('Jingles', 48000), { name: 'Host', inputChannels: [2], armed: true });
+    p = { ...p, soundboard: [{ id: 'snd1', name: 'Intro', file: 'intro.mp3', gain: -2, color: '#fff' }, { id: 'snd2', name: 'Bed', file: 'bed.mp3', gain: 0, color: '#fff', loop: true }] };
+    engine.setProject(p, dir);
+    engine.loadSound('snd1', [sine(440, 0.1, 48000, 0.5)]);
+    engine.loadSound('snd2', [sine(220, 0.05, 48000, 0.5)]);
+    const wavPath = path.join(dir, 'media/jingle-snd1-48000.wav');
+    expect(new WavReader(wavPath).frames).toBe(4800);
+
+    engine.playSound('snd1'); // before recording: played, not recorded
+    engine.record();
+    await wait(200); // let the first one finish; triggering a playing slot fades it out instead
+    const updates: TransportUpdate[] = [];
+    engine.on('transport', (u) => updates.push(u));
+    engine.playSound('snd1');
+    engine.playSound('snd2');
+    await wait(250);
+    expect(updates.some((u) => u.jingles?.some((j) => j.slotId === 'snd2' && j.recordStart !== undefined))).toBe(true);
+    engine.playSound('snd2'); // second trigger fades the loop out
+    await wait(1200);
+    const takes = engine.stop();
+    const jingles = takes.filter((t) => t.trackId === 'soundboard');
+    const intro = jingles.filter((t) => t.clip.file === 'media/jingle-snd1-48000.wav');
+    expect(intro).toHaveLength(1);
+    expect(intro[0].clip).toMatchObject({ length: 4800, gain: -2 });
+    expect(intro[0].clip.start).toBeGreaterThan(0);
+    const bed = jingles.filter((t) => t.clip.file === 'media/jingle-snd2-48000.wav');
+    expect(bed.length).toBeGreaterThan(2); // several loop passes
+    expect(bed.slice(0, -1).every((t) => t.clip.length === 2400)).toBe(true);
+    expect(bed[bed.length - 1].clip.fadeOut).toBeGreaterThan(0);
+    for (let i = 1; i < bed.length; i++) expect(bed[i].clip.start).toBe(bed[i - 1].clip.start + 2400);
+  });
+
   it('refuses to record without armed tracks', () => {
     engine = new AudioEngine(null);
     engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2 });

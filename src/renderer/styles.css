@@ -177,6 +177,12 @@ table.markers td.actions { white-space: nowrap; text-align: right; width: 1%; }
 .sb-title { color: var(--muted); font-size: 12px; margin-right: 6px; }
 .sb-slot { display: flex; border: 1px solid; border-radius: 6px; overflow: hidden; }
 .sb-slot.loading { opacity: 0.5; }
+.sb-slot.playing .sb-play { background: rgba(102, 187, 106, 0.25); }
+.sb-slot.stopping .sb-play { background: rgba(255, 183, 77, 0.2); }
+.sb-time { margin-left: 6px; font-variant-numeric: tabular-nums; opacity: 0.8; }
+.sb-time:empty { display: none; }
+.sb-opt { padding: 0 6px; opacity: 0.45; }
+.sb-opt.on { opacity: 1; color: #ffca28; }
 .sb-slot button { border: none; border-radius: 0; }
 .sb-play { padding: 5px 10px; }
 .sb-remove { padding: 5px 7px; color: var(--muted); }
@@ -207,3 +213,5 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast.error { background: #4a1f22; border-color: #7a2c30; }
+.toggle.placeholder { visibility: hidden; }
+.th-hint { font-size: 11px; min-height: 24px; align-items: center; }

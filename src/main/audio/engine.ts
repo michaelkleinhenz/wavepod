@@ -7,6 +7,7 @@ import type {
   DeviceConfig,
   EngineStatus,
   LivePeaks,
+  PlayingJingle,
   Project,
   RecordedTake,
   TransportState,
@@ -17,7 +18,16 @@ import { dbToGain, uid } from '../../shared/time';
 import { PeakBuilder, decodePeaks, encodePeaks, interleavedPeaks } from '../../core/dsp';
 import { Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
 import { createProject } from '../../core/project';
-import { WavReader, WavWriter } from '../../core/wav';
+import {
+  JINGLE_PANIC_SECONDS,
+  JINGLE_STOP_SECONDS,
+  SOUNDBOARD_TRACK_ID,
+  jingleClips,
+  jingleFadeInFrames,
+  jingleMediaFile,
+  soundboardTrack,
+} from '../../core/soundboard';
+import { WavReader, WavWriter, writeWavFile } from '../../core/wav';
 import type { AudioBackend, StreamHandle } from './backend';
 import { SimulatedBackend } from './simulatedBackend';
 
@@ -36,10 +46,26 @@ interface Recorder {
   sentBuckets: number;
 }
 
-interface Voice {
+interface Sound {
   data: Float32Array[];
+  /** Project-relative WAV copy used for clips on the Soundboard track. */
+  file: string;
+}
+
+interface Voice {
+  slotId: string;
+  sound: Sound;
+  /** Position within the file (current pass). */
   pos: number;
+  /** Frames played in total. */
+  played: number;
   gain: number;
+  loop: boolean;
+  fadeIn: number;
+  /** Fade-out in progress: total length and frames left. */
+  stop: { length: number; left: number } | null;
+  /** Timeline position of the trigger while recording. */
+  recordStart?: number;
 }
 
 export function defaultConfig(): DeviceConfig {
@@ -80,7 +106,8 @@ export class AudioEngine extends EventEmitter {
   private outputPeaks = [0, 0];
   private mixBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private outBuf = new Float32Array(0);
-  private sounds = new Map<string, Float32Array[]>();
+  private sounds = new Map<string, Sound>();
+  private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
   private voices: Voice[] = [];
   private meterTimer: NodeJS.Timeout | null = null;
   private fallbackClock: NodeJS.Timeout | null = null;
@@ -282,6 +309,7 @@ export class AudioEngine extends EventEmitter {
     });
     this.recordStart = this.playPos;
     this.recordedFrames = 0;
+    this.jingleTakes = [];
     this.state = 'recording';
     this.emitTransport();
     return this.recorders.map((r) => r.file);
@@ -327,29 +355,96 @@ export class AudioEngine extends EventEmitter {
       });
     }
     this.recorders = [];
+    // Jingles still playing end on the timeline where the recording ends.
+    for (const v of this.voices) this.finishJingle(v);
+    takes.push(...this.jingleTakes.map(({ trackId, clip }) => ({ trackId, clip })));
+    this.jingleTakes = [];
     return takes;
   }
 
   // ------------------------------------------------------------ soundboard
 
+  /**
+   * Stores decoded jingle audio (at the project rate) and writes it once into the project's media
+   * folder, so that jingles triggered while recording become ordinary clips on the Soundboard track.
+   */
   loadSound(id: string, channels: Float32Array[]): void {
-    this.sounds.set(id, channels);
+    const file = jingleMediaFile(id, this.project.sampleRate);
+    if (this.projectDir) {
+      const abs = path.join(this.projectDir, file);
+      try {
+        const existing = fs.existsSync(abs) ? new WavReader(abs) : null;
+        const ok = existing && existing.frames === channels[0].length && existing.info.channels === channels.length;
+        existing?.close();
+        if (!ok) {
+          fs.mkdirSync(path.dirname(abs), { recursive: true });
+          writeWavFile(abs, channels, this.project.sampleRate, 24);
+        }
+      } catch (e) {
+        this.reportError(`Could not store jingle: ${(e as Error).message}`);
+      }
+    }
+    this.sounds.set(id, { data: channels, file });
   }
 
   hasSound(id: string): boolean {
     return this.sounds.has(id);
   }
 
+  /** Starts a jingle; triggering one that is already playing fades it out instead. */
   playSound(id: string): void {
-    const data = this.sounds.get(id);
-    if (!data) throw new Error('Sound not loaded');
+    const playing = this.voices.find((v) => v.slotId === id && !v.stop);
+    if (playing) {
+      this.stopVoice(playing, JINGLE_STOP_SECONDS);
+      return;
+    }
+    const sound = this.sounds.get(id);
+    if (!sound) throw new Error('Sound not loaded');
+    if (!this.output) {
+      this.reportError('No output device is open, the soundboard is silent.');
+      return;
+    }
     const slot = this.project.soundboard.find((s) => s.id === id);
-    this.voices.push({ data, pos: 0, gain: dbToGain(slot?.gain ?? 0) });
-    if (!this.output) this.reportError('No output device is open, the soundboard is silent.');
+    const length = sound.data[0].length;
+    this.voices.push({
+      slotId: id,
+      sound,
+      pos: 0,
+      played: 0,
+      gain: dbToGain(slot?.gain ?? 0),
+      loop: !!slot?.loop,
+      fadeIn: slot?.fadeIn ? jingleFadeInFrames(length, this.project.sampleRate) : 0,
+      stop: null,
+      recordStart: this.state === 'recording' ? this.position : undefined,
+    });
   }
 
   stopSounds(): void {
-    this.voices = [];
+    for (const v of this.voices) if (!v.stop) this.stopVoice(v, JINGLE_PANIC_SECONDS);
+  }
+
+  private stopVoice(v: Voice, seconds: number): void {
+    const length = Math.max(1, Math.round(seconds * this.project.sampleRate));
+    v.stop = { length, left: length };
+  }
+
+  /** Records a jingle that was triggered while recording as clips for the Soundboard track. */
+  private finishJingle(v: Voice): void {
+    if (v.recordStart === undefined || v.played === 0) return;
+    const slot = this.project.soundboard.find((s) => s.id === v.slotId);
+    const trackId = soundboardTrack(this.project)?.id ?? SOUNDBOARD_TRACK_ID;
+    for (const clip of jingleClips({
+      file: v.sound.file,
+      fileLength: v.sound.data[0].length,
+      start: v.recordStart,
+      played: v.played,
+      gain: slot?.gain ?? 0,
+      fadeIn: v.fadeIn,
+      fadeOut: v.stop ? v.stop.length - v.stop.left : 0,
+    })) {
+      this.jingleTakes.push({ trackId, clip, slotId: v.slotId });
+    }
+    v.recordStart = undefined;
   }
 
   // ------------------------------------------------------------ audio callbacks
@@ -418,16 +513,29 @@ export class AudioEngine extends EventEmitter {
     if (this.voices.length === 0) return;
     const [L, R] = this.mixBuf;
     for (const v of this.voices) {
-      const l = v.data[0];
-      const r = v.data[1] ?? l;
-      const n = Math.min(frames, l.length - v.pos);
-      for (let i = 0; i < n; i++) {
-        L[i] += l[v.pos + i] * v.gain;
-        R[i] += r[v.pos + i] * v.gain;
+      const l = v.sound.data[0];
+      const r = v.sound.data[1] ?? l;
+      const len = l.length;
+      for (let i = 0; i < frames; i++) {
+        if (v.pos >= len) {
+          if (!v.loop || len === 0) break;
+          v.pos = 0;
+        }
+        if (v.stop && v.stop.left <= 0) break;
+        let g = v.gain;
+        if (v.played < v.fadeIn) g *= v.played / v.fadeIn;
+        if (v.stop) g *= v.stop.left-- / v.stop.length;
+        L[i] += l[v.pos] * g;
+        R[i] += r[v.pos] * g;
+        v.pos++;
+        v.played++;
       }
-      v.pos += n;
     }
-    this.voices = this.voices.filter((v) => v.pos < v.data[0].length);
+    this.voices = this.voices.filter((v) => {
+      const done = (v.stop && v.stop.left <= 0) || (!v.loop && v.pos >= v.sound.data[0].length);
+      if (done) this.finishJingle(v);
+      return !done;
+    });
   }
 
   private startFallbackClock(): void {
@@ -461,7 +569,19 @@ export class AudioEngine extends EventEmitter {
       outputPeaks: [...this.outputPeaks],
       recordedFrames: this.recordedFrames,
     };
-    if (this.state === 'recording') update.recordingPeaks = this.takeLivePeaks();
+    if (this.state === 'recording') {
+      update.recordingPeaks = this.takeLivePeaks();
+      if (this.jingleTakes.length) {
+        update.recordedJingles = this.jingleTakes.map((t) => ({ slotId: t.slotId, start: t.clip.start, length: t.clip.length }));
+      }
+    }
+    if (this.voices.length) update.jingles = this.voices.map((v): PlayingJingle => ({
+      slotId: v.slotId,
+      remaining: Math.max(0, v.sound.data[0].length - v.pos),
+      recordStart: v.recordStart,
+      played: v.played,
+      stopping: !!v.stop,
+    }));
     this.inputPeaks.fill(0);
     this.outputPeaks = [0, 0];
     this.emit('transport', update);

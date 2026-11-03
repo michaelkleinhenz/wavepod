@@ -125,6 +125,7 @@ async function main(): Promise<void> {
       renderTransport();
       timeline.follow();
       if (store.view === 'edit') timeline.updateMeters();
+      soundboard.updatePlaying(store.transport.jingles);
       if (store.view === 'setup') setup.updateMeters();
     }
     if (store.view === 'edit') timeline.draw();

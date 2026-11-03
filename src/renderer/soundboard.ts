@@ -1,7 +1,8 @@
 // Soundboard: jingle slots played through the output device. Keys 1–9 trigger slots.
-import type { SoundboardSlot } from '../shared/types';
+import type { PlayingJingle, SoundboardSlot } from '../shared/types';
 import { TRACK_COLORS } from '../core/project';
-import { uid } from '../shared/time';
+import { ensureSoundboardTrack } from '../core/soundboard';
+import { formatTimestamp, uid } from '../shared/time';
 import { baseName, decodeFile } from './audioFiles';
 import { clear, errorMessage, h, toast } from './dom';
 import { api, store } from './store';
@@ -57,19 +58,45 @@ export class Soundboard {
       color: TRACK_COLORS[(store.project.soundboard.length + i) % TRACK_COLORS.length],
     }));
     if (!slots.length) return;
-    store.edit((p) => ({ ...p, soundboard: [...p.soundboard, ...slots] }));
+    store.edit((p) => ensureSoundboardTrack({ ...p, soundboard: [...p.soundboard, ...slots] }));
     await this.ensureLoaded();
+  }
+
+  private slotEls = new Map<string, { root: HTMLElement; time: HTMLElement }>();
+
+  /** Shows which jingles play and their remaining time (called on every transport update). */
+  updatePlaying(jingles: PlayingJingle[] = []): void {
+    const sr = store.sampleRate;
+    for (const [id, el] of this.slotEls) {
+      const j = jingles.find((x) => x.slotId === id);
+      el.root.classList.toggle('playing', !!j && !j.stopping);
+      el.root.classList.toggle('stopping', !!j?.stopping);
+      el.time.textContent = j ? `−${formatTimestamp(Math.ceil(j.remaining / sr), false).replace(/^00:/, '')}` : '';
+    }
+  }
+
+  private toggleOption(slot: SoundboardSlot, key: 'loop' | 'fadeIn'): void {
+    store.edit((p) => ({ ...p, soundboard: p.soundboard.map((s) => (s.id === slot.id ? { ...s, [key]: !s[key] } : s)) }));
   }
 
   render(): void {
     clear(this.el);
-    this.el.append(h('span', { class: 'sb-title' }, 'Soundboard'));
+    this.slotEls.clear();
+    this.el.append(h('span', { class: 'sb-title', title: 'Jingles triggered while recording are recorded onto the Soundboard track' }, 'Soundboard'));
     store.project.soundboard.forEach((slot, i) => {
-      this.el.append(
-        h(
+      const time = h('span', { class: 'sb-time' });
+      const root = h(
           'div',
           { class: `sb-slot${this.isLoaded(slot) ? '' : ' loading'}`, style: { borderColor: slot.color } },
-          h('button', { class: 'sb-play', title: `Play (key ${i + 1})`, onclick: () => void this.trigger(i) }, h('kbd', null, i < 9 ? String(i + 1) : ''), ` ${slot.name}`),
+          h(
+            'button',
+            { class: 'sb-play', title: `Play, or fade out while playing (key ${i + 1})`, onclick: () => void this.trigger(i) },
+            h('kbd', null, i < 9 ? String(i + 1) : ''),
+            ` ${slot.name}`,
+            time,
+          ),
+          h('button', { class: `sb-opt${slot.fadeIn ? ' on' : ''}`, title: 'Soft fade-in', onclick: () => this.toggleOption(slot, 'fadeIn') }, '◢'),
+          h('button', { class: `sb-opt${slot.loop ? ' on' : ''}`, title: 'Loop until stopped', onclick: () => this.toggleOption(slot, 'loop') }, '⟲'),
           h(
             'button',
             {
@@ -79,9 +106,11 @@ export class Soundboard {
             },
             '×',
           ),
-        ),
-      );
+        );
+      this.slotEls.set(slot.id, { root, time });
+      this.el.append(root);
     });
+    this.updatePlaying(store.transport.jingles);
     if (store.project.soundboard.length < MAX_SLOTS) {
       this.el.append(h('button', { class: 'small', onclick: () => void this.addSlots() }, '+ Jingle'));
     }
