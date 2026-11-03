@@ -21,6 +21,7 @@
 //   6 GETSTATE u32 inst  -> component state bytes
 //   7 SETSTATE u32 inst, bytes  -> JSON [{"id":n,"value":v}] (parameter values after loading)
 //   8 FORMAT   u32 inst, u32 id, f64 normalized -> UTF-8 display string
+//   9 PARSE    u32 inst, u32 id, str text -> f64 normalized (empty if the plug-in can't read it)
 
 #include "public.sdk/source/common/memorystream.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
@@ -35,6 +36,7 @@
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/vstspeaker.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -564,6 +566,32 @@ int serve ()
 					break;
 				}
 				ok (str128 (s));
+				break;
+			}
+			case 9: // PARSE
+			{
+				auto* inst = find (id);
+				uint32_t pid = rd.get<uint32_t> ();
+				std::string text = rd.str ();
+				if (!inst || !inst->controller || !rd.ok)
+				{
+					ok ();
+					break;
+				}
+				std::u16string wide = StringConvert::convert (text);
+				String128 s {};
+				size_t n = std::min (wide.size (), static_cast<size_t> (127));
+				std::memcpy (s, wide.data (), n * sizeof (char16_t));
+				ParamValue v = 0;
+				if (inst->controller->getParamValueByString (pid, s, v) != kResultOk)
+				{
+					ok ();
+					break;
+				}
+				std::string out (sizeof (double), '\0');
+				double d = v;
+				std::memcpy (out.data (), &d, sizeof (double));
+				ok (out);
 				break;
 			}
 			default:

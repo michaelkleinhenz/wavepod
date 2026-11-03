@@ -7,7 +7,7 @@ import { Worker } from 'node:worker_threads';
 import type { Fx, VstParamInfo } from '../../shared/types';
 import type { VstHost, VstInstance } from '../../core/fx/vst';
 
-const OP = { create: 1, destroy: 2, params: 3, process: 4, reset: 5, getState: 6, setState: 7, format: 8 } as const;
+const OP = { create: 1, destroy: 2, params: 3, process: 4, reset: 5, getState: 6, setState: 7, format: 8, parse: 9 } as const;
 const DATA_BYTES = 4 << 20;
 const TIMEOUT = { create: 15000, process: 250, other: 3000 };
 
@@ -220,6 +220,17 @@ class HostedInstance implements VstInstance {
 
   format(paramId: number, value: number): string {
     return this.call(new Writer().u8(OP.format).u32(this.id).u32(paramId).f64(value)).toString('utf8');
+  }
+
+  parse(paramId: number, text: string): number | null {
+    try {
+      const r = this.call(new Writer().u8(OP.parse).u32(this.id).u32(paramId).str(text));
+      return r.length >= 8 ? r.readDoubleLE(0) : null;
+    } catch (e) {
+      // hosts built before PARSE existed answer "unknown op"
+      if (/unknown op/.test(String(e))) return null;
+      throw e;
+    }
   }
 
   destroy(): void {
