@@ -11,6 +11,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import os from 'node:os';
 import { dirname, join, relative } from 'node:path';
 
 const require = createRequire(import.meta.url);
@@ -96,7 +97,12 @@ if (process.platform === 'linux' && !args.includes('--no-sandbox')) {
 
 const child = spawn(electron, args, { stdio: 'inherit' });
 child.on('exit', (code, signal) => {
-  if (signal) process.kill(process.pid, signal);
-  else process.exit(code ?? 0);
+  // Report a crash as an exit code rather than re-raising the signal, so the
+  // system's crash log points at Electron and not at this launcher.
+  if (signal) {
+    console.error(`[wavepod] Electron exited with ${signal}`);
+    process.exit(128 + (os.constants.signals[signal] ?? 0));
+  }
+  process.exit(code ?? 0);
 });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => child.kill(sig));

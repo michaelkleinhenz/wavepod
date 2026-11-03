@@ -1,0 +1,53 @@
+diff --git a/node_modules/audify/src/rt_audio.cpp b/node_modules/audify/src/rt_audio.cpp
+index cb25aff..d7e5ce2 100644
+--- a/node_modules/audify/src/rt_audio.cpp
++++ b/node_modules/audify/src/rt_audio.cpp
+@@ -16,7 +16,7 @@ int rt_callback(void* outputBuffer,
+ {
+     const auto wrap = static_cast<RtAudioWrap*>(userData);
+ 
+-    std::shared_ptr<int8_t> inputData(
++    std::shared_ptr<int8_t[]> inputData(
+         new int8_t[wrap->_frameSize * wrap->_inputChannels * wrap->_sampleSize]);
+ 
+     std::unique_lock outputLock(wrap->_outputDataMutex, std::defer_lock);
+@@ -411,7 +411,7 @@ void RtAudioWrap::write(const Napi::CallbackInfo& info)
+ {
+     Napi::Buffer buf = info[0].As<Napi::Buffer<uint8_t>>();
+ 
+-    std::shared_ptr<int8_t> data;
++    std::shared_ptr<int8_t[]> data;
+ 
+     std::unique_lock lk(_outputDataMutex, std::defer_lock);
+ 
+@@ -422,7 +422,7 @@ void RtAudioWrap::write(const Napi::CallbackInfo& info)
+     }
+ 
+     // Allocate buffer for the PCM data
+-    data = std::shared_ptr<int8_t>(
++    data = std::shared_ptr<int8_t[]>(
+         new int8_t[_frameSize * _outputChannels * _sampleSize]);
+ 
+     // Copy the data to the new buffer
+@@ -443,7 +443,7 @@ void RtAudioWrap::clearOutputQueue(const Napi::CallbackInfo& info)
+     std::lock_guard lk(_outputDataMutex);
+ 
+     // Clear the output queue
+-    std::queue<std::shared_ptr<int8_t>> empty;
++    std::queue<std::shared_ptr<int8_t[]>> empty;
+     std::swap(_outputData, empty);
+ }
+ 
+diff --git a/node_modules/audify/src/rt_audio.h b/node_modules/audify/src/rt_audio.h
+index 99b0442..4c1d9b3 100644
+--- a/node_modules/audify/src/rt_audio.h
++++ b/node_modules/audify/src/rt_audio.h
+@@ -76,7 +76,7 @@ private:
+     Napi::ThreadSafeFunction _frameOutputTsfn;
+ 
+     std::mutex _outputDataMutex;
+-    std::queue<std::shared_ptr<int8_t>> _outputData;
++    std::queue<std::shared_ptr<int8_t[]>> _outputData;
+     double _outputVolume;
+     double _outputMultiplier;
+ };
