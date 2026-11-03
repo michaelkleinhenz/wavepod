@@ -356,7 +356,8 @@ export class TimelineView {
     for (const t of store.project.tracks) {
       const el = this.trackMeters.get(t.id);
       if (!el) continue;
-      const v = Math.max(0, ...t.inputChannels.map((c) => peaks[c] ?? 0));
+      // armed: live input of its channels; unarmed: only what the track itself plays back
+      const v = t.armed ? Math.max(0, ...t.inputChannels.map((c) => peaks[c] ?? 0)) : (store.trackMeterHold.get(t.id) ?? 0);
       const db = toDb(v, -60);
       el.style.width = `${((db + 60) / 60) * 100}%`;
       el.classList.toggle('hot', db > -6);

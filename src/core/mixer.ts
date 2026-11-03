@@ -63,6 +63,8 @@ export class Mixer {
   private trackChains = new Map<string, ChainState>();
   /** Measure what each filter does (live playback only; export leaves it off). */
   metering = false;
+  /** Peak each track contributed to the bus since the previous takeTrackPeaks() (metering only). */
+  private trackPeaks = new Map<string, number>();
   private masterChain: ChainState | null = null;
 
   private _project: Project;
@@ -146,6 +148,13 @@ export class Mixer {
     return out;
   }
 
+  /** Peak level (linear, after gain and pan) each played track reached since the previous call, by track id. */
+  takeTrackPeaks(): Record<string, number> {
+    const out = Object.fromEntries(this.trackPeaks);
+    this.trackPeaks.clear();
+    return out;
+  }
+
   /** Returns the chain state for a filter list (null when nothing is active). */
   private chainState(state: ChainState | null | undefined, list: Fx[] | undefined): ChainState | null {
     if (!list?.some((f) => f.enabled)) return null;
@@ -198,10 +207,15 @@ export class Mixer {
     const gl = g * (stereo ? Math.min(1, 1 - track.pan) : panL);
     const gr = g * (stereo ? Math.min(1, 1 + track.pan) : panR);
     const [ol, or] = out;
+    let peak = 0;
     for (let i = 0; i < frames; i++) {
-      ol[i] += pl[i] * gl;
-      or[i] += (stereo ? pr[i] : pl[i]) * gr;
+      const l = pl[i] * gl;
+      const r = (stereo ? pr[i] : pl[i]) * gr;
+      ol[i] += l;
+      or[i] += r;
+      if (this.metering) peak = Math.max(peak, Math.abs(l), Math.abs(r));
     }
+    if (this.metering) this.trackPeaks.set(track.id, Math.max(peak, this.trackPeaks.get(track.id) ?? 0));
   }
 
   /**

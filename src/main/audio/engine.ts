@@ -585,6 +585,7 @@ export class AudioEngine extends EventEmitter {
     if (this.state !== 'stopped') {
       const meters = this.mixer.takeFxMeters();
       if (Object.keys(meters).length) update.fxMeters = meters;
+      update.trackPeaks = this.mixer.takeTrackPeaks();
     }
     if (this.voices.length) update.jingles = this.voices.map((v): PlayingJingle => ({
       slotId: v.slotId,
