@@ -124,6 +124,12 @@ stays in place on the timeline. "Voice chain" adds High-pass, De-esser and
 Ultraschall Dynamics, mirroring Ultraschall's default track chain without
 its noise reduction and reverb.
 
+**Live filter meters ✅**: while playing, every filter card shows its input
+and output level, and the dynamic filters (gate, compressor, de-esser,
+limiter, Ultraschall Dynamics) show the gain they apply right now, as
+Ultraschall's plug-in windows do. Ultraschall Dynamics also shows the
+current operating point moving on its curve.
+
 **VST3 plug-ins ✅** can go into the same stacks ("VST3 plug-in…" in the add
 menu, with search and rescan). SoundPod never opens a plug-in's own editor;
 it builds sliders from the plug-in's parameter list (switches for on/off

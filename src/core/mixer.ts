@@ -1,6 +1,6 @@
 // Renders the project timeline into a stereo bus, block by block, from disk.
 import * as path from 'node:path';
-import type { Clip, Fx, Project, Track } from '../shared/types';
+import type { Clip, Fx, FxMeter, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { fadeGain, panGains } from './dsp';
 import { WavReader } from './wav';
@@ -61,6 +61,8 @@ export class Mixer {
   private envBuf = new Float32Array(0);
   private pre: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private trackChains = new Map<string, ChainState>();
+  /** Measure what each filter does (live playback only; export leaves it off). */
+  metering = false;
   private masterChain: ChainState | null = null;
 
   private _project: Project;
@@ -117,7 +119,7 @@ export class Mixer {
         });
       }
       this.renderBus(position + state.latency, frames, out, tracks);
-      state.chain.process(out[0], out[1], frames);
+      state.chain.process(out[0], out[1], frames, this.metering);
       state.next = position + frames;
     }
     const master = dbToGain(this.project.masterGain);
@@ -134,6 +136,14 @@ export class Mixer {
     out[0].fill(0, 0, frames);
     out[1].fill(0, 0, frames);
     for (const track of tracks) this.renderTrackInto(track, position, frames, out);
+  }
+
+  /** What every metered filter did since the previous call, by filter id. */
+  takeFxMeters(): Record<string, FxMeter> {
+    const out: Record<string, FxMeter> = {};
+    for (const s of this.trackChains.values()) s.chain.takeMeters(out);
+    this.masterChain?.chain.takeMeters(out);
+    return out;
   }
 
   /** Returns the chain state for a filter list (null when nothing is active). */
@@ -179,7 +189,7 @@ export class Mixer {
         });
       }
       stereo = this.renderRaw(track, position + state.latency, frames, this.pre);
-      state.chain.process(pl, pr, frames);
+      state.chain.process(pl, pr, frames, this.metering);
       state.next = position + frames;
     }
     const g = dbToGain(track.gain);

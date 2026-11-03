@@ -8,7 +8,8 @@ import { UltraschallDynamics, buildDynamicsTable, dynamicsCurve, dynamicsGainDb 
 import { Mixer, ReaderCache } from '../src/core/mixer';
 import { addTrack, createProject, normalizeProject } from '../src/core/project';
 import { writeWavFile } from '../src/core/wav';
-import type { FxType } from '../src/shared/types';
+import type { FxMeter, FxType } from '../src/shared/types';
+import { FxChain } from '../src/core/fx/chain';
 import { sine, tmpDir } from './helpers';
 
 const SR = 48000;
@@ -150,5 +151,59 @@ describe('filter stacks', () => {
     const m2 = new Mixer(p, new ReaderCache(dir));
     m2.render(SR + 24000, 512, again);
     expect(rms(again[0])).toBeGreaterThan(0.01);
+  });
+});
+
+describe('filter meters', () => {
+  const feed = (chain: FxChain, input: Float32Array, meter = true) => {
+    const L = Float32Array.from(input);
+    const R = Float32Array.from(input);
+    for (let i = 0; i < L.length; i += 512) chain.process(L.subarray(i, i + 512), R.subarray(i, i + 512), Math.min(512, L.length - i), meter);
+  };
+
+  it('reports input/output peaks per filter and the gain a compressor and limiter apply', () => {
+    const chain = new FxChain(SR);
+    const comp = createFx('compressor', { threshold: -30, ratio: 4, makeup: 0 });
+    const lim = createFx('limiter', { ceiling: -12 });
+    const hp = createFx('highpass');
+    chain.sync([hp, comp, lim]);
+    feed(chain, sine(1000, 0.5, SR, 0.9));
+    const m: Record<string, FxMeter> = {};
+    chain.takeMeters(m);
+    expect(db(m[hp.id].in)).toBeCloseTo(db(0.9), 0);
+    expect(m[hp.id].gain).toBeUndefined();
+    // −1 dB in, threshold −30, 4:1 → about −22 dB of reduction
+    expect(m[comp.id].gain!).toBeLessThan(-15);
+    expect(m[comp.id].out).toBeLessThan(m[comp.id].in);
+    expect(m[lim.id].out).toBeLessThanOrEqual(Math.pow(10, -12 / 20) * 1.01);
+    // meters start over after a read
+    const again: Record<string, FxMeter> = {};
+    chain.takeMeters(again);
+    expect(again[comp.id]).toBeUndefined();
+  });
+
+  it('reports the detector level and boost of Ultraschall Dynamics on quiet speech', () => {
+    const chain = new FxChain(SR);
+    const dyn = createFx('dynamics');
+    chain.sync([dyn]);
+    // settle first (the detector starts from silence), then read one meter span
+    feed(chain, sine(300, 1, SR, 0.05));
+    chain.takeMeters({});
+    feed(chain, sine(300, 0.1, SR, 0.05));
+    const m: Record<string, FxMeter> = {};
+    chain.takeMeters(m);
+    // RMS of a 0.05 sine is about −29 dBFS
+    expect(m[dyn.id].level!).toBeCloseTo(-29, 0);
+    expect(m[dyn.id].gain!).toBeGreaterThan(3);
+  });
+
+  it('does not meter without metering (export, priming)', () => {
+    const chain = new FxChain(SR);
+    const comp = createFx('compressor');
+    chain.sync([comp]);
+    feed(chain, sine(1000, 0.2, SR, 0.9), false);
+    const m: Record<string, FxMeter> = {};
+    chain.takeMeters(m);
+    expect(m).toEqual({});
   });
 });

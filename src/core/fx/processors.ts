@@ -3,6 +3,7 @@ import type { Fx, FxType } from '../../shared/types';
 import { VstProcessor } from './vst';
 import { Biquad } from './biquad';
 import { PeakLimiter, UltraschallDynamics } from './ultraschallDynamics';
+import { GainMeter } from './meter';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -12,7 +13,16 @@ export interface FxProcessor {
   reset(): void;
   /** Frees external resources (VST3 instances). */
   dispose?(): void;
+  /**
+   * For meters: the gain change in dB with the largest magnitude since the previous call
+   * (negative = reduction), then starts over. Only filters that change gain dynamically have it.
+   */
+  takeGain?(): number;
+  /** For meters: the level (dB) the filter's detector currently sees (Ultraschall Dynamics). */
+  detectorLevel?(): number;
 }
+
+
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const linToDb = (v: number) => (v > 1e-12 ? 20 * Math.log10(v) : -240);
@@ -116,6 +126,11 @@ class NoiseGate implements FxProcessor {
       L[i] *= this.gain;
       R[i] *= this.gain;
     }
+    this.meter.note(linToDb(this.gain));
+  }
+  private meter = new GainMeter();
+  takeGain(): number {
+    return this.meter.take();
   }
   reset(): void {
     this.env = 0;
@@ -165,7 +180,13 @@ class Compressor implements FxProcessor {
         L[i] *= this.gain;
         R[i] *= this.gain;
       }
+      this.meter.note(this.grDb);
     }
+  }
+  private meter = new GainMeter();
+  /** Gain reduction only (make-up gain is static and not shown). */
+  takeGain(): number {
+    return this.meter.take();
   }
   reset(): void {
     this.grDb = 0;
@@ -215,6 +236,7 @@ class DeEsser implements FxProcessor {
         const c = target < this.grDb ? this.att : this.rel;
         this.grDb = target + c * (this.grDb - target);
       }
+      this.meter.note(this.grDb);
       if (Math.abs(this.grDb - this.shelfDb) > 0.05) {
         this.shelfDb = this.grDb;
         this.shelf.set('highshelf', this.freq, this.sr, Math.SQRT1_2, this.shelfDb);
@@ -230,6 +252,11 @@ class DeEsser implements FxProcessor {
         }
       }
     }
+  }
+  private meter = new GainMeter();
+  /** Reduction of the high band. */
+  takeGain(): number {
+    return this.meter.take();
   }
   reset(): void {
     this.detect.reset();
@@ -249,11 +276,18 @@ class Limiter implements FxProcessor {
     this.lim.configure(dbToLin(p.ceiling), 1, p.release / 1000);
   }
   process(L: Float32Array, R: Float32Array, n: number): void {
+    let min = 1;
     for (let i = 0; i < n; i++) {
       const g = this.lim.gain(L[i], R[i]);
+      if (g < min) min = g;
       L[i] *= g;
       R[i] *= g;
     }
+    this.meter.note(linToDb(min));
+  }
+  private meter = new GainMeter();
+  takeGain(): number {
+    return this.meter.take();
   }
   reset(): void {
     this.lim.reset();
