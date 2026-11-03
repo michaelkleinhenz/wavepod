@@ -32,7 +32,7 @@ function run(type: FxType, params: Record<string, number>, input: Float32Array):
   return L;
 }
 
-describe('Ultraschall Dynamics', () => {
+describe('Dynamics (Ultraschall Dynamics port)', () => {
   const settings = { target: -20, noiseFloor: -40, noiseGate: 30 };
 
   it('builds the same curve as the JSFX defaults', () => {
@@ -182,7 +182,7 @@ describe('filter meters', () => {
     expect(again[comp.id]).toBeUndefined();
   });
 
-  it('reports the detector level and boost of Ultraschall Dynamics on quiet speech', () => {
+  it('reports the detector level and boost of Dynamics on quiet speech', () => {
     const chain = new FxChain(SR);
     const dyn = createFx('dynamics');
     chain.sync([dyn]);

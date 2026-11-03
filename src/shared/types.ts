@@ -236,7 +236,7 @@ export interface FxMeter {
   out: number;
   /** Gain change in dB with the largest magnitude (negative = reduction), for dynamic filters. */
   gain?: number;
-  /** Level the detector sees in dB (Ultraschall Dynamics: the input of its curve). */
+  /** Level the detector sees in dB (Dynamics: the input of its curve). */
   level?: number;
 }
 

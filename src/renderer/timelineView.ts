@@ -315,7 +315,7 @@ export class TimelineView {
               'button',
               {
                 class: `fx-btn${t.fx?.some((f) => f.enabled) ? ' active' : ''}`,
-                title: 'Filters (EQ, compressor, Ultraschall Dynamics, …)',
+                title: 'Filters (EQ, compressor, Dynamics, …)',
                 onclick: () => this.onOpenFx(t.id),
               },
               t.fx?.some((f) => f.enabled) ? `FX ${t.fx.filter((f) => f.enabled).length}` : 'FX',

@@ -19,6 +19,8 @@ export interface FxParamSpec {
 export interface FxDefinition {
   type: FxType;
   name: string;
+  /** Earlier names, still accepted when a filter is looked up by name (e.g. by MCP clients). */
+  aliases?: string[];
   description: string;
   params: FxParamSpec[];
 }
@@ -98,7 +100,8 @@ export const FX_DEFINITIONS: FxDefinition[] = [
   },
   {
     type: 'dynamics',
-    name: 'Ultraschall Dynamics',
+    name: 'Dynamics',
+    aliases: ['Ultraschall Dynamics'],
     description:
       'Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. Adds 100 ms of latency, which WavePod compensates.',
     params: [
