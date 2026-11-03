@@ -1,7 +1,8 @@
 // Filter stack editor for a track or the master bus: add, bypass, tweak, reorder and remove filters.
 import type { Fx, FxMeter, FxType, VstParamInfo, VstPluginInfo } from '../shared/types';
 import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/definitions';
-import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, updateFx, type FxTarget } from '../core/fx/stack';
+import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, updateFx, type FxTarget } from '../core/fx/stack';
+import { presetEdited, presetKey, type FxPresetEntry } from '../core/fx/presets';
 import { createVstFx, visibleVstParams } from '../core/fx/vst';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
 import { clear, errorMessage, h, toast } from './dom';
@@ -10,6 +11,8 @@ import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
 
 const VST_OPTION = '__vst3';
+const SAVE_PRESET = '__save';
+const PRESETS_FOLDER = '__folder';
 /** Plug-ins with many parameters show this many sliders until "Show all" is clicked. */
 const VST_COLLAPSED_PARAMS = 12;
 
@@ -38,6 +41,10 @@ export class FxPanel {
   private picker: { plugins: VstPluginInfo[] | null; query: string; busy: string | null } | null = null;
   private expanded = new Set<string>();
   private meters = new Map<string, LiveMeter>();
+  /** Preset lists by preset key (filter type or plug-in), loaded when a card first shows them. */
+  private presets = new Map<string, FxPresetEntry[] | Promise<FxPresetEntry[]>>();
+  /** The card whose preset row is a name field: saving a new preset or renaming the current one. */
+  private naming: { fxId: string; mode: 'save' | 'rename' } | null = null;
 
   open(target: FxTarget): void {
     this.target = target;
@@ -70,7 +77,7 @@ export class FxPanel {
 
   /** Re-renders when the stack changed from outside (undo, other edits), but not during slider drags. */
   refresh(): void {
-    if (!this.target || store.liveEditing || isEditingValue(this.el)) return;
+    if (!this.target || store.liveEditing || isEditingValue(this.el) || this.naming) return;
     if (this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target)) return this.close();
     const key = JSON.stringify(fxList(store.project, this.target)) + this.title();
     if (key !== this.structure) this.render();
@@ -157,6 +164,7 @@ export class FxPanel {
         h('button', { class: 'toggle', title: 'Move down', disabled: index === count - 1, onclick: () => this.edit((p) => moveFx(p, target, fx.id, index + 1)) }, '↓'),
         h('button', { class: 'toggle remove', title: 'Remove filter', onclick: () => this.edit((p) => removeFx(p, target, fx.id)) }, '×'),
       ),
+      this.presetRow(target, fx),
       meter?.el ?? null,
       curve,
       ...(vst ? this.vstParamRows(target, fx) : def!.params.map((spec) => this.paramRow(target, fx, spec, drawCurve))),
@@ -196,6 +204,151 @@ export class FxPanel {
       card.draggable = (e.target as HTMLElement).classList.contains('fx-grip');
     });
     return card;
+  }
+
+  /** The preset menu of a card: load a factory/plug-in/user preset, save, rename or delete one. */
+  private presetRow(target: FxTarget, fx: Fx): HTMLElement {
+    if (this.naming?.fxId === fx.id) return this.presetNameRow(target, fx, this.naming.mode);
+    const key = presetKey(fx);
+    const label = fx.preset ? `${fx.preset.name}${presetEdited(fx) ? ' (edited)' : ''}` : 'Presets…';
+    const select = h(
+      'select',
+      {
+        class: 'fx-preset-select',
+        title: fx.preset ? `Preset: ${label}` : 'Load or save a preset for this filter',
+        onchange: (e: Event) => {
+          const el = e.target as HTMLSelectElement;
+          const id = el.value;
+          el.value = '';
+          if (id === SAVE_PRESET) {
+            this.naming = { fxId: fx.id, mode: 'save' };
+            this.render();
+          } else if (id === PRESETS_FOLDER) {
+            api().showPresetsFolder().catch((err) => toast(errorMessage(err), 'error'));
+          } else if (id) {
+            void this.loadPreset(target, fx, id);
+          }
+        },
+      },
+      h('option', { value: '' }, label),
+    );
+    const fill = (list: FxPresetEntry[]) => {
+      // keep the first (label) option, replace the rest
+      while (select.options.length > 1) select.remove(1);
+      const group = (title: string, entries: FxPresetEntry[]) =>
+        entries.length ? select.append(h('optgroup', { label: title }, ...entries.map((p) => h('option', { value: p.id }, p.name)))) : undefined;
+      group(fx.type === 'vst3' ? 'Plug-in programs' : 'Factory', list.filter((p) => p.source !== 'user'));
+      group('My presets', list.filter((p) => p.source === 'user'));
+      select.append(h('optgroup', { label: '──────' }, h('option', { value: SAVE_PRESET }, 'Save as preset…'), h('option', { value: PRESETS_FOLDER }, 'Show presets folder')));
+    };
+    const cached = this.presets.get(key);
+    if (Array.isArray(cached)) fill(cached);
+    else {
+      fill([]);
+      this.presetList(fx).then(fill, () => {});
+    }
+    const user = fx.preset?.id.startsWith('user:') ? fx.preset : null;
+    return h(
+      'div',
+      { class: 'fx-presets' },
+      select,
+      user ? h('button', { class: 'toggle', title: `Rename "${user.name}"`, onclick: () => ((this.naming = { fxId: fx.id, mode: 'rename' }), this.render()) }, '✎') : null,
+      user ? h('button', { class: 'toggle remove', title: `Delete the preset "${user.name}"`, onclick: () => void this.deletePreset(target, fx) }, '🗑') : null,
+    );
+  }
+
+  private presetList(fx: Fx): Promise<FxPresetEntry[]> {
+    const key = presetKey(fx);
+    const cached = this.presets.get(key);
+    if (cached) return Promise.resolve(cached);
+    const pending = api()
+      .listFxPresets(fx)
+      .then((list) => {
+        this.presets.set(key, list);
+        return list;
+      })
+      .catch((e) => {
+        this.presets.delete(key);
+        throw e;
+      });
+    this.presets.set(key, pending);
+    return pending;
+  }
+
+  /** Name field for saving or renaming; Enter confirms, Escape cancels. */
+  private presetNameRow(target: FxTarget, fx: Fx, mode: 'save' | 'rename'): HTMLElement {
+    const cancel = () => {
+      this.naming = null;
+      this.render();
+    };
+    const input = h('input', {
+      type: 'text',
+      class: 'fx-preset-name',
+      placeholder: 'Preset name',
+      value: fx.preset && (mode === 'rename' || fx.preset.id.startsWith('user:')) ? fx.preset.name : '',
+      onkeydown: (e: KeyboardEvent) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') void confirm();
+        if (e.key === 'Escape') cancel();
+      },
+    });
+    const confirm = async () => {
+      const name = input.value.trim();
+      if (!name) return input.focus();
+      try {
+        if (mode === 'save') {
+          const res = await api().saveFxPreset(fx, name);
+          this.naming = null;
+          this.presets.delete(presetKey(fx));
+          this.edit((p) => replaceFx(p, target, res.fx));
+          toast(res.replaced ? `Replaced the preset "${res.entry.name}"` : `Saved the preset "${res.entry.name}"`);
+        } else if (fx.preset) {
+          const entry = await api().renameFxPreset(fx.preset.id, name);
+          this.naming = null;
+          this.presets.delete(presetKey(fx));
+          this.edit((p) => replaceFx(p, target, { ...fx, preset: { ...fx.preset!, id: entry.id, name: entry.name } }));
+        }
+      } catch (e) {
+        toast(errorMessage(e), 'error');
+      }
+    };
+    queueMicrotask(() => {
+      input.focus();
+      input.select();
+    });
+    return h(
+      'div',
+      { class: 'fx-presets' },
+      input,
+      h('button', { class: 'small', onclick: () => void confirm() }, mode === 'save' ? 'Save' : 'Rename'),
+      h('button', { class: 'small', onclick: cancel }, 'Cancel'),
+    );
+  }
+
+  private async loadPreset(target: FxTarget, fx: Fx, id: string): Promise<void> {
+    try {
+      const next = await api().applyFxPreset(fx, id);
+      // the filter may have been removed while a plug-in program loaded
+      if (!fxList(store.project, target).some((f) => f.id === fx.id)) return;
+      this.edit((p) => replaceFx(p, target, { ...next, enabled: fxList(p, target).find((f) => f.id === fx.id)?.enabled ?? next.enabled }));
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+      this.render();
+    }
+  }
+
+  private async deletePreset(target: FxTarget, fx: Fx): Promise<void> {
+    const ref = fx.preset;
+    if (!ref || !window.confirm(`Delete the preset "${ref.name}"? It is removed for all episodes.`)) return;
+    try {
+      await api().deleteFxPreset(ref.id);
+      this.presets.delete(presetKey(fx));
+      const { preset: _gone, ...rest } = fx;
+      this.edit((p) => replaceFx(p, target, rest));
+      toast(`Deleted the preset "${ref.name}"`);
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
   }
 
   /** Feeds live filter activity from a transport update into the cards' meters. */

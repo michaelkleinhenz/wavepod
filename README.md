@@ -46,6 +46,14 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   parameters, VST3 parameters, track gain) can be clicked to type an exact
   number, e.g. `-3,5 dB`, `1.2 kHz` or `250 ms`; Enter applies it (kept within
   the slider's range), Escape cancels.
+- **Filter presets**: every filter card has a preset menu. Built-in filters
+  come with a few factory presets (and *Default*); VST3 plug-ins offer their
+  own programs (factory presets) there instead of a program slider. *Save as
+  preset…* stores the current settings (for VST3 including the plug-in's
+  state) as your own preset, available in every episode; rename (✎) or delete
+  (🗑) the one that's loaded. The menu shows "(edited)" once you change a value
+  after loading. Your presets are JSON files in `Documents/WavePod/Presets/`,
+  one folder per filter or plug-in, so they can be copied to another machine.
 - **Templates**: save an episode's setup (tracks and their input channels,
   filter stacks including Master FX and VST3 settings, soundboard jingles)
   with File › Save as Template…, and start the next episode from it with
@@ -229,6 +237,9 @@ client connects.
 | `apply_voice_chain` | High-pass, De-esser and Dynamics, appended or replacing the stack |
 | `set_filter_stack` | Replace a whole stack in one step |
 | `copy_filter_stack` | Copy a track's filters to another track or the master |
+| `list_filter_presets` | Factory presets or the plug-in's own programs, plus the user's presets, for one filter |
+| `apply_filter_preset` | Load a preset into a filter (by id or name) |
+| `save_filter_preset` | Save a filter's settings as a user preset (same name replaces) |
 
 Stacks are addressed by track name, track id or `master`; filters by id,
 or by type or plug-in name when that is unique in the stack. Built-in

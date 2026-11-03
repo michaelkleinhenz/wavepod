@@ -2,7 +2,9 @@
 // Every edit goes through the app (one undo step each), so it shows up in the FX panel at once.
 import type { Fx, FxType, LoudnessReport, LoudnessStats, Project, TransportState, VstParamInfo, VstPluginInfo, VstPluginRef } from '../../shared/types';
 import { FX_DEFINITIONS, createFx, fxDefinition, normalizeFx, type FxParamSpec } from '../fx/definitions';
-import { MASTER, VOICE_CHAIN, addVoiceChain, fxList, insertFx, moveFx, removeFx, updateFx, type FxTarget } from '../fx/stack';
+import { MASTER, VOICE_CHAIN, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, updateFx, type FxTarget } from '../fx/stack';
+import { findPresetEntry, presetEdited } from '../fx/presets';
+import type { FxPresetLibrary } from '../fx/presetLibrary';
 import { createVstFx, visibleVstParams, vstFailures } from '../fx/vst';
 import { projectLength } from '../project';
 import { formatTimestamp, uid } from '../../shared/time';
@@ -17,6 +19,8 @@ export interface WavePodHost {
   /** Applies an edit as one undo step and shows `summary` to the user. */
   apply(next: Project, summary: string): void;
   measureLoudness(): Promise<LoudnessReport[]>;
+  /** Filter presets (factory, plug-in programs and the user's own), or null if not available. */
+  presets?: FxPresetLibrary | null;
   /** VST3 support, or null when this build has no plug-in host. */
   vst: {
     scan(): Promise<VstPluginInfo[]> | VstPluginInfo[];
@@ -36,6 +40,8 @@ export const SERVER_INSTRUCTIONS = `WavePod is a multitrack podcast recorder and
 Each track and the master bus has a filter stack that runs top to bottom (track stacks run before track gain and pan; the master stack before the master gain). Address a stack with "target": a track id, a track name, or "master". Address a filter with "filter": its id, or its type or plug-in name when that is unique in the stack.
 
 Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_types for keys and ranges. VST3 parameters are normalized 0..1 and are addressed by parameter id or title; get_filter_stack shows the plug-in's own text for each value.
+
+Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
 Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness.`;
 
@@ -122,7 +128,7 @@ function describeSpec(spec: FxParamSpec) {
 }
 
 async function describeFx(host: WavePodHost, fx: Fx, position: number) {
-  const base = { id: fx.id, position, type: fx.type, name: filterName(fx), enabled: fx.enabled };
+  const base = { id: fx.id, position, type: fx.type, name: filterName(fx), enabled: fx.enabled, ...(fx.preset ? { preset: { name: fx.preset.name, edited: presetEdited(fx) } } : {}) };
   if (fx.type !== 'vst3') {
     const def = fxDefinition(fx.type);
     return { ...base, params: def.params.map((spec) => ({ key: spec.key, label: spec.label, value: fx.params[spec.key] ?? spec.default, unit: spec.unit ?? '' })) };
@@ -495,7 +501,78 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         return stackResult(to.target, to.name);
       },
     },
+    {
+      name: 'list_filter_presets',
+      description: "Presets for one filter: WavePod's factory presets (built-in filters) or the plug-in's own programs (VST3), then the user's saved presets. User presets are shared by all episodes.",
+      inputSchema: obj({ target: TARGET, filter: FILTER }, ['target', 'filter']),
+      annotations: { title: 'List filter presets', ...READ },
+      run: async (args) => {
+        const library = needPresets(host);
+        const project = host.project();
+        const { target, name } = resolveTarget(project, str(args, 'target', true));
+        const fx = resolveFilter(fxList(project, target), str(args, 'filter', true));
+        const presets = await library.list(fx);
+        return {
+          target,
+          name,
+          filter: { id: fx.id, name: filterName(fx), ...(fx.preset ? { preset: { name: fx.preset.name, edited: presetEdited(fx) } } : {}) },
+          presets: presets.map((p) => ({ id: p.id, name: p.name, source: p.source })),
+        };
+      },
+    },
+    {
+      name: 'apply_filter_preset',
+      description: 'Sets a filter to a preset from list_filter_presets (by id or name). All of its parameters change; one undo step.',
+      inputSchema: obj({ target: TARGET, filter: FILTER, preset: { type: 'string', description: 'Preset id or name from list_filter_presets.' } }, ['target', 'filter', 'preset']),
+      annotations: { title: 'Apply filter preset', ...EDIT, idempotentHint: true },
+      run: async (args) => {
+        const library = needPresets(host);
+        const project = host.project();
+        const { target, name } = resolveTarget(project, str(args, 'target', true));
+        const fx = resolveFilter(fxList(project, target), str(args, 'filter', true));
+        const ref = str(args, 'preset', true);
+        const entries = await library.list(fx);
+        const entry = findPresetEntry(entries, ref);
+        if (!entry) throw new ToolError(`No preset "${ref}" for ${filterName(fx)}. Presets: ${entries.map((p) => `"${p.name}"`).join(', ') || 'none'}.`);
+        let next: Fx;
+        try {
+          next = await library.apply(fx, entry.id);
+        } catch (e) {
+          throw new ToolError((e as Error).message);
+        }
+        // Re-read the project: loading a plug-in program can take a moment.
+        host.apply(replaceFx(host.project(), target, next), `Loaded preset "${entry.name}" into ${filterName(fx)} on ${name}`);
+        const list = fxList(host.project(), target);
+        const i = list.findIndex((f) => f.id === fx.id);
+        return { target, name, filter: await describeFx(host, list[i], i) };
+      },
+    },
+    {
+      name: 'save_filter_preset',
+      description: "Saves a filter's current settings as a user preset, available in every episode. A preset with the same name for the same filter is replaced.",
+      inputSchema: obj({ target: TARGET, filter: FILTER, name: { type: 'string', description: 'Preset name.' } }, ['target', 'filter', 'name']),
+      annotations: { title: 'Save filter preset', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+      run: async (args) => {
+        const library = needPresets(host);
+        const project = host.project();
+        const { target, name } = resolveTarget(project, str(args, 'target', true));
+        const fx = resolveFilter(fxList(project, target), str(args, 'filter', true));
+        let saved: Awaited<ReturnType<FxPresetLibrary['save']>>;
+        try {
+          saved = await library.save(fx, str(args, 'name', true));
+        } catch (e) {
+          throw new ToolError((e as Error).message);
+        }
+        host.apply(replaceFx(host.project(), target, saved.fx), `Saved ${filterName(fx)} on ${name} as preset "${saved.entry.name}"`);
+        return { saved: { id: saved.entry.id, name: saved.entry.name }, replaced: saved.replaced };
+      },
+    },
   ];
+}
+
+function needPresets(host: WavePodHost): FxPresetLibrary {
+  if (!host.presets) throw new ToolError('Filter presets are not available.');
+  return host.presets;
 }
 
 export function createWavePodServer(host: WavePodHost, version: string): McpServer {

@@ -22,6 +22,7 @@
 //   7 SETSTATE u32 inst, bytes  -> JSON [{"id":n,"value":v}] (parameter values after loading)
 //   8 FORMAT   u32 inst, u32 id, f64 normalized -> UTF-8 display string
 //   9 PARSE    u32 inst, u32 id, str text -> f64 normalized (empty if the plug-in can't read it)
+//  10 VALUES   u32 inst  -> JSON [{"id":n,"value":v}] (the controller's current parameter values)
 
 #include "public.sdk/source/common/memorystream.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
@@ -592,6 +593,17 @@ int serve ()
 				double d = v;
 				std::memcpy (out.data (), &d, sizeof (double));
 				ok (out);
+				break;
+			}
+			case 10: // VALUES
+			{
+				auto* inst = find (id);
+				if (!inst)
+				{
+					fail ("no such instance");
+					break;
+				}
+				ok (valuesJson (*inst));
 				break;
 			}
 			default:
