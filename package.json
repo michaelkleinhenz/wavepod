@@ -10,7 +10,7 @@
   "repository": "github:michaelkleinhenz/wavepod",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "start": "npm run build && electron .",
+    "start": "npm run build && node scripts/start.mjs",
     "dev": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

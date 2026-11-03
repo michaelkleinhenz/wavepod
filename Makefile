@@ -19,10 +19,10 @@ dev: node_modules ## Rebuild on change (run `make start` in another terminal)
 	$(NPM) run dev
 
 start: build ## Build and launch the app
-	npx electron .
+	node scripts/start.mjs
 
 demo: build ## Launch with virtual devices only (no audio hardware needed)
-	WAVEPOD_SIMULATED=1 npx electron .
+	WAVEPOD_SIMULATED=1 node scripts/start.mjs
 
 typecheck: node_modules ## Type-check all sources
 	$(NPM) run typecheck
