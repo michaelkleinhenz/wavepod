@@ -1,5 +1,4 @@
-// Small DSP helpers: (de)interleaving, peak metering, waveform peaks, fades.
-import type { WaveformPeaks } from '../shared/types';
+// Small DSP helpers: (de)interleaving, peak metering, fades. Waveform peaks live in peaks.ts.
 
 /** Splits an interleaved Float32 buffer into planar channels. */
 export function deinterleave(interleaved: Float32Array, channels: number, out?: Float32Array[]): Float32Array[] {
@@ -69,75 +68,6 @@ export function peakOf(data: Float32Array, frames = data.length): number {
 export function toDb(linear: number, floor = -90): number {
   if (linear <= 0) return floor;
   return Math.max(floor, 20 * Math.log10(linear));
-}
-
-/**
- * Accumulates min/max pairs for waveform display. Feed planar chunks; stereo
- * input is summed to mono.
- */
-export class PeakBuilder {
-  private data: number[] = [];
-  private min = Infinity;
-  private max = -Infinity;
-  private count = 0;
-  private total = 0;
-
-  constructor(readonly samplesPerPeak = 256) {}
-
-  push(channels: Float32Array[], frames = channels[0]?.length ?? 0): void {
-    const n = channels.length;
-    for (let i = 0; i < frames; i++) {
-      let v = 0;
-      for (let c = 0; c < n; c++) v += channels[c][i];
-      if (n > 1) v /= n;
-      if (v < this.min) this.min = v;
-      if (v > this.max) this.max = v;
-      if (++this.count === this.samplesPerPeak) this.emit();
-    }
-    this.total += frames;
-  }
-
-  /** Number of finished min/max buckets so far. */
-  get bucketCount(): number {
-    return this.data.length / 2;
-  }
-
-  /** Finished buckets from `fromBucket` on, as interleaved min,max values (-127..127). */
-  bucketsFrom(fromBucket: number): number[] {
-    return this.data.slice(fromBucket * 2);
-  }
-
-  private emit(): void {
-    this.data.push(quantize(this.min), quantize(this.max));
-    this.min = Infinity;
-    this.max = -Infinity;
-    this.count = 0;
-  }
-
-  finish(): WaveformPeaks {
-    if (this.count > 0) this.emit();
-    return { samplesPerPeak: this.samplesPerPeak, data: Int8Array.from(this.data), length: this.total };
-  }
-}
-
-function quantize(v: number): number {
-  return Math.max(-127, Math.min(127, Math.round(v * 127))) || 0; // no -0
-}
-
-/** Serialises peaks: 4 bytes samplesPerPeak, 8 bytes length (float64), then int8 data. */
-export function encodePeaks(p: WaveformPeaks): Buffer {
-  const head = Buffer.alloc(12);
-  head.writeUInt32LE(p.samplesPerPeak, 0);
-  head.writeDoubleLE(p.length, 4);
-  return Buffer.concat([head, Buffer.from(p.data.buffer, p.data.byteOffset, p.data.byteLength)]);
-}
-
-export function decodePeaks(buf: Buffer): WaveformPeaks {
-  const samplesPerPeak = buf.readUInt32LE(0);
-  const length = buf.readDoubleLE(4);
-  const data = new Int8Array(buf.length - 12);
-  data.set(new Int8Array(buf.buffer, buf.byteOffset + 12, buf.length - 12));
-  return { samplesPerPeak, length, data };
 }
 
 /** Gain of a clip's fade envelope at clip-relative position `pos`. */

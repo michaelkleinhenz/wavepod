@@ -1,6 +1,6 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
-import type { Clip, EnvelopePoint, Track } from '../shared/types';
-import { formatTimestamp } from '../shared/time';
+import type { Clip, EnvelopePoint, PeakLevel, Track } from '../shared/types';
+import { formatTick } from '../shared/time';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
 import { fadeGain, toDb } from '../core/dsp';
@@ -13,6 +13,7 @@ import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, set
 import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
+import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
 const TRACK_H = 84;
 const RULER_H = 26;
@@ -34,6 +35,13 @@ const RANGE_EDGE_PX = 5;
 const SNAP_KEY = 'wavepod.timeline.snap';
 /** While a clip is dragged to another track, horizontal movement below this keeps its position (sync). */
 const TRACK_MOVE_LOCK_PX = 20;
+/** Deepest zoom: one sample this many pixels wide. */
+const MAX_PX_PER_SAMPLE = 64;
+/** Ruler tick steps in seconds, from a few samples up to an hour. */
+const TICK_STEPS = [
+  0.00001, 0.00002, 0.00005, 0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
+  3600,
+];
 /** Volume-line toggle shown at the top left of a hovered clip (offsets from the clip's top left). */
 const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
 
@@ -105,6 +113,11 @@ export class TimelineView {
     return Math.max(0, Math.round((x / this.pxPerSec + this.viewStart) * this.sr));
   }
 
+  /** Clamps an x coordinate to just outside the canvas: at deep zoom, clips span millions of pixels. */
+  private cx(x: number): number {
+    return Math.max(-16, Math.min(this.width + 16, x));
+  }
+
   private totalSeconds(): number {
     const end = Math.max(projectLength(store.project), store.transport.position);
     return Math.max(60, end / this.sr + 30);
@@ -112,7 +125,7 @@ export class TimelineView {
 
   zoom(factor: number, anchorX = this.width / 2): void {
     const anchorSec = anchorX / this.pxPerSec + this.viewStart;
-    this.pxPerSec = Math.min(4000, Math.max(0.5, this.pxPerSec * factor));
+    this.pxPerSec = Math.min(this.sr * MAX_PX_PER_SAMPLE, Math.max(0.5, this.pxPerSec * factor));
     this.viewStart = Math.max(0, anchorSec - anchorX / this.pxPerSec);
     this.draw();
   }
@@ -393,8 +406,8 @@ export class TimelineView {
     const total = this.totalSeconds();
     const visible = this.width / this.pxPerSec;
     const maxStart = Math.max(0, total - visible);
-    this.hscroll.max = String(Math.round(maxStart * 100));
-    this.hscroll.value = String(Math.round(Math.min(this.viewStart, maxStart) * 100));
+    this.hscroll.max = String(Math.round(maxStart * 1000));
+    this.hscroll.value = String(Math.round(Math.min(this.viewStart, maxStart) * 1000));
   }
 
   private ctx(c: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -406,8 +419,16 @@ export class TimelineView {
 
   private tickStep(): number {
     const minPx = 80;
-    for (const s of [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]) if (s * this.pxPerSec >= minPx) return s;
+    for (const s of TICK_STEPS) if (s * this.pxPerSec >= minPx) return s;
     return 7200;
+  }
+
+  /** Tick positions (seconds) across the visible range, computed by index so tiny steps don't drift. */
+  private ticks(step: number): number[] {
+    const out: number[] = [];
+    const end = this.viewStart + this.width / this.pxPerSec;
+    for (let i = Math.floor(this.viewStart / step); i * step < end; i++) out.push(i * step);
+    return out;
   }
 
   private drawRuler(): void {
@@ -418,10 +439,9 @@ export class TimelineView {
     ctx.fillStyle = '#23262e';
     ctx.fillRect(0, RULER_H, w, MARKER_H);
     const step = this.tickStep();
-    const first = Math.floor(this.viewStart / step) * step;
     ctx.font = '11px system-ui, sans-serif';
     ctx.textBaseline = 'top';
-    for (let s = first; s < this.viewStart + w / this.pxPerSec; s += step) {
+    for (const s of this.ticks(step)) {
       const x = Math.round((s - this.viewStart) * this.pxPerSec) + 0.5;
       ctx.strokeStyle = '#4a4f5c';
       ctx.beginPath();
@@ -429,7 +449,7 @@ export class TimelineView {
       ctx.lineTo(x, RULER_H);
       ctx.stroke();
       ctx.fillStyle = '#9aa1b0';
-      ctx.fillText(formatTimestamp(s, step < 1).replace(/^00:/, ''), x + 3, 4);
+      ctx.fillText(formatTick(s, step).replace(/^00:/, ''), x + 3, 4);
       for (let k = 1; k < 4; k++) {
         const xx = Math.round(x + (k * step * this.pxPerSec) / 4) + 0.5;
         ctx.beginPath();
@@ -442,10 +462,10 @@ export class TimelineView {
     const r = this.liveRange();
     if (r) {
       ctx.fillStyle = 'rgba(120,160,255,0.35)';
-      ctx.fillRect(this.xOf(r[0]), 0, this.xOf(r[1]) - this.xOf(r[0]), RULER_H);
+      ctx.fillRect(this.cx(this.xOf(r[0])), 0, this.cx(this.xOf(r[1])) - this.cx(this.xOf(r[0])), RULER_H);
       // edge handles, draggable
       ctx.fillStyle = '#9ab8ff';
-      for (const f of r) ctx.fillRect(Math.round(this.xOf(f)) - 1, 0, 2, RULER_H);
+      for (const f of r) ctx.fillRect(Math.round(this.cx(this.xOf(f))) - 1, 0, 2, RULER_H);
     }
     // markers
     ctx.textBaseline = 'middle';
@@ -532,7 +552,7 @@ export class TimelineView {
     // grid
     const step = this.tickStep();
     ctx.strokeStyle = '#20232a';
-    for (let s = Math.floor(this.viewStart / step) * step; s < this.viewStart + w / this.pxPerSec; s += step) {
+    for (const s of this.ticks(step)) {
       const x = Math.round((s - this.viewStart) * this.pxPerSec) + 0.5;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -551,9 +571,9 @@ export class TimelineView {
         const x0 = this.xOf(store.recordStart);
         const x1 = this.xOf(store.transport.position);
         ctx.fillStyle = 'rgba(229,57,53,0.25)';
-        ctx.fillRect(x0, y + 4, Math.max(1, x1 - x0), TRACK_H - 9);
+        ctx.fillRect(this.cx(x0), y + 4, Math.max(1, this.cx(x1) - this.cx(x0)), TRACK_H - 9);
         const live = store.livePeaks.get(t.id);
-        if (live) this.drawLiveWaveform(ctx, live, x0, Math.min(x1, w), y + 4, TRACK_H - 9);
+        if (live) this.drawLiveWaveform(ctx, live.levelsSnapshot(false), x0, Math.min(x1, w), y + 4, TRACK_H - 9);
         ctx.fillStyle = '#ffcdd2';
         ctx.font = '11px system-ui, sans-serif';
         ctx.textBaseline = 'top';
@@ -573,8 +593,8 @@ export class TimelineView {
     const range = this.liveRange();
     if (range) {
       const ids = this.liveRangeTracks();
-      const x0 = this.xOf(range[0]);
-      const x1 = this.xOf(range[1]);
+      const x0 = this.cx(this.xOf(range[0]));
+      const x1 = this.cx(this.xOf(range[1]));
       tracks.forEach((t, i) => {
         if (ids && !ids.includes(t.id)) return;
         ctx.fillStyle = 'rgba(120,160,255,0.22)';
@@ -640,7 +660,7 @@ export class TimelineView {
     if (x1 <= x0) return;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(g.x, ti * TRACK_H, g.w, TRACK_H);
+    ctx.rect(this.cx(g.x), ti * TRACK_H, this.cx(g.x + g.w) - this.cx(g.x), TRACK_H);
     ctx.clip();
     ctx.strokeStyle = '#69f0ae';
     ctx.lineWidth = 1.5;
@@ -752,8 +772,8 @@ export class TimelineView {
     const sel = store.selection.muteRegion;
     const lane = y + TRACK_H - 1 - MUTE_LANE_H;
     for (const r of this.displayedRegions(t)) {
-      const x0 = this.xOf(r.a);
-      const x1 = this.xOf(r.b);
+      const x0 = this.cx(this.xOf(r.a));
+      const x1 = this.cx(this.xOf(r.b));
       if (x1 < 0 || x0 > this.width) continue;
       const w = Math.max(2, x1 - x0);
       ctx.fillStyle = 'rgba(10,11,14,0.6)';
@@ -796,8 +816,8 @@ export class TimelineView {
     ];
     for (const j of live) {
       const slot = store.project.soundboard.find((s) => s.id === j.slotId);
-      const x0 = this.xOf(j.start);
-      const x1 = this.xOf(j.start + j.length);
+      const x0 = this.cx(this.xOf(j.start));
+      const x1 = this.cx(this.xOf(j.start + j.length));
       ctx.fillStyle = 'rgba(229,57,53,0.25)';
       ctx.fillRect(x0, y + 4, Math.max(1, x1 - x0), TRACK_H - 9);
       ctx.fillStyle = slot?.color ?? '#90a4ae';
@@ -810,28 +830,22 @@ export class TimelineView {
   }
 
   /** Draws the waveform of a take that is still being recorded, starting at x0. */
-  private drawLiveWaveform(ctx: CanvasRenderingContext2D, live: { samplesPerPeak: number; data: number[] }, x0: number, x1: number, y: number, hgt: number): void {
-    const mid = y + hgt / 2 + 6;
-    const amp = (hgt - 16) / 2 / 127;
-    const framesPerPx = this.sr / this.pxPerSec;
-    const nPeaks = Math.floor(live.data.length / 2);
-    ctx.fillStyle = '#ef9a9a';
-    for (let x = Math.max(0, Math.floor(x0)); x < x1; x++) {
-      const rel = (x - x0) * framesPerPx;
-      const a = Math.floor(rel / live.samplesPerPeak);
-      if (a >= nPeaks) break;
-      const b = Math.min(nPeaks, Math.ceil((rel + framesPerPx) / live.samplesPerPeak));
-      let mn = 0;
-      let mx = 0;
-      for (let k = a; k < Math.max(a + 1, b); k++) {
-        const lo = live.data[k * 2] ?? 0;
-        const hi = live.data[k * 2 + 1] ?? 0;
-        if (lo < mn) mn = lo;
-        if (hi > mx) mx = hi;
-      }
-      const top = mid - mx * amp;
-      ctx.fillRect(x, top, 1, Math.max(1, mid - mn * amp - top));
-    }
+  private drawLiveWaveform(ctx: CanvasRenderingContext2D, levels: PeakLevel[], x0: number, x1: number, y: number, hgt: number): void {
+    const base = levels[0];
+    if (!base) return;
+    drawLevelsWaveform(ctx, levels, {
+      x0: Math.max(0, Math.floor(x0)),
+      x1: Math.ceil(x1),
+      originX: x0,
+      srcStart: 0,
+      srcEnd: (base.data.length / 2) * base.samplesPerPeak,
+      framesPerPx: this.sr / this.pxPerSec,
+      mid: y + hgt / 2 + 6,
+      half: (hgt - 16) / 2,
+      top: y + 4,
+      bottom: y + hgt - 1,
+      color: '#ef9a9a',
+    });
   }
 
   private clipGeometry(trackIndex: number, clip: Clip): { x: number; y: number; w: number; start: number; length: number; offset: number; trackIndex: number } {
@@ -856,72 +870,47 @@ export class TimelineView {
     const selected = store.selection.clipIds.has(clip.id);
     const muted = track.mute || (store.project.tracks.some((t) => t.solo) && !track.solo);
     ctx.globalAlpha = muted ? 0.4 : 1;
+    // visible part of the clip: at deep zoom a clip can be millions of pixels wide
+    const vx0 = this.cx(g.x);
+    const vx1 = this.cx(g.x + g.w);
     ctx.fillStyle = selected ? '#2f3b52' : '#262b36';
-    ctx.fillRect(g.x, g.y, g.w, hgt);
+    ctx.fillRect(vx0, g.y, vx1 - vx0, hgt);
     ctx.fillStyle = track.color;
-    ctx.fillRect(g.x, g.y, g.w, 3);
+    ctx.fillRect(vx0, g.y, vx1 - vx0, 3);
     // waveform
     const peaks = store.requestPeaks(clip.file);
-    if (peaks && peaks.data.length) {
-      const mid = g.y + hgt / 2 + 6;
-      const amp = (hgt - 16) / 2 / 127;
-      ctx.fillStyle = track.color;
-      const x0 = Math.max(0, Math.floor(g.x));
-      const x1 = Math.min(this.width, Math.ceil(g.x + g.w));
-      const framesPerPx = this.sr / this.pxPerSec;
-      const nPeaks = peaks.data.length / 2;
-      for (let x = x0; x < x1; x++) {
-        const relA = (x - g.x) * framesPerPx;
-        const relB = relA + framesPerPx;
-        const a = Math.floor((g.offset + Math.max(0, relA)) / peaks.samplesPerPeak);
-        const b = Math.min(nPeaks, Math.ceil((g.offset + Math.min(g.length, relB)) / peaks.samplesPerPeak));
-        let mn = 0;
-        let mx = 0;
-        for (let k = a; k < Math.max(a + 1, b) && k < nPeaks; k++) {
-          const lo = peaks.data[k * 2];
-          const hi = peaks.data[k * 2 + 1];
-          if (lo < mn) mn = lo;
-          if (hi > mx) mx = hi;
-        }
-        // the waveform shows the clip as it sounds: fades and volume line applied
-        const env = fadeEnvelope(clip, relA) * envelopeAmpAt(clip.envelope, g.offset + Math.max(0, relA));
-        const top = Math.max(g.y + 4, mid - mx * amp * env);
-        const bot = Math.min(g.y + hgt - 1, mid - mn * amp * env);
-        ctx.fillRect(x, top, 1, Math.max(1, bot - top));
-      }
+    if (peaks && peaks.levels.length) {
+      // the waveform shows the clip as it sounds: fades and volume line applied
+      const env = clip.envelope?.length ? clip.envelope : undefined;
+      const fades = clip.fadeIn > 0 || clip.fadeOut > 0;
+      drawFileWaveform(ctx, store.waves, clip.file, peaks, {
+        x0: Math.max(0, Math.floor(g.x)),
+        x1: Math.min(this.width, Math.ceil(g.x + g.w)),
+        originX: g.x,
+        srcStart: g.offset,
+        srcEnd: g.offset + g.length,
+        framesPerPx: this.sr / this.pxPerSec,
+        mid: g.y + hgt / 2 + 6,
+        half: (hgt - 16) / 2,
+        top: g.y + 4,
+        bottom: g.y + hgt - 1,
+        color: track.color,
+        gain:
+          env || fades
+            ? (src) => (fades ? fadeEnvelope(clip, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
+            : undefined,
+      });
     } else if (!peaks) {
       ctx.fillStyle = '#3a404d';
-      ctx.fillRect(g.x, g.y + hgt / 2, g.w, 1);
+      ctx.fillRect(vx0, g.y + hgt / 2, vx1 - vx0, 1);
     }
     // fades: the faded-out part is shaded, the curve drawn on top
     const fi = (clip.fadeIn / this.sr) * this.pxPerSec;
     const fo = (clip.fadeOut / this.sr) * this.pxPerSec;
     ctx.fillStyle = 'rgba(8,9,12,0.45)';
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    if (fi > 0) {
-      ctx.beginPath();
-      ctx.moveTo(g.x, g.y + 3);
-      ctx.lineTo(g.x + fi, g.y + 3);
-      ctx.lineTo(g.x, g.y + hgt);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(g.x, g.y + hgt);
-      ctx.lineTo(g.x + fi, g.y + 3);
-      ctx.stroke();
-    }
-    if (fo > 0) {
-      ctx.beginPath();
-      ctx.moveTo(g.x + g.w - fo, g.y + 3);
-      ctx.lineTo(g.x + g.w, g.y + 3);
-      ctx.lineTo(g.x + g.w, g.y + hgt);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(g.x + g.w - fo, g.y + 3);
-      ctx.lineTo(g.x + g.w, g.y + hgt);
-      ctx.stroke();
-    }
+    if (fi > 0) this.drawFade(ctx, g.x, g.y + hgt, g.x + fi, g.y + 3);
+    if (fo > 0) this.drawFade(ctx, g.x + g.w - fo, g.y + 3, g.x + g.w, g.y + hgt);
     // fade handles at the top corners of the hovered or dragged clip
     const fadeDrag = this.drag?.kind === 'fade' && this.drag.clipId === clip.id ? this.drag : null;
     if ((this.hoverClipId === clip.id || fadeDrag) && g.w > 2 * FADE_HANDLE_PX) {
@@ -952,7 +941,7 @@ export class TimelineView {
       ctx.fillText('Vol', bx + 6, by + VOL_BTN.h / 2 + 0.5);
     }
     ctx.strokeStyle = selected ? '#9ab8ff' : '#11131a';
-    ctx.strokeRect(g.x + 0.5, g.y + 0.5, g.w - 1, hgt - 1);
+    ctx.strokeRect(vx0 + 0.5, g.y + 0.5, vx1 - vx0 - 1, hgt - 1);
     if (g.w > 60) {
       ctx.fillStyle = '#c9cdd6';
       ctx.font = '10px system-ui, sans-serif';
@@ -962,6 +951,29 @@ export class TimelineView {
       ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
     }
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * A fade's gain line from (xa, ya) to (xb, yb), with the part above it shaded, cut to the
+   * visible columns so it stays exact however far the view is zoomed in.
+   */
+  private drawFade(ctx: CanvasRenderingContext2D, xa: number, ya: number, xb: number, yb: number): void {
+    const top = Math.min(ya, yb);
+    const l = this.cx(xa);
+    const r = this.cx(xb);
+    if (r <= l) return;
+    const yAt = (x: number) => ya + ((yb - ya) * (x - xa)) / (xb - xa);
+    ctx.beginPath();
+    ctx.moveTo(l, top);
+    ctx.lineTo(r, top);
+    ctx.lineTo(r, yAt(r));
+    ctx.lineTo(l, yAt(l));
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(l, yAt(l));
+    ctx.lineTo(r, yAt(r));
+    ctx.stroke();
   }
 
   // ------------------------------------------------------------ interaction
@@ -1030,7 +1042,7 @@ export class TimelineView {
     };
 
     this.hscroll.addEventListener('input', () => {
-      this.viewStart = Number(this.hscroll.value) / 100;
+      this.viewStart = Number(this.hscroll.value) / 1000;
       this.draw();
     });
 

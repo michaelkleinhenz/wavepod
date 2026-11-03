@@ -1,6 +1,8 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
 import type { WavePodApi } from '../shared/api';
 import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
+import { PeakPyramid } from '../core/peaks';
+import { WaveCache } from './waveCache';
 import { History } from '../core/project';
 
 declare global {
@@ -39,9 +41,10 @@ class Store {
   recordStart = 0;
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
   view: View = 'edit';
-  peaks = new Map<string, WaveformPeaks | 'loading' | null>();
-  /** Waveform of the takes being recorded, per track id (min,max pairs). */
-  livePeaks = new Map<string, { samplesPerPeak: number; data: number[] }>();
+  /** Waveform data of media files: coarse peak levels, plus fine levels and samples in tiles. */
+  waves = new WaveCache(api, () => this.notify('peaks'));
+  /** Waveform of the takes being recorded, per track id, at all resolutions. */
+  livePeaks = new Map<string, PeakPyramid>();
   /** Cough buttons currently held: track id -> timeline frame where the mute starts. */
   coughs = new Map<string, number>();
   /** Decayed meter values per input channel for display. */
@@ -74,7 +77,7 @@ class Store {
     if (dir !== undefined && dir !== this.dir) {
       this.dir = dir;
       this.history.clear();
-      this.peaks.clear();
+      this.waves.clear();
       this.selection = { clipIds: new Set(), range: null, markerId: null };
     }
     this.notify('project');
@@ -147,30 +150,19 @@ class Store {
 
   addLivePeaks(updates: LivePeaks[]): void {
     for (const u of updates) {
-      let entry = this.livePeaks.get(u.trackId);
-      if (!entry || entry.samplesPerPeak !== u.samplesPerPeak) {
-        entry = { samplesPerPeak: u.samplesPerPeak, data: [] };
-        this.livePeaks.set(u.trackId, entry);
+      let live = this.livePeaks.get(u.trackId);
+      if (!live || live.base !== u.samplesPerPeak) {
+        live = new PeakPyramid(u.samplesPerPeak);
+        this.livePeaks.set(u.trackId, live);
       }
-      const at = u.from * 2;
-      if (entry.data.length < at) entry.data.length = at;
-      for (let i = 0; i < u.data.length; i++) entry.data[at + i] = u.data[i];
+      // updates arrive in order; pad a gap with silence and skip what is already there
+      while (live.count < u.from) live.push(0, 0);
+      for (let i = (live.count - u.from) * 2; i + 1 < u.data.length; i += 2) live.push(u.data[i], u.data[i + 1]);
     }
   }
 
   requestPeaks(file: string): WaveformPeaks | null {
-    const cached = this.peaks.get(file);
-    if (cached === 'loading') return null;
-    if (cached !== undefined) return cached;
-    this.peaks.set(file, 'loading');
-    api()
-      .getPeaks(file)
-      .then((p) => {
-        this.peaks.set(file, p);
-        this.notify('peaks');
-      })
-      .catch(() => this.peaks.set(file, null));
-    return null;
+    return this.waves.peaks(file);
   }
 
   get sampleRate(): number {

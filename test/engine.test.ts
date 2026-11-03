@@ -87,8 +87,15 @@ describe('AudioEngine with virtual devices', () => {
       data.push(...l.data);
     }
     expect(data.some((v) => v !== 0)).toBe(true);
+    // the finest level is not sent whole but read in tiles
     const saved = engine.getPeaks(takes[0].clip.file)!;
-    expect(Array.from(saved.data.slice(0, data.length))).toEqual(data);
+    expect(saved.tiled).toEqual([live[0].samplesPerPeak]);
+    expect(saved.levels[0].samplesPerPeak).toBe(live[0].samplesPerPeak * 4);
+    const tile = engine.getPeakTile(takes[0].clip.file, live[0].samplesPerPeak, 0)!;
+    expect(Array.from(tile.slice(0, data.length))).toEqual(data);
+    const samples = engine.getSampleTile(takes[0].clip.file, 0)!;
+    expect(samples.length).toBeGreaterThan(0);
+    expect(samples.some((v) => v !== 0)).toBe(true);
     expect(updates.filter((u) => u.state !== 'recording').every((u) => !u.recordingPeaks)).toBe(true);
   });
 

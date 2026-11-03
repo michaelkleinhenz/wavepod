@@ -192,6 +192,8 @@ const handlers: Record<InvokeMethod, Handler> = {
     return shell.openPath(templatesRoot()).then(() => undefined);
   },
   getPeaks: (file: string) => engine.getPeaks(file),
+  getPeakTile: (file: string, samplesPerPeak: number, tile: number) => engine.getPeakTile(file, samplesPerPeak, tile),
+  getSampleTile: (file: string, tile: number) => engine.getSampleTile(file, tile),
   showProjectFolder: () => shell.openPath(current.dir).then(() => undefined),
 
   pickAudioFiles: async () => {
