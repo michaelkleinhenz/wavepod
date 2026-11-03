@@ -67,6 +67,31 @@ describe('AudioEngine with virtual devices', () => {
     expect(engine.position).toBe(4800 + host.clip.length);
   });
 
+  it('streams live waveform peaks of the takes while recording', async () => {
+    engine = new AudioEngine(null);
+    engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480 });
+    const dir = tmpDir();
+    const p = addTrack(createProject('Live', 48000), { name: 'Host', inputChannels: [2], armed: true });
+    engine.setProject(p, dir);
+    const updates: TransportUpdate[] = [];
+    engine.on('transport', (u) => updates.push(u));
+    engine.record();
+    await wait(300);
+    const takes = engine.stop();
+    const live = updates.flatMap((u) => u.recordingPeaks ?? []).filter((l) => l.trackId === p.tracks[0].id);
+    expect(live.length).toBeGreaterThan(1);
+    // chunks are contiguous and together match the saved peaks
+    const data: number[] = [];
+    for (const l of live) {
+      expect(l.from * 2).toBe(data.length);
+      data.push(...l.data);
+    }
+    expect(data.some((v) => v !== 0)).toBe(true);
+    const saved = engine.getPeaks(takes[0].clip.file)!;
+    expect(Array.from(saved.data.slice(0, data.length))).toEqual(data);
+    expect(updates.filter((u) => u.state !== 'recording').every((u) => !u.recordingPeaks)).toBe(true);
+  });
+
   it('refuses to record without armed tracks', () => {
     engine = new AudioEngine(null);
     engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2 });

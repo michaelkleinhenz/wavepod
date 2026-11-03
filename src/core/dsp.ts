@@ -97,6 +97,16 @@ export class PeakBuilder {
     this.total += frames;
   }
 
+  /** Number of finished min/max buckets so far. */
+  get bucketCount(): number {
+    return this.data.length / 2;
+  }
+
+  /** Finished buckets from `fromBucket` on, as interleaved min,max values (-127..127). */
+  bucketsFrom(fromBucket: number): number[] {
+    return this.data.slice(fromBucket * 2);
+  }
+
   private emit(): void {
     this.data.push(quantize(this.min), quantize(this.max));
     this.min = Infinity;
@@ -111,7 +121,7 @@ export class PeakBuilder {
 }
 
 function quantize(v: number): number {
-  return Math.max(-127, Math.min(127, Math.round(v * 127)));
+  return Math.max(-127, Math.min(127, Math.round(v * 127))) || 0; // no -0
 }
 
 /** Serialises peaks: 4 bytes samplesPerPeak, 8 bytes length (float64), then int8 data. */

@@ -409,8 +409,10 @@ export class TimelineView {
       if (recording && t.armed && t.inputChannels.length) {
         const x0 = this.xOf(store.recordStart);
         const x1 = this.xOf(store.transport.position);
-        ctx.fillStyle = 'rgba(229,57,53,0.35)';
+        ctx.fillStyle = 'rgba(229,57,53,0.25)';
         ctx.fillRect(x0, y + 4, Math.max(1, x1 - x0), TRACK_H - 9);
+        const live = store.livePeaks.get(t.id);
+        if (live) this.drawLiveWaveform(ctx, live, x0, Math.min(x1, w), y + 4, TRACK_H - 9);
         ctx.fillStyle = '#ffcdd2';
         ctx.font = '11px system-ui, sans-serif';
         ctx.textBaseline = 'top';
@@ -437,6 +439,31 @@ export class TimelineView {
       ctx.setLineDash([]);
     }
     this.drawPlayhead(ctx, height);
+  }
+
+  /** Draws the waveform of a take that is still being recorded, starting at x0. */
+  private drawLiveWaveform(ctx: CanvasRenderingContext2D, live: { samplesPerPeak: number; data: number[] }, x0: number, x1: number, y: number, hgt: number): void {
+    const mid = y + hgt / 2 + 6;
+    const amp = (hgt - 16) / 2 / 127;
+    const framesPerPx = this.sr / this.pxPerSec;
+    const nPeaks = Math.floor(live.data.length / 2);
+    ctx.fillStyle = '#ef9a9a';
+    for (let x = Math.max(0, Math.floor(x0)); x < x1; x++) {
+      const rel = (x - x0) * framesPerPx;
+      const a = Math.floor(rel / live.samplesPerPeak);
+      if (a >= nPeaks) break;
+      const b = Math.min(nPeaks, Math.ceil((rel + framesPerPx) / live.samplesPerPeak));
+      let mn = 0;
+      let mx = 0;
+      for (let k = a; k < Math.max(a + 1, b); k++) {
+        const lo = live.data[k * 2] ?? 0;
+        const hi = live.data[k * 2 + 1] ?? 0;
+        if (lo < mn) mn = lo;
+        if (hi > mx) mx = hi;
+      }
+      const top = mid - mx * amp;
+      ctx.fillRect(x, top, 1, Math.max(1, mid - mn * amp - top));
+    }
   }
 
   private clipGeometry(trackIndex: number, clip: Clip): { x: number; y: number; w: number; start: number; length: number; offset: number; trackIndex: number } {

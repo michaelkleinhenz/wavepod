@@ -136,7 +136,11 @@ async function main(): Promise<void> {
     const hold = store.meterHold;
     for (let i = 0; i < u.inputPeaks.length; i++) hold[i] = Math.max(u.inputPeaks[i], (hold[i] ?? 0) * METER_DECAY);
     hold.length = u.inputPeaks.length;
-    if (u.state === 'recording' && store.transport.state !== 'recording') store.recordStart = u.position;
+    if (u.state === 'recording' && store.transport.state !== 'recording') {
+      store.recordStart = u.position;
+      store.livePeaks.clear();
+    }
+    if (u.recordingPeaks) store.addLivePeaks(u.recordingPeaks);
     store.transport = u;
     store.notify('transport');
   });

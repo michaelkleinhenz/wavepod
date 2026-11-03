@@ -1,6 +1,6 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
 import type { SoundPodApi } from '../shared/api';
-import type { AudioDevice, DeviceProfile, EngineStatus, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
+import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
 import { History } from '../core/project';
 
 declare global {
@@ -36,6 +36,8 @@ class Store {
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
   view: View = 'edit';
   peaks = new Map<string, WaveformPeaks | 'loading' | null>();
+  /** Waveform of the takes being recorded, per track id (min,max pairs). */
+  livePeaks = new Map<string, { samplesPerPeak: number; data: number[] }>();
   /** Decayed meter values per input channel for display. */
   meterHold: number[] = [];
 
@@ -113,6 +115,19 @@ class Store {
   setView(view: View): void {
     this.view = view;
     this.notify('view');
+  }
+
+  addLivePeaks(updates: LivePeaks[]): void {
+    for (const u of updates) {
+      let entry = this.livePeaks.get(u.trackId);
+      if (!entry || entry.samplesPerPeak !== u.samplesPerPeak) {
+        entry = { samplesPerPeak: u.samplesPerPeak, data: [] };
+        this.livePeaks.set(u.trackId, entry);
+      }
+      const at = u.from * 2;
+      if (entry.data.length < at) entry.data.length = at;
+      for (let i = 0; i < u.data.length; i++) entry.data[at + i] = u.data[i];
+    }
   }
 
   requestPeaks(file: string): WaveformPeaks | null {

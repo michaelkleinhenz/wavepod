@@ -145,6 +145,18 @@ export interface TransportUpdate {
   outputPeaks: number[];
   /** Seconds of recording written so far, if recording. */
   recordedFrames: Frames;
+  /** While recording: new waveform buckets per recording track since the previous update. */
+  recordingPeaks?: LivePeaks[];
+}
+
+/** Incremental waveform of a take that is still being recorded. */
+export interface LivePeaks {
+  trackId: string;
+  samplesPerPeak: number;
+  /** Bucket index of the first min/max pair in `data`, counted from the start of the take. */
+  from: number;
+  /** Interleaved min,max pairs scaled to -127..127. */
+  data: number[];
 }
 
 export interface RecordedTake {

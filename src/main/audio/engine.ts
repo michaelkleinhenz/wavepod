@@ -6,6 +6,7 @@ import type {
   AudioDevice,
   DeviceConfig,
   EngineStatus,
+  LivePeaks,
   Project,
   RecordedTake,
   TransportState,
@@ -31,6 +32,8 @@ interface Recorder {
   peaks: PeakBuilder;
   file: string;
   scratch: Float32Array[];
+  /** Buckets already sent to the renderer as live peaks. */
+  sentBuckets: number;
 }
 
 interface Voice {
@@ -274,6 +277,7 @@ export class AudioEngine extends EventEmitter {
         peaks: new PeakBuilder(PEAK_RESOLUTION),
         file: rel.split(path.sep).join('/'),
         scratch: t.inputChannels.map(() => new Float32Array(0)),
+        sentBuckets: 0,
       };
     });
     this.recordStart = this.playPos;
@@ -457,9 +461,19 @@ export class AudioEngine extends EventEmitter {
       outputPeaks: [...this.outputPeaks],
       recordedFrames: this.recordedFrames,
     };
+    if (this.state === 'recording') update.recordingPeaks = this.takeLivePeaks();
     this.inputPeaks.fill(0);
     this.outputPeaks = [0, 0];
     this.emit('transport', update);
+  }
+
+  private takeLivePeaks(): LivePeaks[] {
+    return this.recorders.map((r) => {
+      const from = r.sentBuckets;
+      const data = r.peaks.bucketsFrom(from);
+      r.sentBuckets = r.peaks.bucketCount;
+      return { trackId: r.trackId, samplesPerPeak: r.peaks.samplesPerPeak, from, data };
+    });
   }
 
   // ------------------------------------------------------------ waveforms
