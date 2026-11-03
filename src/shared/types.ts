@@ -225,6 +225,8 @@ export interface TransportUpdate {
   recordedJingles?: Array<{ slotId: string; start: Frames; length: Frames }>;
   /** While playing: what each active filter did since the previous update, by filter id. */
   fxMeters?: Record<string, FxMeter>;
+  /** While playing: peak (linear) each track played since the previous update, by track id. Meters unarmed tracks. */
+  trackPeaks?: Record<string, number>;
 }
 
 /** Live activity of one filter, for its meters. */

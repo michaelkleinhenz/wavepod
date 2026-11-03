@@ -175,6 +175,12 @@ async function main(): Promise<void> {
     const hold = store.meterHold;
     for (let i = 0; i < u.inputPeaks.length; i++) hold[i] = Math.max(u.inputPeaks[i], (hold[i] ?? 0) * METER_DECAY);
     hold.length = u.inputPeaks.length;
+    const trackHold = store.trackMeterHold;
+    for (const t of store.project?.tracks ?? []) {
+      const v = Math.max(u.trackPeaks?.[t.id] ?? 0, (trackHold.get(t.id) ?? 0) * METER_DECAY);
+      if (v > 1e-4) trackHold.set(t.id, v);
+      else trackHold.delete(t.id);
+    }
     if (u.state === 'recording' && store.transport.state !== 'recording') {
       store.recordStart = u.position;
       store.livePeaks.clear();

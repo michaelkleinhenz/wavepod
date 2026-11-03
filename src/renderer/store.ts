@@ -49,6 +49,8 @@ class Store {
   coughs = new Map<string, number>();
   /** Decayed meter values per input channel for display. */
   meterHold: number[] = [];
+  /** Decayed playback level per track id, for the meters of unarmed tracks. */
+  trackMeterHold = new Map<string, number>();
 
   private listeners = new Set<Listener>();
   private pending = new Set<ChangeKind>();
