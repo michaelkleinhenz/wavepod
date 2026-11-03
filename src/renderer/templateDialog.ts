@@ -1,7 +1,7 @@
 // Templates: start a new episode from a saved setup, or save the current setup as a template.
 import type { TemplateSummary } from '../core/template';
 import { templateFolderName } from '../core/template';
-import { clear, errorMessage, h, toast } from './dom';
+import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
 
 function plural(n: number, word: string): string {
@@ -60,6 +60,10 @@ export class TemplateDialog {
   }
 
   private render(): void {
+    keepScroll(this.overlay, () => this.build());
+  }
+
+  private build(): void {
     clear(this.overlay);
     this.overlay.append(this.mode === 'new' ? this.renderNew() : this.renderSave());
   }

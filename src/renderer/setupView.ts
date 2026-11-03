@@ -3,7 +3,7 @@ import type { BitDepth, DeviceConfig, DeviceProfile, OutputSource } from '../sha
 import { addTrack } from '../core/project';
 import { suggestTracks } from '../core/deviceProfiles';
 import { LevelMeter } from './levelMeter';
-import { append, clear, errorMessage, h, toast } from './dom';
+import { append, clear, errorMessage, h, keepScroll, toast } from './dom';
 import { renderMcpCard } from './mcpCard';
 import { renderMidiCard } from './midiCard';
 import { renderOscCard } from './oscCard';
@@ -45,10 +45,8 @@ export class SetupView {
   }
 
   render(): void {
-    // Re-rendering empties the view for a moment, which would jump it back to the top (e.g. on Learn).
-    const top = this.el.scrollTop;
-    this.build();
-    this.el.scrollTop = top;
+    // Rebuilding empties the view, which would jump it back to the top (e.g. on Learn).
+    keepScroll(this.el, () => this.build());
   }
 
   private build(): void {
