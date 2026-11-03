@@ -32,6 +32,14 @@ const ENV_HIT_PX = 5;
 /** Edges snap to targets closer than this. */
 const SNAP_PX = 8;
 const RANGE_EDGE_PX = 5;
+/** The playhead can be grabbed this close to its line (handle on the ruler: a bit wider). */
+const PLAYHEAD_GRAB_PX = 4;
+const PLAYHEAD_HANDLE_PX = 6;
+/** Size of the playhead handle at the top of the ruler. */
+const PLAYHEAD_HANDLE_W = 6;
+const PLAYHEAD_HANDLE_H = 7;
+/** While playing, scrubbing the playhead seeks the engine at most this often. */
+const SCRUB_SEEK_MS = 40;
 // Falls back to the key used while the app was called SoundPod.
 const SNAP_KEY = 'wavepod.timeline.snap';
 /** While a clip is dragged to another track, horizontal movement below this keeps its position (sync). */
@@ -55,7 +63,8 @@ type Drag =
   | { kind: 'envPoint'; clipId: string; ti: number; index: number; orig: EnvelopePoint[]; moved: boolean }
   | { kind: 'envLine'; clipId: string; ti: number; indices: number[]; orig: EnvelopePoint[]; startY: number; moved: boolean }
   | { kind: 'marker'; markerId: string; startX: number; origPos: number; dx: number; moved: boolean }
-  | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean };
+  | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean }
+  | { kind: 'playhead'; startX: number; grabOffset: number; current: number; moved: boolean; lastSeek: number };
 
 export class TimelineView {
   readonly el = h('div', { class: 'view edit-view' });
@@ -501,7 +510,7 @@ export class TimelineView {
       ctx.font = `${selected ? 'bold ' : ''}11px system-ui, sans-serif`;
       ctx.fillText(m.title, x + 11, RULER_H + MARKER_H / 2);
     }
-    this.drawPlayhead(ctx, RULER_H + MARKER_H);
+    this.drawPlayhead(ctx, RULER_H + MARKER_H, true);
     this.drawSnapLine(ctx, RULER_H + MARKER_H);
   }
 
@@ -545,15 +554,63 @@ export class TimelineView {
     return tracks.slice(lo, hi + 1).map((t) => t.id);
   }
 
-  private drawPlayhead(ctx: CanvasRenderingContext2D, height: number): void {
-    const x = Math.round(this.xOf(store.transport.position)) + 0.5;
-    if (x < 0 || x > this.width) return;
-    ctx.strokeStyle = store.transport.state === 'recording' ? '#ff5252' : '#ffffff';
-    ctx.lineWidth = 1;
+  /** Playhead position as shown: where it is being dragged to, otherwise the transport's. */
+  private shownPlayhead(): number {
+    return this.drag?.kind === 'playhead' ? this.drag.current : store.transport.position;
+  }
+
+  private drawPlayhead(ctx: CanvasRenderingContext2D, height: number, handle = false): void {
+    const x = Math.round(this.xOf(this.shownPlayhead())) + 0.5;
+    if (x < -PLAYHEAD_HANDLE_W || x > this.width + PLAYHEAD_HANDLE_W) return;
+    const color = store.transport.state === 'recording' ? '#ff5252' : '#ffffff';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = this.drag?.kind === 'playhead' ? 2 : 1;
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
     ctx.stroke();
+    ctx.lineWidth = 1;
+    if (handle) {
+      // grab handle at the top of the ruler
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x - PLAYHEAD_HANDLE_W, 0);
+      ctx.lineTo(x + PLAYHEAD_HANDLE_W, 0);
+      ctx.lineTo(x, PLAYHEAD_HANDLE_H);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /** Whether x is on the playhead line (not while recording: the engine ignores seeks then). */
+  private hitPlayhead(x: number, tolerance: number): boolean {
+    if (store.transport.state === 'recording') return false;
+    return Math.abs(x - this.xOf(store.transport.position)) <= tolerance;
+  }
+
+  /** The handle at the top of the ruler is easier to grab than the line. */
+  private playheadTolerance(rulerY: number): number {
+    return rulerY < PLAYHEAD_HANDLE_H + 3 ? PLAYHEAD_HANDLE_PX : PLAYHEAD_GRAB_PX;
+  }
+
+  private startPlayheadDrag(e: MouseEvent, x: number): void {
+    const pos = store.transport.position;
+    this.drag = { kind: 'playhead', startX: e.clientX, grabOffset: x - this.xOf(pos), current: pos, moved: false, lastSeek: 0 };
+    document.body.classList.add('scrubbing');
+    this.draw();
+  }
+
+  /** Playhead under a mouse at x (keeping the grab offset), snapped like dragged edges. */
+  private playheadFrameAt(x: number, d: Extract<Drag, { kind: 'playhead' }>, e: MouseEvent): number {
+    const f = Math.max(0, this.frameOf(x - d.grabOffset));
+    this.snapLine = null;
+    if (!this.snapping || e.altKey) return f;
+    // like clip snapping, but the playhead can't snap to itself; selection edges are useful targets too
+    const targets = snapTargets(store.project, new Set(), store.selection.range ?? []);
+    const res = snap([f], targets, Math.round((SNAP_PX / this.pxPerSec) * this.sr));
+    if (!res) return f;
+    this.snapLine = res.target;
+    return Math.max(0, res.target);
   }
 
   private drawTracks(): void {
@@ -1083,6 +1140,7 @@ export class TimelineView {
       e.stopImmediatePropagation();
       this.drag = null;
       this.snapLine = null;
+      document.body.classList.remove('scrubbing');
       this.pan = { startX: e.clientX, startY: e.clientY, viewStart: this.viewStart, scrollTop: this.scroll.scrollTop };
       document.body.classList.add('panning');
     };
@@ -1107,6 +1165,11 @@ export class TimelineView {
 
     this.rulerCanvas.addEventListener('mousedown', (e) => {
       const { x, y } = local(e, this.rulerCanvas);
+      // grab the playhead (its handle or line) to drag it, also while playing
+      if (e.button === 0 && this.hitPlayhead(x, this.playheadTolerance(y)) && !(y >= RULER_H && this.hitMarker(x))) {
+        this.startPlayheadDrag(e, x);
+        return;
+      }
       if (y >= RULER_H) {
         const m = this.hitMarker(x);
         if (m) {
@@ -1128,8 +1191,11 @@ export class TimelineView {
     this.rulerCanvas.addEventListener('mousemove', (e) => {
       if (this.drag || this.pan) return;
       const { x, y } = local(e, this.rulerCanvas);
-      const onEdge = !(y >= RULER_H && this.hitMarker(x)) && this.hitRangeEdge(x, null);
-      this.rulerCanvas.style.cursor = onEdge ? 'ew-resize' : '';
+      const onMarker = y >= RULER_H && this.hitMarker(x);
+      const onPlayhead = !onMarker && this.hitPlayhead(x, this.playheadTolerance(y));
+      const onEdge = !onMarker && this.hitRangeEdge(x, null);
+      this.rulerCanvas.style.cursor = onPlayhead || onEdge ? 'ew-resize' : '';
+      this.rulerCanvas.title = onPlayhead ? 'Drag to move the playhead' : '';
     });
     this.rulerCanvas.addEventListener('dblclick', (e) => {
       const { x, y } = local(e, this.rulerCanvas);
@@ -1172,6 +1238,11 @@ export class TimelineView {
       if (hit?.fade) {
         this.canvas.style.cursor = 'ew-resize';
         this.canvas.title = hit.fade === 'in' ? 'Drag to fade in' : 'Drag to fade out';
+        return;
+      }
+      if (!hit?.edge && this.hitPlayhead(x, PLAYHEAD_GRAB_PX)) {
+        this.canvas.style.cursor = 'ew-resize';
+        this.canvas.title = 'Drag to move the playhead';
         return;
       }
       if (this.hitVolButton(x, y)) {
@@ -1248,7 +1319,12 @@ export class TimelineView {
         this.drag = { kind: 'fade', clipId: hit.clip.id, side: hit.fade, startX: e.clientX, orig: { ...hit.clip }, moved: false };
         return;
       }
-      // 3. the clip's volume-line toggle
+      // 3. the playhead line (clip edges right at the playhead, e.g. after a split, stay trimmable)
+      if (!hit?.edge && e.button === 0 && this.hitPlayhead(x, PLAYHEAD_GRAB_PX)) {
+        this.startPlayheadDrag(e, x);
+        return;
+      }
+      // 3b. the clip's volume-line toggle
       const volClip = this.hitVolButton(x, y);
       if (volClip) {
         store.edit((p) => updateClip(p, volClip.id, { showEnvelope: !volClip.showEnvelope }));
@@ -1381,6 +1457,17 @@ export class TimelineView {
         d.current = this.frameOf(pos.x);
         d.moved = true;
         this.draw();
+      } else if (d.kind === 'playhead') {
+        if (!d.moved && Math.abs(e.clientX - d.startX) < 2) return;
+        d.moved = true;
+        d.current = this.playheadFrameAt(pos.x, d, e);
+        // scrub: while playing, keep the engine following the mouse (throttled; the last move seeks on release)
+        const now = performance.now();
+        if (store.transport.state === 'playing' && now - d.lastSeek >= SCRUB_SEEK_MS) {
+          d.lastSeek = now;
+          seek(d.current);
+        }
+        this.draw();
       }
     });
 
@@ -1388,7 +1475,9 @@ export class TimelineView {
       const d = this.drag;
       this.drag = null;
       this.snapLine = null;
+      document.body.classList.remove('scrubbing');
       if (!d) return;
+      if (d.kind === 'playhead' && d.moved) seek(d.current);
       if (d.kind === 'clip' && d.moved) {
         store.edit((p) => {
           let q = p;
