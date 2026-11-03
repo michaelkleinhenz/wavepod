@@ -28,7 +28,7 @@ export interface MidiEvent {
   pressed: boolean;
 }
 
-/** Decodes the channel messages SoundPod can map. Everything else (clock, sysex, pitch bend…) returns null. */
+/** Decodes the channel messages WavePod can map. Everything else (clock, sysex, pitch bend…) returns null. */
 export function parseMidiMessage(data: ArrayLike<number>): MidiEvent | null {
   if (!data || data.length < 2) return null;
   const status = data[0];

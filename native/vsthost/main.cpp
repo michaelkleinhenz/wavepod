@@ -1,10 +1,10 @@
-// soundpod-vsthost — hosts VST3 audio effects in a process of their own, so a misbehaving
-// plug-in cannot take SoundPod (or a running recording) down with it. Plug-in editors are
-// never opened; SoundPod builds its own sliders from the parameter list.
+// wavepod-vsthost — hosts VST3 audio effects in a process of their own, so a misbehaving
+// plug-in cannot take WavePod (or a running recording) down with it. Plug-in editors are
+// never opened; WavePod builds its own sliders from the parameter list.
 //
 // Usage:
-//   soundpod-vsthost --scan-module <path.vst3>   prints a JSON array of the module's audio effects
-//   soundpod-vsthost --serve                     binary request/reply loop on stdin/stdout
+//   wavepod-vsthost --scan-module <path.vst3>   prints a JSON array of the module's audio effects
+//   wavepod-vsthost --serve                     binary request/reply loop on stdin/stdout
 //
 // Protocol (--serve), all integers little endian:
 //   request: u32 length, then `length` bytes: u8 op, op-specific payload
@@ -409,7 +409,7 @@ int serve ()
 	{
 		uint32_t len = 0;
 		if (!readExact (&len, 4))
-			return 0; // SoundPod closed the pipe
+			return 0; // WavePod closed the pipe
 		msg.resize (len);
 		if (len && !readExact (msg.data (), len))
 			return 0;
@@ -623,7 +623,7 @@ int run (const std::vector<std::string>& args)
 		instances.clear ();
 		return rc;
 	}
-	std::cerr << "usage: soundpod-vsthost --serve | --scan-module <path.vst3>" << std::endl;
+	std::cerr << "usage: wavepod-vsthost --serve | --scan-module <path.vst3>" << std::endl;
 	return 2;
 }
 

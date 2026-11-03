@@ -88,7 +88,7 @@ export class SetupView {
       s.backendError ? h('p', { class: 'warning' }, `${s.backendError}. Using virtual devices.`) : null,
       s.error ? h('p', { class: 'error-text' }, s.error) : null,
       !store.devices.length
-        ? h('p', { class: 'warning' }, 'No audio devices found for this audio system. Try another one, or choose "Virtual devices" to try SoundPod without hardware.')
+        ? h('p', { class: 'warning' }, 'No audio devices found for this audio system. Try another one, or choose "Virtual devices" to try WavePod without hardware.')
         : null,
       h(
         'div',

@@ -1,4 +1,4 @@
-// The filters SoundPod offers, their parameters and defaults. Used by the UI and the processors.
+// The filters WavePod offers, their parameters and defaults. Used by the UI and the processors.
 import type { Fx, FxType } from '../../shared/types';
 import { uid } from '../../shared/time';
 
@@ -100,7 +100,7 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     type: 'dynamics',
     name: 'Ultraschall Dynamics',
     description:
-      'Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. Adds 100 ms of latency, which SoundPod compensates.',
+      'Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. Adds 100 ms of latency, which WavePod compensates.',
     params: [
       { key: 'target', label: 'Target', min: -25, max: -14, step: 0.1, default: -20, unit: 'LUFS' },
       db('noiseFloor', 'Noise floor', -40, -70, -20, 0.1),

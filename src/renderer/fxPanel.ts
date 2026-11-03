@@ -12,7 +12,7 @@ const VST_OPTION = '__vst3';
 const VST_COLLAPSED_PARAMS = 12;
 const VST_SKIP_FLAGS = VST_PARAM_HIDDEN | VST_PARAM_READONLY | VST_PARAM_BYPASS;
 
-/** Parameters SoundPod shows as sliders. Plug-in editors are never opened. */
+/** Parameters WavePod shows as sliders. Plug-in editors are never opened. */
 export function visibleVstParams<T extends VstParamInfo>(params: T[]): T[] {
   return params.filter((p) => (p.flags & VST_SKIP_FLAGS) === 0);
 }

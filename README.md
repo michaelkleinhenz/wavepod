@@ -1,4 +1,4 @@
-# SoundPod
+# WavePod
 
 A simple multitrack DAW for podcasting, built with Electron. It covers what
 [Ultraschall](https://ultraschall.fm/) is loved for, without needing Reaper:
@@ -70,14 +70,14 @@ make help      # all targets
 Requires Node.js 22. VST3 support needs the helper in `native/vsthost`:
 `make vsthost` builds it (CMake 3.25+ and a C++17 compiler; it downloads
 Steinberg's VST3 SDK), and `make dist*` builds it automatically. Without it
-SoundPod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`
+WavePod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`
 (present on normal desktop installs).
 
 ### Using a RØDECaster Pro II
 
 1. Enable multitrack mode in the RØDECaster's USB audio settings
    and connect it over USB.
-2. In SoundPod's **Setup** view pick the RØDECaster as input device. The
+2. In WavePod's **Setup** view pick the RØDECaster as input device. The
    16 channels appear with their names and live meters.
 3. Click **Create speaker tracks**. Each mic and remote source gets its own
    armed track.
@@ -124,11 +124,17 @@ the app settings, not in the episode, so they work in every project.
 
 ## Projects
 
-Each episode is a folder (default `~/Documents/SoundPod/Episode …`) with
+Each episode is a folder (default `~/Documents/WavePod/Episode …`) with
 `project.json` and a `media/` folder of WAV files. Changes are saved
 automatically.
 
-Templates live in `~/Documents/SoundPod/Templates/<name>/`: a
+WavePod used to be called SoundPod. If you still have a
+`~/Documents/SoundPod` folder and no `~/Documents/WavePod`, WavePod keeps
+using the old folder, episodes and templates included. Settings (devices,
+MIDI mappings, last episode) are copied from the old SoundPod app-data
+folder on the first start.
+
+Templates live in `~/Documents/WavePod/Templates/<name>/`: a
 `template.json` plus a `sounds/` folder with copies of the jingles, so a
 template keeps working when the original jingle files move. A new episode
 gets its own copies in its `sounds/` folder. Copy a template folder to share

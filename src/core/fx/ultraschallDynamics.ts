@@ -12,7 +12,7 @@
 //     * below NF-NG everything is muted (gate).
 //   The curve is smoothed with a 3-tap FIR, exactly like the original.
 // - The audio is delayed by 100 ms before the gain is applied (lookahead), so the gain reacts
-//   before a loud word arrives. SoundPod compensates this latency on the timeline.
+//   before a loud word arrives. WavePod compensates this latency on the timeline.
 // - A peak limiter with a ceiling of -0.1 dBFS follows.
 import { GainMeter } from './meter';
 import type { FxProcessor } from './processors';

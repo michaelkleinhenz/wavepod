@@ -93,7 +93,7 @@ export interface VstParamInfo {
   flags: number;
 }
 
-/** VST3 ParameterInfo flags SoundPod cares about. */
+/** VST3 ParameterInfo flags WavePod cares about. */
 export const VST_PARAM_READONLY = 1 << 1;
 export const VST_PARAM_HIDDEN = 1 << 4;
 export const VST_PARAM_BYPASS = 1 << 16;

@@ -13,12 +13,13 @@ export const LOUDNESS_PRESETS = [
 ];
 const CEILINGS = [-0.1, -1, -2, -3];
 
-const TARGET_KEY = 'soundpod.loudnessTarget';
+// Falls back to the key used while the app was called SoundPod.
+const TARGET_KEY = 'wavepod.loudnessTarget';
 
 /** The target clips are normalised to (remembered per machine). Ultraschall's default is −16 LUFS / −1 dBTP. */
 export function loudnessTarget(): LoudnessTarget {
   try {
-    const v = JSON.parse(localStorage.getItem(TARGET_KEY) ?? 'null') as LoudnessTarget | null;
+    const v = JSON.parse(localStorage.getItem(TARGET_KEY) ?? localStorage.getItem('soundpod.loudnessTarget') ?? 'null') as LoudnessTarget | null;
     if (v && Number.isFinite(v.lufs) && Number.isFinite(v.ceiling)) return v;
   } catch {
     // storage unavailable or garbled; use the default

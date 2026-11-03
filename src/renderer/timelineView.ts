@@ -29,7 +29,8 @@ const ENV_HIT_PX = 5;
 /** Edges snap to targets closer than this. */
 const SNAP_PX = 8;
 const RANGE_EDGE_PX = 5;
-const SNAP_KEY = 'soundpod.timeline.snap';
+// Falls back to the key used while the app was called SoundPod.
+const SNAP_KEY = 'wavepod.timeline.snap';
 /** While a clip is dragged to another track, horizontal movement below this keeps its position (sync). */
 const TRACK_MOVE_LOCK_PX = 20;
 /** Volume-line toggle shown at the top left of a hovered clip (offsets from the clip's top left). */
@@ -1392,7 +1393,7 @@ function formatDb(db: number): string {
 
 function readSnapSetting(): boolean {
   try {
-    return localStorage.getItem(SNAP_KEY) !== '0';
+    return (localStorage.getItem(SNAP_KEY) ?? localStorage.getItem('soundpod.timeline.snap')) !== '0';
   } catch {
     return true;
   }

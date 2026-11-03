@@ -1,11 +1,11 @@
-# SoundPod – Ultraschall feature parity plan
+# WavePod – Ultraschall feature parity plan
 
-This document compares SoundPod with [Ultraschall](https://ultraschall.fm/)
-5.1.1 and lays out, in priority order, which missing features SoundPod should
-add. The guiding rule from [PLAN.md](PLAN.md) still holds: SoundPod is a
+This document compares WavePod with [Ultraschall](https://ultraschall.fm/)
+5.1.1 and lays out, in priority order, which missing features WavePod should
+add. The guiding rule from [PLAN.md](PLAN.md) still holds: WavePod is a
 standalone app with no Reaper, no screensets, no action lists and no plugin
 installation. Where Ultraschall solves something with Reaper's generic
-machinery (routing matrix, docks, layouts, action editor), SoundPod should
+machinery (routing matrix, docks, layouts, action editor), WavePod should
 solve the podcaster's actual problem with one focused feature, or leave it to
 the audio interface.
 
@@ -13,9 +13,9 @@ Sources: the [Ultraschall feature page](https://ultraschall.fm/) and the
 [Ultraschall manual](https://ultraschall.github.io/ultraschall-manual/)
 (GUI overview, recording, editing, export, navigation & settings chapters).
 
-## 1. What SoundPod already covers
+## 1. What WavePod already covers
 
-| Ultraschall | SoundPod today |
+| Ultraschall | WavePod today |
 | --- | --- |
 | Multitrack recording, one track per speaker | ✅ Native multichannel via RtAudio, device profiles, "Create speaker tracks" |
 | Automatic track colours | ✅ |
@@ -37,12 +37,12 @@ Sources: the [Ultraschall feature page](https://ultraschall.fm/) and the
 
 ## 2. Gaps
 
-Grouped by the Ultraschall workflow phases. "Plan" says what SoundPod does
+Grouped by the Ultraschall workflow phases. "Plan" says what WavePod does
 about it; the priority is explained in section 3.
 
 ### Recording
 
-| Ultraschall feature | Gap in SoundPod | Plan |
+| Ultraschall feature | Gap in WavePod | Plan |
 | --- | --- | --- |
 | Soundboard is a track: jingles end up in the recording; fade-in, loop, stop, per-clip volume, remaining time | Jingles play out of the output device only and are not part of the project, so they are missing from the edit and the export (unless the interface happens to loop them back) | **P1** Record each trigger as a clip on a "Soundboard" track; per slot fade-in, loop, remaining-time display |
 | Throat-clearing buttons (Räuspertasten): per-speaker mute while recording; audio is still recorded and the mute can be edited later | Missing | **P1** Hold-to-mute "cough" key per track that writes mute regions (non-destructive), editable on the timeline |
@@ -52,14 +52,14 @@ about it; the priority is explained in section 3.
 | Jump back to the recording position (`Y`) | Missing | **P1** Shortcut |
 | Named chapter marker while recording (`Shift+M`) | Missing (title only editable afterwards) | **P1** Quick title prompt |
 | Soundboard ducking / ducking track (jingles duck under speech) | Missing | **P2** Sidechain duck the Soundboard track from speaker tracks, live and in export |
-| Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | Missing | **P3** MIDI (Web MIDI) and OSC (UDP in main) mapping to SoundPod actions |
+| Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | Missing | **P3** MIDI (Web MIDI) and OSC (UDP in main) mapping to WavePod actions |
 | FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
 | StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | Out of scope per PLAN.md | **P3, small**: simple output routing presets (which tracks and the soundboard go to which output pair). Mix-minus stays in the hardware (RØDECaster USB Chat) |
 | StudioLink OnAir live streaming | Missing | Not planned |
 
 ### Editing / production
 
-| Ultraschall feature | Gap in SoundPod | Plan |
+| Ultraschall feature | Gap in WavePod | Plan |
 | --- | --- | --- |
 | Check cuts: jump to next/previous clip edge or edit marker and play with preroll | Only seek and Home/End | **P1** Jump to next/previous edit marker, chapter marker and clip edge; "preview cut" with configurable preroll |
 | Zoom to selection and back (`Shift+Z`), zoom whole project | Zoom in/out only | **P1** |
@@ -79,7 +79,7 @@ about it; the priority is explained in section 3.
 
 ### Export
 
-| Ultraschall feature | Gap in SoundPod | Plan |
+| Ultraschall feature | Gap in WavePod | Plan |
 | --- | --- | --- |
 | Episode artwork (JPG/PNG) in the MP3, recently used images | Missing | **P1** ID3 `APIC` cover, picker in the metadata form |
 | Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | URL only, no images, no validation | **P1** Chapter image (embedded as `APIC` inside `CHAP`, written to PSC/JSON as file reference), validation warnings in the Chapters view and export dialog, offer a chapter at 0:00 |
@@ -92,13 +92,13 @@ about it; the priority is explained in section 3.
 ### Deliberately not adopted
 
 These exist in Ultraschall because it lives inside Reaper or because of a
-specific era of remote recording; they would make SoundPod more complex
+specific era of remote recording; they would make WavePod more complex
 without a matching benefit:
 
 - Reaper screensets, workflow layouts, the multifunction dock and the
-  "Podcast" menu (SoundPod's four fixed views are the equivalent).
+  "Podcast" menu (WavePod's four fixed views are the equivalent).
 - The generic routing matrix, magic routing and "prepare all tracks for
-  editing" (SoundPod has no routing state that needs resetting).
+  editing" (WavePod has no routing state that needs resetting).
 - StudioLink, StudioLink OnAir streaming, Skype/Mumble N‑1 and the HUB
   sound driver (remote guests come in through the interface or OS tools).
 - Wiimote support, Reaper action editor, embedding `.rpp` projects.
@@ -132,7 +132,7 @@ Ultraschall's plug-in windows do. Ultraschall Dynamics also shows the
 current operating point moving on its curve.
 
 **VST3 plug-ins ✅** can go into the same stacks ("VST3 plug-in…" in the add
-menu, with search and rescan). SoundPod never opens a plug-in's own editor;
+menu, with search and rescan). WavePod never opens a plug-in's own editor;
 it builds sliders from the plug-in's parameter list (switches for on/off
 parameters, the plug-in's own value text, "Show all" for long lists) and
 stores the plug-in state in the project. Plug-ins run in a separate helper
@@ -140,7 +140,7 @@ process (`native/vsthost`, built on Steinberg's VST3 SDK), so a crashing or
 hanging plug-in is bypassed with a message instead of stopping playback or a
 recording. Scanning also happens in throwaway processes, one per module.
 Plug-in folders: the platform's standard VST3 folders plus
-`SOUNDPOD_VST3_PATH`.
+`WAVEPOD_VST3_PATH`.
 
 ### Phase 5 — Recording essentials (P1)
 
