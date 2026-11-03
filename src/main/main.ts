@@ -18,6 +18,7 @@ import { createProjectDir, isProjectDir, loadProject, saveProject } from './proj
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
+import { exportDialogDir } from './exportPaths';
 import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
 import { McpController, normalizeMcpSettings } from './mcp/controller';
 
@@ -63,6 +64,15 @@ function saveSettings(): void {
 
 function projectsRoot(): string {
   return process.env.WAVEPOD_PROJECT_ROOT ?? resolveProjectsRoot(app.getPath('documents'), 'WavePod');
+}
+
+/** app.getPath throws for some names on systems without that folder configured. */
+function safeGetPath(name: 'music' | 'documents'): string {
+  try {
+    return app.getPath(name);
+  } catch {
+    return '';
+  }
 }
 
 function templatesRoot(): string {
@@ -273,7 +283,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   chooseExportBase: async (defaultName: string) => {
     const res = await dialog.showSaveDialog(win!, {
       title: 'Export episode',
-      defaultPath: path.join(current.dir, 'export', defaultName),
+      defaultPath: path.join(exportDialogDir(current.dir, [safeGetPath('music'), app.getPath('home')]), defaultName),
       buttonLabel: 'Export',
     });
     if (res.canceled || !res.filePath) return null;
