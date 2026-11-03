@@ -25,7 +25,7 @@ export interface Selection {
 }
 
 type Listener = (what: Set<ChangeKind>) => void;
-export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices';
+export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices' | 'midi';
 
 class Store {
   project!: Project;

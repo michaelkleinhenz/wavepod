@@ -330,3 +330,38 @@ export interface LoudnessReport {
   name: string;
   stats: LoudnessStats;
 }
+
+// ---------------------------------------------------------------- MIDI controller
+
+/** Functions a MIDI button can trigger. */
+export type MidiAction =
+  | 'record-start'
+  | 'record-stop'
+  | 'record-toggle'
+  | 'play-toggle'
+  | 'stop'
+  | 'chapter-marker'
+  | 'edit-marker';
+
+export type MidiMessageType = 'note' | 'cc' | 'program';
+
+/** What a binding listens for. `device` is the input's name; empty means any device. */
+export interface MidiTrigger {
+  type: MidiMessageType;
+  /** 0–15 (shown as 1–16). */
+  channel: number;
+  /** Note number, controller number or program number, 0–127. */
+  number: number;
+  device: string;
+}
+
+export interface MidiBinding {
+  action: MidiAction;
+  trigger: MidiTrigger;
+}
+
+/** Stored in the app settings (not per project): the same controller drives every episode. */
+export interface MidiSettings {
+  enabled: boolean;
+  bindings: MidiBinding[];
+}
