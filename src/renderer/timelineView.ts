@@ -5,7 +5,8 @@ import type { Clip, EnvelopePoint, PeakLevel, Track } from '../shared/types';
 import { formatTick } from '../shared/time';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
-import { fadeGain } from '../core/dsp';
+import { FADE_SHAPES, fadeCurve, type FadeShape } from '../core/dsp';
+import { fadesAt, trackFades, type EffectiveFades } from '../core/crossfade';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
@@ -929,7 +930,8 @@ export class TimelineView {
     if (peaks && peaks.levels.length) {
       // the waveform shows the clip as it sounds: fades and volume line applied
       const env = clip.envelope?.length ? clip.envelope : undefined;
-      const fades = clip.fadeIn > 0 || clip.fadeOut > 0;
+      const fx = fadesOf(track, clip);
+      const fades = fx.fadeIn > 0 || fx.fadeOut > 0;
       drawFileWaveform(ctx, store.waves, clip.file, peaks, {
         x0: Math.max(0, Math.floor(g.x)),
         x1: Math.min(this.width, Math.ceil(g.x + g.w)),
@@ -944,7 +946,7 @@ export class TimelineView {
         color: track.color,
         gain:
           env || fades
-            ? (src) => (fades ? fadeEnvelope(clip, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
+            ? (src) => (fades ? fadesAt(fx, clip.length, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
             : undefined,
       });
     } else if (!peaks) {
@@ -952,12 +954,17 @@ export class TimelineView {
       ctx.fillRect(vx0, g.y + hgt / 2, vx1 - vx0, 1);
     }
     // fades: the faded-out part is shaded, the curve drawn on top
+    const eff = fadesOf(track, clip);
     const fi = (clip.fadeIn / this.sr) * this.pxPerSec;
     const fo = (clip.fadeOut / this.sr) * this.pxPerSec;
+    const efi = (eff.fadeIn / this.sr) * this.pxPerSec;
+    const efo = (eff.fadeOut / this.sr) * this.pxPerSec;
     ctx.fillStyle = 'rgba(8,9,12,0.45)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    if (fi > 0) this.drawFade(ctx, g.x, g.y + hgt, g.x + fi, g.y + 3);
-    if (fo > 0) this.drawFade(ctx, g.x + g.w - fo, g.y + 3, g.x + g.w, g.y + hgt);
+    // crossfades over an overlap are drawn in the accent colour
+    ctx.strokeStyle = eff.autoIn ? 'rgba(255,202,40,0.9)' : 'rgba(255,255,255,0.7)';
+    if (efi > 0) this.drawFade(ctx, g.x, g.x + efi, g.y + 3, g.y + hgt, 'in', eff.inShape);
+    ctx.strokeStyle = eff.autoOut ? 'rgba(255,202,40,0.9)' : 'rgba(255,255,255,0.7)';
+    if (efo > 0) this.drawFade(ctx, g.x + g.w - efo, g.x + g.w, g.y + 3, g.y + hgt, 'out', eff.outShape);
     // fade handles at the top corners of the hovered or dragged clip
     const fadeDrag = this.drag?.kind === 'fade' && this.drag.clipId === clip.id ? this.drag : null;
     if ((this.hoverClipId === clip.id || fadeDrag) && g.w > 2 * FADE_HANDLE_PX) {
@@ -1004,22 +1011,29 @@ export class TimelineView {
    * A fade's gain line from (xa, ya) to (xb, yb), with the part above it shaded, cut to the
    * visible columns so it stays exact however far the view is zoomed in.
    */
-  private drawFade(ctx: CanvasRenderingContext2D, xa: number, ya: number, xb: number, yb: number): void {
-    const top = Math.min(ya, yb);
+  private drawFade(ctx: CanvasRenderingContext2D, xa: number, xb: number, top: number, bottom: number, dir: 'in' | 'out', shape: FadeShape): void {
     const l = this.cx(xa);
     const r = this.cx(xb);
     if (r <= l) return;
-    const yAt = (x: number) => ya + ((yb - ya) * (x - xa)) / (xb - xa);
+    const yAt = (x: number) => {
+      const t = (x - xa) / (xb - xa);
+      return bottom - (bottom - top) * fadeCurve(dir === 'in' ? t : 1 - t, shape);
+    };
+    // the curve, sampled every few pixels of what is visible
+    const steps = Math.max(1, Math.min(64, Math.ceil((r - l) / 3)));
+    const pts: Array<[number, number]> = [];
+    for (let k = 0; k <= steps; k++) {
+      const x = l + ((r - l) * k) / steps;
+      pts.push([x, yAt(x)]);
+    }
     ctx.beginPath();
     ctx.moveTo(l, top);
     ctx.lineTo(r, top);
-    ctx.lineTo(r, yAt(r));
-    ctx.lineTo(l, yAt(l));
+    for (let k = pts.length - 1; k >= 0; k--) ctx.lineTo(pts[k][0], pts[k][1]);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(l, yAt(l));
-    ctx.lineTo(r, yAt(r));
+    pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.stroke();
   }
 
@@ -1238,8 +1252,17 @@ export class TimelineView {
         store.edit((p) => setClipEnvelope(p, env.clip.id, (env.clip.envelope ?? []).filter((_, i) => i !== index)));
         return;
       }
+      const fadeHit = this.hitClip(x, y);
+      if (fadeHit?.fade) {
+        const key = fadeHit.fade === 'in' ? 'fadeInShape' : 'fadeOutShape';
+        const cur = fadeHit.clip[key] ?? 'linear';
+        const next = FADE_SHAPES[(FADE_SHAPES.findIndex((f) => f.id === cur) + 1) % FADE_SHAPES.length];
+        store.edit((p) => updateClip(p, fadeHit.clip.id, { [key]: next.id }));
+        toast(`Fade ${fadeHit.fade}: ${next.label}`);
+        return;
+      }
       const area = env ?? this.inEnvelopeArea(x, y);
-      if (area && !this.hitClip(x, y)?.fade) {
+      if (area && !fadeHit?.fade) {
         const pts = area.clip.envelope ?? [];
         const src = toSource(area.clip, this.frameOf(x));
         store.edit((p) => setClipEnvelope(p, area.clip.id, addPoint(pts, src, envelopeDbAt(pts, src)).points));
@@ -1505,6 +1528,14 @@ function readSnapSetting(): boolean {
   }
 }
 
-function fadeEnvelope(clip: Clip, rel: number): number {
-  return fadeGain(rel, clip.length, clip.fadeIn, clip.fadeOut);
+/** Effective fades per track object (tracks are replaced on every edit, so this never goes stale). */
+const fadeCache = new WeakMap<Track, Map<string, EffectiveFades>>();
+
+function fadesOf(track: Track, clip: Clip): EffectiveFades {
+  let m = fadeCache.get(track);
+  if (!m) {
+    m = trackFades(track);
+    fadeCache.set(track, m);
+  }
+  return m.get(clip.id) ?? trackFades({ ...track, clips: [clip] }).get(clip.id)!;
 }

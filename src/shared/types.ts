@@ -1,5 +1,7 @@
 // Types shared by main, preload, renderer and core.
 
+export type FadeShape = 'linear' | 'equalPower' | 'sCurve';
+
 /** Positions and lengths are integer sample frames at the project sample rate. */
 export type Frames = number;
 
@@ -16,6 +18,9 @@ export interface Clip {
   gain: number;
   fadeIn: Frames;
   fadeOut: Frames;
+  /** Curve of the fades (linear when not set). */
+  fadeInShape?: FadeShape;
+  fadeOutShape?: FadeShape;
   /** Volume line; point positions are frames in the source file (so trims and splits keep them in place). */
   envelope?: EnvelopePoint[];
   /** Volume line is drawn and editable on the clip. */

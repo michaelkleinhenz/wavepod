@@ -1,8 +1,9 @@
 // Renders the project timeline into a stereo bus, block by block, from disk.
 import * as path from 'node:path';
-import type { Clip, Fx, FxMeter, Project, Track } from '../shared/types';
+import type { Fx, FxMeter, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
-import { fadeGain, panGains } from './dsp';
+import { panGains } from './dsp';
+import { fadesAt, trackFades } from './crossfade';
 import { WavReader } from './wav';
 import { MUTE_RAMP_SECONDS, muteGainAt, regionsOverlap } from './muteRegions';
 import { FxChain } from './fx/chain';
@@ -231,6 +232,7 @@ export class Mixer {
     const ramp = Math.round(MUTE_RAMP_SECONDS * this.project.sampleRate);
     // only the mute regions touching this block, so the per-sample lookup stays short
     const muted = regionsOverlap(track, position, end) ? track.muteRegions!.filter(([a, b]) => a < end && b > position) : null;
+    const fades = trackFades(track);
     for (const clip of track.clips) {
       const reader = this.readers.get(clip.file);
       if (!reader) continue;
@@ -248,6 +250,7 @@ export class Mixer {
       }
       const src = reader.read(clip.offset + (from - cStart), n, this.scratch);
       const g = dbToGain(clip.gain);
+      const fade = fades.get(clip.id)!;
       const outOffset = from - position;
       // the clip's volume line, evaluated once per block in source frames
       let env: Float32Array | null = null;
@@ -257,7 +260,7 @@ export class Mixer {
         fillEnvelope(clip.envelope!, clip.offset + (from - cStart), n, env);
       }
       for (let i = 0; i < n; i++) {
-        let gain = g * clipEnvelope(clip, from - cStart + i);
+        let gain = g * fadesAt(fade, clip.length, from - cStart + i);
         if (muted) gain *= muteGainAt(muted, from + i, ramp);
         if (env) gain *= env[i];
         const l = src[0][i];
@@ -269,7 +272,3 @@ export class Mixer {
   }
 }
 
-function clipEnvelope(clip: Clip, rel: number): number {
-  if (clip.fadeIn === 0 && clip.fadeOut === 0) return 1;
-  return fadeGain(rel, clip.length, clip.fadeIn, clip.fadeOut);
-}

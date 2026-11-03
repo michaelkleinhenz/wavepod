@@ -66,7 +66,7 @@ about it; the priority is explained in section 3.
 | Zoom to selection and back (`Shift+Z`), zoom whole project | ✅ `Shift+Z` zooms to the selected range or clips and back; "Zoom to fit" shows the whole episode | Done |
 | Copy/cut/paste of clips and ranges; ripple cut on `Ctrl+X` | Delete and ripple delete only, no clipboard | **P2** Clipboard for clips and time ranges (paste at playhead, ripple insert) |
 | Ripple editing modes when moving clips (off / per track / all tracks) | Moving a clip never shifts others | **P2** Modifier-drag: move clip plus everything after it on the track or on all tracks, markers follow in all-tracks mode |
-| Automatic crossfade when clips overlap, fade curve shapes | Fades are linear and per clip, overlaps just sum | **P2** Auto crossfade on overlap; linear / equal-power / S-curve |
+| Automatic crossfade when clips overlap, fade curve shapes | ✅ Overlapping clips on a track crossfade with equal-power curves (drawn in yellow); double-click a fade handle to switch linear / equal power / S-curve | Done |
 | Variable playback speed with constant pitch for listening through | Missing | **P2** 1×–2× playback speed (WSOLA time-stretch in the playback path only; export is always 1×) |
 | Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. VST3 plug-ins in the same stack (generated sliders, no plug-in editors). Noise reduction and reverb later |
 | Normalise selected clips (`Alt+Shift+N`) | ✅ Done | **P2, done** Clip loudness normalisation via clip gain (`Alt+Shift+N`), to the target chosen in the loudness analysis |
@@ -187,7 +187,7 @@ came up during testing).
 8. **Clipboard and ripple moves (P2).** Copy/cut/paste for clips and time
    ranges across all tracks, `Ctrl+X` = ripple cut. Modifier-drag to move a
    clip with everything after it (track or all tracks, markers follow).
-9. **Crossfades (P2).** Overlapping clips on a track crossfade automatically;
+9. ✅ **Crossfades (P2).** Overlapping clips on a track crossfade automatically;
    fade shape per fade. *Files:* `core/mixer.ts`, `core/dsp.ts`, timeline.
 10. **Playback speed (P2).** 1×, 1.25×, 1.5×, 2× in the transport, pitch kept
     with WSOLA in `core/dsp.ts`; recording and export ignore it.
