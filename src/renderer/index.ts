@@ -74,7 +74,6 @@ async function main(): Promise<void> {
   const playBtn = h('button', { class: 'transport play', title: 'Play / Stop (Space)', onclick: () => void togglePlay() }, '▶');
   const stopBtn = h('button', { class: 'transport', title: 'Stop', onclick: () => void stop() }, '■');
   const homeBtn = h('button', { class: 'transport', title: 'To start (Home)', onclick: () => seek(0) }, '⏮');
-  const chapterBtn = h('button', { class: 'transport chapter', title: 'Chapter marker (M)', onclick: () => dropMarker('chapter') }, '⚑');
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
@@ -84,7 +83,7 @@ async function main(): Promise<void> {
     null,
     h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
-    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl),
+    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, timeEl),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
     masterFxBtn,
     h('div', { class: 'spacer' }),
