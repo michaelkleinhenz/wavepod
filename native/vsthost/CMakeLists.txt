@@ -52,6 +52,8 @@ endif()
 
 add_executable(soundpod-vsthost ${sources})
 target_compile_features(soundpod-vsthost PRIVATE cxx_std_17)
+# the SDK libraries use the static MSVC runtime (SMTG_USE_STATIC_CRT), so the helper must too
+set_target_properties(soundpod-vsthost PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # same place for single- and multi-config generators, so packaging finds it (native/vsthost/bin)
 set_target_properties(soundpod-vsthost PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
 foreach(cfg Debug Release RelWithDebInfo MinSizeRel)
