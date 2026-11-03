@@ -121,6 +121,15 @@ async function main(): Promise<void> {
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
   const masterFxBtn = h('button', { class: 'fx-btn', title: 'Filters on the master bus', onclick: () => fxPanel.toggle(MASTER) }, 'Master FX');
+  const preShowBtn = h(
+    'button',
+    {
+      class: 'fx-btn preshow-btn',
+      title: 'Pre-show: only the soundboard is heard (waiting music before the show); the episode playback is silent. Click again for Show.',
+      onclick: () => void api().setPreShow(!store.status?.preShow),
+    },
+    'Pre-show',
+  );
   const header = h(
     'header',
     null,
@@ -129,6 +138,7 @@ async function main(): Promise<void> {
     h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl, speedSel),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
     masterFxBtn,
+    preShowBtn,
     h('div', { class: 'spacer' }),
     projectName,
     h('button', { class: 'primary', title: 'Export (Ctrl+E)', onclick: () => exportDialog.open() }, 'Export…'),
@@ -214,6 +224,8 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------------------- engine events
   api().onTransport((u) => {
+    // updates can arrive before the episode has loaded at startup
+    if (!store.project) return;
     const hold = store.meterHold;
     for (let i = 0; i < u.inputPeaks.length; i++) hold[i] = Math.max(u.inputPeaks[i], (hold[i] ?? 0) * METER_DECAY);
     hold.length = u.inputPeaks.length;
@@ -237,7 +249,10 @@ async function main(): Promise<void> {
   });
   api().onStatus((s) => {
     store.status = s;
-    store.notify('status');
+    if (store.project) store.notify('status');
+  });
+  store.subscribe((kinds) => {
+    if (kinds.has('status')) preShowBtn.classList.toggle('on', !!store.status?.preShow);
   });
   api().onRecordingFinished(({ takes, project, preparedForEditing }) => {
     store.history.push(store.project);

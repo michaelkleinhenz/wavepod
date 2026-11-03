@@ -410,3 +410,4 @@ kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var
 .osc-map { border-collapse: collapse; margin: 8px 0; font-size: 12px; }
 .osc-map th { text-align: left; color: var(--muted); font-weight: 600; padding: 2px 16px 4px 0; }
 .osc-map td { padding: 2px 16px 2px 0; }
+.preshow-btn.on { background: #6a4c93; border-color: #9575cd; color: #fff; }

@@ -256,6 +256,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   seek: (pos: number) => engine.seek(pos),
   setPlaybackSpeed: (speed: number) => engine.setPlaybackSpeed(speed),
+  setPreShow: (on: boolean) => engine.setPreShow(on),
 
   currentProject: () => current,
   newProject: () => {

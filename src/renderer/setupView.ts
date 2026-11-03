@@ -1,5 +1,5 @@
 // Setup: audio host API, devices, sample rate, routing, channel meters and track creation.
-import type { BitDepth, DeviceConfig, DeviceProfile } from '../shared/types';
+import type { BitDepth, DeviceConfig, DeviceProfile, OutputSource } from '../shared/types';
 import { addTrack } from '../core/project';
 import { suggestTracks } from '../core/deviceProfiles';
 import { LevelMeter } from './levelMeter';
@@ -111,6 +111,27 @@ export class SetupView {
           outputs.length ? undefined : 'No output devices',
         ),
         select('Playback channels', cfg.outputFirstChannel, pairs, (v) => this.apply({ outputFirstChannel: Number(v) })),
+        pairs.length > 1
+          ? select(
+              'Second output pair',
+              cfg.output2FirstChannel ?? null,
+              pairs.filter((p) => p.value !== cfg.outputFirstChannel),
+              (v) => this.apply({ output2FirstChannel: v === '' ? null : Number(v) }),
+              'None',
+            )
+          : null,
+        pairs.length > 1 && cfg.output2FirstChannel !== null && cfg.output2FirstChannel !== undefined
+          ? select<OutputSource>(
+              'Second pair carries',
+              cfg.output2Source ?? 'master',
+              [
+                { value: 'master', label: 'Everything (like the main pair)' },
+                { value: 'soundboard', label: 'Soundboard only' },
+                { value: 'episode', label: 'Episode playback without live jingles' },
+              ],
+              (v) => this.apply({ output2Source: v as OutputSource }),
+            )
+          : null,
         select(
           'Sample rate',
           cfg.sampleRate,

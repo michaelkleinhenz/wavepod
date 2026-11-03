@@ -98,6 +98,8 @@ export interface WavePodApi {
   seek(position: number): Promise<void>;
   /** Playback speed, 1 to 2, pitch kept (recording and export always run at 1x). */
   setPlaybackSpeed(speed: number): Promise<void>;
+  /** Output preset: Pre-show (only the soundboard is heard) or Show. */
+  setPreShow(on: boolean): Promise<void>;
 
   // project
   currentProject(): Promise<OpenedProject>;
@@ -205,6 +207,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'record',
   'seek',
   'setPlaybackSpeed',
+  'setPreShow',
   'currentProject',
   'newProject',
   'openProject',

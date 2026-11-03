@@ -114,6 +114,10 @@ export class AudioEngine extends EventEmitter {
   private inputPeaks: number[] = [];
   private outputPeaks = [0, 0];
   private mixBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  /** Live jingles, kept apart from the timeline so outputs can carry either. */
+  private sbBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  /** Pre-show preset: outputs carry only the soundboard. */
+  private preShow = false;
   private outBuf = new Float32Array(0);
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
@@ -168,6 +172,7 @@ export class AudioEngine extends EventEmitter {
       inputChannelCount: this.input?.channels ?? 0,
       outputChannelCount: this.output?.channels ?? 0,
       error: this.error,
+      preShow: this.preShow,
     };
   }
 
@@ -217,6 +222,10 @@ export class AudioEngine extends EventEmitter {
     if (outDev) {
       try {
         if (this.config.outputFirstChannel + 2 > outDev.outputChannels) this.config.outputFirstChannel = 0;
+        const second = this.config.output2FirstChannel;
+        if (second !== null && second !== undefined && (second + 2 > outDev.outputChannels || second === this.config.outputFirstChannel)) {
+          this.config.output2FirstChannel = null;
+        }
         this.output = this.backend().openOutput({
           deviceId: outDev.id,
           channels: outDev.outputChannels,
@@ -282,6 +291,13 @@ export class AudioEngine extends EventEmitter {
   }
 
   /** 1 (normal) up to 2; playback only. */
+  /** Output preset "Pre-show" (only jingles are heard) or "Show" (everything). Doesn't interrupt the transport. */
+  setPreShow(on: boolean): void {
+    if (this.preShow === on) return;
+    this.preShow = on;
+    this.emit('status', this.status());
+  }
+
   setMarkerPing(on: boolean): void {
     this.markerPing = on;
     if (!on) this.pings = [];
@@ -510,22 +526,37 @@ export class AudioEngine extends EventEmitter {
   private onOutput(frames: number): Float32Array {
     const nch = this.output?.channels ?? 2;
     if (this.mixBuf[0].length < frames) this.mixBuf = [new Float32Array(frames), new Float32Array(frames)];
+    if (this.sbBuf[0].length < frames) this.sbBuf = [new Float32Array(frames), new Float32Array(frames)];
     if (this.outBuf.length !== frames * nch) this.outBuf = new Float32Array(frames * nch);
     const [L, R] = this.mixBuf;
+    const [SL, SR] = this.sbBuf;
     L.fill(0);
     R.fill(0);
+    SL.fill(0);
+    SR.fill(0);
     this.renderTimeline(frames);
     this.renderVoices(frames);
     const out = this.outBuf;
     out.fill(0);
+    // gains of the timeline (episode) and the live jingles on the main and the second pair
+    const tlMain = this.preShow ? 0 : 1;
+    const src2 = this.config.output2Source ?? 'master';
+    const tl2 = this.preShow || src2 === 'soundboard' ? 0 : 1;
+    const sb2 = src2 === 'episode' ? 0 : 1;
     const first = Math.min(this.config.outputFirstChannel, Math.max(0, nch - 2));
+    const second = this.config.output2FirstChannel;
+    const has2 = second !== null && second !== undefined && second + 1 < nch && second !== first;
     for (let i = 0; i < frames; i++) {
-      const l = L[i];
-      const r = R[i];
+      const l = L[i] * tlMain + SL[i];
+      const r = R[i] * tlMain + SR[i];
       if (Math.abs(l) > this.outputPeaks[0]) this.outputPeaks[0] = Math.abs(l);
       if (Math.abs(r) > this.outputPeaks[1]) this.outputPeaks[1] = Math.abs(r);
       out[i * nch + first] = l;
       if (nch > 1) out[i * nch + first + 1] = r;
+      if (has2) {
+        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2;
+        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2;
+      }
     }
     return out;
   }
@@ -589,7 +620,7 @@ export class AudioEngine extends EventEmitter {
 
   private renderVoices(frames: number): void {
     if (this.voices.length === 0) return;
-    const [L, R] = this.mixBuf;
+    const [L, R] = this.sbBuf;
     for (const v of this.voices) {
       const l = v.sound.data[0];
       const r = v.sound.data[1] ?? l;

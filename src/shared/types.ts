@@ -203,7 +203,14 @@ export interface DeviceConfig {
   bufferSize: number;
   /** First zero-based output channel used for the stereo playback pair. */
   outputFirstChannel: number;
+  /** A second stereo output pair (first zero-based channel), e.g. for a stream or a guest feed; null for none. */
+  output2FirstChannel?: number | null;
+  /** What the second pair carries. */
+  output2Source?: OutputSource;
 }
+
+/** master: everything; soundboard: only jingles; episode: the timeline without live jingles. */
+export type OutputSource = 'master' | 'soundboard' | 'episode';
 
 export interface ChannelLabel {
   index: number;
@@ -232,6 +239,8 @@ export interface EngineStatus {
   inputChannelCount: number;
   outputChannelCount: number;
   error: string | null;
+  /** Pre-show output preset: only the soundboard is heard, timeline playback is silent. */
+  preShow: boolean;
 }
 
 export type TransportState = 'stopped' | 'playing' | 'recording';
@@ -406,6 +415,7 @@ export type MidiAction =
   | 'edit-marker'
   | 'prepare-for-editing'
   | 'sounds-stop'
+  | 'preshow-toggle'
   /** Cough button of speaker track n: mutes while held. */
   | `cough-${CoughSlot}`
   /** Soundboard slot n. */

@@ -207,4 +207,34 @@ describe('AudioEngine with virtual devices', () => {
     expect(await peakWhilePlaying(false)).toBe(0);
     expect(await peakWhilePlaying(true)).toBeGreaterThan(0.1);
   });
+
+  it('routes a second output pair and mutes the episode in pre-show', () => {
+    engine = new AudioEngine(null);
+    engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480, outputFirstChannel: 0, output2FirstChannel: 2, output2Source: 'soundboard' });
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    writeWavFile(path.join(dir, 'media/ep.wav'), [sine(200, 1, 48000, 0.5)], 48000);
+    const p = addTrack(createProject('Route', 48000), { name: 'Host' });
+    p.tracks[0].clips.push({ id: 'c', file: 'media/ep.wav', start: 0, offset: 0, length: 48000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    engine.setProject(p, dir);
+    const render = () => {
+      const out = (engine as unknown as { onOutput(n: number): Float32Array }).onOutput(480);
+      const peak = (ch: number) => Math.max(...Array.from({ length: 480 }, (_, i) => Math.abs(out[i * 4 + ch])));
+      return [peak(0), peak(2)];
+    };
+    engine.play(4800);
+    let [main, second] = render();
+    expect(main).toBeGreaterThan(0.1); // the episode on the main pair
+    expect(second).toBe(0); // the second pair carries only the soundboard
+    engine.setPreShow(true);
+    expect(engine.status().preShow).toBe(true);
+    [main, second] = render();
+    expect(main).toBe(0);
+    engine.loadSound('s', [new Float32Array(48000).fill(0.25)]);
+    engine.playSound('s');
+    [main, second] = render();
+    expect(main).toBeCloseTo(0.25, 2);
+    expect(second).toBeCloseTo(0.25, 2);
+    engine.stop();
+  });
 });

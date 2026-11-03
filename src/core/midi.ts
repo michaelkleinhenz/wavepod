@@ -16,6 +16,7 @@ export const MIDI_ACTIONS: Array<{ action: MidiAction; label: string }> = [
   ...([1, 2, 3, 4, 5, 6] as const).map((n) => ({ action: `cough-${n}` as MidiAction, label: `Cough button, speaker ${n} (hold)` })),
   ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({ action: `sound-${n}` as MidiAction, label: `Soundboard ${n}` })),
   { action: 'sounds-stop', label: 'Stop all sounds' },
+  { action: 'preshow-toggle', label: 'Pre-show on / off (only the soundboard is heard)' },
 ];
 
 /** Actions that act on release too (held buttons). */

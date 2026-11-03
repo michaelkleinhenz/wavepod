@@ -55,7 +55,7 @@ about it; the priority is explained in section 3.
 | Soundboard ducking / ducking track (jingles duck under speech) | ✅ Any track (Soundboard, music bed) can duck under the other tracks: its FX panel has "Duck under the other tracks" and a depth (−6…−24 dB). Playback and export; jingles played live while recording are not ducked (the interface can do that) | Done |
 | Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | ✅ MIDI learn (transport, markers, cough buttons 1–6 held, soundboard 1–9) and an OSC server (UDP, off by default, localhost unless allowed) with fixed `/wavepod/…` addresses | Done |
 | FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
-| StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | Out of scope per PLAN.md | **P3, small**: simple output routing presets (which tracks and the soundboard go to which output pair). Mix-minus stays in the hardware (RØDECaster USB Chat) |
+| StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | ✅ Small version: a second output pair (Setup) carrying everything, the soundboard only, or the episode without live jingles; a **Pre-show** button in the header (also MIDI/OSC) where only the soundboard is heard | Done. Mix-minus stays in the hardware (RØDECaster USB Chat); per-track routing is not planned |
 | StudioLink OnAir live streaming | Missing | Not planned |
 
 ### Editing / production
@@ -212,7 +212,7 @@ came up during testing).
 16. ✅ **Remote control.** MIDI learn via Web MIDI and an OSC server (UDP, off by
     default) for transport, markers, cough buttons and soundboard slots, so
     Stream Deck / Bitfocus Companion and MIDI controllers work.
-17. **Output presets.** Choose per output pair what it carries (master,
+17. ✅ **Output presets.** (Per-track routing left out.) Choose per output pair what it carries (master,
     soundboard only, selected tracks); presets "Pre-show" (soundboard only)
     and "Show". No full routing matrix.
 18. **Regions and export per region; Auphonic upload; podcast category.** ✅ Regions and category done; Auphonic upload still open.

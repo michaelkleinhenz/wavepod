@@ -44,6 +44,8 @@ function runAction(action: MidiAction): void {
       return prepareForEditing();
     case 'sounds-stop':
       return void api().stopSounds();
+    case 'preshow-toggle':
+      return void api().setPreShow(!store.status?.preShow);
   }
   // transport commands one after the other, each seeing the state the previous one left
   queue = queue.then(() => {

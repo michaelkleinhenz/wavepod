@@ -24,6 +24,7 @@ export const OSC_ADDRESSES: Array<{ address: string; what: string }> = [
   { address: '/wavepod/cough/1…6', what: 'Cough button: 1 mutes the speaker, 0 releases' },
   { address: '/wavepod/sound/1…9', what: 'Play soundboard slot' },
   { address: '/wavepod/sounds/stop', what: 'Stop all sounds' },
+  { address: '/wavepod/preshow', what: 'Pre-show on / off (only the soundboard is heard)' },
 ];
 
 const FIXED: Record<string, MidiAction> = {
@@ -37,6 +38,7 @@ const FIXED: Record<string, MidiAction> = {
   '/wavepod/marker/edit': 'edit-marker',
   '/wavepod/prepare': 'prepare-for-editing',
   '/wavepod/sounds/stop': 'sounds-stop',
+  '/wavepod/preshow': 'preshow-toggle',
 };
 
 /** OSC strings and blobs are padded to a multiple of 4 bytes. */
