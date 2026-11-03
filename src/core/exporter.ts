@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Mp3Encoder } from '@breezystack/lamejs';
-import type { ExportOptions, ExportProgress, ExportResult, LoudnessStats, Project, Track } from '../shared/types';
+import type { ExportOptions, ExportProgress, ExportResult, ExportWave, LiveLoudness, LoudnessStats, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from './chapters';
 import { buildId3Tag } from './id3';
@@ -12,8 +12,56 @@ import { markersToChapters } from './project';
 import { WavWriter } from './wav';
 
 const BLOCK = 4096;
+/** Width of the export waveform in columns, whatever the length of the export. */
+export const WAVE_COLUMNS = 1000;
+/** Progress is reported at most this often (ms), plus once at the end of each pass. */
+const REPORT_INTERVAL = 50;
 
 export type ProgressFn = (p: ExportProgress) => void;
+
+/**
+ * Follows the rendered mix for the progress display: a waveform (min/max per column)
+ * and the loudness so far. `take()` hands over what is new since the last call.
+ */
+export class LiveTap {
+  private peaks: Float32Array;
+  private pos = 0;
+  private sent = 0;
+  private readonly scale: number;
+
+  constructor(total: number, readonly meter: LoudnessMeter, readonly columns = WAVE_COLUMNS) {
+    this.peaks = new Float32Array(columns * 2);
+    this.scale = columns / Math.max(1, total);
+  }
+
+  /** Adds rendered audio (also measured by `meter`). */
+  push(block: Float32Array[], frames: number): void {
+    this.meter.push(block, frames);
+    const [l, r] = block;
+    const peaks = this.peaks;
+    const last = this.columns - 1;
+    for (let i = 0; i < frames; i++) {
+      const c = Math.min(last, Math.floor((this.pos + i) * this.scale)) * 2;
+      const a = l[i];
+      const b = r[i];
+      const lo = a < b ? a : b;
+      const hi = a < b ? b : a;
+      if (lo < peaks[c]) peaks[c] = lo;
+      if (hi > peaks[c + 1]) peaks[c + 1] = hi;
+    }
+    this.pos += frames;
+  }
+
+  take(): { wave: ExportWave; live: LiveLoudness } {
+    // the column being filled is sent again next time
+    const done = Math.min(this.columns, Math.ceil(this.pos * this.scale));
+    const start = Math.max(0, Math.min(this.sent, done - 1));
+    const wave = { columns: this.columns, start, peaks: Array.from(this.peaks.subarray(start * 2, done * 2)) };
+    this.sent = Math.max(start, Math.floor(this.pos * this.scale));
+    const m = this.meter;
+    return { wave, live: { momentary: m.momentary(), shortTerm: m.shortTerm(), integrated: m.integrated(), truePeak: m.truePeakDb() } };
+  }
+}
 
 function renderRange(
   mixer: Mixer,
@@ -26,6 +74,7 @@ function renderRange(
   const out = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
   const total = Math.max(1, end - start);
   let lastReport = 0;
+  let lastTime = Date.now();
   for (let pos = start; pos < end; pos += BLOCK) {
     const n = Math.min(BLOCK, end - pos);
     if (tracks) {
@@ -37,8 +86,9 @@ function renderRange(
     }
     onBlock(out, n);
     const f = (pos - start + n) / total;
-    if (onProgress && f - lastReport > 0.01) {
+    if (onProgress && f > lastReport && (f >= 1 || Date.now() - lastTime >= REPORT_INTERVAL)) {
       lastReport = f;
+      lastTime = Date.now();
       onProgress(f);
     }
   }
@@ -83,7 +133,8 @@ export function exportProject(project: Project, projectDir: string, opts: Export
 
     // Pass 1: loudness of the mix.
     const meter = new LoudnessMeter(project.sampleRate, 2);
-    renderRange(mixer, start, end, null, (b, n) => meter.push(b, n), (f) => progress({ phase: 'Measuring loudness', fraction: f }));
+    const measureTap = new LiveTap(end - start, meter);
+    renderRange(mixer, start, end, null, (b, n) => measureTap.push(b, n), (f) => progress({ phase: 'Measuring loudness', fraction: f, ...measureTap.take() }));
     const loudness = meter.integrated();
     const peakDb = meter.peakDb();
     const appliedGainDb = opts.normalize ? normalizationGain(loudness, peakDb, opts.targetLufs, opts.peakCeiling) : 0;
@@ -115,22 +166,23 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     const l16 = new Int16Array(BLOCK);
     const r16 = new Int16Array(BLOCK);
     const scaled = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // waveform and loudness of the audio as written (after normalisation)
+    const renderTap = new LiveTap(end - start, new LoudnessMeter(project.sampleRate, 2));
     renderRange(
       mixer,
       start,
       end,
       null,
       (b, n) => {
-        if (wav) {
-          for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) scaled[c][i] = b[c][i] * gain;
-          wav.write(scaled, n);
-        }
+        for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) scaled[c][i] = b[c][i] * gain;
+        renderTap.push(scaled, n);
+        if (wav) wav.write(scaled, n);
         if (encoder && mp3Fd !== null) {
           const data = encoder.encodeBuffer(toInt16(b[0], n, gain, l16).subarray(0, n), toInt16(b[1], n, gain, r16).subarray(0, n));
           if (data.length) fs.writeSync(mp3Fd, data);
         }
       },
-      (f) => progress({ phase: 'Rendering mix', fraction: f }),
+      (f) => progress({ phase: 'Rendering mix', fraction: f, ...renderTap.take() }),
     );
     if (wav) {
       wav.close();

@@ -41,9 +41,10 @@ export function measureClip(projectDir: string, clip: Clip): LoudnessStats {
   }
 }
 
-/** Loudness of the mix and of every track with clips. */
-export function analyseProject(project: Project, projectDir: string): LoudnessReport[] {
+/** Loudness of the mix and (unless `mixOnly`) of every track with clips. */
+export function analyseProject(project: Project, projectDir: string, mixOnly = false): LoudnessReport[] {
   const reports: LoudnessReport[] = [{ kind: 'mix', id: 'mix', name: 'Mix', stats: measureLoudness(project, projectDir) }];
+  if (mixOnly) return reports;
   for (const t of project.tracks) {
     if (!t.clips.length) continue;
     reports.push({ kind: 'track', id: t.id, name: t.name, stats: measureLoudness(project, projectDir, [t]) });

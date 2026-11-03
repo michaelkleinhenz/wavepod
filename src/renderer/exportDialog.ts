@@ -1,10 +1,97 @@
 // Export dialog: formats, loudness target, stems, chapter files, range, progress.
-import type { ExportOptions, LoudnessReport } from '../shared/types';
+// While the mix renders, the progress bar is its waveform and the loudness so far runs beside it.
+import type { ExportOptions, ExportProgress, LiveLoudness, LoudnessReport } from '../shared/types';
 import { clear, errorMessage, h, toast } from './dom';
-import { LOUDNESS_PRESETS, loudnessTable } from './loudnessDialog';
+import { LOUDNESS_PRESETS, loudnessTiles } from './loudnessDialog';
 import { api, store } from './store';
 
 const PRESETS = LOUDNESS_PRESETS;
+const WAVE_HEIGHT = 72;
+
+const fmtLive = (v: number, unit = 'LUFS') => (Number.isFinite(v) ? `${v.toFixed(1)} ${unit}` : '—');
+
+/** Waveform progress bar: columns arrive in stretches while the mix renders. */
+class WaveProgress {
+  readonly el = h('canvas', { class: 'export-wave' }) as HTMLCanvasElement;
+  private peaks = new Float32Array(0);
+  private fraction = 0;
+  private pending = false;
+
+  reset(): void {
+    this.peaks = new Float32Array(0);
+    this.fraction = 0;
+    this.schedule();
+  }
+
+  update(p: ExportProgress): void {
+    const w = p.wave;
+    if (w) {
+      if (this.peaks.length !== w.columns * 2) this.peaks = new Float32Array(w.columns * 2);
+      this.peaks.set(w.peaks.slice(0, this.peaks.length - w.start * 2), w.start * 2);
+      this.fraction = p.fraction;
+    } else {
+      // stems and chapter files: keep the finished mix waveform, or show a plain bar
+      this.fraction = this.peaks.length ? 1 : p.fraction;
+    }
+    this.schedule();
+  }
+
+  private schedule(): void {
+    if (this.pending) return;
+    this.pending = true;
+    requestAnimationFrame(() => {
+      this.pending = false;
+      this.draw();
+    });
+  }
+
+  draw(): void {
+    const c = this.el;
+    const dpr = window.devicePixelRatio || 1;
+    const width = c.clientWidth || 700;
+    c.width = Math.round(width * dpr);
+    c.height = Math.round(WAVE_HEIGHT * dpr);
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const styles = getComputedStyle(document.documentElement);
+    const accent = styles.getPropertyValue('--accent').trim() || '#5c8dff';
+    const mid = WAVE_HEIGHT / 2;
+    ctx.clearRect(0, 0, width, WAVE_HEIGHT);
+    // centre line across the whole range
+    ctx.fillStyle = '#2e333e';
+    ctx.fillRect(0, mid, width, 1);
+    const cols = this.peaks.length / 2;
+    const done = Math.min(width, Math.round(this.fraction * width));
+    if (cols > 0) {
+      ctx.fillStyle = accent;
+      for (let x = 0; x < done; x++) {
+        // the columns that fall on this pixel
+        const a = Math.floor((x / width) * cols);
+        const b = Math.max(a + 1, Math.floor(((x + 1) / width) * cols));
+        let lo = 0;
+        let hi = 0;
+        for (let k = a; k < b && k < cols; k++) {
+          if (this.peaks[k * 2] < lo) lo = this.peaks[k * 2];
+          if (this.peaks[k * 2 + 1] > hi) hi = this.peaks[k * 2 + 1];
+        }
+        const top = mid - Math.min(1, hi) * (mid - 1);
+        const bottom = mid - Math.max(-1, lo) * (mid - 1);
+        ctx.fillRect(x, top, 1, Math.max(1, bottom - top));
+      }
+    } else if (done > 0) {
+      // no waveform for this phase (stems, chapter files): a plain bar
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(0, 0, done, WAVE_HEIGHT);
+      ctx.globalAlpha = 1;
+    }
+    if (this.fraction > 0 && this.fraction < 1) {
+      ctx.fillStyle = '#e3e6ec';
+      ctx.fillRect(done, 0, 1, WAVE_HEIGHT);
+    }
+  }
+}
 
 export class ExportDialog {
   private overlay = h('div', { class: 'overlay' });
@@ -19,22 +106,41 @@ export class ExportDialog {
   };
   private useRange = false;
   private busy = false;
-  private progressEl = h('div', { class: 'progress' }, h('div', { class: 'progress-fill' }));
+  private wave = new WaveProgress();
   private progressLabel = h('span', { class: 'muted' });
-  private loudness: LoudnessReport[] | null = null;
+  /** Running loudness tiles, updated in place while exporting. */
+  private liveValues = {
+    momentary: h('div', { class: 'lu-value' }, '—'),
+    shortTerm: h('div', { class: 'lu-value' }, '—'),
+    integrated: h('div', { class: 'lu-value' }, '—'),
+    truePeak: h('div', { class: 'lu-value' }, '—'),
+  };
+  private liveTiles: Record<keyof LiveLoudness, HTMLElement>;
+  private liveEl: HTMLElement;
+  /** An export ran (or runs) since the dialog opened: show the waveform and live figures. */
+  private exported = false;
+  private phase = '';
+  private mix: LoudnessReport | null = null;
 
   constructor() {
-    api().onExportProgress((p) => {
-      (this.progressEl.firstChild as HTMLElement).style.width = `${Math.round(p.fraction * 100)}%`;
-      this.progressLabel.textContent = `${p.phase} ${Math.round(p.fraction * 100)}%`;
-    });
+    const tile = (key: keyof LiveLoudness, label: string, hint: string) =>
+      h('div', { class: 'lu-tile', title: hint }, h('div', { class: 'lu-label' }, label), this.liveValues[key]);
+    this.liveTiles = {
+      momentary: tile('momentary', 'Momentary', 'Loudness of the last 400 ms'),
+      shortTerm: tile('shortTerm', 'Short-term', 'Loudness of the last 3 s'),
+      integrated: tile('integrated', 'Integrated so far', 'Programme loudness from the start up to here'),
+      truePeak: tile('truePeak', 'True peak so far', 'Highest peak between samples up to here'),
+    };
+    this.liveEl = h('div', { class: 'lu-tiles export-live' }, ...Object.values(this.liveTiles));
+    api().onExportProgress((p) => this.progress(p));
     this.overlay.addEventListener('mousedown', (e) => {
       if (e.target === this.overlay && !this.busy) this.close();
     });
   }
 
   open(): void {
-    this.loudness = null;
+    this.mix = null;
+    this.exported = false;
     this.render();
     document.body.append(this.overlay);
   }
@@ -55,7 +161,7 @@ export class ExportDialog {
         this.render();
       });
 
-    const loudnessRows = this.loudness ? loudnessTable(this.loudness, { lufs: o.targetLufs, ceiling: o.peakCeiling }) : null;
+    const target = { lufs: o.targetLufs, ceiling: o.peakCeiling };
 
     const dialog = h(
       'div',
@@ -78,18 +184,41 @@ export class ExportDialog {
           h('label', { class: 'field' }, h('span', null, 'Peak ceiling'),
             h('select', { disabled: !o.normalize, onchange: (e: Event) => (o.peakCeiling = Number((e.target as HTMLSelectElement).value)) },
               ...[-0.1, -1, -2, -3].map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBFS`)))),
-          h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.loudness ? 'Analyse again' : 'Analyse loudness'),
+          h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.mix ? 'Analyse again' : 'Analyse loudness'),
         ),
       ),
-      // full width below the options: the seven-column table does not fit in one grid column
-      loudnessRows ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness analysis'), loudnessRows) : null,
-      h('div', { class: 'row' }, this.progressEl, this.progressLabel),
+      // only the mix matters for the export; per-track figures are in the Loudness dialog
+      this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target)) : null,
+      this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
+      h('div', { class: 'row' }, this.progressLabel),
       h('div', { class: 'row end' },
         h('button', { disabled: this.busy, onclick: () => this.close() }, 'Close'),
         h('button', { class: 'primary', disabled: this.busy || o.formats.length === 0, onclick: () => void this.run() }, this.busy ? 'Exporting…' : 'Export…'),
       ),
     );
     this.overlay.append(dialog);
+    if (this.exported) this.wave.draw();
+  }
+
+  private progress(p: ExportProgress): void {
+    if (p.phase !== this.phase) {
+      this.phase = p.phase;
+      // each pass over the mix draws its waveform from the start
+      if (p.wave) this.wave.reset();
+    }
+    this.wave.update(p);
+    this.progressLabel.textContent = p.phase === 'Done' ? '' : `${p.phase} ${Math.round(p.fraction * 100)}%`;
+    const live = p.live;
+    if (!live) return;
+    const o = this.opts;
+    for (const key of Object.keys(this.liveValues) as Array<keyof LiveLoudness>) {
+      this.liveValues[key].textContent = fmtLive(live[key], key === 'truePeak' ? 'dBTP' : 'LUFS');
+    }
+    // colour against the target only for the normalised render, where it applies
+    const judged = o.normalize && p.phase === 'Rendering mix';
+    const off = Math.abs(live.integrated - o.targetLufs);
+    this.liveTiles.integrated.className = `lu-tile ${judged && Number.isFinite(live.integrated) ? (off <= 1 ? 'ok' : off <= 2 ? 'warn' : 'bad') : ''}`;
+    this.liveTiles.truePeak.className = `lu-tile ${judged && Number.isFinite(live.truePeak) ? (live.truePeak <= o.peakCeiling ? 'ok' : 'bad') : ''}`;
   }
 
   private async analyse(): Promise<void> {
@@ -97,7 +226,7 @@ export class ExportDialog {
     this.progressLabel.textContent = 'Analysing…';
     this.render();
     try {
-      this.loudness = await api().measureLoudness();
+      this.mix = (await api().measureLoudness(true)).find((r) => r.kind === 'mix') ?? null;
       this.progressLabel.textContent = '';
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -113,6 +242,11 @@ export class ExportDialog {
     if (!base) return;
     const range = this.useRange ? store.selection.range : null;
     this.busy = true;
+    this.exported = true;
+    this.phase = '';
+    for (const v of Object.values(this.liveValues)) v.textContent = '—';
+    for (const t of Object.values(this.liveTiles)) t.className = 'lu-tile';
+    this.wave.reset();
     this.render();
     try {
       const res = await api().exportProject({ ...this.opts, outputBase: base, ...(range ? { start: range[0], end: range[1] } : {}) });

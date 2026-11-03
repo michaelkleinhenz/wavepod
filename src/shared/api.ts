@@ -113,8 +113,8 @@ export interface WavePodApi {
   // export
   chooseExportBase(defaultName: string): Promise<string | null>;
   exportProject(opts: ExportOptions): Promise<ExportResult>;
-  /** Loudness of the mix and of every track with clips. */
-  measureLoudness(): Promise<LoudnessReport[]>;
+  /** Loudness of the mix and (unless `mixOnly`) of every track with clips. */
+  measureLoudness(mixOnly?: boolean): Promise<LoudnessReport[]>;
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;

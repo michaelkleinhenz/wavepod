@@ -305,6 +305,32 @@ export interface ExportResult {
 export interface ExportProgress {
   phase: string;
   fraction: number;
+  /** Waveform of the mix rendered since the last report, for the progress display. */
+  wave?: ExportWave;
+  /** Loudness of the mix up to the current position. */
+  live?: LiveLoudness;
+}
+
+/**
+ * A stretch of the export waveform. The whole range is `columns` columns wide;
+ * `peaks` holds min/max pairs for the columns from `start` on.
+ */
+export interface ExportWave {
+  columns: number;
+  start: number;
+  peaks: number[];
+}
+
+/** Running loudness figures while audio is rendered. */
+export interface LiveLoudness {
+  /** Loudness of the last 400 ms in LUFS. */
+  momentary: number;
+  /** Loudness of the last 3 s in LUFS. */
+  shortTerm: number;
+  /** Integrated loudness of everything so far in LUFS. */
+  integrated: number;
+  /** Highest true peak so far in dBTP. */
+  truePeak: number;
 }
 
 /**
