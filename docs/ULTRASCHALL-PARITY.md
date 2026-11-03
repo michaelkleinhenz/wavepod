@@ -117,20 +117,21 @@ Every track and the master bus has a filter stack: filters can be added,
 bypassed, tweaked live while playing, reordered (drag or ↑/↓) and removed.
 Available: High-pass (12/24 dB/oct), Equalizer (low shelf, two bells, high
 shelf), Noise gate, Compressor (soft knee), De-esser (split-band with a
-dynamic high shelf), Limiter, and **Ultraschall Dynamics**, ported from the
+dynamic high shelf), Limiter, and **Dynamics** (shown as "Ultraschall
+Dynamics" until it was renamed), ported from the
 JSFX in `ultraschall-portable/Effects/dynamics/Ultraschall_Dynamics`: 188 ms
 RMS detector, 5/250 ms envelope, a 250-point gain curve built from Target,
 Noise floor and Noise gate (S-curve above the noise floor, linear expander
 below it, muted under the gate, 3-tap smoothing), 100 ms lookahead and the
 MGA peak limiter at −0.1 dBFS. The mixer compensates filter latency so audio
 stays in place on the timeline. "Voice chain" adds High-pass, De-esser and
-Ultraschall Dynamics, mirroring Ultraschall's default track chain without
+Dynamics, mirroring Ultraschall's default track chain without
 its noise reduction and reverb.
 
 **Live filter meters ✅**: while playing, every filter card shows its input
 and output level, and the dynamic filters (gate, compressor, de-esser,
-limiter, Ultraschall Dynamics) show the gain they apply right now, as
-Ultraschall's plug-in windows do. Ultraschall Dynamics also shows the
+limiter, Dynamics) show the gain they apply right now, as
+Ultraschall's plug-in windows do. Dynamics also shows the
 current operating point moving on its curve.
 
 **VST3 plug-ins ✅** can go into the same stacks ("VST3 plug-in…" in the add

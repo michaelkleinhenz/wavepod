@@ -35,7 +35,8 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   Jingles played while recording land on a Soundboard track, so they are
   part of the edit and the export.
 - **Filters** on every track and the master: high-pass, EQ, noise gate,
-  compressor, de-esser, limiter and Ultraschall Dynamics (target-loudness
+  compressor, de-esser, limiter and Dynamics (a port of Ultraschall's
+  Dynamics: target-loudness
   leveler with noise gate). Add, bypass, tweak while playing and reorder
   them in the FX panel; they apply live and in the export. While playing,
   each filter shows live in/out levels and how much gain it is applying. Installed
@@ -187,7 +188,7 @@ client connects.
 | `add_filter` | Add a built-in filter or a VST3 plug-in, at a position, with values |
 | `update_filter` | Change parameters, bypass or enable |
 | `remove_filter`, `move_filter` | Remove or reorder |
-| `apply_voice_chain` | High-pass, De-esser and Ultraschall Dynamics, appended or replacing the stack |
+| `apply_voice_chain` | High-pass, De-esser and Dynamics, appended or replacing the stack |
 | `set_filter_stack` | Replace a whole stack in one step |
 | `copy_filter_stack` | Copy a track's filters to another track or the master |
 

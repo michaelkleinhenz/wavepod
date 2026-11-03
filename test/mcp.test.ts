@@ -91,10 +91,16 @@ describe('WavePod MCP tools', () => {
     expect(fxList(h.project, hostId)[0].params).toEqual({ freq: 100, slope: 24 });
     expect(r.data.notes[0]).toMatch(/slope set to 24/);
 
-    r = await call(server, 'update_filter', { target: hostId, filter: 'Ultraschall Dynamics', params: { target: -30 }, enabled: false });
+    r = await call(server, 'update_filter', { target: hostId, filter: 'Dynamics', params: { target: -30 }, enabled: false });
+    expect(r.data.filter.name).toBe('Dynamics');
     const dyn = fxList(h.project, hostId)[2];
     expect(dyn.params.target).toBe(-25);
     expect(dyn.enabled).toBe(false);
+
+    // the filter's earlier name still finds it
+    r = await call(server, 'update_filter', { target: hostId, filter: 'Ultraschall Dynamics', params: { target: -22 } });
+    expect(r.isError).toBe(false);
+    expect(fxList(h.project, hostId)[2].params.target).toBe(-22);
 
     r = await call(server, 'move_filter', { target: 'Host', filter: dyn.id, position: 0 });
     expect(r.data.filters[0].id).toBe(dyn.id);

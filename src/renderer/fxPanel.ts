@@ -112,7 +112,7 @@ export class FxPanel {
         h('div', null, h('div', { class: 'fx-kicker' }, 'Filters'), h('h2', null, this.title())),
         h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×'),
       ),
-      h('div', { class: 'fx-toolbar' }, add, list.length === 0 && target !== MASTER ? h('button', { class: 'small', title: 'High-pass, De-esser and Ultraschall Dynamics', onclick: () => this.addVoiceChain() }, 'Voice chain') : null),
+      h('div', { class: 'fx-toolbar' }, add, list.length === 0 && target !== MASTER ? h('button', { class: 'small', title: 'High-pass, De-esser and Dynamics', onclick: () => this.addVoiceChain() }, 'Voice chain') : null),
     );
     if (this.picker) this.el.append(this.renderPicker(target));
     const cards = h('div', { class: 'fx-list' });
@@ -394,7 +394,7 @@ const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamic
 
 /**
  * Live meters of one filter card: input and output level, and for dynamic filters the gain they
- * apply right now (reduction in orange, boost in green). Ultraschall Dynamics also gets a moving
+ * apply right now (reduction in orange, boost in green). Dynamics also gets a moving
  * point on its curve.
  */
 class LiveMeter {
@@ -471,7 +471,7 @@ class LiveMeter {
   }
 }
 
-/** Input→output curve of Ultraschall Dynamics with target, noise floor and gate marked; `live` adds the current operating point. */
+/** Input→output curve of Dynamics with target, noise floor and gate marked; `live` adds the current operating point. */
 function drawDynamicsCurve(c: HTMLCanvasElement, p: Record<string, number>, live: { in: number; gain: number } | null = null): void {
   const dpr = window.devicePixelRatio || 1;
   const w = 240;

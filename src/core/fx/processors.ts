@@ -18,7 +18,7 @@ export interface FxProcessor {
    * (negative = reduction), then starts over. Only filters that change gain dynamically have it.
    */
   takeGain?(): number;
-  /** For meters: the level (dB) the filter's detector currently sees (Ultraschall Dynamics). */
+  /** For meters: the level (dB) the filter's detector currently sees (Dynamics). */
   detectorLevel?(): number;
 }
 

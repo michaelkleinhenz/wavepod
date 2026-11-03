@@ -101,7 +101,7 @@ export function resolveFilter(list: Fx[], ref: string): Fx {
   const byId = list.find((f) => f.id === ref);
   if (byId) return byId;
   const r = norm(ref);
-  const matches = list.filter((f) => f.type === r || norm(filterName(f)) === r);
+  const matches = list.filter((f) => f.type === r || norm(filterName(f)) === r || (f.type !== 'vst3' && (fxDefinition(f.type).aliases ?? []).some((a) => norm(a) === r)));
   if (matches.length === 1) return matches[0];
   const ids = list.map((f) => `${filterName(f)} (${f.id})`).join(', ');
   if (matches.length > 1) throw new ToolError(`The stack has several "${ref}" filters; use the filter id: ${ids}.`);
