@@ -21,6 +21,7 @@ import { showClipLabel } from './clipLabel';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
 const TRACK_H = 84;
+const OVERVIEW_H = 30;
 const RULER_H = 26;
 const MARKER_H = 24;
 const HEADER_W = 290;
@@ -68,7 +69,8 @@ export class TimelineView {
   private scroll = h('div', { class: 'tracks-scroll' });
   private headers = h('div', { class: 'track-headers' });
   private canvas = h('canvas', { class: 'tracks-canvas' });
-  private hscroll = h('input', { type: 'range', class: 'hscroll', min: '0', max: '1000', value: '0' });
+  /** Overview strip (navigator): the whole episode, with the visible part framed; click or drag to move there. */
+  private overview = h('canvas', { class: 'overview' });
   private trackMeters = new Map<string, LevelMeter>();
 
   /** Seconds at the left edge. */
@@ -100,7 +102,7 @@ export class TimelineView {
     );
     const body = h('div', { class: 'tracks-body' }, this.headers, this.canvas);
     this.scroll.append(body);
-    this.el.append(this.toolbar, rulerRow, this.scroll, h('div', { class: 'hscroll-row' }, h('div', { style: { width: `${HEADER_W}px` } }), this.hscroll), this.footer);
+    this.el.append(this.toolbar, rulerRow, this.scroll, h('div', { class: 'hscroll-row' }, h('div', { class: 'overview-label muted', style: { width: `${HEADER_W}px` } }, 'Overview'), this.overview), this.footer);
     this.buildToolbar();
     this.bindEvents();
     new ResizeObserver(() => this.resize()).observe(this.scroll);
@@ -419,6 +421,7 @@ export class TimelineView {
     for (const [c, height] of [
       [this.rulerCanvas, RULER_H + MARKER_H],
       [this.canvas, hTracks],
+      [this.overview, OVERVIEW_H],
     ] as const) {
       c.width = Math.round(w * dpr);
       c.height = Math.round(height * dpr);
@@ -458,11 +461,46 @@ export class TimelineView {
     if (!store.project) return;
     this.drawRuler();
     this.drawTracks();
-    const total = this.totalSeconds();
-    const visible = this.width / this.pxPerSec;
-    const maxStart = Math.max(0, total - visible);
-    this.hscroll.max = String(Math.round(maxStart * 1000));
-    this.hscroll.value = String(Math.round(Math.min(this.viewStart, maxStart) * 1000));
+    this.drawOverview();
+  }
+
+  /** Seconds per overview pixel: the whole episode fits, or the view if it reaches further. */
+  private overviewScale(): number {
+    const total = Math.max(this.totalSeconds(), this.viewStart + this.width / this.pxPerSec);
+    return total / Math.max(1, this.width);
+  }
+
+  private drawOverview(): void {
+    const ctx = this.ctx(this.overview);
+    const w = this.width;
+    const spp = this.overviewScale();
+    const xs = (frames: number) => frames / this.sr / spp;
+    ctx.fillStyle = '#16181e';
+    ctx.fillRect(0, 0, w, OVERVIEW_H);
+    const tracks = store.project.tracks;
+    const laneH = Math.max(2, Math.min(8, (OVERVIEW_H - 6) / Math.max(1, tracks.length)));
+    const top = Math.max(3, (OVERVIEW_H - laneH * tracks.length) / 2);
+    tracks.forEach((t, i) => {
+      for (const c of t.clips) {
+        ctx.fillStyle = c.color ?? t.color;
+        ctx.globalAlpha = t.mute ? 0.35 : 0.85;
+        ctx.fillRect(xs(c.start), top + i * laneH, Math.max(1, xs(c.length)), Math.max(1, laneH - 1));
+      }
+    });
+    ctx.globalAlpha = 1;
+    for (const m of store.project.markers) {
+      ctx.fillStyle = m.kind === 'chapter' ? '#ffca28' : '#ef5350';
+      ctx.fillRect(Math.round(xs(m.position)), 0, 1, OVERVIEW_H);
+    }
+    // the visible part of the timeline
+    const vx = this.viewStart / spp;
+    const vw = Math.max(4, this.width / this.pxPerSec / spp);
+    ctx.fillStyle = 'rgba(154,184,255,0.14)';
+    ctx.fillRect(vx, 0, vw, OVERVIEW_H);
+    ctx.strokeStyle = 'rgba(154,184,255,0.85)';
+    ctx.strokeRect(Math.round(vx) + 0.5, 0.5, Math.round(vw) - 1, OVERVIEW_H - 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(Math.round(xs(store.transport.position)), 0, 1, OVERVIEW_H);
   }
 
   private ctx(c: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -1135,10 +1173,30 @@ export class TimelineView {
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
 
-    this.hscroll.addEventListener('input', () => {
-      this.viewStart = Number(this.hscroll.value) / 1000;
-      this.draw();
+    // overview: click centres the view there, dragging the frame scrolls
+    this.overview.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const spp = this.overviewScale();
+      const visible = this.width / this.pxPerSec;
+      const vx = this.viewStart / spp;
+      const x0 = local(e, this.overview).x;
+      // grabbing the frame keeps the grab point; clicking elsewhere centres the view first
+      const grab = x0 >= vx && x0 <= vx + visible / spp ? x0 * spp - this.viewStart : visible / 2;
+      const moveTo = (x: number) => {
+        this.viewStart = Math.max(0, Math.min(this.totalSeconds(), x * spp - grab));
+        this.draw();
+      };
+      moveTo(x0);
+      const onMove = (ev: MouseEvent) => moveTo(local(ev, this.overview).x);
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
     });
+    this.overview.addEventListener('wheel', (e) => onWheel(e, this.overview), { passive: false });
 
     const onWheel = (e: WheelEvent, el: HTMLElement) => {
       if (e.ctrlKey || e.metaKey) {

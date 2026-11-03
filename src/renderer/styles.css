@@ -204,7 +204,8 @@ body.panning, body.panning * { cursor: grabbing !important; }
 .gain { width: 64px; padding: 0; }
 .empty-tracks { padding: 20px 14px; width: 290px; }
 .hscroll-row { display: flex; background: var(--panel); border-top: 1px solid var(--border); }
-.hscroll { flex: 1; margin: 2px 4px; padding: 0; height: 12px; }
+.overview { display: block; cursor: pointer; }
+.overview-label { display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-size: 11px; box-sizing: border-box; flex: none; }
 
 .soundboard { display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: var(--panel); border-top: 1px solid var(--border); flex-wrap: wrap; min-height: 44px; }
 .sb-title { color: var(--muted); font-size: 12px; margin-right: 6px; }
