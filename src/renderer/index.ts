@@ -14,6 +14,8 @@ import {
   dropMarker,
   importAudioFiles,
   importChapterFile,
+  muteSelection,
+  rippleCut,
   newProject,
   openProject,
   seek,
@@ -30,6 +32,18 @@ import { api, store, type View } from './store';
 import { TimelineView } from './timelineView';
 
 const METER_DECAY = 0.85;
+
+/** When Ctrl+X/Y was last handled by the keydown handler, so the menu accelerator doesn't repeat it. */
+let editKeyAt = 0;
+
+/** True if a text field has focus or a dialog is open, so Ctrl+X/Y keep their usual meaning. */
+function typingInField(): boolean {
+  if (document.querySelector('.overlay')) return true;
+  const el = document.activeElement as HTMLElement | null;
+  if (!el) return false;
+  if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
+  return el.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color'].includes((el as HTMLInputElement).type);
+}
 
 async function main(): Promise<void> {
   const root = document.getElementById('app')!;
@@ -177,6 +191,11 @@ async function main(): Promise<void> {
       case 'import-chapters': return void importChapterFile();
       case 'export': return exportDialog.open();
       case 'undo': return store.undo();
+      case 'ripple-cut':
+        if (typingInField()) return void document.execCommand('cut');
+        return void (Date.now() - editKeyAt > 500 && rippleCut());
+      case 'mute-selection':
+        return void (!typingInField() && Date.now() - editKeyAt > 500 && muteSelection());
       case 'redo': return store.redo();
       case 'view-setup': return store.setView('setup');
       case 'view-edit': return store.setView('edit');
@@ -189,6 +208,14 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (isTyping(e) || document.querySelector('.overlay')) return;
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && !e.shiftKey && !e.altKey && (e.code === 'KeyX' || e.code === 'KeyY')) {
+      // handled here as well as in the Edit menu, whichever sees the key first
+      e.preventDefault();
+      editKeyAt = Date.now();
+      if (e.code === 'KeyX') rippleCut();
+      else muteSelection();
+      return;
+    }
     if (mod) return; // menu accelerators
     const cough = /^Digit([1-9])$/.exec(e.code);
     if (cough && e.shiftKey) {
@@ -247,7 +274,7 @@ async function main(): Promise<void> {
         break;
       case 'Escape':
         void api().stopSounds();
-        store.select({ clipIds: new Set(), range: null, markerId: null });
+        store.select({ clipIds: new Set(), range: null, rangeTracks: null, markerId: null });
         break;
       default:
         if (/^[1-9]$/.test(e.key)) void soundboard.trigger(Number(e.key) - 1);

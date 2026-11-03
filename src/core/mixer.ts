@@ -6,6 +6,7 @@ import { fadeGain, panGains } from './dsp';
 import { WavReader } from './wav';
 import { MUTE_RAMP_SECONDS, muteGainAt, regionsOverlap } from './muteRegions';
 import { FxChain } from './fx/chain';
+import { fillEnvelope, isUnityEnvelope } from './envelope';
 import { audibleTracks, projectLength } from './project';
 
 export class ReaderCache {
@@ -57,6 +58,7 @@ interface ChainState {
 
 export class Mixer {
   private scratch: Float32Array[] = [];
+  private envBuf = new Float32Array(0);
   private pre: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private trackChains = new Map<string, ChainState>();
   private masterChain: ChainState | null = null;
@@ -154,7 +156,7 @@ export class Mixer {
     }
   }
 
-  /** Adds one track (ignoring mute/solo) into `out`: clips, mute regions, filter stack, gain and pan. */
+  /** Adds one track (ignoring mute/solo) into `out`: clips, mute regions, volume line, filter stack, gain and pan. */
   renderTrackInto(track: Track, position: number, frames: number, out: Float32Array[]): void {
     const state = this.chainState(this.trackChains.get(track.id), track.fx);
     if (state) this.trackChains.set(track.id, state);
@@ -193,7 +195,7 @@ export class Mixer {
   }
 
   /**
-   * Renders a track's clips (clip gain, fades, mute regions) for [position, position + frames)
+   * Renders a track's clips (clip gain, fades, mute regions, volume line) for [position, position + frames)
    * into `buf` (overwritten; mono material is duplicated into both channels).
    * Returns true if any clip is stereo.
    */
@@ -205,6 +207,13 @@ export class Mixer {
     const ramp = Math.round(MUTE_RAMP_SECONDS * this.project.sampleRate);
     // only the mute regions touching this block, so the per-sample lookup stays short
     const muted = regionsOverlap(track, position, end) ? track.muteRegions!.filter(([a, b]) => a < end && b > position) : null;
+    // volume line, evaluated once per block
+    let env: Float32Array | null = null;
+    if (!isUnityEnvelope(track.envelope)) {
+      if (this.envBuf.length < frames) this.envBuf = new Float32Array(frames);
+      env = this.envBuf;
+      fillEnvelope(track.envelope!, position, frames, env);
+    }
     for (const clip of track.clips) {
       const reader = this.readers.get(clip.file);
       if (!reader) continue;
@@ -224,11 +233,12 @@ export class Mixer {
       const g = dbToGain(clip.gain);
       const outOffset = from - position;
       for (let i = 0; i < n; i++) {
-        let env = g * clipEnvelope(clip, from - cStart + i);
-        if (muted) env *= muteGainAt(muted, from + i, ramp);
+        let gain = g * clipEnvelope(clip, from - cStart + i);
+        if (muted) gain *= muteGainAt(muted, from + i, ramp);
+        if (env) gain *= env[outOffset + i];
         const l = src[0][i];
-        buf[0][outOffset + i] += l * env;
-        buf[1][outOffset + i] += (stereo ? src[1][i] : l) * env;
+        buf[0][outOffset + i] += l * gain;
+        buf[1][outOffset + i] += (stereo ? src[1][i] : l) * gain;
       }
     }
     return stereoTrack;

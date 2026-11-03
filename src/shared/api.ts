@@ -35,6 +35,8 @@ export type MenuCommand =
   | 'import-chapters'
   | 'export'
   | 'undo'
+  | 'ripple-cut'
+  | 'mute-selection'
   | 'redo'
   | 'view-setup'
   | 'view-edit'

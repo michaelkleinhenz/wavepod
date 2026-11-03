@@ -14,8 +14,15 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
 - **Cough buttons**: hold `Shift`+`1`–`9` (or a track's `C` button) to mute
   a speaker; the audio is still recorded and the muted region can be
   adjusted or removed later.
-- **Editing for podcasters**: split, move, trim, fade, ripple delete across
-  all tracks, mute/solo, gain, undo/redo.
+- **Editing for podcasters**: split, move (also to other tracks), trim,
+  fades by dragging a clip's top corners, ripple cut across all tracks
+  (`Ctrl+X`), mute/solo, gain, undo/redo. Dragged edges snap to clip
+  edges on other tracks, markers and the playhead (toolbar `Snap`, hold
+  `Alt` to drag freely). Time selections can be resized by dragging their
+  edges.
+- **Volume line** per track (`Vol` in the track header): double-click to add
+  points, drag points or the line up and down. `Ctrl+Y` silences the
+  selected range on the tracks it was dragged across.
 - **Chapter markers** while recording (`M`), edit markers for later fixes (`E`).
 - **Soundboard** for jingles (keys `1`–`9`) with loop and soft fade-in.
   Jingles played while recording land on a Soundboard track, so they are
@@ -75,6 +82,8 @@ driver; pick **ASIO** as audio system if it is offered.
 | `S` | Split clips at playhead (selected clips' tracks, or all) |
 | `F` | Fade in/out on selected clips |
 | `Delete` / `Shift+Delete` | Delete selection / ripple delete range |
+| `Ctrl/Cmd+X` | Ripple cut: remove the selected range from all tracks and close the gap |
+| `Ctrl/Cmd+Y` | Mute the selected range on its tracks via their volume lines |
 | `1`–`9`, `Esc` | Soundboard slots (again: fade out), stop all jingles |
 | `Shift`+`1`–`9` (hold) | Cough button for speaker track 1–9 |
 | `←` `→` (with `Shift`) | Move playhead 1 s (10 s) |
