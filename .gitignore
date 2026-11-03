@@ -4,3 +4,5 @@ release/
 *.log
 .DS_Store
 coverage/
+native/vsthost/build/
+native/vsthost/bin/

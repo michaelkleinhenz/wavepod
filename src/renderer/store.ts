@@ -1,6 +1,6 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
 import type { SoundPodApi } from '../shared/api';
-import type { AudioDevice, DeviceProfile, EngineStatus, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
+import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
 import { History } from '../core/project';
 
 declare global {
@@ -18,6 +18,8 @@ export interface Selection {
   /** Time range in frames, for ripple delete / export range. */
   range: [number, number] | null;
   markerId: string | null;
+  /** A selected cough/mute region. */
+  muteRegion?: { trackId: string; index: number } | null;
 }
 
 type Listener = (what: Set<ChangeKind>) => void;
@@ -36,6 +38,10 @@ class Store {
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
   view: View = 'edit';
   peaks = new Map<string, WaveformPeaks | 'loading' | null>();
+  /** Waveform of the takes being recorded, per track id (min,max pairs). */
+  livePeaks = new Map<string, { samplesPerPeak: number; data: number[] }>();
+  /** Cough buttons currently held: track id -> timeline frame where the mute starts. */
+  coughs = new Map<string, number>();
   /** Decayed meter values per input channel for display. */
   meterHold: number[] = [];
 
@@ -89,6 +95,28 @@ class Store {
     this.notify('project');
   }
 
+  private liveBase: Project | null = null;
+
+  /** True while a slider drag is applying changes that will become one undo step. */
+  get liveEditing(): boolean {
+    return this.liveBase !== null;
+  }
+
+  /** Applies a change immediately (e.g. while dragging a slider) without an undo step yet. */
+  editLive(fn: (p: Project) => Project): void {
+    if (!this.liveBase) this.liveBase = this.project;
+    this.project = fn(this.project);
+    void api().updateProject(this.project);
+    this.notify('project');
+  }
+
+  /** Turns the live changes since the first editLive() into one undo step. */
+  commitLive(): void {
+    if (this.liveBase && this.liveBase !== this.project) this.history.push(this.liveBase);
+    this.liveBase = null;
+    this.notify('project');
+  }
+
   undo(): void {
     const p = this.history.undo(this.project);
     if (!p) return;
@@ -113,6 +141,19 @@ class Store {
   setView(view: View): void {
     this.view = view;
     this.notify('view');
+  }
+
+  addLivePeaks(updates: LivePeaks[]): void {
+    for (const u of updates) {
+      let entry = this.livePeaks.get(u.trackId);
+      if (!entry || entry.samplesPerPeak !== u.samplesPerPeak) {
+        entry = { samplesPerPeak: u.samplesPerPeak, data: [] };
+        this.livePeaks.set(u.trackId, entry);
+      }
+      const at = u.from * 2;
+      if (entry.data.length < at) entry.data.length = at;
+      for (let i = 0; i < u.data.length; i++) entry.data[at + i] = u.data[i];
+    }
   }
 
   requestPeaks(file: string): WaveformPeaks | null {

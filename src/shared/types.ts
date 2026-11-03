@@ -20,6 +20,8 @@ export interface Clip {
 
 export interface Track {
   id: string;
+  /** 'soundboard' marks the track that receives jingles triggered while recording. */
+  kind?: 'soundboard';
   name: string;
   color: string;
   /** Zero-based device input channels; one entry = mono, two = stereo. */
@@ -32,7 +34,60 @@ export interface Track {
   /** -1 (left) .. 1 (right); used for mono tracks. */
   pan: number;
   clips: Clip[];
+  /** Cough-button mutes: [start, end) in timeline frames, sorted, non-overlapping. */
+  muteRegions?: MuteRegion[];
+  /** Filter stack, processed top to bottom before track gain and pan. */
+  fx?: Fx[];
 }
+
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'vst3';
+
+/** One filter in a track's or the master's filter stack. */
+export interface Fx {
+  id: string;
+  type: FxType;
+  /** false = bypassed. */
+  enabled: boolean;
+  /** Built-in filters: values by parameter key. VST3: normalized 0..1 values by parameter id. */
+  params: Record<string, number>;
+  /** VST3 only: which plug-in this is. */
+  plugin?: VstPluginRef;
+  /** VST3 only: the plug-in's parameters, for the generated sliders. */
+  paramInfo?: VstParamInfo[];
+  /** VST3 only: the plug-in's own state (base64), restored before the parameters. */
+  state?: string;
+}
+
+export interface VstPluginRef {
+  /** Path of the .vst3 module. */
+  path: string;
+  /** Class id (32 hex digits). */
+  cid: string;
+  name: string;
+  vendor: string;
+}
+
+export interface VstPluginInfo extends VstPluginRef {
+  version: string;
+  categories: string;
+}
+
+export interface VstParamInfo {
+  id: number;
+  title: string;
+  units: string;
+  /** 0 = continuous, 1 = toggle, n = n+1 discrete values. */
+  steps: number;
+  default: number;
+  flags: number;
+}
+
+/** VST3 ParameterInfo flags SoundPod cares about. */
+export const VST_PARAM_READONLY = 1 << 1;
+export const VST_PARAM_HIDDEN = 1 << 4;
+export const VST_PARAM_BYPASS = 1 << 16;
+
+export type MuteRegion = [Frames, Frames];
 
 export type MarkerKind = 'chapter' | 'edit';
 
@@ -51,6 +106,10 @@ export interface SoundboardSlot {
   file: string;
   gain: number;
   color: string;
+  /** Repeat until stopped. */
+  loop?: boolean;
+  /** Soft fade-in (up to 5 s) when triggered. */
+  fadeIn?: boolean;
 }
 
 export interface EpisodeMetadata {
@@ -70,6 +129,8 @@ export interface Project {
   sampleRate: number;
   bitDepth: BitDepth;
   masterGain: number;
+  /** Filter stack on the master bus, processed before the master gain. */
+  masterFx?: Fx[];
   tracks: Track[];
   markers: Marker[];
   soundboard: SoundboardSlot[];
@@ -145,6 +206,33 @@ export interface TransportUpdate {
   outputPeaks: number[];
   /** Seconds of recording written so far, if recording. */
   recordedFrames: Frames;
+  /** While recording: new waveform buckets per recording track since the previous update. */
+  recordingPeaks?: LivePeaks[];
+  /** Jingles currently playing. */
+  jingles?: PlayingJingle[];
+  /** While recording: jingles of this take that have finished (they become clips when recording stops). */
+  recordedJingles?: Array<{ slotId: string; start: Frames; length: Frames }>;
+}
+
+export interface PlayingJingle {
+  slotId: string;
+  /** Frames left in the current pass (a looping jingle starts over). */
+  remaining: Frames;
+  /** Timeline position where it was triggered, if it is being recorded. */
+  recordStart?: Frames;
+  /** Frames played so far (all passes). */
+  played: Frames;
+  stopping: boolean;
+}
+
+/** Incremental waveform of a take that is still being recorded. */
+export interface LivePeaks {
+  trackId: string;
+  samplesPerPeak: number;
+  /** Bucket index of the first min/max pair in `data`, counted from the start of the take. */
+  from: number;
+  /** Interleaved min,max pairs scaled to -127..127. */
+  data: number[];
 }
 
 export interface RecordedTake {

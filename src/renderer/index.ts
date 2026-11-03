@@ -1,10 +1,16 @@
 // App shell: header with views and transport, view switching, keyboard shortcuts, engine events.
+import { FxPanel } from './fxPanel';
+import { MASTER } from '../core/fx/stack';
 import { formatTimestamp } from '../shared/time';
 import { toDb } from '../core/dsp';
 import { projectLength } from '../core/project';
 import { append, h, isTyping, toast } from './dom';
 import {
+  coughDown,
+  coughTrackForKey,
+  coughUp,
   deleteSelection,
+  releaseAllCoughs,
   dropMarker,
   importAudioFiles,
   importChapterFile,
@@ -32,6 +38,8 @@ async function main(): Promise<void> {
   const timeline = new TimelineView(soundboard.el);
   const chapters = new ChaptersView();
   const exportDialog = new ExportDialog();
+  const fxPanel = new FxPanel();
+  timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
 
   // ---------------------------------------------------------------- header
   const tabs: Record<View, HTMLButtonElement> = {
@@ -48,6 +56,7 @@ async function main(): Promise<void> {
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
+  const masterFxBtn = h('button', { class: 'fx-btn', title: 'Filters on the master bus', onclick: () => fxPanel.toggle(MASTER) }, 'Master FX');
   const header = h(
     'header',
     null,
@@ -55,6 +64,7 @@ async function main(): Promise<void> {
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
     h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
+    masterFxBtn,
     h('div', { class: 'spacer' }),
     projectName,
     h('button', { class: 'primary', title: 'Export (Ctrl+E)', onclick: () => exportDialog.open() }, 'Export…'),
@@ -110,6 +120,11 @@ async function main(): Promise<void> {
   store.subscribe((kinds) => {
     if (kinds.has('view')) renderView();
     if (kinds.has('project')) {
+      fxPanel.refresh();
+      const n = (store.project.masterFx ?? []).filter((f) => f.enabled).length;
+      masterFxBtn.textContent = n ? `Master FX ${n}` : 'Master FX';
+      masterFxBtn.classList.toggle('active', n > 0);
+      masterFxBtn.classList.toggle('open', fxPanel.target === MASTER);
       if (store.view === 'edit') timeline.renderHeaders();
       if (store.view === 'chapters') chapters.render();
       if (store.view === 'setup') setup.render();
@@ -125,6 +140,7 @@ async function main(): Promise<void> {
       renderTransport();
       timeline.follow();
       if (store.view === 'edit') timeline.updateMeters();
+      soundboard.updatePlaying(store.transport.jingles);
       if (store.view === 'setup') setup.updateMeters();
     }
     if (store.view === 'edit') timeline.draw();
@@ -136,7 +152,11 @@ async function main(): Promise<void> {
     const hold = store.meterHold;
     for (let i = 0; i < u.inputPeaks.length; i++) hold[i] = Math.max(u.inputPeaks[i], (hold[i] ?? 0) * METER_DECAY);
     hold.length = u.inputPeaks.length;
-    if (u.state === 'recording' && store.transport.state !== 'recording') store.recordStart = u.position;
+    if (u.state === 'recording' && store.transport.state !== 'recording') {
+      store.recordStart = u.position;
+      store.livePeaks.clear();
+    }
+    if (u.recordingPeaks) store.addLivePeaks(u.recordingPeaks);
     store.transport = u;
     store.notify('transport');
   });
@@ -170,6 +190,13 @@ async function main(): Promise<void> {
     if (isTyping(e) || document.querySelector('.overlay')) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod) return; // menu accelerators
+    const cough = /^Digit([1-9])$/.exec(e.code);
+    if (cough && e.shiftKey) {
+      e.preventDefault();
+      const id = coughTrackForKey(Number(cough[1]));
+      if (id && !e.repeat) coughDown(id);
+      return;
+    }
     switch (e.key) {
       case ' ':
         e.preventDefault();
@@ -227,6 +254,14 @@ async function main(): Promise<void> {
         return;
     }
   });
+
+  window.addEventListener('keyup', (e) => {
+    const cough = /^Digit([1-9])$/.exec(e.code);
+    if (!cough) return;
+    const id = coughTrackForKey(Number(cough[1]));
+    if (id) coughUp(id);
+  });
+  window.addEventListener('blur', releaseAllCoughs);
 
   // ---------------------------------------------------------------- boot
   const opened = await api().currentProject();

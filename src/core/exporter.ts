@@ -46,12 +46,13 @@ function renderRange(
 
 export function measureLoudness(project: Project, projectDir: string, tracks?: Track[]): { integrated: number; peakDb: number } {
   const readers = new ReaderCache(projectDir);
+  const mixer = new Mixer(project, readers);
   try {
-    const mixer = new Mixer(project, readers);
     const meter = new LoudnessMeter(project.sampleRate, 2);
     renderRange(mixer, 0, projectLength(project), tracks ?? null, (b, n) => meter.push(b, n));
     return { integrated: meter.integrated(), peakDb: meter.peakDb() };
   } finally {
+    mixer.dispose();
     readers.closeAll();
   }
 }
@@ -73,8 +74,8 @@ function safeName(s: string): string {
 export function exportProject(project: Project, projectDir: string, opts: ExportOptions, progress: ProgressFn = () => {}): ExportResult {
   const readers = new ReaderCache(projectDir);
   const files: string[] = [];
+  const mixer = new Mixer(project, readers);
   try {
-    const mixer = new Mixer(project, readers);
     const start = Math.max(0, opts.start ?? 0);
     const end = Math.max(start, opts.end ?? projectLength(project));
     const durationSeconds = (end - start) / project.sampleRate;
@@ -168,6 +169,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     progress({ phase: 'Done', fraction: 1 });
     return { files, loudness, peakDb, appliedGainDb };
   } finally {
+    mixer.dispose();
     readers.closeAll();
   }
 }

@@ -7,6 +7,10 @@ import type {
   ExportOptions,
   ExportProgress,
   ExportResult,
+  Fx,
+  VstParamInfo,
+  VstPluginInfo,
+  VstPluginRef,
   LoudnessReport,
   Project,
   RecordedTake,
@@ -77,6 +81,14 @@ export interface SoundPodApi {
   measureLoudness(): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;
 
+  // VST3 plug-ins (hosted in a separate process; editors are never shown)
+  vstStatus(): Promise<{ available: boolean; dirs: string[] }>;
+  vstScan(force?: boolean): Promise<VstPluginInfo[]>;
+  /** Loads a plug-in once to read its parameters and initial state. */
+  vstDescribe(plugin: VstPluginRef): Promise<{ params: Array<VstParamInfo & { value: number }>; state: string; latency: number }>;
+  /** The plug-in's own text for a parameter value, e.g. "-12.0 dB". */
+  vstFormat(fx: Fx, paramId: number, value: number): Promise<string>;
+
   // events (return an unsubscribe function)
   onTransport(cb: (u: TransportUpdate) => void): () => void;
   onStatus(cb: (s: EngineStatus) => void): () => void;
@@ -130,4 +142,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'exportProject',
   'measureLoudness',
   'revealFile',
+  'vstStatus',
+  'vstScan',
+  'vstDescribe',
+  'vstFormat',
 ];
