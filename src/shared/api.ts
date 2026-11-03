@@ -53,6 +53,22 @@ export type MenuCommand =
   | 'view-chapters'
   | 'show-project-folder';
 
+/** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
+export interface MenuModelItem {
+  id: string;
+  type: 'normal' | 'separator' | 'checkbox';
+  label: string;
+  /** Shortcut as shown, e.g. "Ctrl+Shift+N". */
+  accelerator?: string;
+  checked?: boolean;
+  enabled: boolean;
+}
+
+export interface MenuModelTop {
+  label: string;
+  items: MenuModelItem[];
+}
+
 export interface WavePodApi {
   // devices
   getStatus(): Promise<EngineStatus>;
@@ -98,6 +114,11 @@ export interface WavePodApi {
   newProjectFromTemplate(id: string): Promise<OpenedProject>;
   showTemplatesFolder(): Promise<void>;
   showProjectFolder(): Promise<void>;
+
+  // app menu, drawn by the renderer where the native menu bar can't follow the app's theme
+  /** Empty on macOS, which keeps its native menu. */
+  getMenu(): Promise<MenuModelTop[]>;
+  menuClick(id: string): Promise<void>;
 
   // files
   pickAudioFiles(): Promise<string[]>;
@@ -187,6 +208,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'newProjectFromTemplate',
   'showTemplatesFolder',
   'showProjectFolder',
+  'getMenu',
+  'menuClick',
   'pickAudioFiles',
   'readFile',
   'importAudio',
