@@ -366,3 +366,20 @@ export interface MidiSettings {
   enabled: boolean;
   bindings: MidiBinding[];
 }
+
+// ---------------------------------------------------------------- MCP server for AI agents
+
+/** App settings for the local MCP server (off by default). */
+export interface McpSettings {
+  enabled: boolean;
+  port: number;
+}
+
+export interface McpStatus extends McpSettings {
+  running: boolean;
+  /** Endpoint clients connect to. */
+  url: string;
+  error: string | null;
+  /** Names of the tools offered. */
+  tools: string[];
+}

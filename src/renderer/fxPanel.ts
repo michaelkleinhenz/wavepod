@@ -1,24 +1,15 @@
 // Filter stack editor for a track or the master bus: add, bypass, tweak, reorder and remove filters.
-import { VST_PARAM_BYPASS, VST_PARAM_HIDDEN, VST_PARAM_READONLY, type Fx, type FxMeter, type FxType, type VstParamInfo, type VstPluginInfo } from '../shared/types';
+import type { Fx, FxMeter, FxType, VstParamInfo, VstPluginInfo } from '../shared/types';
 import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/definitions';
-import { MASTER, addFx, fxList, insertFx, moveFx, removeFx, updateFx, type FxTarget } from '../core/fx/stack';
+import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, updateFx, type FxTarget } from '../core/fx/stack';
+import { createVstFx, visibleVstParams } from '../core/fx/vst';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
-import { uid } from '../shared/time';
 import { clear, errorMessage, h, toast } from './dom';
 import { api, store } from './store';
 
 const VST_OPTION = '__vst3';
 /** Plug-ins with many parameters show this many sliders until "Show all" is clicked. */
 const VST_COLLAPSED_PARAMS = 12;
-const VST_SKIP_FLAGS = VST_PARAM_HIDDEN | VST_PARAM_READONLY | VST_PARAM_BYPASS;
-
-/** Parameters WavePod shows as sliders. Plug-in editors are never opened. */
-export function visibleVstParams<T extends VstParamInfo>(params: T[]): T[] {
-  return params.filter((p) => (p.flags & VST_SKIP_FLAGS) === 0);
-}
-
-/** A starting point that mirrors Ultraschall's voice chain (without its noise reduction and reverb). */
-const VOICE_CHAIN: FxType[] = ['highpass', 'deesser', 'dynamics'];
 
 function formatValue(spec: FxParamSpec, v: number): string {
   if (spec.options) return spec.options.find((o) => o.value === v)?.label ?? String(v);
@@ -134,7 +125,7 @@ export class FxPanel {
 
   private addVoiceChain(): void {
     const target = this.target!;
-    this.edit((p) => VOICE_CHAIN.reduce((q, type) => addFx(q, target, type).project, p));
+    this.edit((p) => addVoiceChain(p, target));
   }
 
   private card(target: FxTarget, fx: Fx, index: number, count: number): HTMLElement {
@@ -280,16 +271,7 @@ export class FxPanel {
     try {
       const ref = { path: plugin.path, cid: plugin.cid, name: plugin.name, vendor: plugin.vendor };
       const desc = await api().vstDescribe(ref);
-      const shown = visibleVstParams(desc.params);
-      const fx: Fx = {
-        id: uid('fx'),
-        type: 'vst3',
-        enabled: true,
-        plugin: ref,
-        paramInfo: shown.map(({ id, title, units, steps, default: d, flags }) => ({ id, title, units, steps, default: d, flags })),
-        params: Object.fromEntries(shown.map((p) => [String(p.id), p.value])),
-        state: desc.state,
-      };
+      const fx = createVstFx(ref, desc);
       this.picker = null;
       this.edit((p) => insertFx(p, target, fx));
     } catch (e) {

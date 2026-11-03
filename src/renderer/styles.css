@@ -337,3 +337,11 @@ button.icon-btn:focus-visible { outline: 1px solid var(--accent); outline-offset
 .tooltip-label { font-weight: 600; }
 .tooltip kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
 .tooltip-detail { color: var(--muted); margin-top: 3px; line-height: 1.35; }
+
+/* MCP card */
+.mcp-copy { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.mcp-copy .muted { min-width: 90px; }
+.mcp-copy code { flex: 1; min-width: 0; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+.mcp-port { width: 90px; }
+.mcp-state.ok { color: var(--ok); }
+.mcp-card .hint { margin-top: 10px; }

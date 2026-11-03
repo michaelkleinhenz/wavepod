@@ -51,6 +51,9 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   clips so each reaches the target (−16 LUFS by default) without the true
   peak going over the ceiling. The export normalises the mix to −16 / −19 /
   −23 LUFS with a peak ceiling.
+- **AI agents** (opt-in): a local MCP server lets Claude Desktop, Claude
+  Code and other MCP clients build and tweak filter stacks, apply the voice
+  chain and read tracks, markers and loudness.
 - **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter
   files (Podlove Simple Chapters, Podcasting 2.0 JSON, mp4chaps, Audacity
   labels).
@@ -125,6 +128,71 @@ to 64 or above (once per press, so a fader doesn't repeat), program
 changes always. A mapping listens to the device it was learned from;
 switch it to *Any device* if you use more than one. Mappings are stored in
 the app settings, not in the episode, so they work in every project.
+
+## AI agents (MCP)
+
+WavePod can run a [Model Context Protocol](https://modelcontextprotocol.io)
+server so an AI agent can work on the open episode, mainly its filter
+stacks: "give every speaker the voice chain, put a gentle compressor after
+the de-esser on the guest and a limiter at −1 dB on the master, then check
+the loudness".
+
+It is off by default. Switch it on in **Setup → AI agents (MCP)**. The
+server listens on `http://127.0.0.1:47474/mcp` (the port can be changed
+there) and only accepts connections from this computer; requests from web
+pages are refused. Any program on your computer can connect while it is on,
+so switch it off when you don't use it.
+
+Every change an agent makes is one undo step (`Ctrl/Cmd+Z`), shows up in
+the FX panel at once and is announced with a short message at the bottom.
+
+**Claude Code**
+
+```sh
+claude mcp add --transport http wavepod http://127.0.0.1:47474/mcp
+```
+
+**Claude Desktop** (and other clients that only start local commands):
+add this to `claude_desktop_config.json` (Settings → Developer → Edit
+Config) and restart Claude Desktop. It needs Node.js for `npx`.
+
+```json
+{
+  "mcpServers": {
+    "wavepod": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:47474/mcp"]
+    }
+  }
+}
+```
+
+Clients that speak Streamable HTTP directly (Cursor, VS Code, …) just need
+the URL. WavePod has to be running, with the server switched on, when the
+client connects.
+
+| Tool | What it does |
+| --- | --- |
+| `get_project` | Episode name, folder, sample rate, length, metadata, transport state |
+| `list_tracks` | Tracks and the master with gain, pan, mute/solo, clips and filter names |
+| `list_markers` | Chapter and edit markers with timestamps |
+| `measure_loudness` | EBU R128 figures of the mix and every track, after the filters |
+| `list_filter_types` | Built-in filters with parameter keys, units, ranges and defaults |
+| `list_vst_plugins` | Installed VST3 effects |
+| `get_filter_stack` | One stack with all values (VST3 values also as the plug-in's own text) |
+| `add_filter` | Add a built-in filter or a VST3 plug-in, at a position, with values |
+| `update_filter` | Change parameters, bypass or enable |
+| `remove_filter`, `move_filter` | Remove or reorder |
+| `apply_voice_chain` | High-pass, De-esser and Ultraschall Dynamics, appended or replacing the stack |
+| `set_filter_stack` | Replace a whole stack in one step |
+| `copy_filter_stack` | Copy a track's filters to another track or the master |
+
+Stacks are addressed by track name, track id or `master`; filters by id,
+or by type or plug-in name when that is unique in the stack. Built-in
+parameters use their real units (Hz, dB, ms, LUFS) and are clamped to the
+ranges the sliders allow; VST3 parameters are normalized 0–1 and addressed
+by id or title, as with the generated sliders (plug-in editors are never
+opened).
 
 ## Projects
 

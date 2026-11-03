@@ -1,6 +1,7 @@
 // VST3 plug-ins in a filter stack. The actual hosting happens in a separate process
 // (native/vsthost); this module only defines what the mixer needs from it.
-import type { Fx, VstParamInfo } from '../../shared/types';
+import { VST_PARAM_BYPASS, VST_PARAM_HIDDEN, VST_PARAM_READONLY, type Fx, type VstParamInfo, type VstPluginRef } from '../../shared/types';
+import { uid } from '../../shared/time';
 import type { FxProcessor } from './processors';
 
 export interface VstInstance {
@@ -20,6 +21,28 @@ export interface VstInstance {
 export interface VstHost {
   /** Loads a plug-in. Throws with a readable message if it can't. */
   create(fx: Pick<Fx, 'plugin'>, sampleRate: number, maxBlock: number): VstInstance;
+}
+
+const VST_SKIP_FLAGS = VST_PARAM_HIDDEN | VST_PARAM_READONLY | VST_PARAM_BYPASS;
+
+/** Parameters WavePod shows as sliders (and lets agents change). Plug-in editors are never opened. */
+export function visibleVstParams<T extends VstParamInfo>(params: T[]): T[] {
+  return params.filter((p) => (p.flags & VST_SKIP_FLAGS) === 0);
+}
+
+/** A new VST3 filter from a plug-in's description (parameters with their current values, and its state). */
+export function createVstFx(plugin: VstPluginRef, desc: { params: Array<VstParamInfo & { value: number }>; state: string }): Fx {
+  const ref = { path: plugin.path, cid: plugin.cid, name: plugin.name, vendor: plugin.vendor };
+  const shown = visibleVstParams(desc.params);
+  return {
+    id: uid('fx'),
+    type: 'vst3',
+    enabled: true,
+    plugin: ref,
+    paramInfo: shown.map(({ id, title, units, steps, default: d, flags }) => ({ id, title, units, steps, default: d, flags })),
+    params: Object.fromEntries(shown.map((p) => [String(p.id), p.value])),
+    state: desc.state,
+  };
 }
 
 let host: VstHost | null = null;

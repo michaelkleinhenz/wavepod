@@ -153,7 +153,7 @@ async function main(): Promise<void> {
       soundboard.render();
       void soundboard.ensureLoaded();
     }
-    if (kinds.has('devices') || kinds.has('status') || kinds.has('midi')) {
+    if (kinds.has('devices') || kinds.has('status') || kinds.has('midi') || kinds.has('mcp')) {
       if (store.view === 'setup') setup.render();
       if (store.view === 'edit') timeline.renderHeaders();
     }
@@ -195,6 +195,10 @@ async function main(): Promise<void> {
     // Ultraschall's soundcheck reminds you of this too: armed tracks make R start a new take mid-edit.
     else if (project.tracks.some((t) => t.armed)) toast(`${recorded} · tracks are still armed, use Prepare for editing before you cut`);
     else toast(recorded);
+  });
+  api().onProjectEdited(({ project, summary }) => {
+    store.applyExternal(project);
+    toast(`AI agent: ${summary}`);
   });
   api().onMenu((cmd) => {
     switch (cmd) {
