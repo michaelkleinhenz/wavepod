@@ -313,3 +313,27 @@ table.midi-map select { padding: 2px 6px; max-width: 220px; }
 .midi-activity { font: 12px ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--text); }
 .midi-activity.blink { animation: midi-blink 0.6s ease-out; }
 @keyframes midi-blink { from { color: var(--ok); } to { color: var(--text); } }
+
+/* icon buttons and tooltips */
+button.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 0; }
+button.icon-btn .icon { display: block; pointer-events: none; }
+button.icon-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 280px;
+  padding: 6px 9px;
+  background: #0f1115;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.tooltip.show { opacity: 1; transition-delay: 0.25s; }
+.tooltip-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.tooltip-label { font-weight: 600; }
+.tooltip kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+.tooltip-detail { color: var(--muted); margin-top: 3px; line-height: 1.35; }
