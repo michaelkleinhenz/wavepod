@@ -2,8 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['**']
-    tags-ignore: ['v*']
+    branches: [main]
   pull_request:
 
 permissions:
@@ -18,8 +17,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -30,16 +29,17 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # Runners have no audio devices, so only check that the prebuilt binary loads.
       - name: Check native audio module loads
-        run: node -e "const {RtAudio}=require('audify'); new RtAudio(); console.log('audify ok')"
+        run: node -e "const a = require('audify'); if (typeof a.RtAudio !== 'function') process.exit(1); console.log('audify ok')"
 
   package:
     name: Package smoke test (Linux)
     runs-on: ubuntu-latest
     needs: check
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
