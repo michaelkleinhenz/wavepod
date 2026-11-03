@@ -233,7 +233,8 @@ export interface FlacTags {
   cover?: { mime: string; data: Buffer };
 }
 
-function vorbisComment(tags: FlacTags): Buffer {
+/** A Vorbis comment block (FLAC, and the body of Opus' OpusTags); `extra` entries are appended as they are. */
+export function vorbisComment(tags: FlacTags, extra: string[] = []): Buffer {
   const entries: string[] = [];
   const add = (k: string, v?: string) => v && entries.push(`${k}=${v}`);
   add('TITLE', tags.title);
@@ -250,6 +251,7 @@ function vorbisComment(tags: FlacTags): Buffer {
     add(`${id}NAME`, c.title);
     add(`${id}URL`, c.url);
   });
+  entries.push(...extra);
   const vendor = Buffer.from('WavePod', 'utf8');
   const parts: Buffer[] = [];
   const u32 = (n: number) => {
@@ -265,7 +267,8 @@ function vorbisComment(tags: FlacTags): Buffer {
   return Buffer.concat(parts);
 }
 
-function pictureBlock(cover: { mime: string; data: Buffer }): Buffer {
+/** A FLAC PICTURE block body (front cover); Opus carries it base64-encoded as METADATA_BLOCK_PICTURE. */
+export function pictureBlock(cover: { mime: string; data: Buffer }): Buffer {
   const mime = Buffer.from(cover.mime, 'latin1');
   const u32 = (n: number) => {
     const b = Buffer.alloc(4);

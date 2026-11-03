@@ -353,7 +353,7 @@ const handlers: Record<InvokeMethod, Handler> = {
       buttonLabel: 'Export',
     });
     if (res.canceled || !res.filePath) return null;
-    return res.filePath.replace(/\.(wav|mp3|flac)$/i, '');
+    return res.filePath.replace(/\.(wav|mp3|flac|opus)$/i, '');
   },
   exportProject: (opts: ExportOptions) => {
     flushSave();

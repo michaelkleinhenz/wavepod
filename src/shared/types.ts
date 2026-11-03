@@ -320,8 +320,10 @@ export interface WaveformPeaks {
 export interface ExportOptions {
   /** Absolute output path without extension. */
   outputBase: string;
-  formats: Array<'wav' | 'mp3' | 'flac'>;
+  formats: Array<'wav' | 'mp3' | 'flac' | 'opus'>;
   mp3Bitrate: number;
+  /** Opus bitrate in kbps (stereo); 64 when not given. */
+  opusBitrate?: number;
   normalize: boolean;
   targetLufs: number;
   /** Ceiling for true peaks in dBTP after normalisation. */

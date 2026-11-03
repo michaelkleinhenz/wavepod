@@ -11,6 +11,7 @@ import { Mixer, ReaderCache, projectLength } from './mixer';
 import { markersToChapters } from './project';
 import { WavWriter } from './wav';
 import { FlacWriter } from './flac';
+import { OpusWriter } from './opus';
 
 const BLOCK = 4096;
 /** Width of the export waveform in columns, whatever the length of the export. */
@@ -186,19 +187,19 @@ export function exportProject(project: Project, projectDir: string, opts: Export
       });
     const cover = loadPicture(projectDir, project.metadata.artwork);
     const m0 = project.metadata;
-    const flac = opts.formats.includes('flac')
-      ? new FlacWriter(`${opts.outputBase}.flac`, 2, project.sampleRate, 24, {
-          title: m0.title || project.name,
-          artist: m0.author,
-          album: m0.podcast,
-          date: m0.year,
-          track: m0.episode,
-          description: m0.description,
-          genre: m0.category || 'Podcast',
-          chapters,
-          ...(cover ? { cover } : {}),
-        })
-      : null;
+    const textTags = {
+      title: m0.title || project.name,
+      artist: m0.author,
+      album: m0.podcast,
+      date: m0.year,
+      track: m0.episode,
+      description: m0.description,
+      genre: m0.category || 'Podcast',
+      chapters,
+      ...(cover ? { cover } : {}),
+    };
+    const flac = opts.formats.includes('flac') ? new FlacWriter(`${opts.outputBase}.flac`, 2, project.sampleRate, 24, textTags) : null;
+    const opus = opts.formats.includes('opus') ? new OpusWriter(`${opts.outputBase}.opus`, project.sampleRate, opts.opusBitrate ?? 64, textTags) : null;
     if (opts.formats.includes('mp3')) {
       const mp3Path = `${opts.outputBase}.mp3`;
       mp3Fd = fs.openSync(mp3Path, 'w');
@@ -233,6 +234,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         renderTap.push(scaled, n);
         if (wav) wav.write(scaled, n);
         if (flac) flac.write(scaled, n);
+        if (opus) opus.write(scaled, n);
         if (encoder && mp3Fd !== null) {
           const data = encoder.encodeBuffer(toInt16(b[0], n, gain, l16).subarray(0, n), toInt16(b[1], n, gain, r16).subarray(0, n));
           if (data.length) fs.writeSync(mp3Fd, data);
@@ -247,6 +249,10 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     if (flac) {
       flac.close();
       files.push(flac.path);
+    }
+    if (opus) {
+      opus.close();
+      files.push(opus.path);
     }
     if (encoder && mp3Fd !== null) {
       const tail = encoder.flush();

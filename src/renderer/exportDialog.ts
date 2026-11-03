@@ -161,7 +161,7 @@ export class ExportDialog {
     const regions = store.project.regions ?? [];
     const check = (label: string, checked: boolean, onChange: (v: boolean) => void, disabled = false) =>
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, disabled, onchange: (e: Event) => onChange((e.target as HTMLInputElement).checked) }), label);
-    const fmt = (f: 'mp3' | 'wav' | 'flac', label: string) =>
+    const fmt = (f: 'mp3' | 'wav' | 'flac' | 'opus', label: string) =>
       check(label, o.formats.includes(f), (v) => {
         o.formats = v ? [...new Set([...o.formats, f])] : o.formats.filter((x) => x !== f);
         this.render();
@@ -174,10 +174,15 @@ export class ExportDialog {
       { class: 'dialog' },
       h('h2', null, 'Export episode'),
       h('div', { class: 'grid' },
-        h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'), fmt('flac', 'FLAC 24-bit (lossless, with chapters)'),
+        h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'), fmt('flac', 'FLAC 24-bit (lossless, with chapters)'), fmt('opus', 'Opus (small files, with chapters)'),
           h('label', { class: 'field' }, h('span', null, 'MP3 bitrate'),
             h('select', { disabled: !o.formats.includes('mp3'), onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
               ...[64, 96, 128, 160, 192, 256].map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps`)))),
+          o.formats.includes('opus')
+            ? h('label', { class: 'field' }, h('span', null, 'Opus bitrate'),
+                h('select', { onchange: (e: Event) => (o.opusBitrate = Number((e.target as HTMLSelectElement).value)) },
+                  ...[32, 48, 64, 96, 128].map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 ? ' (like MP3 at 128)' : ''}`))))
+            : null,
           check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }),
           check('Stems (one WAV per track)', o.stems, (v) => (o.stems = v)),
           check(range ? `Only the selected range` : 'Only the selected range (none selected)', this.useRange && !!range && !this.perRegion, (v) => { this.useRange = v; this.render(); }, !range || this.perRegion),
