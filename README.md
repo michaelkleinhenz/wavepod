@@ -105,6 +105,18 @@ Drag across the ruler to select a time range; drag clips to move them
 sit in the strip at the bottom of each track: drag there to add one, drag
 its edges to adjust it, double-click or `Delete` to remove it.
 
+## MIDI controller
+
+Any class-compliant USB MIDI controller (pad controller, keyboard, foot
+switch, a mixer's MIDI out) can start and stop recording and drop chapter
+and edit markers; play/pause, stop and record on/off can be mapped too.
+In **Setup → MIDI controller**, click *Learn* next to a function and press
+the pad, key or button. Notes fire on note-on, controllers when they go
+to 64 or above (once per press, so a fader doesn't repeat), program
+changes always. A mapping listens to the device it was learned from;
+switch it to *Any device* if you use more than one. Mappings are stored in
+the app settings, not in the episode, so they work in every project.
+
 ## Projects
 
 Each episode is a folder (default `~/Documents/SoundPod/Episode …`) with
