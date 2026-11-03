@@ -1,4 +1,5 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
+import type { ClipboardData } from '../core/clipboard';
 import type { WavePodApi } from '../shared/api';
 import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
 import { PeakPyramid } from '../core/peaks';
@@ -27,7 +28,7 @@ export interface Selection {
 }
 
 type Listener = (what: Set<ChangeKind>) => void;
-export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices' | 'midi' | 'mcp';
+export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices' | 'midi' | 'mcp' | 'osc';
 
 class Store {
   project!: Project;
@@ -39,7 +40,15 @@ class Store {
   transport: TransportUpdate = { state: 'stopped', position: 0, inputPeaks: [], outputPeaks: [0, 0], recordedFrames: 0 };
   /** Position where the current recording started. */
   recordStart = 0;
+  /** Where the last recording stopped (or the current one is now), for "jump to recording position". */
+  recordPosition: number | null = null;
+  /** Clips or a range copied with Ctrl+C / cut with Ctrl+X (this session only). */
+  clipboard: ClipboardData | null = null;
+  /** A running "preview cut": stop at `end`, then return to `origin`. */
+  preview: { end: number; origin: number; started?: boolean } | null = null;
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
+  /** Repeat: playback loops the selected time range. Remembered across launches. */
+  repeat = readRepeatSetting();
   view: View = 'edit';
   /** Waveform data of media files: coarse peak levels, plus fine levels and samples in tiles. */
   waves = new WaveCache(api, () => this.notify('peaks'));
@@ -80,6 +89,7 @@ class Store {
       this.dir = dir;
       this.history.clear();
       this.waves.clear();
+      this.recordPosition = null;
       this.selection = { clipIds: new Set(), range: null, markerId: null };
     }
     this.notify('project');
@@ -181,3 +191,21 @@ class Store {
 }
 
 export const store = new Store();
+
+const REPEAT_KEY = 'wavepod.transport.repeat';
+
+function readRepeatSetting(): boolean {
+  try {
+    return localStorage.getItem(REPEAT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveRepeatSetting(on: boolean): void {
+  try {
+    localStorage.setItem(REPEAT_KEY, on ? '1' : '0');
+  } catch {
+    // not remembered, still works for this session
+  }
+}

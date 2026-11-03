@@ -10,6 +10,7 @@ import type {
   PlayingJingle,
   Project,
   RecordedTake,
+  Track,
   TransportState,
   TransportUpdate,
   WaveformPeaks,
@@ -18,7 +19,8 @@ import { dbToGain, uid } from '../../shared/time';
 import { interleavedPeaks } from '../../core/dsp';
 import { MipmapBuilder, PEAK_TILE, SAMPLE_TILE, TILED_MAX_SPP, encodePeaks, headerSize, mixToMono, parsePeakHeader, type PeakFileLayout } from '../../core/peaks';
 import { Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
-import { createProject } from '../../core/project';
+import { clipsEnd, createProject } from '../../core/project';
+import { TimeStretcher } from '../../core/timeStretch';
 import {
   JINGLE_PANIC_SECONDS,
   JINGLE_STOP_SECONDS,
@@ -30,6 +32,7 @@ import {
 } from '../../core/soundboard';
 import { WavReader, WavWriter, writeWavFile } from '../../core/wav';
 import type { AudioBackend, StreamHandle } from './backend';
+import { markersCrossed, pingTone } from '../../core/markerPing';
 import { SimulatedBackend } from './simulatedBackend';
 
 export const VIRTUAL_API = 'virtual';
@@ -99,6 +102,12 @@ export class AudioEngine extends EventEmitter {
 
   private state: TransportState = 'stopped';
   private playPos = 0;
+  /** Playback speed (pitch kept); recording always runs at 1x. */
+  private speed = 1;
+  private stretcher: TimeStretcher | null = null;
+  private stretchTracks: Track[] = [];
+  /** Repeat range [start, end) in frames: playback that reaches `end` continues at `start`. */
+  private loop: [number, number] | null = null;
   private recordStart = 0;
   private recordedFrames = 0;
   private recorders: Recorder[] = [];
@@ -107,10 +116,20 @@ export class AudioEngine extends EventEmitter {
   private inputPeaks: number[] = [];
   private outputPeaks = [0, 0];
   private mixBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  /** Live jingles, kept apart from the timeline so outputs can carry either. */
+  private sbBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  /** Pre-show preset: outputs carry only the soundboard. */
+  private preShow = false;
+  /** Scratch for the part of a buffer that follows a jump back to the repeat start. */
+  private loopBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private outBuf = new Float32Array(0);
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
   private voices: Voice[] = [];
+  /** Marker ping on/off, and the pings sounding now. */
+  private markerPing = false;
+  private pings: Array<{ tone: Float32Array; pos: number }> = [];
+  private pingTones = new Map<string, Float32Array>();
   private meterTimer: NodeJS.Timeout | null = null;
   private fallbackClock: NodeJS.Timeout | null = null;
 
@@ -157,6 +176,7 @@ export class AudioEngine extends EventEmitter {
       inputChannelCount: this.input?.channels ?? 0,
       outputChannelCount: this.output?.channels ?? 0,
       error: this.error,
+      preShow: this.preShow,
     };
   }
 
@@ -209,6 +229,10 @@ export class AudioEngine extends EventEmitter {
     if (outDev) {
       try {
         if (this.config.outputFirstChannel + 2 > outDev.outputChannels) this.config.outputFirstChannel = 0;
+        const second = this.config.output2FirstChannel;
+        if (second !== null && second !== undefined && (second + 2 > outDev.outputChannels || second === this.config.outputFirstChannel)) {
+          this.config.output2FirstChannel = null;
+        }
         this.output = this.backend().openOutput({
           deviceId: outDev.id,
           channels: outDev.outputChannels,
@@ -270,8 +294,31 @@ export class AudioEngine extends EventEmitter {
     return this.state === 'recording' ? this.recordStart + this.recordedFrames : this.playPos;
   }
 
+  get playbackSpeed(): number {
+    return this.speed;
+  }
+
+  /** 1 (normal) up to 2; playback only. */
+  /** Output preset "Pre-show" (only jingles are heard) or "Show" (everything). Doesn't interrupt the transport. */
+  setPreShow(on: boolean): void {
+    if (this.preShow === on) return;
+    this.preShow = on;
+    this.emit('status', this.status());
+  }
+
+  setMarkerPing(on: boolean): void {
+    this.markerPing = on;
+    if (!on) this.pings = [];
+  }
+
+  setPlaybackSpeed(speed: number): void {
+    this.speed = Math.max(0.5, Math.min(2, Number.isFinite(speed) ? speed : 1));
+    this.stretcher = null;
+  }
+
   seek(position: number): void {
     if (this.state === 'recording') return;
+    this.stretcher = null;
     this.playPos = Math.max(0, Math.round(position));
     this.emitTransport();
   }
@@ -279,9 +326,47 @@ export class AudioEngine extends EventEmitter {
   play(from?: number): void {
     if (this.state === 'recording') return;
     if (from !== undefined) this.playPos = Math.max(0, Math.round(from));
+    this.stretcher = null;
     this.state = 'playing';
     if (!this.output) this.startFallbackClock();
     this.emitTransport();
+  }
+
+  /** Sets (or clears) the range that playback repeats. Recording is never looped. */
+  setLoop(range: [number, number] | null): void {
+    const start = range ? Math.max(0, Math.round(range[0])) : 0;
+    const end = range ? Math.round(range[1]) : 0;
+    this.loop = range && end > start ? [start, end] : null;
+  }
+
+  /** Whether playback is inside or before the repeat range, so it wraps instead of running on. */
+  private get looping(): boolean {
+    return this.state === 'playing' && !!this.loop && this.playPos < this.loop[1];
+  }
+
+  /** Frames to render before the repeat jump or the end of the last clip, or `frames` if neither is in this block. */
+  private framesUntilJump(frames: number): number {
+    if (this.state !== 'playing') return frames;
+    const until = this.looping ? this.loop![1] : this.clipsEnd();
+    return this.playPos < until ? Math.min(frames, until - this.playPos) : frames;
+  }
+
+  /** Advances the playhead: jumps back to the repeat start, or stops at the end of the last clip. */
+  private advance(frames: number): void {
+    const wasLooping = this.looping;
+    this.playPos += frames;
+    if (this.state !== 'playing') return;
+    if (wasLooping && this.playPos === this.loop![1]) this.playPos = this.loop![0];
+    else if (!wasLooping && this.playPos >= this.clipsEnd()) {
+      this.state = 'stopped';
+      this.stopFallbackClock();
+      this.emitTransport();
+    }
+  }
+
+  /** Where the last clip on the timeline ends; playback stops there. */
+  private clipsEnd(): number {
+    return clipsEnd(this.project);
   }
 
   /** Starts recording all armed tracks at the playhead. Returns the files being written. */
@@ -485,43 +570,135 @@ export class AudioEngine extends EventEmitter {
   /** Renders the next output buffer (interleaved, all device output channels). */
   private onOutput(frames: number, nch: number): Float32Array {
     if (this.mixBuf[0].length < frames) this.mixBuf = [new Float32Array(frames), new Float32Array(frames)];
+    if (this.sbBuf[0].length < frames) this.sbBuf = [new Float32Array(frames), new Float32Array(frames)];
     if (this.outBuf.length !== frames * nch) this.outBuf = new Float32Array(frames * nch);
     const [L, R] = this.mixBuf;
+    const [SL, SR] = this.sbBuf;
     L.fill(0);
     R.fill(0);
+    SL.fill(0);
+    SR.fill(0);
     this.renderTimeline(frames);
     this.renderVoices(frames);
     const out = this.outBuf;
     out.fill(0);
+    // gains of the timeline (episode) and the live jingles on the main and the second pair
+    const tlMain = this.preShow ? 0 : 1;
+    const src2 = this.config.output2Source ?? 'master';
+    const tl2 = this.preShow || src2 === 'soundboard' ? 0 : 1;
+    const sb2 = src2 === 'episode' ? 0 : 1;
     const first = Math.min(this.config.outputFirstChannel, Math.max(0, nch - 2));
+    const second = this.config.output2FirstChannel;
+    const has2 = second !== null && second !== undefined && second + 1 < nch && second !== first;
     for (let i = 0; i < frames; i++) {
-      const l = L[i];
-      const r = R[i];
+      const l = L[i] * tlMain + SL[i];
+      const r = R[i] * tlMain + SR[i];
       if (Math.abs(l) > this.outputPeaks[0]) this.outputPeaks[0] = Math.abs(l);
       if (Math.abs(r) > this.outputPeaks[1]) this.outputPeaks[1] = Math.abs(r);
       out[i * nch + first] = l;
       if (nch > 1) out[i * nch + first + 1] = r;
+      if (has2) {
+        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2;
+        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2;
+      }
     }
     return out;
   }
 
   private renderTimeline(frames: number): void {
     if (this.state === 'stopped') return;
+    const before = this.playPos;
+    this.renderTimelineMix(frames);
+    if (this.state === 'playing' && this.markerPing) this.renderPings(before, this.playPos, frames);
+  }
+
+  /** Beeps for markers that playback just passed. */
+  private renderPings(from: number, to: number, frames: number): void {
+    for (const m of markersCrossed(this.project.markers, from, to)) {
+      const key = `${this.project.sampleRate}:${m.kind}`;
+      let tone = this.pingTones.get(key);
+      if (!tone) this.pingTones.set(key, (tone = pingTone(this.project.sampleRate, m.kind)));
+      this.pings.push({ tone, pos: 0 });
+    }
+    if (!this.pings.length) return;
+    const [L, R] = this.mixBuf;
+    for (const p of this.pings) {
+      const n = Math.min(frames, p.tone.length - p.pos);
+      for (let i = 0; i < n; i++) {
+        const v = p.tone[p.pos + i];
+        L[i] += v;
+        R[i] += v;
+      }
+      p.pos += n;
+    }
+    this.pings = this.pings.filter((p) => p.pos < p.tone.length);
+  }
+
+  private renderTimelineMix(frames: number): void {
     let tracks = audibleTracks(this.project);
     // While recording, don't play back what is being recorded (avoids hearing yourself late).
     if (this.state === 'recording') tracks = tracks.filter((t) => !this.armedTrackIds.has(t.id));
+    if (this.state === 'playing' && this.speed !== 1) {
+      // faster listening: the mix is rendered contiguously and time-stretched, pitch kept
+      if (!this.stretcher) {
+        this.stretcher = new TimeStretcher(this.project.sampleRate, (pos, n, buf) => this.mixer.render(pos, n, buf, this.stretchTracks), this.speed);
+        this.stretcher.reset(this.playPos);
+      }
+      this.stretchTracks = tracks;
+      try {
+        this.stretcher.pull(frames, this.mixBuf);
+      } catch (e) {
+        this.reportError(`Playback: ${(e as Error).message}`);
+      }
+      this.afterStretch(this.stretcher.position);
+      return;
+    }
+    // While recording this keeps overdub playback moving along with the take.
+    for (let done = 0; done < frames && this.transportState !== 'stopped'; ) {
+      const n = this.framesUntilJump(frames - done);
+      this.renderChunk(n, done, tracks);
+      done += n;
+      this.advance(n);
+    }
+  }
+
+  /**
+   * Moves the playhead to where the time-stretched playback got to. The stretcher reads ahead in
+   * blocks, so the repeat jump and the stop at the end land within one buffer of the exact spot.
+   */
+  private afterStretch(pos: number): void {
+    const wasLooping = this.looping;
+    this.playPos = pos;
+    if (wasLooping && pos >= this.loop![1]) {
+      this.playPos = this.loop![0];
+      this.stretcher = null;
+    } else if (!wasLooping && pos >= this.clipsEnd()) {
+      this.state = 'stopped';
+      this.stretcher = null;
+      this.stopFallbackClock();
+      this.emitTransport();
+    }
+  }
+
+  /** Mixes `frames` at the playhead into mixBuf starting at `offset` (non-zero after a repeat jump). */
+  private renderChunk(frames: number, offset: number, tracks: ReturnType<typeof audibleTracks>): void {
     try {
-      this.mixer.render(this.playPos, frames, this.mixBuf, tracks);
+      if (offset === 0) {
+        this.mixer.render(this.playPos, frames, this.mixBuf, tracks);
+        return;
+      }
+      if (this.loopBuf[0].length < frames) this.loopBuf = [new Float32Array(frames), new Float32Array(frames)];
+      this.mixer.render(this.playPos, frames, this.loopBuf, tracks);
+      this.mixBuf[0].set(this.loopBuf[0].subarray(0, frames), offset);
+      this.mixBuf[1].set(this.loopBuf[1].subarray(0, frames), offset);
     } catch (e) {
       this.reportError(`Playback: ${(e as Error).message}`);
     }
-    // While recording this keeps overdub playback moving along with the take.
-    this.playPos += frames;
   }
 
   private renderVoices(frames: number): void {
     if (this.voices.length === 0) return;
-    const [L, R] = this.mixBuf;
+    const [L, R] = this.sbBuf;
     for (const v of this.voices) {
       const l = v.sound.data[0];
       const r = v.sound.data[1] ?? l;
@@ -555,7 +732,11 @@ export class AudioEngine extends EventEmitter {
       const now = performance.now();
       const frames = Math.round(((now - last) / 1000) * this.project.sampleRate);
       last = now;
-      if (this.state === 'playing') this.playPos += frames;
+      for (let left = this.state === 'playing' ? Math.round(frames * this.speed) : 0; this.state === 'playing' && left > 0; ) {
+        const n = this.framesUntilJump(left);
+        this.advance(n);
+        left -= n;
+      }
     }, 20);
   }
 

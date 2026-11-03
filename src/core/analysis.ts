@@ -29,7 +29,7 @@ export function measureClip(projectDir: string, clip: Clip): LoudnessStats {
       const n = Math.min(BLOCK, clip.length - done);
       const src = reader.read(clip.offset + done, n, buf);
       for (let i = 0; i < n; i++) {
-        const g = fades ? fadeGain(done + i, clip.length, clip.fadeIn, clip.fadeOut) : 1;
+        const g = fades ? fadeGain(done + i, clip.length, clip.fadeIn, clip.fadeOut, clip.fadeInShape, clip.fadeOutShape) : 1;
         l[i] = src[0][i] * g;
         r[i] = (stereo ? src[1][i] : src[0][i]) * g;
       }

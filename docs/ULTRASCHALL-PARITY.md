@@ -46,49 +46,49 @@ about it; the priority is explained in section 3.
 | --- | --- | --- |
 | Soundboard is a track: jingles end up in the recording; fade-in, loop, stop, per-clip volume, remaining time | Jingles play out of the output device only and are not part of the project, so they are missing from the edit and the export (unless the interface happens to loop them back) | **P1** Record each trigger as a clip on a "Soundboard" track; per slot fade-in, loop, remaining-time display |
 | Throat-clearing buttons (Räuspertasten): per-speaker mute while recording; audio is still recorded and the mute can be edited later | Missing | **P1** Hold-to-mute "cough" key per track that writes mute regions (non-destructive), editable on the timeline |
-| Big level meters with numeric peak and the −18…−6 dB target zone highlighted | Small meters, no target zone, no clip hold | **P1** Larger meters with target zone, peak hold and clip indicator in Setup and Record views |
-| Soundcheck before recording (48 kHz, unsaved project, internal mic, duplicate inputs, block size, recording in the middle of a project, unknown interface) | Missing | **P1** Pre-record check with the same warnings, ignorable |
+| Big level meters with numeric peak and the −18…−6 dB target zone highlighted | ✅ Larger meters in Setup and on every track with the −18…−6 dBFS zone, peak-hold mark, highest peak as a number and a clip light (click to reset) | Done |
+| Soundcheck before recording (48 kHz, unsaved project, internal mic, duplicate inputs, block size, recording in the middle of a project, unknown interface) | ✅ Before each recording: no input, no armed track, sample rate ≠ 48 kHz, two tracks on one input, built-in mic, disk space for less than 2 h, recording before the end of the episode. Warnings can be ignored per episode | Done |
 | "Prepare all tracks for editing": unarm all tracks after recording, reminded by the soundcheck | ✅ Edit menu, toolbar and MIDI action; optional "Prepare for Editing When Recording Stops"; reminder after a take while tracks stay armed | Done |
-| Recording safe mode (confirm accidental stop) | Missing | **P1** Confirm before stopping a recording |
-| Jump back to the recording position (`Y`) | Missing | **P1** Shortcut |
-| Named chapter marker while recording (`Shift+M`) | Missing (title only editable afterwards) | **P1** Quick title prompt |
-| Soundboard ducking / ducking track (jingles duck under speech) | Missing | **P2** Sidechain duck the Soundboard track from speaker tracks, live and in export |
-| Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | Missing | **P3** MIDI (Web MIDI) and OSC (UDP in main) mapping to WavePod actions |
+| Recording safe mode (confirm accidental stop) | ✅ Edit › Confirm Before Stopping a Recording (on by default) | Done |
+| Jump back to the recording position (`Y`) | ✅ `Y`: to where the last take stopped, or to the take being recorded | Done |
+| Named chapter marker while recording (`Shift+M`) | ✅ `Shift+M` drops a chapter and opens a title field that doesn't interrupt the recording | Done |
+| Soundboard ducking / ducking track (jingles duck under speech) | ✅ Any track (Soundboard, music bed) can duck under the other tracks: its FX panel has "Duck under the other tracks" and a depth (−6…−24 dB). Playback and export; jingles played live while recording are not ducked (the interface can do that) | Done |
+| Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | ✅ MIDI learn (transport, markers, cough buttons 1–6 held, soundboard 1–9) and an OSC server (UDP, off by default, localhost unless allowed) with fixed `/wavepod/…` addresses | Done |
 | FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
-| StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | Out of scope per PLAN.md | **P3, small**: simple output routing presets (which tracks and the soundboard go to which output pair). Mix-minus stays in the hardware (RØDECaster USB Chat) |
+| StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | ✅ Small version: a second output pair (Setup) carrying everything, the soundboard only, or the episode without live jingles; a **Pre-show** button in the header (also MIDI/OSC) where only the soundboard is heard | Done. Mix-minus stays in the hardware (RØDECaster USB Chat); per-track routing is not planned |
 | StudioLink OnAir live streaming | Missing | Not planned |
 
 ### Editing / production
 
 | Ultraschall feature | Gap in WavePod | Plan |
 | --- | --- | --- |
-| Check cuts: jump to next/previous clip edge or edit marker and play with preroll | Only seek and Home/End | **P1** Jump to next/previous edit marker, chapter marker and clip edge; "preview cut" with configurable preroll |
-| Zoom to selection and back (`Shift+Z`), zoom whole project | Zoom in/out only | **P1** |
-| Copy/cut/paste of clips and ranges; ripple cut on `Ctrl+X` | Delete and ripple delete only, no clipboard | **P2** Clipboard for clips and time ranges (paste at playhead, ripple insert) |
-| Ripple editing modes when moving clips (off / per track / all tracks) | Moving a clip never shifts others | **P2** Modifier-drag: move clip plus everything after it on the track or on all tracks, markers follow in all-tracks mode |
-| Automatic crossfade when clips overlap, fade curve shapes | Fades are linear and per clip, overlaps just sum | **P2** Auto crossfade on overlap; linear / equal-power / S-curve |
-| Variable playback speed with constant pitch for listening through | Missing | **P2** 1×–2× playback speed (WSOLA time-stretch in the playback path only; export is always 1×) |
-| Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. VST3 plug-ins in the same stack (generated sliders, no plug-in editors). Noise reduction and reverb later |
+| Check cuts: jump to next/previous clip edge or edit marker and play with preroll | ✅ `Alt+←/→` clip edges, `Shift+Alt+←/→` markers, `P` plays 2 s before to 2 s after the playhead and returns | Done (pre/postroll fixed at 2 s) |
+| Zoom to selection and back (`Shift+Z`), zoom whole project | ✅ `Shift+Z` zooms to the selected range or clips and back; "Zoom to fit" shows the whole episode | Done |
+| Copy/cut/paste of clips and ranges; ripple cut on `Ctrl+X` | ✅ `Ctrl+C` copies selected clips or the selected range (its tracks), `Ctrl+X` ripple-cuts into the clipboard, `Ctrl+V` pastes at the playhead, `Ctrl+Shift+V` pastes and moves everything after it (markers too) | Done |
+| Ripple editing modes when moving clips (off / per track / all tracks) | ✅ `Ctrl`-drag moves a clip plus everything after it on its track; `Ctrl+Shift`-drag moves everything after it on all tracks, with markers and mute regions | Done |
+| Automatic crossfade when clips overlap, fade curve shapes | ✅ Overlapping clips on a track crossfade with equal-power curves (drawn in yellow); double-click a fade handle to switch linear / equal power / S-curve | Done |
+| Variable playback speed with constant pitch for listening through | ✅ Speed selector next to the clock: 1×, 1.25×, 1.5×, 1.75×, 2× (WSOLA, pitch kept; recording and export stay at 1×) | Done |
+| Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. VST3 plug-ins in the same stack (generated sliders, no plug-in editors). Noise reduction (spectral gating, self-learning noise floor) and a Freeverb-style reverb are in the stack too |
 | Normalise selected clips (`Alt+Shift+N`) | ✅ Done | **P2, done** Clip loudness normalisation via clip gain (`Alt+Shift+N`), to the target chosen in the loudness analysis |
 | Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
-| Drag-and-drop media import, drop on empty space creates a track | Import via menu | **P2** |
-| Marker ping when the playhead passes a marker | Missing | **P3** Optional |
-| Project backups every 10 minutes | Autosave of project.json only | **P1** Rolling backups of project.json in `backup/` |
-| Distraction-free editing mode, customisable shortcuts, shortcut list | Fixed shortcuts | **P3** Shortcut overlay (`?`); customisable keymap later |
-| Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | Missing | **P3, reduced**: clip colours/notes and a project overview strip (navigator). Tag search across projects is not planned |
-| Double-ender: guest's local backup recording replaces the remote track | Missing | **P2** Import a guest's local file and auto-align it to the remote track by cross-correlation |
+| Drag-and-drop media import, drop on empty space creates a track | ✅ Drop audio files on a track (at the drop position, one after the other) or below the tracks for new tracks | Done |
+| Marker ping when the playhead passes a marker | ✅ View › Ping at Markers During Playback (off by default; higher beep for chapters, lower for edit markers, not in the export) | Done |
+| Project backups every 10 minutes | ✅ `backup/` in the project folder: every 10 minutes when something changed and before each recording, newest 20 kept, File › Restore Backup… (undoable) | Done |
+| Distraction-free editing mode, customisable shortcuts, shortcut list | ✅ Shortcut overlay (`?`, Help › Keyboard Shortcuts) | **P3** Customisable keymap later |
+| Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | ✅ Clip colours and notes (right-click a clip), overview strip under the timeline (whole episode, clips in their colours, markers, the visible part framed; click or drag to navigate) | Done (tag search across projects is not planned) |
+| Double-ender: guest's local backup recording replaces the remote track | ✅ "Align to track…" toolbar button: FFT cross-correlation (±60 s search over 90 s at ~2 kHz) moves the guest's clip onto the call recording, one undo step, warns on a weak match | Done |
 
 ### Export
 
 | Ultraschall feature | Gap in WavePod | Plan |
 | --- | --- | --- |
-| Episode artwork (JPG/PNG) in the MP3, recently used images | Missing | **P1** ID3 `APIC` cover, picker in the metadata form |
-| Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | URL only, no images, no validation | **P1** Chapter image (embedded as `APIC` inside `CHAP`, written to PSC/JSON as file reference), validation warnings in the Chapters view and export dialog, offer a chapter at 0:00 |
-| Formats FLAC, OGG Vorbis, AIFF in addition to WAV/MP3 | WAV and MP3 | **P2** FLAC (WASM encoder) and Opus/Ogg; AIFF not planned |
-| Export regions (split a long recording into several files) | One range at a time | **P3** Regions as a third marker kind, "export each region" |
+| Episode artwork (JPG/PNG) in the MP3, recently used images | ✅ Episode cover in the Episode card, embedded as ID3 `APIC`, kept by templates | Done (no "recently used" list) |
+| Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | ✅ Image per chapter, embedded as `APIC` inside `CHAP`, copied next to the chapter files and referenced from PSC (`image`) and JSON (`img`); warnings in the Chapters view and export dialog with "Add chapter at 0:00" | Done |
+| Formats FLAC, OGG Vorbis, AIFF in addition to WAV/MP3 | ✅ FLAC 24-bit with Vorbis-comment chapters and the cover (own pure-TypeScript encoder, `core/flac.ts`); Opus in Ogg (32–128 kbps, CHAPTERxxx chapters, cover as METADATA_BLOCK_PICTURE; `core/opus.ts`, libopus via opusscript) | Done; Vorbis and AIFF not planned (Opus replaces Vorbis) |
+| Export regions (split a long recording into several files) | ✅ Regions (toolbar "Region from selection", purple bands in the marker lane, listed and renamed in the Chapters view); export "Each region as its own file" writes `<name> - 01 Title.mp3` etc., each with its own chapters and loudness | Done |
 | Export presets, file name patterns | Fixed naming | **P3** Remember last settings per project (presets only if asked for) |
-| Podcast categories in metadata | Missing | **P3** Optional `TCON`/genre field |
-| Auphonic hand-off | Stems + chapter files only | **P3** Direct upload to Auphonic multitrack (API key in settings) — already listed under "Later" in PLAN.md |
+| Podcast categories in metadata | ✅ Category field (podcast directory list or free text) written as ID3 `TCON` and FLAC `GENRE`; kept in templates | Done |
+| Auphonic hand-off | ✅ File › Send to Auphonic…: a multitrack production with one FLAC per track, chapters, metadata and cover, optional preset, optionally started (API key kept encrypted by the OS keychain where available). Tested against a mock of the API, not yet against auphonic.com | Done (needs a check with a real account) |
 
 ### Deliberately not adopted
 
@@ -166,57 +166,57 @@ came up during testing).
    timeline draws regions over the waveform and lets you drag/delete them, so
    the same mechanism doubles as Ultraschall's mute envelope in editing.
    Monitoring is unaffected because the interface does that.
-3. **Soundcheck and safe recording.** Before `R`: warn on sample rate ≠ 48 kHz,
+3. ✅ **Soundcheck and safe recording.** Before `R`: warn on sample rate ≠ 48 kHz,
    no armed tracks, two tracks on the same input, a built-in microphone
    selected, low disk space, a missing/changed device, or playhead before the
    end of existing material. "Record anyway" and "don't ask again for this
    project". Confirm before stopping a recording (setting).
-4. **Meters.** Larger per-track meters with the −18…−6 dBFS zone, numeric peak
+4. ✅ **Meters.** Larger per-track meters with the −18…−6 dBFS zone, numeric peak
    hold and a clip indicator that stays until clicked.
-5. **Markers while recording.** `Shift+M` named chapter marker (non-blocking
+5. ✅ **Markers while recording.** `Shift+M` named chapter marker (non-blocking
    title field), `Y` jump to the recording position, optional chapter at 0:00.
-6. **Rolling backups** of `project.json` every 10 minutes and before each
+6. ✅ **Rolling backups** of `project.json` every 10 minutes and before each
    recording into `backup/`, keep the last 20, "Restore backup…" menu item.
 
 ### Phase 6 — Editing speed (P1/P2)
 
-7. **Navigation (P1).** Next/previous edit marker, chapter marker and clip edge
+7. ✅ **Navigation (P1).** Next/previous edit marker, chapter marker and clip edge
    (`Alt+←/→`, `Ctrl+Alt+←/→`), "preview cut" plays from preroll to
    postroll around the playhead, `Shift+Z` zoom to selection / back, zoom to
    project, project overview strip.
-8. **Clipboard and ripple moves (P2).** Copy/cut/paste for clips and time
+8. ✅ **Clipboard and ripple moves (P2).** Copy/cut/paste for clips and time
    ranges across all tracks, `Ctrl+X` = ripple cut. Modifier-drag to move a
    clip with everything after it (track or all tracks, markers follow).
-9. **Crossfades (P2).** Overlapping clips on a track crossfade automatically;
+9. ✅ **Crossfades (P2).** Overlapping clips on a track crossfade automatically;
    fade shape per fade. *Files:* `core/mixer.ts`, `core/dsp.ts`, timeline.
-10. **Playback speed (P2).** 1×, 1.25×, 1.5×, 2× in the transport, pitch kept
+10. ✅ **Playback speed (P2).** 1×, 1.25×, 1.5×, 2× in the transport, pitch kept
     with WSOLA in `core/dsp.ts`; recording and export ignore it.
-11. **Drag-and-drop import and double-ender alignment (P2).** Drop files on a
+11. ✅ **Drag-and-drop import and double-ender alignment (P2).** Drop files on a
     track or empty space; "Align to track…" cross-correlates the first
     minutes against a reference track and sets the clip offset.
 
 ### Phase 7 — Sound and export (P1/P2)
 
-12. **Artwork and chapter images (P1).** Episode cover and per-chapter image
+12. ✅ **Artwork and chapter images (P1).** Episode cover and per-chapter image
     and URL in the Chapters view; ID3 `APIC`, `CHAP` with `APIC` and `WXXX`
     subframes; image references in PSC and Podcasting 2.0 JSON; validation
     of unnamed chapters before export.
 13. ✅ **Track effects.** Done as filter stacks, see "Filters" above.
-14. **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
+14. ✅ **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
     envelope from the sum of speaker tracks), on/off and depth.
-15. **More formats (P2).** FLAC and Opus export (WASM encoders in the export
-    worker). Clip loudness normalisation (`Alt+Shift+N`) is done.
+15. ✅ **More formats (P2).** FLAC (own encoder) and Opus (libopus as WASM via opusscript, own Ogg writer) in the export
+    worker. Clip loudness normalisation (`Alt+Shift+N`) is done.
 
 ### Phase 8 — Studio comfort (P3)
 
-16. **Remote control.** MIDI learn via Web MIDI and an OSC server (UDP, off by
+16. ✅ **Remote control.** MIDI learn via Web MIDI and an OSC server (UDP, off by
     default) for transport, markers, cough buttons and soundboard slots, so
     Stream Deck / Bitfocus Companion and MIDI controllers work.
-17. **Output presets.** Choose per output pair what it carries (master,
+17. ✅ **Output presets.** (Per-track routing left out.) Choose per output pair what it carries (master,
     soundboard only, selected tracks); presets "Pre-show" (soundboard only)
     and "Show". No full routing matrix.
-18. **Regions and export per region; Auphonic upload; podcast category.**
-19. **Shortcut overlay, marker ping, clip colours and notes.**
+18. ✅ **Regions and export per region; Auphonic upload; podcast category.**
+19. ✅ **Shortcut overlay, marker ping, clip colours and notes.**
 
 ## 4. Suggested order
 

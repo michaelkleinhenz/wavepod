@@ -110,6 +110,29 @@ export const FX_DEFINITIONS: FxDefinition[] = [
       db('noiseGate', 'Noise gate', 30, 16, 88, 0.1),
     ],
   },
+  {
+    type: 'denoise',
+    name: 'Noise reduction',
+    aliases: ['Denoise'],
+    description:
+      'Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. Adds about 21 ms of latency, which WavePod compensates.',
+    params: [
+      db('reduction', 'Reduction', 12, 0, 30),
+      db('threshold', 'Sensitivity', 6, 0, 15),
+    ],
+  },
+  {
+    type: 'reverb',
+    name: 'Reverb',
+    description: 'Adds room to a dry signal, e.g. a jingle bed or a voice that sounds too close.',
+    params: [
+      { key: 'size', label: 'Room size', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      { key: 'damping', label: 'Damping', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      { key: 'mix', label: 'Mix', min: 0, max: 100, step: 1, default: 15, unit: '%' },
+      ms('predelay', 'Pre-delay', 10, 0, 200),
+      { key: 'width', label: 'Width', min: 0, max: 100, step: 1, default: 100, unit: '%' },
+    ],
+  },
 ];
 
 export function fxDefinition(type: FxType): FxDefinition {

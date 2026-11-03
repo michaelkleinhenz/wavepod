@@ -70,11 +70,35 @@ export function toDb(linear: number, floor = -90): number {
   return Math.max(floor, 20 * Math.log10(linear));
 }
 
+import type { FadeShape } from '../shared/types';
+export type { FadeShape };
+
+export const FADE_SHAPES: Array<{ id: FadeShape; label: string }> = [
+  { id: 'linear', label: 'Linear' },
+  { id: 'equalPower', label: 'Equal power' },
+  { id: 'sCurve', label: 'S-curve' },
+];
+
+/** Gain of a fade-in at progress t (0..1); a fade-out uses 1 - t. */
+export function fadeCurve(t: number, shape: FadeShape = 'linear'): number {
+  const x = t <= 0 ? 0 : t >= 1 ? 1 : t;
+  if (shape === 'equalPower') return Math.sin((x * Math.PI) / 2);
+  if (shape === 'sCurve') return (1 - Math.cos(x * Math.PI)) / 2;
+  return x;
+}
+
 /** Gain of a clip's fade envelope at clip-relative position `pos`. */
-export function fadeGain(pos: number, length: number, fadeIn: number, fadeOut: number): number {
+export function fadeGain(
+  pos: number,
+  length: number,
+  fadeIn: number,
+  fadeOut: number,
+  inShape: FadeShape = 'linear',
+  outShape: FadeShape = 'linear',
+): number {
   let g = 1;
-  if (fadeIn > 0 && pos < fadeIn) g *= Math.max(0, pos / fadeIn);
-  if (fadeOut > 0 && pos > length - fadeOut) g *= Math.max(0, (length - pos) / fadeOut);
+  if (fadeIn > 0 && pos < fadeIn) g *= fadeCurve(pos / fadeIn, inShape);
+  if (fadeOut > 0 && pos > length - fadeOut) g *= fadeCurve((length - pos) / fadeOut, outShape);
   return g;
 }
 

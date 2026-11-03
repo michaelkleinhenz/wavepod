@@ -4,6 +4,8 @@ import type { ExportOptions, ExportProgress, LiveLoudness, LoudnessReport } from
 import { clear, errorMessage, h, toast } from './dom';
 import { LOUDNESS_PRESETS, loudnessTiles } from './loudnessDialog';
 import { api, store } from './store';
+import { regionOutputBase } from '../core/regions';
+import { chapterWarningList } from './chaptersView';
 
 const PRESETS = LOUDNESS_PRESETS;
 const WAVE_HEIGHT = 72;
@@ -105,6 +107,9 @@ export class ExportDialog {
     chapterFiles: true,
   };
   private useRange = false;
+  /** Export each region as its own file instead of the whole episode. */
+  private perRegion = false;
+  private regionLabel = '';
   private busy = false;
   private wave = new WaveProgress();
   private progressLabel = h('span', { class: 'muted' });
@@ -153,9 +158,10 @@ export class ExportDialog {
     clear(this.overlay);
     const o = this.opts;
     const range = store.selection.range;
+    const regions = store.project.regions ?? [];
     const check = (label: string, checked: boolean, onChange: (v: boolean) => void, disabled = false) =>
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, disabled, onchange: (e: Event) => onChange((e.target as HTMLInputElement).checked) }), label);
-    const fmt = (f: 'mp3' | 'wav', label: string) =>
+    const fmt = (f: 'mp3' | 'wav' | 'flac' | 'opus', label: string) =>
       check(label, o.formats.includes(f), (v) => {
         o.formats = v ? [...new Set([...o.formats, f])] : o.formats.filter((x) => x !== f);
         this.render();
@@ -168,13 +174,19 @@ export class ExportDialog {
       { class: 'dialog' },
       h('h2', null, 'Export episode'),
       h('div', { class: 'grid' },
-        h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'),
+        h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'), fmt('flac', 'FLAC 24-bit (lossless, with chapters)'), fmt('opus', 'Opus (small files, with chapters)'),
           h('label', { class: 'field' }, h('span', null, 'MP3 bitrate'),
             h('select', { disabled: !o.formats.includes('mp3'), onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
               ...[64, 96, 128, 160, 192, 256].map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps`)))),
-          check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => (o.chapterFiles = v)),
+          o.formats.includes('opus')
+            ? h('label', { class: 'field' }, h('span', null, 'Opus bitrate'),
+                h('select', { onchange: (e: Event) => (o.opusBitrate = Number((e.target as HTMLSelectElement).value)) },
+                  ...[32, 48, 64, 96, 128].map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 ? ' (like MP3 at 128)' : ''}`))))
+            : null,
+          check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }),
           check('Stems (one WAV per track)', o.stems, (v) => (o.stems = v)),
-          check(range ? `Only the selected range` : 'Only the selected range (none selected)', this.useRange && !!range, (v) => (this.useRange = v), !range),
+          check(range ? `Only the selected range` : 'Only the selected range (none selected)', this.useRange && !!range && !this.perRegion, (v) => { this.useRange = v; this.render(); }, !range || this.perRegion),
+          check(regions.length ? `Each region as its own file (${regions.length})` : 'Each region as its own file (no regions)', this.perRegion && regions.length > 0, (v) => { this.perRegion = v; this.render(); }, !regions.length),
         ),
         h('div', null, h('h3', null, 'Loudness'),
           check('Normalise loudness', o.normalize, (v) => { o.normalize = v; this.render(); }),
@@ -183,10 +195,11 @@ export class ExportDialog {
               ...PRESETS.map((p) => h('option', { value: String(p.value), selected: p.value === o.targetLufs }, p.label)))),
           h('label', { class: 'field' }, h('span', null, 'Peak ceiling'),
             h('select', { disabled: !o.normalize, onchange: (e: Event) => (o.peakCeiling = Number((e.target as HTMLSelectElement).value)) },
-              ...[-0.1, -1, -2, -3].map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBFS`)))),
+              ...[-0.1, -1, -2, -3].map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`)))),
           h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.mix ? 'Analyse again' : 'Analyse loudness'),
         ),
       ),
+      this.chapterNotes(range),
       // only the mix matters for the export; per-track figures are in the Loudness dialog
       this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target)) : null,
       this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
@@ -200,6 +213,31 @@ export class ExportDialog {
     if (this.exported) this.wave.draw();
   }
 
+  /** Chapter problems and a missing cover, checked before the MP3 is written (Ultraschall warns about these too). */
+  private chapterNotes(range: [number, number] | null): HTMLElement | null {
+    if (!this.opts.formats.includes('mp3') && !this.opts.chapterFiles) return null;
+    const r = this.useRange && range && !this.perRegion ? range : null;
+    // per region, each file gets its own chapter list, so each is checked on its own
+    const list = this.perRegion
+      ? (() => {
+          const parts = (store.project.regions ?? []).flatMap((g) => {
+            const l = chapterWarningList(g.start, g.end, () => this.render());
+            return l ? [h('div', null, h('strong', null, g.title || 'Region'), l)] : [];
+          });
+          return parts.length ? h('div', null, ...parts) : null;
+        })()
+      : chapterWarningList(r ? r[0] : 0, r ? r[1] : Infinity, () => this.render());
+    const noCover = this.opts.formats.includes('mp3') && !store.project.metadata.artwork;
+    if (!list && !noCover) return null;
+    return h(
+      'div',
+      { class: 'export-notes' },
+      h('h3', null, 'Before you export'),
+      list,
+      noCover ? h('p', { class: 'muted' }, 'No episode cover set. Add one under Chapters › Episode to embed it in the MP3.') : null,
+    );
+  }
+
   private progress(p: ExportProgress): void {
     if (p.phase !== this.phase) {
       this.phase = p.phase;
@@ -207,7 +245,7 @@ export class ExportDialog {
       if (p.wave) this.wave.reset();
     }
     this.wave.update(p);
-    this.progressLabel.textContent = p.phase === 'Done' ? '' : `${p.phase} ${Math.round(p.fraction * 100)}%`;
+    this.progressLabel.textContent = p.phase === 'Done' ? '' : `${this.regionLabel}${p.phase} ${Math.round(p.fraction * 100)}%`;
     const live = p.live;
     if (!live) return;
     const o = this.opts;
@@ -241,6 +279,7 @@ export class ExportDialog {
     const base = await api().chooseExportBase(name);
     if (!base) return;
     const range = this.useRange ? store.selection.range : null;
+    const regions = this.perRegion ? (store.project.regions ?? []) : [];
     this.busy = true;
     this.exported = true;
     this.phase = '';
@@ -249,10 +288,25 @@ export class ExportDialog {
     this.wave.reset();
     this.render();
     try {
-      const res = await api().exportProject({ ...this.opts, outputBase: base, ...(range ? { start: range[0], end: range[1] } : {}) });
-      this.progressLabel.textContent = `Done: ${res.files.length} files · ${Number.isFinite(res.loudness) ? `${res.loudness.toFixed(1)} LUFS → ${(res.loudness + res.appliedGainDb).toFixed(1)} LUFS` : 'silent'}`;
-      toast('Export finished');
-      if (res.files[0]) void api().revealFile(res.files[0]);
+      if (regions.length) {
+        // one export per region, each normalised on its own
+        const files: string[] = [];
+        for (const [i, r] of regions.entries()) {
+          this.regionLabel = `Region ${i + 1}/${regions.length} “${r.title}”: `;
+          this.wave.reset();
+          const res = await api().exportProject({ ...this.opts, outputBase: regionOutputBase(base, i, r.title), start: r.start, end: r.end });
+          files.push(...res.files);
+        }
+        this.regionLabel = '';
+        this.progressLabel.textContent = `Done: ${regions.length} regions, ${files.length} files`;
+        toast('Export finished');
+        if (files[0]) void api().revealFile(files[0]);
+      } else {
+        const res = await api().exportProject({ ...this.opts, outputBase: base, ...(range ? { start: range[0], end: range[1] } : {}) });
+        this.progressLabel.textContent = `Done: ${res.files.length} files · ${Number.isFinite(res.loudness) ? `${res.loudness.toFixed(1)} LUFS → ${(res.loudness + res.appliedGainDb).toFixed(1)} LUFS` : 'silent'}`;
+        toast('Export finished');
+        if (res.files[0]) void api().revealFile(res.files[0]);
+      }
     } catch (e) {
       toast(`Export failed: ${errorMessage(e)}`, 'error');
     } finally {

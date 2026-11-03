@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AudioEngine, VIRTUAL_API } from '../src/main/audio/engine';
-import { addTrack, createProject } from '../src/core/project';
+import { addMarker, addTrack, createProject } from '../src/core/project';
 import { WavReader, writeWavFile } from '../src/core/wav';
 import type { AudioBackend } from '../src/main/audio/backend';
 import type { TransportUpdate } from '../src/shared/types';
@@ -188,6 +188,166 @@ describe('AudioEngine with virtual devices', () => {
     }
     expect(ch0).toBe(0);
     expect(ch2).toBeGreaterThan(0.3);
+  });
+
+  it('pings when playback passes a marker, only when switched on', async () => {
+    const peakWhilePlaying = async (ping: boolean) => {
+      engine?.dispose();
+      engine = new AudioEngine(null);
+      engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480 });
+      // a silent clip, so playback runs past the marker instead of stopping at the end of the (empty) timeline
+      const dir = tmpDir();
+      fs.mkdirSync(path.join(dir, 'media'));
+      writeWavFile(path.join(dir, 'media/quiet.wav'), [new Float32Array(48000)], 48000);
+      const p = addTrack(addMarker(createProject('Ping', 48000), 4800).project, { name: 'Host' });
+      p.tracks[0].clips.push({ id: 'c', file: 'media/quiet.wav', start: 0, offset: 0, length: 48000, gain: 0, fadeIn: 0, fadeOut: 0 });
+      engine.setProject(p, dir);
+      engine.setMarkerPing(ping);
+      const updates: TransportUpdate[] = [];
+      engine.on('transport', (u) => updates.push(u));
+      engine.play(0);
+      await wait(300);
+      engine.stop();
+      return Math.max(...updates.map((u) => Math.max(...u.outputPeaks)));
+    };
+    expect(await peakWhilePlaying(false)).toBe(0);
+    expect(await peakWhilePlaying(true)).toBeGreaterThan(0.1);
+  });
+
+  it('routes a second output pair and mutes the episode in pre-show', () => {
+    engine = new AudioEngine(null);
+    engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480, outputFirstChannel: 0, output2FirstChannel: 2, output2Source: 'soundboard' });
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    writeWavFile(path.join(dir, 'media/ep.wav'), [sine(200, 1, 48000, 0.5)], 48000);
+    const p = addTrack(createProject('Route', 48000), { name: 'Host' });
+    p.tracks[0].clips.push({ id: 'c', file: 'media/ep.wav', start: 0, offset: 0, length: 48000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    engine.setProject(p, dir);
+    const render = () => {
+      const out = (engine as unknown as { onOutput(n: number, nch: number): Float32Array }).onOutput(480, 4);
+      const peak = (ch: number) => Math.max(...Array.from({ length: 480 }, (_, i) => Math.abs(out[i * 4 + ch])));
+      return [peak(0), peak(2)];
+    };
+    engine.play(4800);
+    let [main, second] = render();
+    expect(main).toBeGreaterThan(0.1); // the episode on the main pair
+    expect(second).toBe(0); // the second pair carries only the soundboard
+    engine.setPreShow(true);
+    expect(engine.status().preShow).toBe(true);
+    [main, second] = render();
+    expect(main).toBe(0);
+    engine.loadSound('s', [new Float32Array(48000).fill(0.25)]);
+    engine.playSound('s');
+    [main, second] = render();
+    expect(main).toBeCloseTo(0.25, 2);
+    expect(second).toBeCloseTo(0.25, 2);
+    engine.stop();
+  });
+});
+
+describe('AudioEngine repeat', () => {
+  let engine: AudioEngine;
+  afterEach(() => engine?.dispose());
+
+  /** Renders a ramp (sample value = frame index / 48000) and pulls blocks by hand. */
+  function setup(frameSize: number) {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    const ramp = new Float32Array(48000).map((_, i) => i / 48000);
+    writeWavFile(path.join(dir, 'media/ramp.wav'), [ramp], 48000);
+    let p = createProject('Loop', 48000);
+    p = addTrack(p, { name: 'T', pan: 0 });
+    p.tracks[0].clips.push({ id: 'c', file: 'media/ramp.wav', start: 0, offset: 0, length: 48000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    let pull: ((n: number) => Float32Array) | null = null;
+    const fake: AudioBackend = {
+      name: 'Fake',
+      api: 'default',
+      listApis: () => [{ id: 'default', label: 'Fake' }],
+      setApi: () => {},
+      listDevices: () => [
+        { id: 7, name: 'Fake 2ch', inputChannels: 0, outputChannels: 2, sampleRates: [48000], preferredSampleRate: 48000, isDefaultInput: false, isDefaultOutput: true },
+      ],
+      openInput: () => {
+        throw new Error('no input');
+      },
+      openOutput: (opts) => {
+        pull = opts.pull;
+        return { channels: opts.channels, sampleRate: opts.sampleRate, frameSize: opts.frameSize, close: () => {} };
+      },
+      dispose: () => {},
+    };
+    engine = new AudioEngine(() => fake);
+    engine.applyConfig({ api: 'default', outputDeviceId: 7, bufferSize: frameSize });
+    engine.setProject(p, dir);
+    /** Left channel of the next n blocks, as frame indices of the ramp. */
+    const frames = (blocks: number): number[] => {
+      const out: number[] = [];
+      for (let b = 0; b < blocks; b++) {
+        const buf = pull!(frameSize);
+        for (let i = 0; i < frameSize; i++) out.push(buf[i * 2]);
+      }
+      const k = out.find((v) => v > 0)! / Math.round(out.find((v) => v > 0)! * 48000);
+      return out.map((v) => Math.round(v / k));
+    };
+    return { frames };
+  }
+
+  it('loops the range without gaps, also within one block', () => {
+    const { frames } = setup(256);
+    engine.setLoop([1000, 1100]);
+    engine.play(1000);
+    const got = frames(4);
+    const want = Array.from({ length: 1024 }, (_, i) => 1000 + (i % 100));
+    expect(got).toEqual(want);
+    expect(engine.position).toBe(1000 + (1024 % 100));
+  });
+
+  it('plays into the range from before it, and past it when started after it', () => {
+    const { frames } = setup(256);
+    engine.setLoop([1000, 1300]);
+    engine.play(900);
+    const got = frames(2);
+    expect(got.slice(0, 400)).toEqual(Array.from({ length: 400 }, (_, i) => 900 + i));
+    expect(got.slice(400, 512)).toEqual(Array.from({ length: 112 }, (_, i) => 1000 + i));
+    engine.stop();
+    engine.play(2000);
+    frames(2);
+    expect(engine.position).toBe(2512);
+    engine.setLoop(null);
+    engine.play(1200);
+    frames(1);
+    expect(engine.position).toBe(1456);
+  });
+
+  it('repeats and stops at the end at faster playback speeds too', () => {
+    const { frames } = setup(256);
+    engine.setPlaybackSpeed(1.5);
+    engine.setLoop([1000, 5000]);
+    engine.play(1000);
+    for (let i = 0; i < 40; i++) {
+      frames(1);
+      expect(engine.position).toBeGreaterThanOrEqual(1000);
+      expect(engine.position).toBeLessThan(5000);
+    }
+    engine.setLoop(null);
+    engine.play(48000 - 2000);
+    for (let i = 0; i < 20 && engine.transportState === 'playing'; i++) frames(1);
+    expect(engine.transportState).toBe('stopped');
+  });
+
+  it('stops at the end of the last clip, unless it is repeating a range past it', () => {
+    const { frames } = setup(256);
+    engine.play(48000 - 300);
+    frames(1);
+    expect(engine.transportState).toBe('playing');
+    frames(1);
+    expect(engine.transportState).toBe('stopped');
+    expect(engine.position).toBe(48000);
+    engine.setLoop([47900, 48100]);
+    engine.play(47900);
+    frames(4);
+    expect(engine.transportState).toBe('playing');
+    expect(engine.position).toBe(47900 + (1024 % 200));
   });
 });
 

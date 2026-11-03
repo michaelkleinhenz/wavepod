@@ -71,7 +71,7 @@ the error is shown in the Setup view.
 - `Project { name, sampleRate, bitDepth, tracks[], markers[], soundboard[], metadata }`
 - `Track { id, name, color, inputChannels: number[] (1 = mono, 2 = stereo), armed, mute, solo, gain (dB), pan, clips[] }`
 - `Clip { id, file, start (samples, timeline), offset (samples into file), length, gain, fadeIn, fadeOut }`
-- `Marker { id, kind: 'chapter' | 'edit', position (samples), title, url?, image? }`
+- `Marker { id, kind: 'chapter' | 'edit', position (samples), title, url?, image? }` (images are JPEG/PNG under `images/`, as is `metadata.artwork`)
 
 Positions are integer sample frames at the project sample rate; seconds are a
 UI concern only.

@@ -1,9 +1,10 @@
 // Pure project-editing operations. They return a new project and never touch the input.
-import type { Clip, EnvelopePoint, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
+import type { Clip, EnvelopePoint, Frames, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
 import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
 import { normalizeFx } from './fx/definitions';
+import { insertIntoRegionList, normalizeRegions, rippleDeleteRegions } from './regions';
 import { migrateTrackEnvelope, sortPoints } from './envelope';
 
 function normalizeFxList(list: unknown): Fx[] {
@@ -32,6 +33,13 @@ export function audibleTracks(project: Project): Track[] {
 }
 
 /** Length of the project in frames (end of the last clip or marker). */
+/** Where the last clip on the timeline ends (playback stops there). */
+export function clipsEnd(project: Project): number {
+  let end = 0;
+  for (const t of project.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.length);
+  return end;
+}
+
 export function projectLength(project: Project): number {
   let end = 0;
   for (const t of project.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.length);
@@ -61,6 +69,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     pan: t.pan ?? 0,
     muteRegions: mergeRegions(t.muteRegions ?? []),
     fx: normalizeFxList(t.fx),
+    ...(t.duck ? { duck: { enabled: !!t.duck.enabled, depth: Number.isFinite(t.duck.depth) ? Math.min(40, Math.max(1, Math.abs(t.duck.depth))) : 12 } } : {}),
     clips: (t.clips ?? []).map((c) => ({
       ...c,
       gain: c.gain ?? 0,
@@ -78,6 +87,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
   p.markers = (p.markers ?? []).map((m) => ({ ...m, id: m.id ?? uid('mrk'), kind: m.kind ?? 'chapter', title: m.title ?? '' }));
   p.soundboard = p.soundboard ?? [];
   p.masterFx = normalizeFxList(p.masterFx);
+  if (raw.regions !== undefined) p.regions = normalizeRegions(raw.regions);
   return p;
 }
 
@@ -214,6 +224,7 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
       .map((c) => (c.start >= end ? { ...c, start: c.start - len } : c));
     if (t.muteRegions?.length) t.muteRegions = rippleRegions(t.muteRegions, start, end);
   }
+  if (p.regions?.length) p.regions = rippleDeleteRegions(p.regions, start, end);
   p.markers = p.markers
     .filter((m) => m.position < start || m.position >= end)
     .map((m) => (m.position >= end ? { ...m, position: m.position - len } : m));
@@ -229,6 +240,7 @@ export function insertSilence(project: Project, position: number, length: number
     if (t.muteRegions?.length) t.muteRegions = insertIntoRegions(t.muteRegions, position, length);
   }
   for (const m of p.markers) if (m.position >= position) m.position += length;
+  if (p.regions?.length) p.regions = insertIntoRegionList(p.regions, position, length);
   return p;
 }
 
@@ -263,7 +275,12 @@ export function removeMarker(project: Project, markerId: string): Project {
 export function markersToChapters(project: Project, offsetFrames = 0): Chapter[] {
   return project.markers
     .filter((m) => m.kind === 'chapter' && m.position >= offsetFrames)
-    .map((m) => ({ start: (m.position - offsetFrames) / project.sampleRate, title: m.title, ...(m.url ? { url: m.url } : {}) }));
+    .map((m) => ({
+      start: (m.position - offsetFrames) / project.sampleRate,
+      title: m.title,
+      ...(m.url ? { url: m.url } : {}),
+      ...(m.image ? { image: m.image } : {}),
+    }));
 }
 
 export function chaptersToMarkers(project: Project, chapters: Chapter[], replace = true): Project {
@@ -276,6 +293,7 @@ export function chaptersToMarkers(project: Project, chapters: Chapter[], replace
       position: Math.round(c.start * p.sampleRate),
       title: c.title,
       ...(c.url ? { url: c.url } : {}),
+      ...(c.image ? { image: c.image } : {}),
     });
   }
   p.markers.sort((a, b) => a.position - b.position);
@@ -320,4 +338,41 @@ export class History {
     this.past = [];
     this.future = [];
   }
+}
+
+export interface ChapterWarning {
+  kind: 'no-start' | 'untitled';
+  message: string;
+  /** Marker the warning is about (untitled chapters). */
+  markerId?: string;
+}
+
+/**
+ * Problems podcatchers show to listeners: no chapter at the start of the episode (or of the
+ * exported range) and chapters without a title. Nothing to report when there are no chapters.
+ */
+export function chapterWarnings(project: Project, rangeStart: Frames = 0, rangeEnd = Infinity): ChapterWarning[] {
+  const chapters = project.markers.filter((m) => m.kind === 'chapter' && m.position >= rangeStart && m.position < rangeEnd);
+  if (!chapters.length) return [];
+  const out: ChapterWarning[] = [];
+  // within 0.5 s of the start counts as "at the start"
+  const first = Math.min(...chapters.map((m) => m.position));
+  if (first - rangeStart > project.sampleRate / 2) {
+    out.push({ kind: 'no-start', message: 'The first chapter does not start at 0:00, so podcatchers show no chapter before it.' });
+  }
+  for (const m of chapters.sort((a, b) => a.position - b.position)) {
+    if (!m.title.trim()) {
+      const t = (m.position - rangeStart) / project.sampleRate;
+      out.push({ kind: 'untitled', markerId: m.id, message: `The chapter at ${formatClock(t)} has no title.` });
+    }
+  }
+  return out;
+}
+
+function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return hh ? `${hh}:${String(mm).padStart(2, '0')}:${ss}` : `${mm}:${ss}`;
 }

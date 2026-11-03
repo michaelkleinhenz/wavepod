@@ -1,8 +1,10 @@
 // Renders the project timeline into a stereo bus, block by block, from disk.
 import * as path from 'node:path';
-import type { Clip, Fx, FxMeter, Project, Track } from '../shared/types';
+import type { Fx, FxMeter, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
-import { fadeGain, panGains } from './dsp';
+import { panGains } from './dsp';
+import { fadesAt, trackFades } from './crossfade';
+import { Ducker, isDucked } from './ducking';
 import { WavReader } from './wav';
 import { MUTE_RAMP_SECONDS, muteGainAt, regionsOverlap } from './muteRegions';
 import { FxChain } from './fx/chain';
@@ -65,6 +67,10 @@ export class Mixer {
   metering = false;
   /** Peak each track contributed to the bus since the previous takeTrackPeaks() (metering only). */
   private trackPeaks = new Map<string, number>();
+  private duckers = new Map<string, Ducker>();
+  private duckBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  private duckAcc: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  private duckGains = new Float32Array(0);
   private masterChain: ChainState | null = null;
 
   private _project: Project;
@@ -137,7 +143,45 @@ export class Mixer {
   private renderBus(position: number, frames: number, out: Float32Array[], tracks: Track[]): void {
     out[0].fill(0, 0, frames);
     out[1].fill(0, 0, frames);
-    for (const track of tracks) this.renderTrackInto(track, position, frames, out);
+    const ducked = tracks.filter(isDucked);
+    if (!ducked.length) {
+      for (const track of tracks) this.renderTrackInto(track, position, frames, out);
+      return;
+    }
+    // the other tracks first: their sum is what the ducked tracks duck under
+    for (const track of tracks) if (!isDucked(track)) this.renderTrackInto(track, position, frames, out);
+    if (this.duckBuf[0].length < frames) {
+      this.duckBuf = [new Float32Array(frames), new Float32Array(frames)];
+      this.duckAcc = [new Float32Array(frames), new Float32Array(frames)];
+      this.duckGains = new Float32Array(frames);
+    }
+    const [dl, dr] = this.duckBuf;
+    const [al, ar] = this.duckAcc;
+    al.fill(0, 0, frames);
+    ar.fill(0, 0, frames);
+    for (const track of ducked) {
+      let d = this.duckers.get(track.id);
+      if (!d) {
+        d = new Ducker(this.project.sampleRate);
+        this.duckers.set(track.id, d);
+      }
+      if (d.next !== position) d.reset();
+      d.process(out, frames, track.duck!.depth, this.duckGains);
+      d.next = position + frames;
+      dl.fill(0, 0, frames);
+      dr.fill(0, 0, frames);
+      this.renderTrackInto(track, position, frames, this.duckBuf);
+      for (let i = 0; i < frames; i++) {
+        const g = this.duckGains[i];
+        al[i] += dl[i] * g;
+        ar[i] += dr[i] * g;
+      }
+    }
+    // added last, so one ducked track never ducks another
+    for (let i = 0; i < frames; i++) {
+      out[0][i] += al[i];
+      out[1][i] += ar[i];
+    }
   }
 
   /** What every metered filter did since the previous call, by filter id. */
@@ -231,6 +275,7 @@ export class Mixer {
     const ramp = Math.round(MUTE_RAMP_SECONDS * this.project.sampleRate);
     // only the mute regions touching this block, so the per-sample lookup stays short
     const muted = regionsOverlap(track, position, end) ? track.muteRegions!.filter(([a, b]) => a < end && b > position) : null;
+    const fades = trackFades(track);
     for (const clip of track.clips) {
       const reader = this.readers.get(clip.file);
       if (!reader) continue;
@@ -248,6 +293,7 @@ export class Mixer {
       }
       const src = reader.read(clip.offset + (from - cStart), n, this.scratch);
       const g = dbToGain(clip.gain);
+      const fade = fades.get(clip.id)!;
       const outOffset = from - position;
       // the clip's volume line, evaluated once per block in source frames
       let env: Float32Array | null = null;
@@ -257,7 +303,7 @@ export class Mixer {
         fillEnvelope(clip.envelope!, clip.offset + (from - cStart), n, env);
       }
       for (let i = 0; i < n; i++) {
-        let gain = g * clipEnvelope(clip, from - cStart + i);
+        let gain = g * fadesAt(fade, clip.length, from - cStart + i);
         if (muted) gain *= muteGainAt(muted, from + i, ramp);
         if (env) gain *= env[i];
         const l = src[0][i];
@@ -269,7 +315,3 @@ export class Mixer {
   }
 }
 
-function clipEnvelope(clip: Clip, rel: number): number {
-  if (clip.fadeIn === 0 && clip.fadeOut === 0) return 1;
-  return fadeGain(rel, clip.length, clip.fadeIn, clip.fadeOut);
-}

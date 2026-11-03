@@ -32,7 +32,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "**/node_modules/audify/**"
+      "**/node_modules/audify/**",
+      "**/node_modules/opusscript/**"
     ],
     "npmRebuild": false,
     "extraResources": [
@@ -76,7 +77,8 @@
     }
   },
   "dependencies": {
-    "audify": "^1.10.1"
+    "audify": "^1.10.1",
+    "opusscript": "^0.1.1"
   },
   "devDependencies": {
     "@breezystack/lamejs": "^1.2.7",
