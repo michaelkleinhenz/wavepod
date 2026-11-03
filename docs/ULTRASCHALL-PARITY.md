@@ -52,7 +52,7 @@ about it; the priority is explained in section 3.
 | Recording safe mode (confirm accidental stop) | ✅ Edit › Confirm Before Stopping a Recording (on by default) | Done |
 | Jump back to the recording position (`Y`) | ✅ `Y`: to where the last take stopped, or to the take being recorded | Done |
 | Named chapter marker while recording (`Shift+M`) | ✅ `Shift+M` drops a chapter and opens a title field that doesn't interrupt the recording | Done |
-| Soundboard ducking / ducking track (jingles duck under speech) | Missing | **P2** Sidechain duck the Soundboard track from speaker tracks, live and in export |
+| Soundboard ducking / ducking track (jingles duck under speech) | ✅ Any track (Soundboard, music bed) can duck under the other tracks: its FX panel has "Duck under the other tracks" and a depth (−6…−24 dB). Playback and export; jingles played live while recording are not ducked (the interface can do that) | Done |
 | Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | Missing | **P3** MIDI (Web MIDI) and OSC (UDP in main) mapping to WavePod actions |
 | FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
 | StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | Out of scope per PLAN.md | **P3, small**: simple output routing presets (which tracks and the soundboard go to which output pair). Mix-minus stays in the hardware (RØDECaster USB Chat) |
@@ -202,7 +202,7 @@ came up during testing).
     subframes; image references in PSC and Podcasting 2.0 JSON; validation
     of unnamed chapters before export.
 13. ✅ **Track effects.** Done as filter stacks, see "Filters" above.
-14. **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
+14. ✅ **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
     envelope from the sum of speaker tracks), on/off and depth.
 15. **More formats (P2).** FLAC and Opus export (WASM encoders in the export
     worker). Clip loudness normalisation (`Alt+Shift+N`) is done.

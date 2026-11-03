@@ -47,6 +47,8 @@ export interface Track {
   muteRegions?: MuteRegion[];
   /** Filter stack, processed top to bottom before track gain and pan. */
   fx?: Fx[];
+  /** Gets quieter by `depth` dB while the other tracks play (soundboard, music beds). */
+  duck?: { enabled: boolean; depth: number };
 }
 
 /** One point of a clip's volume line. */

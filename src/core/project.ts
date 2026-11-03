@@ -61,6 +61,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     pan: t.pan ?? 0,
     muteRegions: mergeRegions(t.muteRegions ?? []),
     fx: normalizeFxList(t.fx),
+    ...(t.duck ? { duck: { enabled: !!t.duck.enabled, depth: Number.isFinite(t.duck.depth) ? Math.min(40, Math.max(1, Math.abs(t.duck.depth))) : 12 } } : {}),
     clips: (t.clips ?? []).map((c) => ({
       ...c,
       gain: c.gain ?? 0,
