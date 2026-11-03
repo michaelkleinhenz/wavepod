@@ -1,6 +1,6 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import type { Clip, EnvelopePoint, PeakLevel, Track } from '../shared/types';
-import { formatTick } from '../shared/time';
+import { dbToGain, formatTick } from '../shared/time';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
 import { fadeGain, toDb } from '../core/dsp';
@@ -883,9 +883,11 @@ export class TimelineView {
     // waveform
     const peaks = store.requestPeaks(clip.file);
     if (peaks && peaks.levels.length) {
-      // the waveform shows the clip as it sounds: fades and volume line applied
+      // the waveform shows the clip as it sounds: clip gain (normalisation), fades and
+      // volume line applied
       const env = clip.envelope?.length ? clip.envelope : undefined;
       const fades = clip.fadeIn > 0 || clip.fadeOut > 0;
+      const cg = clip.gain ? dbToGain(clip.gain) : 1;
       drawFileWaveform(ctx, store.waves, clip.file, peaks, {
         x0: Math.max(0, Math.floor(g.x)),
         x1: Math.min(this.width, Math.ceil(g.x + g.w)),
@@ -899,8 +901,8 @@ export class TimelineView {
         bottom: g.y + hgt - 1,
         color: track.color,
         gain:
-          env || fades
-            ? (src) => (fades ? fadeEnvelope(clip, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
+          env || fades || cg !== 1
+            ? (src) => cg * (fades ? fadeEnvelope(clip, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
             : undefined,
       });
     } else if (!peaks) {

@@ -22,11 +22,16 @@ describe('multi-resolution peaks', () => {
     }
   });
 
-  it('averages channels to mono', () => {
+  it('takes the envelope of the played channels instead of averaging them', () => {
     const pb = new MipmapBuilder(2, 1);
-    pb.push([Float32Array.from([1, 1]), Float32Array.from([0, -1])]);
-    expect(Array.from(pb.finish().levels[0].data)).toEqual([0, 64]);
-    expect(Array.from(mixToMono([Float32Array.from([1, 0.5]), Float32Array.from([0, -0.5])], 2))).toEqual([0.5, 0]);
+    // L full scale, R silent: drawn at full scale, not halved
+    pb.push([Float32Array.from([1, 0.5]), Float32Array.from([0, -1]), Float32Array.from([0.1, 0.1])]);
+    expect(Array.from(pb.finish().levels[0].data)).toEqual([-127, 127]);
+    // channels past L/R are not played, so they neither add nor dilute
+    const many = new MipmapBuilder(2, 1);
+    many.push([Float32Array.from([0.6, -0.6]), ...Array.from({ length: 15 }, () => new Float32Array(2))]);
+    expect(Array.from(many.finish().levels[0].data)).toEqual([-76, 76]);
+    expect(Array.from(mixToMono([Float32Array.from([1, 0.25]), Float32Array.from([0, -0.5])], 2))).toEqual([1, -0.5]);
   });
 
   it('streams level-0 buckets and rebuilds the same pyramid from them (live waveform)', () => {
