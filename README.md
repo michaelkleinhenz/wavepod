@@ -140,8 +140,9 @@ driver; pick **ASIO** as audio system if it is offered.
 
 | Key | Action |
 | --- | --- |
-| `Space` | Play / stop |
+| `Space` | Play / stop (playback stops at the end of the last clip) |
 | `R` | Record / stop recording |
+| `L` | Repeat: loop playback of the selected time range |
 | `M` | Chapter marker at playhead |
 | `E` | Edit marker at playhead |
 | `S` | Split clips at playhead (selected clips' tracks, or all) |

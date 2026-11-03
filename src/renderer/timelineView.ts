@@ -176,7 +176,7 @@ export class TimelineView {
       btn('zoomIn', { label: 'Zoom in', shortcut: '+' }, () => this.zoomAtPlayhead(1.5)),
       btn('fit', { label: 'Zoom to fit', detail: 'Zoom to fit the whole episode' }, () => this.zoomToFit()),
       h('span', { class: 'spacer' }),
-      h('span', { class: 'muted hint-keys' }, 'Space play · R record · M chapter · S split · Ctrl+X ripple cut · Ctrl+Y mute range'),
+      h('span', { class: 'muted hint-keys' }, 'Space play · R record · L repeat · M chapter · S split · Ctrl+X ripple cut · Ctrl+Y mute range'),
     );
     this.snapBtn.addEventListener('click', () => {
       this.snapping = !this.snapping;

@@ -63,6 +63,8 @@ nav { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radiu
 .transport.rec { color: var(--rec); font-size: 18px; }
 .transport.rec.on { background: var(--rec); color: #fff; animation: pulse 1s infinite; }
 .transport.play.on { background: var(--ok); border-color: var(--ok); }
+button.icon-btn.transport { width: 36px; height: 32px; }
+.transport.repeat.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 @keyframes pulse { 50% { opacity: 0.65; } }
 .time-display {
   font: 600 20px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;

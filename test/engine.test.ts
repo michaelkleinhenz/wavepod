@@ -191,6 +191,96 @@ describe('AudioEngine with virtual devices', () => {
   });
 });
 
+describe('AudioEngine repeat', () => {
+  let engine: AudioEngine;
+  afterEach(() => engine?.dispose());
+
+  /** Renders a ramp (sample value = frame index / 48000) and pulls blocks by hand. */
+  function setup(frameSize: number) {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    const ramp = new Float32Array(48000).map((_, i) => i / 48000);
+    writeWavFile(path.join(dir, 'media/ramp.wav'), [ramp], 48000);
+    let p = createProject('Loop', 48000);
+    p = addTrack(p, { name: 'T', pan: 0 });
+    p.tracks[0].clips.push({ id: 'c', file: 'media/ramp.wav', start: 0, offset: 0, length: 48000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    let pull: ((n: number) => Float32Array) | null = null;
+    const fake: AudioBackend = {
+      name: 'Fake',
+      api: 'default',
+      listApis: () => [{ id: 'default', label: 'Fake' }],
+      setApi: () => {},
+      listDevices: () => [
+        { id: 7, name: 'Fake 2ch', inputChannels: 0, outputChannels: 2, sampleRates: [48000], preferredSampleRate: 48000, isDefaultInput: false, isDefaultOutput: true },
+      ],
+      openInput: () => {
+        throw new Error('no input');
+      },
+      openOutput: (opts) => {
+        pull = opts.pull;
+        return { channels: opts.channels, sampleRate: opts.sampleRate, frameSize: opts.frameSize, close: () => {} };
+      },
+      dispose: () => {},
+    };
+    engine = new AudioEngine(() => fake);
+    engine.applyConfig({ api: 'default', outputDeviceId: 7, bufferSize: frameSize });
+    engine.setProject(p, dir);
+    /** Left channel of the next n blocks, as frame indices of the ramp. */
+    const frames = (blocks: number): number[] => {
+      const out: number[] = [];
+      for (let b = 0; b < blocks; b++) {
+        const buf = pull!(frameSize);
+        for (let i = 0; i < frameSize; i++) out.push(buf[i * 2]);
+      }
+      const k = out.find((v) => v > 0)! / Math.round(out.find((v) => v > 0)! * 48000);
+      return out.map((v) => Math.round(v / k));
+    };
+    return { frames };
+  }
+
+  it('loops the range without gaps, also within one block', () => {
+    const { frames } = setup(256);
+    engine.setLoop([1000, 1100]);
+    engine.play(1000);
+    const got = frames(4);
+    const want = Array.from({ length: 1024 }, (_, i) => 1000 + (i % 100));
+    expect(got).toEqual(want);
+    expect(engine.position).toBe(1000 + (1024 % 100));
+  });
+
+  it('plays into the range from before it, and past it when started after it', () => {
+    const { frames } = setup(256);
+    engine.setLoop([1000, 1300]);
+    engine.play(900);
+    const got = frames(2);
+    expect(got.slice(0, 400)).toEqual(Array.from({ length: 400 }, (_, i) => 900 + i));
+    expect(got.slice(400, 512)).toEqual(Array.from({ length: 112 }, (_, i) => 1000 + i));
+    engine.stop();
+    engine.play(2000);
+    frames(2);
+    expect(engine.position).toBe(2512);
+    engine.setLoop(null);
+    engine.play(1200);
+    frames(1);
+    expect(engine.position).toBe(1456);
+  });
+
+  it('stops at the end of the last clip, unless it is repeating a range past it', () => {
+    const { frames } = setup(256);
+    engine.play(48000 - 300);
+    frames(1);
+    expect(engine.transportState).toBe('playing');
+    frames(1);
+    expect(engine.transportState).toBe('stopped');
+    expect(engine.position).toBe(48000);
+    engine.setLoop([47900, 48100]);
+    engine.play(47900);
+    frames(4);
+    expect(engine.transportState).toBe('playing');
+    expect(engine.position).toBe(47900 + (1024 % 200));
+  });
+});
+
 describe('AudioEngine with a native backend', () => {
   let engine: AudioEngine;
   afterEach(() => engine?.dispose());
