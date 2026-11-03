@@ -48,6 +48,7 @@ about it; the priority is explained in section 3.
 | Throat-clearing buttons (Räuspertasten): per-speaker mute while recording; audio is still recorded and the mute can be edited later | Missing | **P1** Hold-to-mute "cough" key per track that writes mute regions (non-destructive), editable on the timeline |
 | Big level meters with numeric peak and the −18…−6 dB target zone highlighted | Small meters, no target zone, no clip hold | **P1** Larger meters with target zone, peak hold and clip indicator in Setup and Record views |
 | Soundcheck before recording (48 kHz, unsaved project, internal mic, duplicate inputs, block size, recording in the middle of a project, unknown interface) | Missing | **P1** Pre-record check with the same warnings, ignorable |
+| "Prepare all tracks for editing": unarm all tracks after recording, reminded by the soundcheck | ✅ Edit menu, toolbar and MIDI action; optional "Prepare for Editing When Recording Stops"; reminder after a take while tracks stay armed | Done |
 | Recording safe mode (confirm accidental stop) | Missing | **P1** Confirm before stopping a recording |
 | Jump back to the recording position (`Y`) | Missing | **P1** Shortcut |
 | Named chapter marker while recording (`Shift+M`) | Missing (title only editable afterwards) | **P1** Quick title prompt |
@@ -97,8 +98,9 @@ without a matching benefit:
 
 - Reaper screensets, workflow layouts, the multifunction dock and the
   "Podcast" menu (WavePod's four fixed views are the equivalent).
-- The generic routing matrix, magic routing and "prepare all tracks for
-  editing" (WavePod has no routing state that needs resetting).
+- The generic routing matrix and magic routing. Of "prepare all tracks for
+  editing" only the unarming applies (WavePod has no routing, StudioLink or
+  automation state to reset), see the table above.
 - StudioLink, StudioLink OnAir streaming, Skype/Mumble N‑1 and the HUB
   sound driver (remote guests come in through the interface or OS tools).
 - Wiimote support, Reaper action editor, embedding `.rpp` projects.

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { IPC, type InvokeMethod, type MenuCommand, type OpenedProject } from '../shared/api';
 import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, Project, RecordedTake, VstPluginRef } from '../shared/types';
-import { addClip } from '../core/project';
+import { addClip, prepareForEditing } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
 import { writeWavFile } from '../core/wav';
@@ -26,6 +26,8 @@ interface Settings {
   lastProject: string | null;
   /** MIDI controller mappings; app-wide so the same controller works in every episode. */
   midi: MidiSettings;
+  /** Unarm all tracks when a recording stops (off by default, as in Ultraschall where it is a manual step). */
+  prepareForEditingAfterRecording: boolean;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -37,9 +39,10 @@ function loadSettings(): Settings {
       device: { ...defaultConfig(), ...(raw.device ?? {}) },
       lastProject: raw.lastProject ?? null,
       midi: normalizeMidiSettings(raw.midi),
+      prepareForEditingAfterRecording: raw.prepareForEditingAfterRecording === true,
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false };
   }
 }
 
@@ -327,6 +330,17 @@ function buildMenu(): void {
         { label: 'Normalize Clip Loudness', accelerator: 'Alt+Shift+N', click: menuSend('normalize-clips') },
         { label: 'Loudness Analysis…', accelerator: 'Shift+CmdOrCtrl+L', click: menuSend('loudness-analysis') },
         { type: 'separator' },
+        { label: 'Prepare All Tracks for Editing', click: menuSend('prepare-for-editing') },
+        {
+          label: 'Prepare for Editing When Recording Stops',
+          type: 'checkbox',
+          checked: settings.prepareForEditingAfterRecording,
+          click: (item) => {
+            settings.prepareForEditingAfterRecording = item.checked;
+            saveSettings();
+          },
+        },
+        { type: 'separator' },
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
@@ -386,10 +400,13 @@ app.whenReady().then(() => {
     let project = current.project;
     if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) project = ensureSoundboardTrack(project);
     for (const t of takes) project = addClip(project, t.trackId, t.clip);
+    const prepared = settings.prepareForEditingAfterRecording ? prepareForEditing(project) : project;
+    const preparedForEditing = prepared !== project;
+    project = prepared;
     current.project = project;
     engine.setProject(project);
     flushSave();
-    send(IPC.recordingFinished, { takes, project });
+    send(IPC.recordingFinished, { takes, project, preparedForEditing });
   });
 
   try {

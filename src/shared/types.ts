@@ -341,7 +341,8 @@ export type MidiAction =
   | 'play-toggle'
   | 'stop'
   | 'chapter-marker'
-  | 'edit-marker';
+  | 'edit-marker'
+  | 'prepare-for-editing';
 
 export type MidiMessageType = 'note' | 'cc' | 'program';
 

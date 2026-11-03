@@ -7,7 +7,7 @@ import { fadeGain, toDb } from '../core/dsp';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
-import { coughDown, coughUp, dropMarker, importAudioFiles, muteSelection, rippleCut, seek, splitAtPlayhead } from './actions';
+import { coughDown, coughUp, dropMarker, importAudioFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
@@ -131,6 +131,11 @@ export class TimelineView {
     this.toolbar.append(
       btn('addTrack', { label: 'Add track', detail: 'Add an empty track' }, () => store.edit((p) => addTrack(p))),
       btn('import', { label: 'Import audio…', shortcut: 'Ctrl+I', detail: 'Import audio files as new tracks at the playhead' }, () => void importAudioFiles()),
+      btn(
+        'prepareEdit',
+        { label: 'Prepare for editing', detail: 'Unarm all tracks after recording, so pressing R while editing cannot start a new take' },
+        prepareForEditing,
+      ),
       h('span', { class: 'sep' }),
       btn('split', { label: 'Split', shortcut: 'S', detail: 'Split clips at the playhead' }, splitAtPlayhead),
       btn('rippleCut', { label: 'Ripple cut', shortcut: 'Ctrl+X or Shift+Delete', detail: 'Remove the selected time range from all tracks and close the gap' }, rippleCut),

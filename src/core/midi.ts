@@ -12,6 +12,7 @@ export const MIDI_ACTIONS: Array<{ action: MidiAction; label: string }> = [
   { action: 'record-toggle', label: 'Record on / off' },
   { action: 'play-toggle', label: 'Play / Pause' },
   { action: 'stop', label: 'Stop' },
+  { action: 'prepare-for-editing', label: 'Prepare for editing' },
 ];
 
 export function defaultMidiSettings(): MidiSettings {

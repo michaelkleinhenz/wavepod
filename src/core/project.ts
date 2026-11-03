@@ -100,6 +100,17 @@ export function addTrack(project: Project, opts: Partial<Track> = {}): Project {
   return p;
 }
 
+/**
+ * Ultraschall's "Prepare all tracks for editing": takes every track out of record so that pressing
+ * R while cutting can't start a new take. Returns the same project when nothing was armed.
+ */
+export function prepareForEditing(project: Project): Project {
+  if (!project.tracks.some((t) => t.armed)) return project;
+  const p = clone(project);
+  for (const t of p.tracks) t.armed = false;
+  return p;
+}
+
 export function updateTrack(project: Project, trackId: string, patch: Partial<Track>): Project {
   const p = clone(project);
   const t = p.tracks.find((x) => x.id === trackId);

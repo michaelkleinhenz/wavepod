@@ -18,6 +18,7 @@ import {
   rippleCut,
   newProject,
   openProject,
+  prepareForEditing,
   seek,
   splitAtPlayhead,
   stop,
@@ -186,10 +187,14 @@ async function main(): Promise<void> {
     store.status = s;
     store.notify('status');
   });
-  api().onRecordingFinished(({ takes, project }) => {
+  api().onRecordingFinished(({ takes, project, preparedForEditing }) => {
     store.history.push(store.project);
     store.setProject(project);
-    toast(`Recorded ${takes.length} take${takes.length === 1 ? '' : 's'}`);
+    const recorded = `Recorded ${takes.length} take${takes.length === 1 ? '' : 's'}`;
+    if (preparedForEditing) toast(`${recorded} · tracks unarmed for editing`);
+    // Ultraschall's soundcheck reminds you of this too: armed tracks make R start a new take mid-edit.
+    else if (project.tracks.some((t) => t.armed)) toast(`${recorded} · tracks are still armed, use Prepare for editing before you cut`);
+    else toast(recorded);
   });
   api().onMenu((cmd) => {
     switch (cmd) {
@@ -211,6 +216,7 @@ async function main(): Promise<void> {
         return void (!document.querySelector('.overlay') && normalizeClips([...store.selection.clipIds]));
       case 'loudness-analysis':
         return void (!document.querySelector('.overlay') && loudnessDialog.open());
+      case 'prepare-for-editing': return prepareForEditing();
       case 'redo': return store.redo();
       case 'view-setup': return store.setView('setup');
       case 'view-edit': return store.setView('edit');
