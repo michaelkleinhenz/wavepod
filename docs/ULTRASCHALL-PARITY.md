@@ -65,7 +65,7 @@ about it; the priority is explained in section 3.
 | Ripple editing modes when moving clips (off / per track / all tracks) | Moving a clip never shifts others | **P2** Modifier-drag: move clip plus everything after it on the track or on all tracks, markers follow in all-tracks mode |
 | Automatic crossfade when clips overlap, fade curve shapes | Fades are linear and per clip, overlaps just sum | **P2** Auto crossfade on overlap; linear / equal-power / S-curve |
 | Variable playback speed with constant pitch for listening through | Missing | **P2** 1×–2× playback speed (WSOLA time-stretch in the playback path only; export is always 1×) |
-| Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, presets; optional noise filter | Only gain, pan, loudness normalisation | **P2** Fixed per-track chain (high-pass, gate/expander, compressor, 4-band EQ) + master limiter, with presets ("Voice", "Voice – gentle", "Off"); live and in export. Noise reduction later |
+| Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. Noise reduction, reverb and VST3 plugins later |
 | Normalise selected clips (`Alt+Shift+N`) | Only whole-mix normalisation at export | **P2** Clip loudness normalisation via clip gain |
 | Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
 | Drag-and-drop media import, drop on empty space creates a track | Import via menu | **P2** |
@@ -106,6 +106,25 @@ without a matching benefit:
 
 Priorities weigh how often a podcaster hits the gap against implementation
 cost. Each numbered item is sized to be one pull request.
+
+### Filters (moved up to P1) ✅
+
+Every track and the master bus has a filter stack: filters can be added,
+bypassed, tweaked live while playing, reordered (drag or ↑/↓) and removed.
+Available: High-pass (12/24 dB/oct), Equalizer (low shelf, two bells, high
+shelf), Noise gate, Compressor (soft knee), De-esser (split-band with a
+dynamic high shelf), Limiter, and **Ultraschall Dynamics**, ported from the
+JSFX in `ultraschall-portable/Effects/dynamics/Ultraschall_Dynamics`: 188 ms
+RMS detector, 5/250 ms envelope, a 250-point gain curve built from Target,
+Noise floor and Noise gate (S-curve above the noise floor, linear expander
+below it, muted under the gate, 3-tap smoothing), 100 ms lookahead and the
+MGA peak limiter at −0.1 dBFS. The mixer compensates filter latency so audio
+stays in place on the timeline. "Voice chain" adds High-pass, De-esser and
+Ultraschall Dynamics, mirroring Ultraschall's default track chain without
+its noise reduction and reverb.
+
+Next: VST3 plugins in the same stack, shown with generated sliders only
+(never the plugin's own editor).
 
 ### Phase 5 — Recording essentials (P1)
 
@@ -163,10 +182,7 @@ came up during testing).
     and URL in the Chapters view; ID3 `APIC`, `CHAP` with `APIC` and `WXXX`
     subframes; image references in PSC and Podcasting 2.0 JSON; validation
     of unnamed chapters before export.
-13. **Track effects (P2).** One fixed chain per track (high-pass → gate/
-    expander → compressor → 4-band EQ) and a master limiter, with three
-    presets and a bypass. Pure TypeScript in `core/`, shared by the live
-    mixer and the export worker, unit-tested like `loudness.ts`.
+13. ✅ **Track effects.** Done as filter stacks, see "Filters" above.
 14. **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
     envelope from the sum of speaker tracks), on/off and depth.
 15. **More formats (P2).** FLAC and Opus export (WASM encoders in the export

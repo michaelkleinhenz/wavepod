@@ -20,6 +20,10 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
 - **Soundboard** for jingles (keys `1`–`9`) with loop and soft fade-in.
   Jingles played while recording land on a Soundboard track, so they are
   part of the edit and the export.
+- **Filters** on every track and the master: high-pass, EQ, noise gate,
+  compressor, de-esser, limiter and Ultraschall Dynamics (target-loudness
+  leveler with noise gate). Add, bypass, tweak while playing and reorder
+  them in the FX panel; they apply live and in the export.
 - **Loudness**: EBU R128 analysis per track and mix, normalisation to −16 /
   −19 / −23 LUFS with a peak ceiling.
 - **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter

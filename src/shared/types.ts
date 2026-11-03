@@ -36,6 +36,19 @@ export interface Track {
   clips: Clip[];
   /** Cough-button mutes: [start, end) in timeline frames, sorted, non-overlapping. */
   muteRegions?: MuteRegion[];
+  /** Filter stack, processed top to bottom before track gain and pan. */
+  fx?: Fx[];
+}
+
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics';
+
+/** One filter in a track's or the master's filter stack. */
+export interface Fx {
+  id: string;
+  type: FxType;
+  /** false = bypassed. */
+  enabled: boolean;
+  params: Record<string, number>;
 }
 
 export type MuteRegion = [Frames, Frames];
@@ -80,6 +93,8 @@ export interface Project {
   sampleRate: number;
   bitDepth: BitDepth;
   masterGain: number;
+  /** Filter stack on the master bus, processed before the master gain. */
+  masterFx?: Fx[];
   tracks: Track[];
   markers: Marker[];
   soundboard: SoundboardSlot[];

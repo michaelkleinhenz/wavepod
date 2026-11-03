@@ -1,8 +1,13 @@
 // Pure project-editing operations. They return a new project and never touch the input.
-import type { Clip, Marker, MarkerKind, Project, Track } from '../shared/types';
+import type { Clip, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
 import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
+import { normalizeFx } from './fx/definitions';
+
+function normalizeFxList(list: unknown): Fx[] {
+  return Array.isArray(list) ? list.map((f) => normalizeFx(f as Partial<Fx>)).filter((f): f is Fx => !!f) : [];
+}
 
 export const TRACK_COLORS = ['#4fc3f7', '#ffb74d', '#81c784', '#e57373', '#ba68c8', '#fff176', '#4db6ac', '#f06292'];
 
@@ -54,10 +59,12 @@ export function normalizeProject(raw: Partial<Project>): Project {
     gain: t.gain ?? 0,
     pan: t.pan ?? 0,
     muteRegions: mergeRegions(t.muteRegions ?? []),
+    fx: normalizeFxList(t.fx),
     clips: (t.clips ?? []).map((c) => ({ ...c, gain: c.gain ?? 0, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, offset: c.offset ?? 0 })),
   }));
   p.markers = (p.markers ?? []).map((m) => ({ ...m, id: m.id ?? uid('mrk'), kind: m.kind ?? 'chapter', title: m.title ?? '' }));
   p.soundboard = p.soundboard ?? [];
+  p.masterFx = normalizeFxList(p.masterFx);
   return p;
 }
 

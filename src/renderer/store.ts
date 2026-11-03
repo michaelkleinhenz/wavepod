@@ -95,6 +95,28 @@ class Store {
     this.notify('project');
   }
 
+  private liveBase: Project | null = null;
+
+  /** True while a slider drag is applying changes that will become one undo step. */
+  get liveEditing(): boolean {
+    return this.liveBase !== null;
+  }
+
+  /** Applies a change immediately (e.g. while dragging a slider) without an undo step yet. */
+  editLive(fn: (p: Project) => Project): void {
+    if (!this.liveBase) this.liveBase = this.project;
+    this.project = fn(this.project);
+    void api().updateProject(this.project);
+    this.notify('project');
+  }
+
+  /** Turns the live changes since the first editLive() into one undo step. */
+  commitLive(): void {
+    if (this.liveBase && this.liveBase !== this.project) this.history.push(this.liveBase);
+    this.liveBase = null;
+    this.notify('project');
+  }
+
   undo(): void {
     const p = this.history.undo(this.project);
     if (!p) return;

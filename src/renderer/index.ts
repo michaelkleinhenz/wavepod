@@ -1,4 +1,6 @@
 // App shell: header with views and transport, view switching, keyboard shortcuts, engine events.
+import { FxPanel } from './fxPanel';
+import { MASTER } from '../core/fx/stack';
 import { formatTimestamp } from '../shared/time';
 import { toDb } from '../core/dsp';
 import { projectLength } from '../core/project';
@@ -36,6 +38,8 @@ async function main(): Promise<void> {
   const timeline = new TimelineView(soundboard.el);
   const chapters = new ChaptersView();
   const exportDialog = new ExportDialog();
+  const fxPanel = new FxPanel();
+  timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
 
   // ---------------------------------------------------------------- header
   const tabs: Record<View, HTMLButtonElement> = {
@@ -52,6 +56,7 @@ async function main(): Promise<void> {
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
+  const masterFxBtn = h('button', { class: 'fx-btn', title: 'Filters on the master bus', onclick: () => fxPanel.toggle(MASTER) }, 'Master FX');
   const header = h(
     'header',
     null,
@@ -59,6 +64,7 @@ async function main(): Promise<void> {
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
     h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
+    masterFxBtn,
     h('div', { class: 'spacer' }),
     projectName,
     h('button', { class: 'primary', title: 'Export (Ctrl+E)', onclick: () => exportDialog.open() }, 'Export…'),
@@ -114,6 +120,11 @@ async function main(): Promise<void> {
   store.subscribe((kinds) => {
     if (kinds.has('view')) renderView();
     if (kinds.has('project')) {
+      fxPanel.refresh();
+      const n = (store.project.masterFx ?? []).filter((f) => f.enabled).length;
+      masterFxBtn.textContent = n ? `Master FX ${n}` : 'Master FX';
+      masterFxBtn.classList.toggle('active', n > 0);
+      masterFxBtn.classList.toggle('open', fxPanel.target === MASTER);
       if (store.view === 'edit') timeline.renderHeaders();
       if (store.view === 'chapters') chapters.render();
       if (store.view === 'setup') setup.render();

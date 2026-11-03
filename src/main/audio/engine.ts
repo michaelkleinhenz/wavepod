@@ -245,7 +245,9 @@ export class AudioEngine extends EventEmitter {
       this.sounds.clear();
     }
     this.project = project;
-    this.mixer = new Mixer(project, this.readers);
+    // keep the mixer (and its filter state) across edits; a new folder or rate needs a new one
+    if (this.mixer.readers !== this.readers || this.mixer.project.sampleRate !== project.sampleRate) this.mixer = new Mixer(project, this.readers);
+    else this.mixer.project = project;
     this.armedTrackIds = new Set(project.tracks.filter((t) => t.armed).map((t) => t.id));
   }
 

@@ -41,6 +41,8 @@ export class TimelineView {
   private width = 800;
   private drag: Drag | null = null;
   private lastFollowPos = 0;
+  /** Opens the filter stack of a track. */
+  onOpenFx: (trackId: string) => void = () => {};
 
   constructor(private footer: HTMLElement) {
     const rulerRow = h(
@@ -227,6 +229,15 @@ export class TimelineView {
           h(
             'div',
             { class: 'th-row' },
+            h(
+              'button',
+              {
+                class: `fx-btn${t.fx?.some((f) => f.enabled) ? ' active' : ''}`,
+                title: 'Filters (EQ, compressor, Ultraschall Dynamics, …)',
+                onclick: () => this.onOpenFx(t.id),
+              },
+              t.fx?.some((f) => f.enabled) ? `FX ${t.fx.filter((f) => f.enabled).length}` : 'FX',
+            ),
             h('span', { class: 'gain-label', title: 'Track gain' }, `${t.gain > 0 ? '+' : ''}${t.gain.toFixed(1)} dB`),
             h('input', {
               type: 'range',

@@ -217,3 +217,29 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .th-hint { font-size: 11px; min-height: 24px; align-items: center; }
 .toggle.cough { color: #e57373; }
 .toggle.cough:active { background: #ff7043; color: #fff; border-color: #ff7043; }
+
+/* filter stacks */
+.fx-btn { height: 22px; padding: 0 6px; font-size: 10px; font-weight: 700; color: var(--muted); }
+.fx-btn.active { color: #81c784; border-color: #3d5a3f; }
+.fx-btn.open { background: var(--panel-2); }
+.fx-panel { position: fixed; top: 52px; right: 0; bottom: 28px; width: 340px; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,0.35); display: flex; flex-direction: column; z-index: 5; }
+.fx-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 14px 6px; }
+.fx-head h2 { margin: 0; font-size: 16px; }
+.fx-kicker { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.fx-close { width: 26px; height: 26px; padding: 0; font-size: 16px; }
+.fx-toolbar { display: flex; gap: 6px; padding: 4px 14px 10px; border-bottom: 1px solid var(--border); }
+.fx-add { flex: 1; }
+.fx-list { flex: 1; overflow: auto; padding: 10px 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.fx-empty { margin: 4px 0; }
+.fx-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px 10px; }
+.fx-card.bypassed { opacity: 0.55; }
+.fx-card.dragging { opacity: 0.4; }
+.fx-card.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+.fx-card.drop-after { box-shadow: 0 3px 0 var(--accent); }
+.fx-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.fx-grip { cursor: grab; color: var(--muted); letter-spacing: -2px; padding: 0 2px; }
+.fx-name { flex: 1; font-weight: 600; }
+.fx-param { display: grid; grid-template-columns: 92px 1fr 64px; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 2px 0; }
+.fx-param input[type=range] { width: 100%; }
+.fx-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.fx-curve { display: block; margin: 2px 0 8px; border-radius: 6px; }
