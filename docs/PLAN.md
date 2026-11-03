@@ -125,6 +125,8 @@ UI concern only.
   electron-builder and attach them to a GitHub Release.
 
 ### Later
+See [ULTRASCHALL-PARITY.md](ULTRASCHALL-PARITY.md) for the prioritised
+roadmap of Ultraschall features (phases 5–8). Remaining items:
 - Ripple editing across all tracks with marker shifting (partly done via
   ripple delete).
 - Auto-ducking / noise gate / leveler per track.

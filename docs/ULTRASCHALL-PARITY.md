@@ -1,0 +1,192 @@
+# SoundPod – Ultraschall feature parity plan
+
+This document compares SoundPod with [Ultraschall](https://ultraschall.fm/)
+5.1.1 and lays out, in priority order, which missing features SoundPod should
+add. The guiding rule from [PLAN.md](PLAN.md) still holds: SoundPod is a
+standalone app with no Reaper, no screensets, no action lists and no plugin
+installation. Where Ultraschall solves something with Reaper's generic
+machinery (routing matrix, docks, layouts, action editor), SoundPod should
+solve the podcaster's actual problem with one focused feature, or leave it to
+the audio interface.
+
+Sources: the [Ultraschall feature page](https://ultraschall.fm/) and the
+[Ultraschall manual](https://ultraschall.github.io/ultraschall-manual/)
+(GUI overview, recording, editing, export, navigation & settings chapters).
+
+## 1. What SoundPod already covers
+
+| Ultraschall | SoundPod today |
+| --- | --- |
+| Multitrack recording, one track per speaker | ✅ Native multichannel via RtAudio, device profiles, "Create speaker tracks" |
+| Automatic track colours | ✅ |
+| Chapter markers while recording (`M`) | ✅ (`M`), chapter list with title + URL |
+| Edit markers (`E`) | ✅ |
+| Soundboard for jingles | ✅ 12 slots, keys `1`–`9` (but not recorded, see below) |
+| Non-destructive editing, undo | ✅ |
+| Split (`S`), fades by dragging, ripple cut across all tracks | ✅ split, trim, fades, ripple delete of a range |
+| Mute/solo per track | ✅ |
+| Loudness normalisation | ✅ EBU R128 to −16 / −19 / −23 LUFS (Ultraschall: ~−18 LUFS) |
+| MP3 export with metadata and chapters | ✅ ID3v2 + CHAP/CTOC |
+| Chapter export for Podlove / Auphonic | ✅ PSC, Podcasting 2.0 JSON, mp4chaps, Audacity labels |
+| Multitrack / stems export (e.g. for Auphonic) | ✅ stems |
+| Export a time selection | ✅ |
+| WAV recording | ✅ crash-safe, 16/24/32-bit |
+| Auto-follow during playback/recording | ✅ |
+
+## 2. Gaps
+
+Grouped by the Ultraschall workflow phases. "Plan" says what SoundPod does
+about it; the priority is explained in section 3.
+
+### Recording
+
+| Ultraschall feature | Gap in SoundPod | Plan |
+| --- | --- | --- |
+| Soundboard is a track: jingles end up in the recording; fade-in, loop, stop, per-clip volume, remaining time | Jingles play out of the output device only and are not part of the project, so they are missing from the edit and the export (unless the interface happens to loop them back) | **P1** Record each trigger as a clip on a "Soundboard" track; per slot fade-in, loop, remaining-time display |
+| Throat-clearing buttons (Räuspertasten): per-speaker mute while recording; audio is still recorded and the mute can be edited later | Missing | **P1** Hold-to-mute "cough" key per track that writes mute regions (non-destructive), editable on the timeline |
+| Big level meters with numeric peak and the −18…−6 dB target zone highlighted | Small meters, no target zone, no clip hold | **P1** Larger meters with target zone, peak hold and clip indicator in Setup and Record views |
+| Soundcheck before recording (48 kHz, unsaved project, internal mic, duplicate inputs, block size, recording in the middle of a project, unknown interface) | Missing | **P1** Pre-record check with the same warnings, ignorable |
+| Recording safe mode (confirm accidental stop) | Missing | **P1** Confirm before stopping a recording |
+| Jump back to the recording position (`Y`) | Missing | **P1** Shortcut |
+| Named chapter marker while recording (`Shift+M`) | Missing (title only editable afterwards) | **P1** Quick title prompt |
+| Soundboard ducking / ducking track (jingles duck under speech) | Missing | **P2** Sidechain duck the Soundboard track from speaker tracks, live and in export |
+| Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | Missing | **P3** MIDI (Web MIDI) and OSC (UDP in main) mapping to SoundPod actions |
+| FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
+| StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | Out of scope per PLAN.md | **P3, small**: simple output routing presets (which tracks and the soundboard go to which output pair). Mix-minus stays in the hardware (RØDECaster USB Chat) |
+| StudioLink OnAir live streaming | Missing | Not planned |
+
+### Editing / production
+
+| Ultraschall feature | Gap in SoundPod | Plan |
+| --- | --- | --- |
+| Check cuts: jump to next/previous clip edge or edit marker and play with preroll | Only seek and Home/End | **P1** Jump to next/previous edit marker, chapter marker and clip edge; "preview cut" with configurable preroll |
+| Zoom to selection and back (`Shift+Z`), zoom whole project | Zoom in/out only | **P1** |
+| Copy/cut/paste of clips and ranges; ripple cut on `Ctrl+X` | Delete and ripple delete only, no clipboard | **P2** Clipboard for clips and time ranges (paste at playhead, ripple insert) |
+| Ripple editing modes when moving clips (off / per track / all tracks) | Moving a clip never shifts others | **P2** Modifier-drag: move clip plus everything after it on the track or on all tracks, markers follow in all-tracks mode |
+| Automatic crossfade when clips overlap, fade curve shapes | Fades are linear and per clip, overlaps just sum | **P2** Auto crossfade on overlap; linear / equal-power / S-curve |
+| Variable playback speed with constant pitch for listening through | Missing | **P2** 1×–2× playback speed (WSOLA time-stretch in the playback path only; export is always 1×) |
+| Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, presets; optional noise filter | Only gain, pan, loudness normalisation | **P2** Fixed per-track chain (high-pass, gate/expander, compressor, 4-band EQ) + master limiter, with presets ("Voice", "Voice – gentle", "Off"); live and in export. Noise reduction later |
+| Normalise selected clips (`Alt+Shift+N`) | Only whole-mix normalisation at export | **P2** Clip loudness normalisation via clip gain |
+| Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
+| Drag-and-drop media import, drop on empty space creates a track | Import via menu | **P2** |
+| Marker ping when the playhead passes a marker | Missing | **P3** Optional |
+| Project backups every 10 minutes | Autosave of project.json only | **P1** Rolling backups of project.json in `backup/` |
+| Distraction-free editing mode, customisable shortcuts, shortcut list | Fixed shortcuts | **P3** Shortcut overlay (`?`); customisable keymap later |
+| Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | Missing | **P3, reduced**: clip colours/notes and a project overview strip (navigator). Tag search across projects is not planned |
+| Double-ender: guest's local backup recording replaces the remote track | Missing | **P2** Import a guest's local file and auto-align it to the remote track by cross-correlation |
+
+### Export
+
+| Ultraschall feature | Gap in SoundPod | Plan |
+| --- | --- | --- |
+| Episode artwork (JPG/PNG) in the MP3, recently used images | Missing | **P1** ID3 `APIC` cover, picker in the metadata form |
+| Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | URL only, no images, no validation | **P1** Chapter image (embedded as `APIC` inside `CHAP`, written to PSC/JSON as file reference), validation warnings in the Chapters view and export dialog, offer a chapter at 0:00 |
+| Formats FLAC, OGG Vorbis, AIFF in addition to WAV/MP3 | WAV and MP3 | **P2** FLAC (WASM encoder) and Opus/Ogg; AIFF not planned |
+| Export regions (split a long recording into several files) | One range at a time | **P3** Regions as a third marker kind, "export each region" |
+| Export presets, file name patterns | Fixed naming | **P3** Remember last settings per project (presets only if asked for) |
+| Podcast categories in metadata | Missing | **P3** Optional `TCON`/genre field |
+| Auphonic hand-off | Stems + chapter files only | **P3** Direct upload to Auphonic multitrack (API key in settings) — already listed under "Later" in PLAN.md |
+
+### Deliberately not adopted
+
+These exist in Ultraschall because it lives inside Reaper or because of a
+specific era of remote recording; they would make SoundPod more complex
+without a matching benefit:
+
+- Reaper screensets, workflow layouts, the multifunction dock and the
+  "Podcast" menu (SoundPod's four fixed views are the equivalent).
+- The generic routing matrix, magic routing and "prepare all tracks for
+  editing" (SoundPod has no routing state that needs resetting).
+- StudioLink, StudioLink OnAir streaming, Skype/Mumble N‑1 and the HUB
+  sound driver (remote guests come in through the interface or OS tools).
+- Wiimote support, Reaper action editor, embedding `.rpp` projects.
+- Cross-project keyword database of the storyboard.
+
+## 3. Prioritised roadmap
+
+Priorities weigh how often a podcaster hits the gap against implementation
+cost. Each numbered item is sized to be one pull request.
+
+### Phase 5 — Recording essentials (P1)
+
+Things that make a live recording session complete and safe.
+
+1. **Soundboard on the timeline.** A dedicated "Soundboard" track (created on
+   first use, not armed, no input). Every trigger during recording inserts a
+   clip referencing the jingle file at the trigger position; stopping a
+   jingle trims the clip. Per slot: fade-in, loop, gain; the button shows
+   remaining time. The mixer already plays clips, so the edit and the export
+   pick this up for free. *Files:* `engine.ts`, `soundboard.ts`,
+   `core/project.ts`.
+2. **Cough buttons / mute regions.** New `Track.muteRegions: [start, end][]`.
+   Holding the track's cough key (default `Shift+1`…`Shift+8`, also a button
+   in the track header) records a region; the mixer applies short ramps. The
+   timeline draws regions over the waveform and lets you drag/delete them, so
+   the same mechanism doubles as Ultraschall's mute envelope in editing.
+   Monitoring is unaffected because the interface does that.
+3. **Soundcheck and safe recording.** Before `R`: warn on sample rate ≠ 48 kHz,
+   no armed tracks, two tracks on the same input, a built-in microphone
+   selected, low disk space, a missing/changed device, or playhead before the
+   end of existing material. "Record anyway" and "don't ask again for this
+   project". Confirm before stopping a recording (setting).
+4. **Meters.** Larger per-track meters with the −18…−6 dBFS zone, numeric peak
+   hold and a clip indicator that stays until clicked.
+5. **Markers while recording.** `Shift+M` named chapter marker (non-blocking
+   title field), `Y` jump to the recording position, optional chapter at 0:00.
+6. **Rolling backups** of `project.json` every 10 minutes and before each
+   recording into `backup/`, keep the last 20, "Restore backup…" menu item.
+
+### Phase 6 — Editing speed (P1/P2)
+
+7. **Navigation (P1).** Next/previous edit marker, chapter marker and clip edge
+   (`Alt+←/→`, `Ctrl+Alt+←/→`), "preview cut" plays from preroll to
+   postroll around the playhead, `Shift+Z` zoom to selection / back, zoom to
+   project, project overview strip.
+8. **Clipboard and ripple moves (P2).** Copy/cut/paste for clips and time
+   ranges across all tracks, `Ctrl+X` = ripple cut. Modifier-drag to move a
+   clip with everything after it (track or all tracks, markers follow).
+9. **Crossfades (P2).** Overlapping clips on a track crossfade automatically;
+   fade shape per fade. *Files:* `core/mixer.ts`, `core/dsp.ts`, timeline.
+10. **Playback speed (P2).** 1×, 1.25×, 1.5×, 2× in the transport, pitch kept
+    with WSOLA in `core/dsp.ts`; recording and export ignore it.
+11. **Drag-and-drop import and double-ender alignment (P2).** Drop files on a
+    track or empty space; "Align to track…" cross-correlates the first
+    minutes against a reference track and sets the clip offset.
+
+### Phase 7 — Sound and export (P1/P2)
+
+12. **Artwork and chapter images (P1).** Episode cover and per-chapter image
+    and URL in the Chapters view; ID3 `APIC`, `CHAP` with `APIC` and `WXXX`
+    subframes; image references in PSC and Podcasting 2.0 JSON; validation
+    of unnamed chapters before export.
+13. **Track effects (P2).** One fixed chain per track (high-pass → gate/
+    expander → compressor → 4-band EQ) and a master limiter, with three
+    presets and a bypass. Pure TypeScript in `core/`, shared by the live
+    mixer and the export worker, unit-tested like `loudness.ts`.
+14. **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
+    envelope from the sum of speaker tracks), on/off and depth.
+15. **More formats (P2).** FLAC and Opus export (WASM encoders in the export
+    worker); clip loudness normalisation (`Alt+Shift+N`).
+
+### Phase 8 — Studio comfort (P3)
+
+16. **Remote control.** MIDI learn via Web MIDI and an OSC server (UDP, off by
+    default) for transport, markers, cough buttons and soundboard slots, so
+    Stream Deck / Bitfocus Companion and MIDI controllers work.
+17. **Output presets.** Choose per output pair what it carries (master,
+    soundboard only, selected tracks); presets "Pre-show" (soundboard only)
+    and "Show". No full routing matrix.
+18. **Regions and export per region; Auphonic upload; podcast category.**
+19. **Shortcut overlay, marker ping, clip colours and notes.**
+
+## 4. Suggested order
+
+Phase 5 first, item 1 and 2 before anything else: a jingle that is missing
+from the recording and a cough that cannot be removed without cutting are
+the two gaps a user hits in their very first session. Then item 12 (artwork
+and chapter images), because the MP3 export is otherwise feature-complete
+and podcatchers display both. Phases 6 and 7 can run in parallel since they
+touch different code (timeline vs. `core/` DSP). Phase 8 only on demand.
+
+Hardware verification on a real RØDECaster Pro II (see PLAN.md, Known risks)
+remains a prerequisite for calling any recording feature done.
