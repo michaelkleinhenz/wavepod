@@ -54,3 +54,11 @@ export function moveFx(project: Project, target: FxTarget, id: string, to: numbe
     return next;
   });
 }
+
+/** A starting point that mirrors Ultraschall's voice chain (without its noise reduction and reverb). */
+export const VOICE_CHAIN: FxType[] = ['highpass', 'deesser', 'dynamics'];
+
+/** Appends the voice chain (High-pass, De-esser, Ultraschall Dynamics) to a stack. */
+export function addVoiceChain(project: Project, target: FxTarget): Project {
+  return VOICE_CHAIN.reduce((q, type) => addFx(q, target, type).project, project);
+}

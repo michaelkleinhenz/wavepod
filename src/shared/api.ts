@@ -12,6 +12,8 @@ import type {
   VstPluginInfo,
   VstPluginRef,
   LoudnessReport,
+  McpSettings,
+  McpStatus,
   MidiSettings,
   Project,
   RecordedTake,
@@ -62,6 +64,11 @@ export interface WavePodApi {
   getMidiSettings(): Promise<MidiSettings>;
   /** Stores the mappings and returns them as saved (validated). */
   setMidiSettings(settings: MidiSettings): Promise<MidiSettings>;
+
+  // MCP server for AI agents (app settings, local only, off by default)
+  getMcpStatus(): Promise<McpStatus>;
+  /** Stores the settings and starts, restarts or stops the server. */
+  setMcpSettings(settings: McpSettings): Promise<McpStatus>;
 
   // transport
   play(from?: number): Promise<void>;
@@ -127,6 +134,8 @@ export interface WavePodApi {
   onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean }) => void): () => void;
   onExportProgress(cb: (p: ExportProgress) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
+  /** An AI agent changed the project over MCP; it is already applied in the main process. */
+  onProjectEdited(cb: (e: { project: Project; summary: string }) => void): () => void;
 
   platform: string;
 }
@@ -138,12 +147,13 @@ export const IPC = {
   recordingFinished: 'wavepod:recordingFinished',
   exportProgress: 'wavepod:exportProgress',
   menu: 'wavepod:menu',
+  projectEdited: 'wavepod:projectEdited',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'platform'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onProjectEdited' | 'platform'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
@@ -153,6 +163,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'getProfile',
   'getMidiSettings',
   'setMidiSettings',
+  'getMcpStatus',
+  'setMcpSettings',
   'play',
   'stop',
   'record',

@@ -17,6 +17,7 @@ const api: Record<string, unknown> = {
   onRecordingFinished: subscribe(IPC.recordingFinished),
   onExportProgress: subscribe(IPC.exportProgress),
   onMenu: subscribe(IPC.menu),
+  onProjectEdited: subscribe(IPC.projectEdited),
   platform: process.platform,
 };
 for (const method of INVOKE_METHODS) {

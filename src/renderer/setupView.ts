@@ -4,6 +4,7 @@ import { addTrack } from '../core/project';
 import { suggestTracks } from '../core/deviceProfiles';
 import { toDb } from '../core/dsp';
 import { append, clear, errorMessage, h, toast } from './dom';
+import { renderMcpCard } from './mcpCard';
 import { renderMidiCard } from './midiCard';
 import { api, store } from './store';
 
@@ -144,7 +145,7 @@ export class SetupView {
       ),
     );
 
-    this.el.append(deviceCard, this.renderChannels(store.profile, s.inputChannelCount), renderMidiCard(), this.renderTemplates());
+    this.el.append(deviceCard, this.renderChannels(store.profile, s.inputChannelCount), renderMidiCard(), this.renderTemplates(), renderMcpCard());
   }
 
   private renderChannels(profile: DeviceProfile | null, channelCount: number): HTMLElement {

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { IPC, type InvokeMethod, type MenuCommand, type OpenedProject } from '../shared/api';
-import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, Project, RecordedTake, VstPluginRef } from '../shared/types';
+import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, McpSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip, prepareForEditing } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
@@ -17,6 +17,8 @@ import { createProjectDir, isProjectDir, loadProject, saveProject } from './proj
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
+import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
+import { McpController, normalizeMcpSettings } from './mcp/controller';
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
@@ -28,6 +30,8 @@ interface Settings {
   midi: MidiSettings;
   /** Unarm all tracks when a recording stops (off by default, as in Ultraschall where it is a manual step). */
   prepareForEditingAfterRecording: boolean;
+  /** Local MCP server for AI agents; off unless the user switches it on in Setup. */
+  mcp: McpSettings;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -40,9 +44,10 @@ function loadSettings(): Settings {
       lastProject: raw.lastProject ?? null,
       midi: normalizeMidiSettings(raw.midi),
       prepareForEditingAfterRecording: raw.prepareForEditingAfterRecording === true,
+      mcp: normalizeMcpSettings(raw.mcp),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, mcp: normalizeMcpSettings(null) };
   }
 }
 
@@ -74,6 +79,7 @@ let engine: AudioEngine;
 let win: BrowserWindow | null = null;
 let current: OpenedProject;
 let saveTimer: NodeJS.Timeout | null = null;
+let mcp: McpController;
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -103,6 +109,36 @@ function flushSave(): void {
     console.error('save failed', e);
   }
 }
+
+/** Takes over a project edited in the renderer (or by an agent) and saves it shortly after. */
+function setCurrentProject(project: Project): void {
+  current.project = project;
+  engine.setProject(project);
+  win?.setTitle(`${project.name} — WavePod`);
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, 400);
+}
+
+/** What the MCP tools may do: read the open project and apply edits that the window turns into undo steps. */
+const mcpHost: WavePodHost = {
+  project: () => current.project,
+  dir: () => current.dir,
+  transportState: () => engine.transportState,
+  apply: (project, summary) => {
+    setCurrentProject(project);
+    send(IPC.projectEdited, { project, summary });
+  },
+  measureLoudness: () => handlers.measureLoudness() as Promise<LoudnessReport[]>,
+  get vst() {
+    const exe = vstExe;
+    if (!exe || !vstHost) return null;
+    return {
+      scan: () => scanVstPlugins(exe, defaultVstDirs(), path.join(app.getPath('userData'), 'vst3-cache.json'), false),
+      describe: describeVst,
+      format: formatVst,
+    };
+  },
+};
 
 function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -137,6 +173,13 @@ const handlers: Record<InvokeMethod, Handler> = {
     return dev ? findProfile(dev.name, dev.inputChannels, dev.outputChannels) : null;
   },
 
+  getMcpStatus: () => mcp.status(),
+  setMcpSettings: async (next: McpSettings) => {
+    settings.mcp = normalizeMcpSettings(next);
+    saveSettings();
+    return mcp.apply(settings.mcp);
+  },
+
   getMidiSettings: () => settings.midi,
   setMidiSettings: (midi: MidiSettings) => {
     settings.midi = normalizeMidiSettings(midi);
@@ -168,13 +211,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     flushSave();
     return openProjectDir(dir);
   },
-  updateProject: (project: Project) => {
-    current.project = project;
-    engine.setProject(project);
-    win?.setTitle(`${project.name} — WavePod`);
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(flushSave, 400);
-  },
+  updateProject: (project: Project) => setCurrentProject(project),
   listTemplates: () => listTemplates(templatesRoot()),
   saveTemplate: (name: string) => {
     flushSave();
@@ -254,31 +291,35 @@ const handlers: Record<InvokeMethod, Handler> = {
     if (!vstExe) throw new Error('VST3 support is not included in this build.');
     return scanVstPlugins(vstExe, defaultVstDirs(), path.join(app.getPath('userData'), 'vst3-cache.json'), !!force);
   },
-  vstDescribe: (plugin: VstPluginRef) => {
-    if (!vstHost) throw new Error('VST3 support is not included in this build.');
-    const inst = vstHost.create({ plugin }, current.project.sampleRate, 4096);
-    try {
-      const state = Buffer.from(inst.getState()).toString('base64');
-      return { params: inst.params, state, latency: inst.latency };
-    } finally {
-      inst.destroy();
-    }
-  },
-  vstFormat: (fx: Fx, paramId: number, value: number) => {
-    if (!vstHost || !fx.plugin) return '';
-    const key = `${fx.plugin.path}|${fx.plugin.cid}|${fx.state ?? ''}`;
-    let shadow = vstShadows.get(fx.id);
-    if (!shadow || shadow.key !== key || !shadow.inst.alive) {
-      shadow?.inst.destroy();
-      const inst = vstHost.create(fx, current.project.sampleRate, 4096);
-      const state = decodeState(fx.state);
-      if (state?.length) inst.setState(state);
-      shadow = { key, inst };
-      vstShadows.set(fx.id, shadow);
-    }
-    return shadow.inst.format(paramId, value);
-  },
+  vstDescribe: (plugin: VstPluginRef) => describeVst(plugin),
+  vstFormat: (fx: Fx, paramId: number, value: number) => formatVst(fx, paramId, value),
 };
+
+function describeVst(plugin: VstPluginRef) {
+  if (!vstHost) throw new Error('VST3 support is not included in this build.');
+  const inst = vstHost.create({ plugin }, current.project.sampleRate, 4096);
+  try {
+    const state = Buffer.from(inst.getState()).toString('base64');
+    return { params: inst.params, state, latency: inst.latency };
+  } finally {
+    inst.destroy();
+  }
+}
+
+function formatVst(fx: Fx, paramId: number, value: number): string {
+  if (!vstHost || !fx.plugin) return '';
+  const key = `${fx.plugin.path}|${fx.plugin.cid}|${fx.state ?? ''}`;
+  let shadow = vstShadows.get(fx.id);
+  if (!shadow || shadow.key !== key || !shadow.inst.alive) {
+    shadow?.inst.destroy();
+    const inst = vstHost.create(fx, current.project.sampleRate, 4096);
+    const state = decodeState(fx.state);
+    if (state?.length) inst.setState(state);
+    shadow = { key, inst };
+    vstShadows.set(fx.id, shadow);
+  }
+  return shadow.inst.format(paramId, value);
+}
 
 // Instances used only to turn parameter values into the plug-in's own text, per filter id.
 const vstShadows = new Map<string, { key: string; inst: VstInstance }>();
@@ -422,6 +463,11 @@ app.whenReady().then(() => {
   settings.device = engine.config;
   saveSettings();
 
+  mcp = new McpController(createWavePodServer(mcpHost, app.getVersion()));
+  void mcp.apply(settings.mcp).then((s) => {
+    if (s.error) console.error('MCP server:', s.error);
+  });
+
   registerIpc();
   buildMenu();
   createWindow();
@@ -431,6 +477,7 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  void mcp?.dispose();
   if (engine) {
     engine.stop();
     flushSave();

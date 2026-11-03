@@ -27,7 +27,7 @@ export interface Selection {
 }
 
 type Listener = (what: Set<ChangeKind>) => void;
-export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices' | 'midi';
+export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices' | 'midi' | 'mcp';
 
 class Store {
   project!: Project;
@@ -119,6 +119,14 @@ class Store {
   commitLive(): void {
     if (this.liveBase && this.liveBase !== this.project) this.history.push(this.liveBase);
     this.liveBase = null;
+    this.notify('project');
+  }
+
+  /** Takes over a project another client (an AI agent over MCP) changed in the main process, as one undo step. */
+  applyExternal(project: Project): void {
+    if (this.liveBase) this.commitLive();
+    this.history.push(this.project);
+    this.project = project;
     this.notify('project');
   }
 
