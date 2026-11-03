@@ -38,7 +38,7 @@ const PROFILES: ProfileDef[] = [
       ...stereo(14, 'USB 2', true),
     ],
     outputs: [...stereo(0, 'USB Main')],
-    note: 'Enable multitrack mode on the RØDECaster (Settings › Audio › Multitrack) so all 16 channels appear.',
+    note: 'Enable multitrack mode in the RØDECaster USB audio settings so all 16 channels appear.',
   },
   {
     id: 'rodecaster-duo',

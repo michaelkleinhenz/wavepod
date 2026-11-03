@@ -47,7 +47,7 @@ press record.
 │  AudioBackend interface                                             │
 │     ├─ RtAudioBackend (audify → RtAudio: CoreAudio/WASAPI/ASIO*/    │
 │     │                   ALSA/JACK/Pulse; N-API prebuilt binaries)   │
-│     └─ SimulatedBackend (virtual 8-in/2-out device; tests + demo)   │
+│     └─ SimulatedBackend (virtual 16-in RØDECaster + 4-ch device)    │
 │  ProjectStore (project folder: project.json + media/*.wav + peaks)  │
 │  Exporter (offline mixdown, loudness, WAV/MP3, ID3 chapters)        │
 └─────────────────────────────────────────────────────────────────────┘
@@ -78,7 +78,7 @@ UI concern only.
 
 ## Phases
 
-### Phase 1 — Hardware audio device management
+### Phase 1 — Hardware audio device management ✅
 - `AudioBackend` abstraction; RtAudio + simulated implementations.
 - Enumerate devices with input/output channel counts and sample rates; hot
   refresh.
@@ -92,7 +92,7 @@ UI concern only.
 - "Create tracks from device" — one track per mic channel in one click.
 - Output routing: choose the output channel pair for playback.
 
-### Phase 2 — Timeline and recording
+### Phase 2 — Timeline and recording ✅
 - Streaming WAV writer per armed track (24-bit or 32-bit float), header
   patched every second for crash safety.
 - Record arms; punch-in at playhead; takes appended as clips.
@@ -103,20 +103,20 @@ UI concern only.
   playhead, delete, ripple delete of a time range, undo/redo.
 - Transport: play/pause/stop/record, keyboard shortcuts.
 
-### Phase 3 — Podcast features
+### Phase 3 — Podcast features ✅
 - Chapter markers (hotkey `M` while recording or playing), edit markers
   (`E`), chapter list editing (title, URL), jump to marker.
 - Import/export chapters: Podlove Simple Chapters (PSC XML), mp4chaps text,
   Podcasting 2.0 JSON chapters, Audacity labels.
 - Soundboard: up to 12 jingle slots, triggered by click or keys `1`–`9`,
-  played through the output device (and optionally recorded).
+  played through the output device.
 - Loudness: EBU R128 integrated loudness and sample peak per track and
   master; export normalises to a target (default −16 LUFS stereo).
 - Export: mixdown to WAV and MP3 (lame, pure JS) with ID3v2 metadata and
   ID3 `CHAP`/`CTOC` chapter frames; optional per-track stems; chapter files
   written alongside.
 
-### Phase 4 — Build, CI/CD
+### Phase 4 — Build, CI/CD ✅
 - `Makefile`: `install`, `dev`, `build`, `test`, `lint`, `dist`,
   `dist-linux`, `dist-win`, `dist-mac`, `clean`.
 - GitHub Actions `ci.yml`: typecheck + tests + build on Linux/Windows/macOS
@@ -133,6 +133,15 @@ UI concern only.
   certificates as repository secrets).
 - Real-hardware test matrix (RØDECaster Pro II on all three OSes).
 
+## Status
+
+Phases 1–4 are implemented. Verified in this repository's tests (WAV I/O,
+mixer, loudness against the EBU reference level, chapter formats, ID3
+chapters, project editing, the engine recording 16 virtual channels, export)
+and by driving the packaged app with virtual devices. Not yet verified on
+real hardware: the RØDECaster Pro II channel map and RtAudio behaviour per OS
+need a test on an actual device.
+
 ## Known risks
 
 - **Driver behaviour differs by OS.** On Linux, ALSA hardware devices may be
@@ -140,5 +149,11 @@ UI concern only.
   The Setup view lets the user pick the host API.
 - **Clock drift** between separate input/output devices is not compensated;
   recording is input-only so takes are unaffected.
+- **Windows multitrack**: the RØDECaster Pro II exposes its 16-channel
+  multitrack interface through its ASIO driver; WASAPI only shows the stereo
+  endpoints. Whether the audify prebuild includes ASIO needs to be checked on
+  Windows hardware.
+- **macOS builds** are produced for the runner's architecture (Apple
+  silicon); an Intel build needs an extra runner.
 - **Unsigned builds** trigger Gatekeeper/SmartScreen warnings until signing
   secrets are configured.
