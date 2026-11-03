@@ -78,10 +78,11 @@ export class ExportDialog {
           h('label', { class: 'field' }, h('span', null, 'Peak ceiling'),
             h('select', { disabled: !o.normalize, onchange: (e: Event) => (o.peakCeiling = Number((e.target as HTMLSelectElement).value)) },
               ...[-0.1, -1, -2, -3].map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBFS`)))),
-          h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, 'Analyse loudness'),
-          loudnessRows,
+          h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.loudness ? 'Analyse again' : 'Analyse loudness'),
         ),
       ),
+      // full width below the options: the seven-column table does not fit in one grid column
+      loudnessRows ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness analysis'), loudnessRows) : null,
       h('div', { class: 'row' }, this.progressEl, this.progressLabel),
       h('div', { class: 'row end' },
         h('button', { disabled: this.busy, onclick: () => this.close() }, 'Close'),

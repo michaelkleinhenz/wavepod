@@ -142,6 +142,11 @@ table.loudness tr.selected td { background: #262c3a; }
 .loudness-target { gap: 16px; margin-bottom: 12px; }
 .loudness-empty { padding: 40px 0; text-align: center; }
 .loudness-empty.error { color: #e57373; }
+/* export dialog */
+.export-loudness { margin-bottom: 10px; }
+.export-loudness table.loudness { font-size: 12px; }
+.export-loudness table.loudness th, .export-loudness table.loudness td { white-space: nowrap; }
+.export-loudness table.loudness td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .lu-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .lu-tile { background: #121419; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .lu-label { font-size: 11px; color: var(--muted); }
