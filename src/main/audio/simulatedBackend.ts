@@ -40,7 +40,7 @@ export function virtualSample(channel: number, frame: number, sampleRate: number
   // syllable-rate envelope with pauses, offset per channel so speakers alternate
   const syll = Math.max(0, Math.sin(2 * Math.PI * (3 + channel * 0.3) * t + channel));
   const phrase = Math.sin(2 * Math.PI * 0.11 * t + channel * 0.9) > -0.2 ? 1 : 0;
-  const env = syll * phrase * 0.35;
+  const env = syll * phrase * 0.6;
   return env * (Math.sin(2 * Math.PI * f * t) * 0.7 + Math.sin(2 * Math.PI * f * 2.01 * t) * 0.3);
 }
 

@@ -4,6 +4,7 @@ import type { Clip, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { fadeGain, panGains } from './dsp';
 import { WavReader } from './wav';
+import { audibleTracks, projectLength } from './project';
 
 export class ReaderCache {
   private readers = new Map<string, WavReader>();
@@ -39,18 +40,7 @@ export class ReaderCache {
   }
 }
 
-export function audibleTracks(project: Project): Track[] {
-  const anySolo = project.tracks.some((t) => t.solo);
-  return project.tracks.filter((t) => !t.mute && (!anySolo || t.solo));
-}
-
-/** Length of the project in frames (end of the last clip or marker). */
-export function projectLength(project: Project): number {
-  let end = 0;
-  for (const t of project.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.length);
-  for (const m of project.markers) end = Math.max(end, m.position);
-  return end;
-}
+export { audibleTracks, projectLength };
 
 export class Mixer {
   private scratch: Float32Array[] = [];

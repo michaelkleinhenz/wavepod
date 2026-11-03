@@ -1,0 +1,65 @@
+// Tiny DOM helpers.
+
+type Child = Node | string | number | null | undefined | false;
+type Props = Record<string, unknown> & { class?: string; style?: Partial<CSSStyleDeclaration> | string };
+
+export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props | null = null, ...children: Child[]): HTMLElementTagNameMap[K] {
+  const el = document.createElement(tag);
+  if (props) {
+    for (const [k, v] of Object.entries(props)) {
+      if (v === undefined || v === null || v === false) continue;
+      if (k === 'class') el.className = String(v);
+      else if (k === 'style') {
+        if (typeof v === 'string') el.setAttribute('style', v);
+        else Object.assign(el.style, v);
+      } else if (k.startsWith('on') && typeof v === 'function') {
+        el.addEventListener(k.slice(2).toLowerCase(), v as EventListener);
+      } else if (k in el && typeof v !== 'string') {
+        (el as unknown as Record<string, unknown>)[k] = v;
+      } else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') {
+        (el as unknown as Record<string, unknown>)[k] = v;
+      } else {
+        el.setAttribute(k, v === true ? '' : String(v));
+      }
+    }
+  }
+  append(el, children);
+  return el;
+}
+
+export function append(el: Element, children: Child[]): void {
+  for (const c of children) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+}
+
+export function clear(el: Element): void {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+export function isTyping(e: Event): boolean {
+  const t = e.target as HTMLElement | null;
+  if (!t) return false;
+  const tag = t.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+}
+
+let toastTimer: number | undefined;
+export function toast(message: string, kind: 'info' | 'error' = 'info'): void {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = h('div', { id: 'toast' });
+    document.body.append(el);
+  }
+  el.textContent = message;
+  el.className = `show ${kind}`;
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => el!.classList.remove('show'), kind === 'error' ? 6000 : 2500);
+}
+
+export function errorMessage(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  // Strip Electron's IPC prefix.
+  return msg.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}

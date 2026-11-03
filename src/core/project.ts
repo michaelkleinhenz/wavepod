@@ -19,6 +19,19 @@ export function createProject(name = 'Untitled episode', sampleRate = 48000): Pr
   };
 }
 
+export function audibleTracks(project: Project): Track[] {
+  const anySolo = project.tracks.some((t) => t.solo);
+  return project.tracks.filter((t) => !t.mute && (!anySolo || t.solo));
+}
+
+/** Length of the project in frames (end of the last clip or marker). */
+export function projectLength(project: Project): number {
+  let end = 0;
+  for (const t of project.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.length);
+  for (const m of project.markers) end = Math.max(end, m.position);
+  return end;
+}
+
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
 }
