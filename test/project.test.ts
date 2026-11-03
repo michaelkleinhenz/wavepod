@@ -10,6 +10,7 @@ import {
   markersToChapters,
   moveClip,
   normalizeProject,
+  prepareForEditing,
   rippleDelete,
   splitAt,
 } from '../src/core/project';
@@ -105,5 +106,22 @@ describe('project editing', () => {
     expect(p.tracks[0].id).toBeTruthy();
     expect(p.tracks[0].clips[0].gain).toBe(0);
     expect(p.metadata.title).toBe('X');
+  });
+});
+
+describe('prepare for editing', () => {
+  it('unarms every track and keeps everything else', () => {
+    let p = setup();
+    p = { ...p, tracks: p.tracks.map((t, i) => ({ ...t, armed: true, mute: i === 1 })) };
+    const q = prepareForEditing(p);
+    expect(q.tracks.map((t) => t.armed)).toEqual([false, false]);
+    expect(q.tracks.map((t) => t.mute)).toEqual([false, true]);
+    expect(q.tracks[0].clips).toEqual(p.tracks[0].clips);
+    expect(p.tracks[0].armed).toBe(true); // input not mutated
+  });
+
+  it('returns the same project when nothing is armed', () => {
+    const p = setup();
+    expect(prepareForEditing(p)).toBe(p);
   });
 });

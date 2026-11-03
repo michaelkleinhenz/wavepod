@@ -12,7 +12,7 @@ import {
   unbindAction,
   type MidiEvent,
 } from '../core/midi';
-import { dropMarker, stop, togglePlay, toggleRecord } from './actions';
+import { dropMarker, prepareForEditing, stop, togglePlay, toggleRecord } from './actions';
 import { errorMessage, toast } from './dom';
 import { api, store } from './store';
 
@@ -160,6 +160,8 @@ class MidiController {
         return dropMarker('chapter');
       case 'edit-marker':
         return dropMarker('edit');
+      case 'prepare-for-editing':
+        return prepareForEditing();
     }
     this.queue = this.queue.then(() => {
       const state = store.transport.state;

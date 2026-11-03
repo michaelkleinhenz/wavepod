@@ -1,6 +1,6 @@
 // Commands shared by keyboard shortcuts, menus and buttons.
 import type { MarkerKind } from '../shared/types';
-import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, rippleDelete, splitAt } from '../core/project';
+import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt } from '../core/project';
 import { importChapters } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
@@ -37,6 +37,16 @@ export async function toggleRecord(): Promise<void> {
   } catch (e) {
     toast(errorMessage(e), 'error');
   }
+}
+
+/** "Prepare all tracks for editing" (as in Ultraschall): unarms every track so editing can't start a take by accident. */
+export function prepareForEditing(): void {
+  if (store.transport.state === 'recording') return toast('Stop recording before preparing for editing');
+  const armed = store.project.tracks.filter((t) => t.armed).length;
+  if (!armed) return toast('All tracks are ready for editing');
+  // Arming isn't part of undo (see the track header toggles), so neither is this.
+  store.patch(unarmAll);
+  toast(`Prepared for editing: ${armed} track${armed === 1 ? '' : 's'} unarmed`);
 }
 
 export function seek(position: number): void {

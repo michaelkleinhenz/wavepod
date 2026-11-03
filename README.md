@@ -82,6 +82,10 @@ WavePod runs fine, just without the VST3 entry. On Linux the app needs `libasoun
 3. Click **Create speaker tracks**. Each mic and remote source gets its own
    armed track.
 4. Switch to **Record & Edit** and press `R`.
+5. When the recording is done, run **Edit › Prepare All Tracks for Editing**
+   (or the toolbar button) to unarm all tracks, so `R` can't start a new take
+   while you cut. Tick **Prepare for Editing When Recording Stops** in the
+   same menu to have this happen automatically.
 
 On Windows the multitrack channels are only exposed through RØDE's ASIO
 driver; pick **ASIO** as audio system if it is offered.

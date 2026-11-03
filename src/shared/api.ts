@@ -44,6 +44,7 @@ export type MenuCommand =
   | 'mute-selection'
   | 'normalize-clips'
   | 'loudness-analysis'
+  | 'prepare-for-editing'
   | 'redo'
   | 'view-setup'
   | 'view-edit'
@@ -117,8 +118,8 @@ export interface WavePodApi {
   // events (return an unsubscribe function)
   onTransport(cb: (u: TransportUpdate) => void): () => void;
   onStatus(cb: (s: EngineStatus) => void): () => void;
-  /** Takes are already merged into `project` (and saved) by the main process. */
-  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project }) => void): () => void;
+  /** Takes are already merged into `project` (and saved) by the main process; `preparedForEditing` = tracks were unarmed afterwards. */
+  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean }) => void): () => void;
   onExportProgress(cb: (p: ExportProgress) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
 
