@@ -53,3 +53,42 @@ export function importImage(projectDir: string, src: string): string {
   fs.writeFileSync(path.join(projectDir, name), data);
   return name;
 }
+
+export const BACKUP_DIR = 'backup';
+export const BACKUP_KEEP = 20;
+
+function stamp(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/** Backups of a project, newest first (absolute paths). */
+export function listBackups(dir: string): string[] {
+  const b = path.join(dir, BACKUP_DIR);
+  if (!fs.existsSync(b)) return [];
+  return fs
+    .readdirSync(b)
+    .filter((f) => /^project-.*\.json$/.test(f))
+    .sort()
+    .reverse()
+    .map((f) => path.join(b, f));
+}
+
+/**
+ * Writes `backup/project-<date>[-<reason>].json` and deletes all but the newest `keep` backups.
+ * Returns the backup's path.
+ */
+export function backupProject(dir: string, project: Project, reason = '', date = new Date(), keep = BACKUP_KEEP): string {
+  const b = path.join(dir, BACKUP_DIR);
+  fs.mkdirSync(b, { recursive: true });
+  let file = path.join(b, `project-${stamp(date)}${reason ? `-${reason}` : ''}.json`);
+  for (let i = 2; fs.existsSync(file); i++) file = path.join(b, `project-${stamp(date)}${reason ? `-${reason}` : ''}-${i}.json`);
+  fs.writeFileSync(file, JSON.stringify(project, null, 2));
+  for (const old of listBackups(dir).slice(keep)) fs.rmSync(old, { force: true });
+  return file;
+}
+
+/** Reads a backup file as a project (with defaults filled in). */
+export function loadBackup(file: string): Project {
+  return normalizeProject(JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<Project>);
+}

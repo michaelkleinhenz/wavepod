@@ -118,8 +118,8 @@ main { flex: 1; min-height: 0; display: flex; }
 .check { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
 .columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; }
 
-.channel-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 4px 20px; margin-top: 10px; }
-.channel-row { display: grid; grid-template-columns: 28px 130px 1fr 34px 120px; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+.channel-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 4px 20px; margin-top: 10px; }
+.channel-row { display: grid; grid-template-columns: 28px 130px 1fr 120px; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
 .channel-row.used { background: #1f2b22; }
 .ch-num { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .ch-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -179,7 +179,7 @@ table.markers td.actions { white-space: nowrap; text-align: right; width: 1%; }
 .tracks-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 body.panning, body.panning * { cursor: grabbing !important; }
 .tracks-body { display: flex; }
-.track-headers { width: 250px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); }
+.track-headers { width: 290px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); }
 .tracks-canvas { display: block; }
 .track-header {
   display: flex;
@@ -202,7 +202,7 @@ body.panning, body.panning * { cursor: grabbing !important; }
 .input-select { flex: 1; min-width: 0; padding: 2px 4px; font-size: 12px; }
 .gain-label { font-size: 11px; color: var(--muted); width: 54px; font-variant-numeric: tabular-nums; }
 .gain { width: 64px; padding: 0; }
-.empty-tracks { padding: 20px 14px; width: 250px; }
+.empty-tracks { padding: 20px 14px; width: 290px; }
 .hscroll-row { display: flex; background: var(--panel); border-top: 1px solid var(--border); }
 .hscroll { flex: 1; margin: 2px 4px; padding: 0; height: 12px; }
 
@@ -365,3 +365,24 @@ ul.chapter-warnings { margin: 8px 0 0; padding-left: 18px; }
 ul.chapter-warnings li { margin: 4px 0; }
 ul.chapter-warnings button { margin-left: 8px; }
 .export-notes { margin-top: 8px; }
+/* soundcheck and stop confirmation */
+.dialog.narrow { width: min(520px, 92vw); }
+ul.soundcheck { margin: 0 0 12px; padding-left: 18px; }
+ul.soundcheck li { margin: 6px 0; line-height: 1.4; }
+ul.soundcheck li.error { color: var(--danger, #e53935); }
+button.primary.danger { background: #c62828; border-color: #c62828; }
+.title-prompt { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+.title-prompt input { width: 280px; }
+
+/* level meters with target zone, peak hold and clip light */
+.level-meter { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+.level-meter .meter { position: relative; height: 10px; }
+.level-meter.large .meter { height: 16px; }
+.meter-zone { position: absolute; top: 0; bottom: 0; background: rgba(102, 187, 106, 0.16); border-left: 1px solid rgba(102, 187, 106, 0.5); border-right: 1px solid rgba(255, 202, 40, 0.5); pointer-events: none; }
+.level-meter .meter-fill { position: relative; }
+.meter-hold { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #e3e6ec; pointer-events: none; }
+.meter-peak { width: 30px; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; cursor: pointer; flex: none; }
+.meter-peak.in-zone { color: #66bb6a; }
+.meter-peak.over { color: var(--warn); }
+.clip-led { width: 9px; height: 9px; border-radius: 50%; background: #3a1d1d; border: 1px solid #5a2a2a; cursor: pointer; flex: none; }
+.clip-led.on { background: #e53935; border-color: #ff6f60; box-shadow: 0 0 6px #e53935; }

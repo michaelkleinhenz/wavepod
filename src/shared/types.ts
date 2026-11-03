@@ -150,6 +150,8 @@ export interface Project {
   markers: Marker[];
   soundboard: SoundboardSlot[];
   metadata: EpisodeMetadata;
+  /** Soundcheck warnings the user chose not to see again for this episode. */
+  soundcheckIgnored?: string[];
 }
 
 // ---------------------------------------------------------------- devices

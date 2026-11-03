@@ -1,13 +1,18 @@
 // Commands shared by keyboard shortcuts, menus and buttons.
 import type { MarkerKind } from '../shared/types';
-import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt } from '../core/project';
+import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt, updateMarker } from '../core/project';
 import { importChapters } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
 import { uid } from '../shared/time';
 import { baseName, decodeFile } from './audioFiles';
-import { errorMessage, toast } from './dom';
+import { errorMessage, h, toast } from './dom';
 import { api, store } from './store';
+import { runSoundcheck } from '../core/soundcheck';
+import { confirmStop, showSoundcheck } from './recordDialogs';
+
+/** A stop confirmation is on screen (a second Stop press shouldn't open another). */
+let confirming = false;
 
 export async function togglePlay(): Promise<void> {
   const t = store.transport;
@@ -21,6 +26,14 @@ export async function togglePlay(): Promise<void> {
 
 export async function stop(): Promise<void> {
   try {
+    if (store.transport.state === 'recording') {
+      if (confirming) return;
+      if (await api().confirmStopRecording()) {
+        confirming = true;
+        const ok = await confirmStop().finally(() => (confirming = false));
+        if (!ok || store.transport.state !== 'recording') return;
+      }
+    }
     await api().stop();
   } catch (e) {
     toast(errorMessage(e), 'error');
@@ -30,6 +43,7 @@ export async function stop(): Promise<void> {
 export async function toggleRecord(): Promise<void> {
   if (store.transport.state === 'recording') return stop();
   try {
+    if (!(await soundcheck())) return;
     if (store.transport.state === 'playing') await api().stop();
     store.recordStart = store.transport.position;
     const files = await api().record();
@@ -37,6 +51,27 @@ export async function toggleRecord(): Promise<void> {
   } catch (e) {
     toast(errorMessage(e), 'error');
   }
+}
+
+/** Runs the soundcheck; true if recording may start (no problems, or the user chose to record anyway). */
+async function soundcheck(): Promise<boolean> {
+  const info = await api().soundcheckInfo();
+  const status = store.status;
+  const issues = runSoundcheck({
+    project: store.project,
+    deviceSampleRate: status?.config.sampleRate ?? store.sampleRate,
+    inputOpen: !!status?.inputOpen,
+    inputDeviceName: info.inputDeviceName,
+    freeBytes: info.freeBytes,
+    position: store.transport.position,
+    ignored: store.project.soundcheckIgnored,
+  });
+  if (!issues.length) return true;
+  const res = await showSoundcheck(issues);
+  if (res.ignore.length) {
+    store.patch((p) => ({ ...p, soundcheckIgnored: [...new Set([...(p.soundcheckIgnored ?? []), ...res.ignore])] }));
+  }
+  return res.action === 'record';
 }
 
 /** "Prepare all tracks for editing" (as in Ultraschall): unarms every track so editing can't start a take by accident. */
@@ -62,6 +97,58 @@ export function dropMarker(kind: MarkerKind): void {
   // Markers set while recording don't need undo granularity per keypress, but keeping it is harmless.
   store.edit((p) => addMarker(p, pos, kind).project);
   toast(kind === 'chapter' ? 'Chapter marker added' : 'Edit marker added');
+}
+
+/** Shift+M: a chapter marker whose title can be typed right away, without stopping anything. */
+export function dropNamedChapter(): void {
+  const pos = store.transport.position;
+  let id = '';
+  store.edit((p) => {
+    const r = addMarker(p, pos, 'chapter');
+    id = r.marker.id;
+    return r.project;
+  });
+  showTitlePrompt(id);
+}
+
+let prompt: HTMLElement | null = null;
+
+function showTitlePrompt(markerId: string): void {
+  prompt?.remove();
+  const marker = store.project.markers.find((m) => m.id === markerId);
+  if (!marker) return;
+  const input = document.createElement('input');
+  input.className = 'title';
+  input.placeholder = marker.title;
+  let closed = false;
+  const close = (save: boolean) => {
+    if (closed) return;
+    closed = true;
+    const title = input.value.trim();
+    box.remove();
+    if (prompt === box) prompt = null;
+    // part of the marker's own undo step: undo removes the marker with its title
+    if (save && title) store.patch((p) => updateMarker(p, markerId, { title }));
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') close(true);
+    else if (e.key === 'Escape') close(false);
+  });
+  input.addEventListener('blur', () => close(true));
+  const box = h('div', { class: 'title-prompt' }, h('span', { class: 'muted' }, 'Chapter title'), input, h('small', { class: 'muted' }, 'Enter to save · Esc keeps "' + marker.title + '"'));
+  prompt = box;
+  document.body.append(box);
+  input.focus();
+}
+
+/** Y: back to the recording position: where the current take is, or where the last one stopped. */
+export function jumpToRecordPosition(reveal: (pos: number) => void): void {
+  if (store.transport.state === 'recording') return reveal(store.transport.position);
+  const pos = store.recordPosition;
+  if (pos === null) return toast('Nothing recorded yet in this session');
+  seek(pos);
+  reveal(pos);
 }
 
 export function splitAtPlayhead(): void {
@@ -217,6 +304,19 @@ export async function openProject(): Promise<void> {
   try {
     const res = await api().openProject();
     if (res) store.setProject(res.project, res.dir);
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
+/** File › Restore Backup…: replaces the episode with a backup, as one undo step. */
+export async function restoreBackup(): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before restoring a backup');
+  try {
+    const project = await api().restoreBackup();
+    if (!project) return;
+    store.edit(() => project);
+    toast('Backup restored. Undo brings back the episode as it was.');
   } catch (e) {
     toast(errorMessage(e), 'error');
   }

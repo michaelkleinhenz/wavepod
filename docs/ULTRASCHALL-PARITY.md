@@ -46,12 +46,12 @@ about it; the priority is explained in section 3.
 | --- | --- | --- |
 | Soundboard is a track: jingles end up in the recording; fade-in, loop, stop, per-clip volume, remaining time | Jingles play out of the output device only and are not part of the project, so they are missing from the edit and the export (unless the interface happens to loop them back) | **P1** Record each trigger as a clip on a "Soundboard" track; per slot fade-in, loop, remaining-time display |
 | Throat-clearing buttons (Räuspertasten): per-speaker mute while recording; audio is still recorded and the mute can be edited later | Missing | **P1** Hold-to-mute "cough" key per track that writes mute regions (non-destructive), editable on the timeline |
-| Big level meters with numeric peak and the −18…−6 dB target zone highlighted | Small meters, no target zone, no clip hold | **P1** Larger meters with target zone, peak hold and clip indicator in Setup and Record views |
-| Soundcheck before recording (48 kHz, unsaved project, internal mic, duplicate inputs, block size, recording in the middle of a project, unknown interface) | Missing | **P1** Pre-record check with the same warnings, ignorable |
+| Big level meters with numeric peak and the −18…−6 dB target zone highlighted | ✅ Larger meters in Setup and on every track with the −18…−6 dBFS zone, peak-hold mark, highest peak as a number and a clip light (click to reset) | Done |
+| Soundcheck before recording (48 kHz, unsaved project, internal mic, duplicate inputs, block size, recording in the middle of a project, unknown interface) | ✅ Before each recording: no input, no armed track, sample rate ≠ 48 kHz, two tracks on one input, built-in mic, disk space for less than 2 h, recording before the end of the episode. Warnings can be ignored per episode | Done |
 | "Prepare all tracks for editing": unarm all tracks after recording, reminded by the soundcheck | ✅ Edit menu, toolbar and MIDI action; optional "Prepare for Editing When Recording Stops"; reminder after a take while tracks stay armed | Done |
-| Recording safe mode (confirm accidental stop) | Missing | **P1** Confirm before stopping a recording |
-| Jump back to the recording position (`Y`) | Missing | **P1** Shortcut |
-| Named chapter marker while recording (`Shift+M`) | Missing (title only editable afterwards) | **P1** Quick title prompt |
+| Recording safe mode (confirm accidental stop) | ✅ Edit › Confirm Before Stopping a Recording (on by default) | Done |
+| Jump back to the recording position (`Y`) | ✅ `Y`: to where the last take stopped, or to the take being recorded | Done |
+| Named chapter marker while recording (`Shift+M`) | ✅ `Shift+M` drops a chapter and opens a title field that doesn't interrupt the recording | Done |
 | Soundboard ducking / ducking track (jingles duck under speech) | Missing | **P2** Sidechain duck the Soundboard track from speaker tracks, live and in export |
 | Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | Missing | **P3** MIDI (Web MIDI) and OSC (UDP in main) mapping to WavePod actions |
 | FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
@@ -73,7 +73,7 @@ about it; the priority is explained in section 3.
 | Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
 | Drag-and-drop media import, drop on empty space creates a track | Import via menu | **P2** |
 | Marker ping when the playhead passes a marker | Missing | **P3** Optional |
-| Project backups every 10 minutes | Autosave of project.json only | **P1** Rolling backups of project.json in `backup/` |
+| Project backups every 10 minutes | ✅ `backup/` in the project folder: every 10 minutes when something changed and before each recording, newest 20 kept, File › Restore Backup… (undoable) | Done |
 | Distraction-free editing mode, customisable shortcuts, shortcut list | Fixed shortcuts | **P3** Shortcut overlay (`?`); customisable keymap later |
 | Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | Missing | **P3, reduced**: clip colours/notes and a project overview strip (navigator). Tag search across projects is not planned |
 | Double-ender: guest's local backup recording replaces the remote track | Missing | **P2** Import a guest's local file and auto-align it to the remote track by cross-correlation |
@@ -166,16 +166,16 @@ came up during testing).
    timeline draws regions over the waveform and lets you drag/delete them, so
    the same mechanism doubles as Ultraschall's mute envelope in editing.
    Monitoring is unaffected because the interface does that.
-3. **Soundcheck and safe recording.** Before `R`: warn on sample rate ≠ 48 kHz,
+3. ✅ **Soundcheck and safe recording.** Before `R`: warn on sample rate ≠ 48 kHz,
    no armed tracks, two tracks on the same input, a built-in microphone
    selected, low disk space, a missing/changed device, or playhead before the
    end of existing material. "Record anyway" and "don't ask again for this
    project". Confirm before stopping a recording (setting).
-4. **Meters.** Larger per-track meters with the −18…−6 dBFS zone, numeric peak
+4. ✅ **Meters.** Larger per-track meters with the −18…−6 dBFS zone, numeric peak
    hold and a clip indicator that stays until clicked.
-5. **Markers while recording.** `Shift+M` named chapter marker (non-blocking
+5. ✅ **Markers while recording.** `Shift+M` named chapter marker (non-blocking
    title field), `Y` jump to the recording position, optional chapter at 0:00.
-6. **Rolling backups** of `project.json` every 10 minutes and before each
+6. ✅ **Rolling backups** of `project.json` every 10 minutes and before each
    recording into `backup/`, keep the last 20, "Restore backup…" menu item.
 
 ### Phase 6 — Editing speed (P1/P2)

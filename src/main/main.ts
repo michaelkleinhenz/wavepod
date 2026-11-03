@@ -13,7 +13,7 @@ import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
-import { createProjectDir, importImage, isProjectDir, loadProject, saveProject } from './projectStore';
+import { BACKUP_DIR, backupProject, createProjectDir, importImage, isProjectDir, loadBackup, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
@@ -30,6 +30,8 @@ interface Settings {
   midi: MidiSettings;
   /** Unarm all tracks when a recording stops (off by default, as in Ultraschall where it is a manual step). */
   prepareForEditingAfterRecording: boolean;
+  /** Ask before stopping a recording (Ultraschall's recording safe mode). */
+  confirmStopRecording: boolean;
   /** Local MCP server for AI agents; off unless the user switches it on in Setup. */
   mcp: McpSettings;
 }
@@ -44,10 +46,11 @@ function loadSettings(): Settings {
       lastProject: raw.lastProject ?? null,
       midi: normalizeMidiSettings(raw.midi),
       prepareForEditingAfterRecording: raw.prepareForEditingAfterRecording === true,
+      confirmStopRecording: raw.confirmStopRecording !== false,
       mcp: normalizeMcpSettings(raw.mcp),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, mcp: normalizeMcpSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, mcp: normalizeMcpSettings(null) };
   }
 }
 
@@ -88,6 +91,8 @@ function send(channel: string, payload: unknown): void {
 function openProjectDir(dir: string): OpenedProject {
   const project = loadProject(dir);
   current = { project, dir };
+  // the project as opened is what a backup would hold; nothing to back up until it changes
+  lastBackup = JSON.stringify(project);
   engine.setProject(project, dir);
   settings.lastProject = dir;
   saveSettings();
@@ -107,6 +112,22 @@ function flushSave(): void {
     saveProject(current.dir, current.project);
   } catch (e) {
     console.error('save failed', e);
+  }
+}
+
+/** JSON of the project as last backed up, so unchanged projects aren't backed up again. */
+let lastBackup = '';
+const BACKUP_INTERVAL_MS = 10 * 60 * 1000;
+
+/** Rolling backup of project.json into the project's backup folder (keeps the newest 20). */
+function backupNow(reason = ''): void {
+  const json = JSON.stringify(current.project);
+  if (!reason && json === lastBackup) return;
+  try {
+    backupProject(current.dir, current.project, reason);
+    lastBackup = json;
+  } catch (e) {
+    console.error('backup failed', e);
   }
 }
 
@@ -187,9 +208,37 @@ const handlers: Record<InvokeMethod, Handler> = {
     return settings.midi;
   },
 
+  soundcheckInfo: () => {
+    let freeBytes: number | null = null;
+    try {
+      const st = fs.statfsSync(current.dir);
+      freeBytes = st.bavail * st.bsize;
+    } catch {
+      // unknown: the soundcheck skips the disk space check
+    }
+    return { inputDeviceName: inputDeviceName(), freeBytes };
+  },
+  confirmStopRecording: () => settings.confirmStopRecording,
+  restoreBackup: async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Restore backup',
+      defaultPath: path.join(current.dir, BACKUP_DIR),
+      properties: ['openFile'],
+      filters: [{ name: 'WavePod backups', extensions: ['json'] }],
+    });
+    const file = res.filePaths[0];
+    if (res.canceled || !file) return null;
+    // keep the state we are leaving, so restoring is never a one-way door
+    backupNow('before-restore');
+    return loadBackup(file);
+  },
+
   play: (from?: number) => engine.play(from),
   stop: () => engine.stop(),
-  record: () => engine.record(),
+  record: () => {
+    backupNow('before-recording');
+    return engine.record();
+  },
   seek: (pos: number) => engine.seek(pos),
 
   currentProject: () => current,
@@ -368,6 +417,7 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: menuSend('export') },
         { label: 'Show Project Folder', click: menuSend('show-project-folder') },
+        { label: 'Restore Backup…', click: menuSend('restore-backup') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
@@ -391,6 +441,15 @@ function buildMenu(): void {
           checked: settings.prepareForEditingAfterRecording,
           click: (item) => {
             settings.prepareForEditingAfterRecording = item.checked;
+            saveSettings();
+          },
+        },
+        {
+          label: 'Confirm Before Stopping a Recording',
+          type: 'checkbox',
+          checked: settings.confirmStopRecording,
+          click: (item) => {
+            settings.confirmStopRecording = item.checked;
             saveSettings();
           },
         },
@@ -482,6 +541,7 @@ app.whenReady().then(() => {
   registerIpc();
   buildMenu();
   createWindow();
+  setInterval(() => backupNow(), BACKUP_INTERVAL_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

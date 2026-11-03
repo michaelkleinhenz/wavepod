@@ -1,9 +1,10 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
+import { LevelMeter } from './levelMeter';
 import type { Clip, EnvelopePoint, PeakLevel, Track } from '../shared/types';
 import { formatTick } from '../shared/time';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
-import { fadeGain, toDb } from '../core/dsp';
+import { fadeGain } from '../core/dsp';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
@@ -18,7 +19,7 @@ import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 const TRACK_H = 84;
 const RULER_H = 26;
 const MARKER_H = 24;
-const HEADER_W = 250;
+const HEADER_W = 290;
 const EDGE_PX = 6;
 /** Strip at the bottom of each track where mute (cough) regions are drawn and edited. */
 const MUTE_LANE_H = 12;
@@ -64,7 +65,7 @@ export class TimelineView {
   private headers = h('div', { class: 'track-headers' });
   private canvas = h('canvas', { class: 'tracks-canvas' });
   private hscroll = h('input', { type: 'range', class: 'hscroll', min: '0', max: '1000', value: '0' });
-  private trackMeters = new Map<string, HTMLElement>();
+  private trackMeters = new Map<string, LevelMeter>();
 
   /** Seconds at the left edge. */
   viewStart = 0;
@@ -228,7 +229,7 @@ export class TimelineView {
     store.project.tracks.forEach((t: Track) => {
       const cur = t.inputChannels.join(',');
       if (cur && !inputOptions.some((o) => o.value === cur)) inputOptions.push({ value: cur, label: `${cur} (unavailable)` });
-      const meter = h('div', { class: 'meter-fill' });
+      const meter = new LevelMeter(`trk:${t.id}`);
       this.trackMeters.set(t.id, meter);
       const toggle = (key: 'armed' | 'mute' | 'solo', label: string, title: string) =>
         h(
@@ -332,7 +333,7 @@ export class TimelineView {
               ondblclick: () => store.edit((p) => updateTrack(p, t.id, { gain: 0 })),
               onchange: (e: Event) => store.edit((p) => updateTrack(p, t.id, { gain: Number((e.target as HTMLInputElement).value) })),
             }),
-            h('div', { class: 'meter small' }, meter),
+            meter.el,
           ),
         ),
       );
@@ -354,14 +355,13 @@ export class TimelineView {
   updateMeters(): void {
     const peaks = store.meterHold;
     for (const t of store.project.tracks) {
-      const el = this.trackMeters.get(t.id);
-      if (!el) continue;
+      const meter = this.trackMeters.get(t.id);
+      if (!meter) continue;
       // armed: live input of its channels; unarmed: only what the track itself plays back
+      const raw = store.transport;
       const v = t.armed ? Math.max(0, ...t.inputChannels.map((c) => peaks[c] ?? 0)) : (store.trackMeterHold.get(t.id) ?? 0);
-      const db = toDb(v, -60);
-      el.style.width = `${((db + 60) / 60) * 100}%`;
-      el.classList.toggle('hot', db > -6);
-      el.classList.toggle('clip', db > -0.5);
+      const p = t.armed ? Math.max(0, ...t.inputChannels.map((c) => raw.inputPeaks[c] ?? 0)) : (raw.trackPeaks?.[t.id] ?? 0);
+      meter.update(v, p);
     }
   }
 
@@ -394,6 +394,12 @@ export class TimelineView {
     if (x > this.width * 0.92 || x < 0) {
       this.viewStart = Math.max(0, t.position / this.sr - (this.width * 0.1) / this.pxPerSec);
     }
+  }
+
+  /** Scrolls so `pos` is in view (a tenth from the left edge), whatever the transport does. */
+  reveal(pos: number): void {
+    this.viewStart = Math.max(0, pos / this.sr - (this.width * 0.1) / this.pxPerSec);
+    this.draw();
   }
 
   /** Zooms around the playhead when it is visible, otherwise around the centre. */

@@ -2,7 +2,7 @@
 import type { BitDepth, DeviceConfig, DeviceProfile } from '../shared/types';
 import { addTrack } from '../core/project';
 import { suggestTracks } from '../core/deviceProfiles';
-import { toDb } from '../core/dsp';
+import { LevelMeter } from './levelMeter';
 import { append, clear, errorMessage, h, toast } from './dom';
 import { renderMcpCard } from './mcpCard';
 import { renderMidiCard } from './midiCard';
@@ -13,7 +13,7 @@ const BUFFER_SIZES = [128, 256, 512, 1024, 2048];
 
 export class SetupView {
   readonly el = h('div', { class: 'view setup-view' });
-  private meterEls: Array<{ bar: HTMLElement; db: HTMLElement }> = [];
+  private meterEls: LevelMeter[] = [];
   /** Opens the template dialogs (set by the app shell). */
   onTemplates?: { start: () => void; save: () => void };
 
@@ -186,9 +186,8 @@ export class SetupView {
     const list = h('div', { class: 'channel-list' });
     for (const ch of labels) {
       if (ch.index >= channelCount) continue;
-      const bar = h('div', { class: 'meter-fill' });
-      const db = h('span', { class: 'meter-db' }, '–∞');
-      this.meterEls[ch.index] = { bar, db };
+      const meter = new LevelMeter(`in:${ch.index}`, 'large');
+      this.meterEls[ch.index] = meter;
       const stereoLeft = 'stereoLeft' in ch && ch.stereoLeft;
       const isRight = labels.some((x) => 'stereoLeft' in x && x.stereoLeft && x.index === ch.index - 1);
       list.append(
@@ -197,8 +196,7 @@ export class SetupView {
           { class: `channel-row${used.has(ch.index) ? ' used' : ''}` },
           h('span', { class: 'ch-num' }, String(ch.index + 1)),
           h('span', { class: 'ch-label' }, ch.label),
-          h('div', { class: 'meter' }, bar),
-          db,
+          meter.el,
           isRight
             ? h('span', { class: 'ch-action' })
             : h(
@@ -238,14 +236,7 @@ export class SetupView {
 
   updateMeters(): void {
     const peaks = store.meterHold;
-    this.meterEls.forEach((m, i) => {
-      if (!m) return;
-      const v = peaks[i] ?? 0;
-      const db = toDb(v, -60);
-      m.bar.style.width = `${((db + 60) / 60) * 100}%`;
-      m.bar.classList.toggle('hot', db > -6);
-      m.bar.classList.toggle('clip', db > -0.5);
-      m.db.textContent = v > 0.00001 ? db.toFixed(0) : '–∞';
-    });
+    const raw = store.transport.inputPeaks;
+    this.meterEls.forEach((m, i) => m?.update(peaks[i] ?? 0, raw[i] ?? 0));
   }
 }

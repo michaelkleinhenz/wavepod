@@ -24,8 +24,12 @@ import {
   stop,
   togglePlay,
   toggleRecord,
+  dropNamedChapter,
+  jumpToRecordPosition,
+  restoreBackup,
 } from './actions';
 import { ChaptersView } from './chaptersView';
+import { resetAllMeters } from './levelMeter';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
 import { midi } from './midi';
@@ -181,7 +185,10 @@ async function main(): Promise<void> {
       if (v > 1e-4) trackHold.set(t.id, v);
       else trackHold.delete(t.id);
     }
+    if (u.state === 'recording') store.recordPosition = u.position;
     if (u.state === 'recording' && store.transport.state !== 'recording') {
+      // a new take starts with clean peak numbers and clip lights
+      resetAllMeters();
       store.recordStart = u.position;
       store.livePeaks.clear();
     }
@@ -232,6 +239,7 @@ async function main(): Promise<void> {
       case 'view-edit': return store.setView('edit');
       case 'view-chapters': return store.setView('chapters');
       case 'show-project-folder': return void api().showProjectFolder();
+      case 'restore-backup': return void restoreBackup();
     }
   });
 
@@ -266,7 +274,17 @@ async function main(): Promise<void> {
         break;
       case 'm':
       case 'M':
-        dropMarker('chapter');
+        if (e.shiftKey) {
+          e.preventDefault(); // keep the M out of the title field that opens
+          dropNamedChapter();
+        } else dropMarker('chapter');
+        break;
+      case 'y':
+      case 'Y':
+        jumpToRecordPosition((pos) => {
+          store.setView('edit');
+          timeline.reveal(pos);
+        });
         break;
       case 'e':
       case 'E':

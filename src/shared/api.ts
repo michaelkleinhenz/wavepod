@@ -51,7 +51,8 @@ export type MenuCommand =
   | 'view-setup'
   | 'view-edit'
   | 'view-chapters'
-  | 'show-project-folder';
+  | 'show-project-folder'
+  | 'restore-backup';
 
 export interface WavePodApi {
   // devices
@@ -69,6 +70,13 @@ export interface WavePodApi {
   getMcpStatus(): Promise<McpStatus>;
   /** Stores the settings and starts, restarts or stops the server. */
   setMcpSettings(settings: McpSettings): Promise<McpStatus>;
+
+  /** What the soundcheck needs from the main process: input device name and free disk space. */
+  soundcheckInfo(): Promise<{ inputDeviceName?: string; freeBytes: number | null }>;
+  /** Ask before stopping a recording (Edit menu setting, on by default). */
+  confirmStopRecording(): Promise<boolean>;
+  /** Lets the user pick one of the project's backups; returns it, or null if cancelled. */
+  restoreBackup(): Promise<Project | null>;
 
   // transport
   play(from?: number): Promise<void>;
@@ -167,6 +175,9 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'setMidiSettings',
   'getMcpStatus',
   'setMcpSettings',
+  'soundcheckInfo',
+  'confirmStopRecording',
+  'restoreBackup',
   'play',
   'stop',
   'record',

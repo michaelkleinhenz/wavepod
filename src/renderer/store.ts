@@ -39,6 +39,8 @@ class Store {
   transport: TransportUpdate = { state: 'stopped', position: 0, inputPeaks: [], outputPeaks: [0, 0], recordedFrames: 0 };
   /** Position where the current recording started. */
   recordStart = 0;
+  /** Where the last recording stopped (or the current one is now), for "jump to recording position". */
+  recordPosition: number | null = null;
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
   view: View = 'edit';
   /** Waveform data of media files: coarse peak levels, plus fine levels and samples in tiles. */
@@ -80,6 +82,7 @@ class Store {
       this.dir = dir;
       this.history.clear();
       this.waves.clear();
+      this.recordPosition = null;
       this.selection = { clipIds: new Set(), range: null, markerId: null };
     }
     this.notify('project');
