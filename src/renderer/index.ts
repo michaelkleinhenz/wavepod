@@ -1,0 +1,245 @@
+// App shell: header with views and transport, view switching, keyboard shortcuts, engine events.
+import { formatTimestamp } from '../shared/time';
+import { toDb } from '../core/dsp';
+import { projectLength } from '../core/project';
+import { append, h, isTyping, toast } from './dom';
+import {
+  deleteSelection,
+  dropMarker,
+  importAudioFiles,
+  importChapterFile,
+  newProject,
+  openProject,
+  seek,
+  splitAtPlayhead,
+  stop,
+  togglePlay,
+  toggleRecord,
+} from './actions';
+import { ChaptersView } from './chaptersView';
+import { ExportDialog } from './exportDialog';
+import { SetupView } from './setupView';
+import { Soundboard } from './soundboard';
+import { api, store, type View } from './store';
+import { TimelineView } from './timelineView';
+
+const METER_DECAY = 0.85;
+
+async function main(): Promise<void> {
+  const root = document.getElementById('app')!;
+  const setup = new SetupView();
+  const soundboard = new Soundboard();
+  const timeline = new TimelineView(soundboard.el);
+  const chapters = new ChaptersView();
+  const exportDialog = new ExportDialog();
+
+  // ---------------------------------------------------------------- header
+  const tabs: Record<View, HTMLButtonElement> = {
+    setup: h('button', { class: 'tab', onclick: () => store.setView('setup') }, 'Setup'),
+    edit: h('button', { class: 'tab', onclick: () => store.setView('edit') }, 'Record & Edit'),
+    chapters: h('button', { class: 'tab', onclick: () => store.setView('chapters') }, 'Chapters'),
+  };
+  const timeEl = h('div', { class: 'time-display' }, '00:00:00.000');
+  const recBtn = h('button', { class: 'transport rec', title: 'Record (R)', onclick: () => void toggleRecord() }, '●');
+  const playBtn = h('button', { class: 'transport play', title: 'Play / Stop (Space)', onclick: () => void togglePlay() }, '▶');
+  const stopBtn = h('button', { class: 'transport', title: 'Stop', onclick: () => void stop() }, '■');
+  const homeBtn = h('button', { class: 'transport', title: 'To start (Home)', onclick: () => seek(0) }, '⏮');
+  const chapterBtn = h('button', { class: 'transport chapter', title: 'Chapter marker (M)', onclick: () => dropMarker('chapter') }, '⚑');
+  const masterL = h('div', { class: 'meter-fill' });
+  const masterR = h('div', { class: 'meter-fill' });
+  const projectName = h('div', { class: 'project-name', title: 'Project folder' });
+  const header = h(
+    'header',
+    null,
+    h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' SoundPod'),
+    h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
+    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl),
+    h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
+    h('div', { class: 'spacer' }),
+    projectName,
+    h('button', { class: 'primary', title: 'Export (Ctrl+E)', onclick: () => exportDialog.open() }, 'Export…'),
+  );
+  const statusBar = h('footer', { class: 'statusbar' });
+  const main = h('main');
+  root.append(header, main, statusBar);
+
+  // ---------------------------------------------------------------- render
+  const renderView = () => {
+    for (const [k, b] of Object.entries(tabs)) b.classList.toggle('active', k === store.view);
+    main.replaceChildren(store.view === 'setup' ? setup.el : store.view === 'chapters' ? chapters.el : timeline.el);
+    if (store.view === 'setup') setup.render();
+    if (store.view === 'chapters') chapters.render();
+    if (store.view === 'edit') timeline.renderHeaders();
+  };
+
+  const renderStatus = () => {
+    const s = store.status;
+    const t = store.transport;
+    const len = projectLength(store.project) / store.sampleRate;
+    statusBar.replaceChildren();
+    append(statusBar, [
+      h('span', null, s ? `${s.backend}${s.backendError ? ' (virtual)' : ''}` : '…'),
+      h('span', null, s ? `${s.config.sampleRate / 1000} kHz · ${s.config.bufferSize} buf` : ''),
+      h('span', null, s?.inputOpen ? `${s.inputChannelCount} inputs` : 'no input'),
+      h('span', null, `${store.project.tracks.filter((x) => x.armed).length} armed`),
+      h('span', null, `Length ${formatTimestamp(len, false)}`),
+      t.state === 'recording' ? h('span', { class: 'rec-indicator' }, `● REC ${formatTimestamp(t.recordedFrames / store.sampleRate, false)}`) : null,
+      s?.error ? h('span', { class: 'error-text' }, s.error.split('\n')[0]) : null,
+    ]);
+    projectName.textContent = store.project.name;
+    projectName.title = store.dir;
+  };
+
+  const renderTransport = () => {
+    const t = store.transport;
+    timeEl.textContent = formatTimestamp(t.position / store.sampleRate);
+    recBtn.classList.toggle('on', t.state === 'recording');
+    playBtn.classList.toggle('on', t.state === 'playing');
+    playBtn.textContent = t.state === 'playing' ? '❚❚' : '▶';
+    for (const [el, v] of [
+      [masterL, t.outputPeaks[0] ?? 0],
+      [masterR, t.outputPeaks[1] ?? 0],
+    ] as const) {
+      const db = toDb(v, -60);
+      el.style.width = `${((db + 60) / 60) * 100}%`;
+      el.classList.toggle('hot', db > -6);
+      el.classList.toggle('clip', db > -0.5);
+    }
+  };
+
+  store.subscribe((kinds) => {
+    if (kinds.has('view')) renderView();
+    if (kinds.has('project')) {
+      if (store.view === 'edit') timeline.renderHeaders();
+      if (store.view === 'chapters') chapters.render();
+      if (store.view === 'setup') setup.render();
+      soundboard.render();
+      void soundboard.ensureLoaded();
+    }
+    if (kinds.has('devices') || kinds.has('status')) {
+      if (store.view === 'setup') setup.render();
+      if (store.view === 'edit') timeline.renderHeaders();
+    }
+    if (kinds.has('selection') && store.view === 'chapters') chapters.render();
+    if (kinds.has('transport')) {
+      renderTransport();
+      timeline.follow();
+      if (store.view === 'edit') timeline.updateMeters();
+      if (store.view === 'setup') setup.updateMeters();
+    }
+    if (store.view === 'edit') timeline.draw();
+    renderStatus();
+  });
+
+  // ---------------------------------------------------------------- engine events
+  api().onTransport((u) => {
+    const hold = store.meterHold;
+    for (let i = 0; i < u.inputPeaks.length; i++) hold[i] = Math.max(u.inputPeaks[i], (hold[i] ?? 0) * METER_DECAY);
+    hold.length = u.inputPeaks.length;
+    if (u.state === 'recording' && store.transport.state !== 'recording') store.recordStart = u.position;
+    store.transport = u;
+    store.notify('transport');
+  });
+  api().onStatus((s) => {
+    store.status = s;
+    store.notify('status');
+  });
+  api().onRecordingFinished(({ takes, project }) => {
+    store.history.push(store.project);
+    store.setProject(project);
+    toast(`Recorded ${takes.length} take${takes.length === 1 ? '' : 's'}`);
+  });
+  api().onMenu((cmd) => {
+    switch (cmd) {
+      case 'new-project': return void newProject();
+      case 'open-project': return void openProject();
+      case 'import-audio': return void importAudioFiles();
+      case 'import-chapters': return void importChapterFile();
+      case 'export': return exportDialog.open();
+      case 'undo': return store.undo();
+      case 'redo': return store.redo();
+      case 'view-setup': return store.setView('setup');
+      case 'view-edit': return store.setView('edit');
+      case 'view-chapters': return store.setView('chapters');
+      case 'show-project-folder': return void api().showProjectFolder();
+    }
+  });
+
+  // ---------------------------------------------------------------- keyboard
+  window.addEventListener('keydown', (e) => {
+    if (isTyping(e) || document.querySelector('.overlay')) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod) return; // menu accelerators
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        void togglePlay();
+        break;
+      case 'r':
+      case 'R':
+        void toggleRecord();
+        break;
+      case 'm':
+      case 'M':
+        dropMarker('chapter');
+        break;
+      case 'e':
+      case 'E':
+        dropMarker('edit');
+        break;
+      case 's':
+      case 'S':
+        splitAtPlayhead();
+        break;
+      case 'f':
+      case 'F':
+        timeline.fadeSelected();
+        break;
+      case 'Delete':
+      case 'Backspace':
+        deleteSelection(e.shiftKey);
+        break;
+      case 'Home':
+        seek(0);
+        break;
+      case 'End':
+        seek(projectLength(store.project));
+        break;
+      case 'ArrowLeft':
+        seek(store.transport.position - store.sampleRate * (e.shiftKey ? 10 : 1));
+        break;
+      case 'ArrowRight':
+        seek(store.transport.position + store.sampleRate * (e.shiftKey ? 10 : 1));
+        break;
+      case '+':
+      case '=':
+        timeline.zoomAtPlayhead(1.5);
+        break;
+      case '-':
+        timeline.zoomAtPlayhead(1 / 1.5);
+        break;
+      case 'Escape':
+        void api().stopSounds();
+        store.select({ clipIds: new Set(), range: null, markerId: null });
+        break;
+      default:
+        if (/^[1-9]$/.test(e.key)) void soundboard.trigger(Number(e.key) - 1);
+        return;
+    }
+  });
+
+  // ---------------------------------------------------------------- boot
+  const opened = await api().currentProject();
+  store.setProject(opened.project, opened.dir);
+  store.status = await api().getStatus();
+  await setup.refreshDevices();
+  if (!store.project.tracks.length) store.view = 'setup';
+  renderView();
+  renderTransport();
+  soundboard.render();
+  void soundboard.ensureLoaded();
+}
+
+window.addEventListener('error', (e) => toast(e.message, 'error'));
+window.addEventListener('unhandledrejection', (e) => toast(String((e.reason as Error)?.message ?? e.reason), 'error'));
+void main();
