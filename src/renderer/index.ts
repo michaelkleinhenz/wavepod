@@ -30,6 +30,8 @@ import {
   checkPreview,
   previewCut,
   stepPlayhead,
+  copySelection,
+  pasteClipboard,
 } from './actions';
 import { ChaptersView } from './chaptersView';
 import { resetAllMeters } from './levelMeter';
@@ -262,6 +264,13 @@ async function main(): Promise<void> {
       case 'ripple-cut':
         if (typingInField()) return void document.execCommand('cut');
         return void (Date.now() - editKeyAt > 500 && rippleCut());
+      case 'copy':
+        if (typingInField()) return void document.execCommand('copy');
+        return void (Date.now() - editKeyAt > 500 && copySelection());
+      case 'paste':
+      case 'paste-ripple':
+        if (typingInField()) return void document.execCommand('paste');
+        return void (Date.now() - editKeyAt > 500 && pasteClipboard(cmd === 'paste-ripple'));
       case 'mute-selection':
         return void (!typingInField() && Date.now() - editKeyAt > 500 && muteSelection());
       case 'normalize-clips':
@@ -282,12 +291,20 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (isTyping(e) || document.querySelector('.overlay')) return;
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && !e.shiftKey && !e.altKey && (e.code === 'KeyX' || e.code === 'KeyY')) {
+    if (mod && !e.shiftKey && !e.altKey && (e.code === 'KeyX' || e.code === 'KeyY' || e.code === 'KeyC' || e.code === 'KeyV')) {
       // handled here as well as in the Edit menu, whichever sees the key first
       e.preventDefault();
       editKeyAt = Date.now();
       if (e.code === 'KeyX') rippleCut();
-      else muteSelection();
+      else if (e.code === 'KeyY') muteSelection();
+      else if (e.code === 'KeyC') copySelection();
+      else pasteClipboard(false);
+      return;
+    }
+    if (mod && e.shiftKey && !e.altKey && e.code === 'KeyV') {
+      e.preventDefault();
+      editKeyAt = Date.now();
+      pasteClipboard(true);
       return;
     }
     if (mod) return; // menu accelerators

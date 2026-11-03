@@ -1,4 +1,5 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
+import type { ClipboardData } from '../core/clipboard';
 import type { WavePodApi } from '../shared/api';
 import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
 import { PeakPyramid } from '../core/peaks';
@@ -41,6 +42,8 @@ class Store {
   recordStart = 0;
   /** Where the last recording stopped (or the current one is now), for "jump to recording position". */
   recordPosition: number | null = null;
+  /** Clips or a range copied with Ctrl+C / cut with Ctrl+X (this session only). */
+  clipboard: ClipboardData | null = null;
   /** A running "preview cut": stop at `end`, then return to `origin`. */
   preview: { end: number; origin: number; started?: boolean } | null = null;
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };

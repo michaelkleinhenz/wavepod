@@ -10,6 +10,7 @@ import { errorMessage, h, toast } from './dom';
 import { api, store } from './store';
 import { runSoundcheck } from '../core/soundcheck';
 import { clipEdges, markerPositions, stepTo } from '../core/navigation';
+import { copyClips, copyRange, pasteClipboard as pasteInto } from '../core/clipboard';
 import { confirmStop, showSoundcheck } from './recordDialogs';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
@@ -292,8 +293,37 @@ export function rippleCut(): void {
     toast('Select a time range first: drag across the ruler or an empty part of a track');
     return;
   }
+  // a ripple cut takes the range out of every track, so that is what the clipboard gets
+  store.clipboard = copyRange(store.project, r[0], r[1], store.project.tracks.map((t) => t.id));
   deleteSelection(true);
-  toast('Ripple cut');
+  toast('Ripple cut (Ctrl+V pastes it back in)');
+}
+
+/** Ctrl+C: copies the selected range (on its tracks) or the selected clips. */
+export function copySelection(): void {
+  const { range, clipIds } = store.selection;
+  const data =
+    range && range[1] > range[0] ? copyRange(store.project, range[0], range[1], selectionTracks()) : clipIds.size ? copyClips(store.project, clipIds) : null;
+  if (!data) return toast('Select clips or a time range to copy');
+  store.clipboard = data;
+  const secs = (data.length / store.sampleRate).toFixed(1);
+  toast(`Copied ${data.items.length} clip${data.items.length === 1 ? '' : 's'} (${secs} s)`);
+}
+
+/** Ctrl+V pastes at the playhead on top; Ctrl+Shift+V makes room first (ripple insert). */
+export function pasteClipboard(ripple: boolean): void {
+  const data = store.clipboard;
+  if (!data) return toast('Nothing copied yet');
+  if (store.transport.state === 'recording') return toast('Stop recording before pasting');
+  const at = store.transport.position;
+  let ids: string[] = [];
+  store.edit((p) => {
+    const r = pasteInto(p, data, at, ripple);
+    ids = r.clipIds;
+    return r.project;
+  });
+  store.select({ clipIds: new Set(ids), range: null, rangeTracks: null, markerId: null });
+  toast(ripple ? 'Pasted and moved the rest of the episode along' : 'Pasted at the playhead');
 }
 
 /** Tracks a Ctrl+Y mute applies to: the tracks the range was dragged across, else those of selected clips, else all. */
