@@ -1,4 +1,5 @@
 // Setup card for MIDI controller mappings: enable/disable, connected devices, learn and clear per function.
+import type { MidiButtonMode } from '../shared/types';
 import { MIDI_ACTIONS, describeTrigger, normalizeDeviceName } from '../core/midi';
 import { h } from './dom';
 import { midi } from './midi';
@@ -48,11 +49,11 @@ export function renderMidiCard(): HTMLElement {
   if (!on) return card;
 
   card.append(
-    h('p', { class: 'muted' }, 'Click Learn, then press the button, pad or key on your controller. Mappings are saved with the app and work in every episode.'),
+    h('p', { class: 'muted' }, 'Click Learn, then press and release the button, pad or key on your controller once. Learn tells momentary buttons from toggle (latching) buttons, which send on and off on alternate presses. Mappings are saved with the app and work in every episode.'),
     h('div', { class: 'row' }, h('span', { class: 'muted' }, 'Last message:'), activity),
   );
 
-  const table = h('table', { class: 'midi-map' }, h('tr', null, h('th', null, 'Function'), h('th', null, 'MIDI'), h('th', null, 'Device'), h('th', null, '')));
+  const table = h('table', { class: 'midi-map' }, h('tr', null, h('th', null, 'Function'), h('th', null, 'MIDI'), h('th', null, 'Device'), h('th', null, 'Button'), h('th', null, '')));
   for (const { action, label } of MIDI_ACTIONS) {
     const trigger = midi.triggerFor(action);
     const learning = midi.learning === action;
@@ -69,6 +70,19 @@ export function renderMidiCard(): HTMLElement {
           ),
         )
       : h('span', { class: 'muted' }, '–');
+    const mode = midi.modeFor(action);
+    const modeCell =
+      trigger && trigger.type !== 'program'
+        ? h(
+            'select',
+            {
+              title: 'Momentary buttons send on when pressed and off when released. Toggle (latching) buttons send on and off on alternate presses, so every press counts. Learn detects this; change it here if it guessed wrong.',
+              onchange: (e: Event) => void midi.setMode(action, (e.target as HTMLSelectElement).value as MidiButtonMode),
+            },
+            h('option', { value: 'momentary', selected: mode === 'momentary' }, 'Momentary'),
+            h('option', { value: 'toggle', selected: mode === 'toggle' }, 'Toggle'),
+          )
+        : h('span', { class: 'muted' }, '–');
     table.append(
       h(
         'tr',
@@ -76,6 +90,7 @@ export function renderMidiCard(): HTMLElement {
         h('td', null, label),
         h('td', null, learning ? h('span', { class: 'warning' }, 'Press a control on your MIDI device… (Esc cancels)') : trigger ? describeTrigger(trigger) : h('span', { class: 'muted' }, 'Not mapped')),
         h('td', null, deviceCell),
+        h('td', null, modeCell),
         h(
           'td',
           { class: 'midi-buttons' },
