@@ -84,7 +84,7 @@ about it; the priority is explained in section 3.
 | --- | --- | --- |
 | Episode artwork (JPG/PNG) in the MP3, recently used images | ✅ Episode cover in the Episode card, embedded as ID3 `APIC`, kept by templates | Done (no "recently used" list) |
 | Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | ✅ Image per chapter, embedded as `APIC` inside `CHAP`, copied next to the chapter files and referenced from PSC (`image`) and JSON (`img`); warnings in the Chapters view and export dialog with "Add chapter at 0:00" | Done |
-| Formats FLAC, OGG Vorbis, AIFF in addition to WAV/MP3 | WAV and MP3 | **P2** FLAC (WASM encoder) and Opus/Ogg; AIFF not planned |
+| Formats FLAC, OGG Vorbis, AIFF in addition to WAV/MP3 | ✅ FLAC 24-bit with Vorbis-comment chapters and the cover (own pure-TypeScript encoder, `core/flac.ts`). Opus/Ogg still open (needs a WASM encoder) | FLAC done; Opus open; AIFF not planned |
 | Export regions (split a long recording into several files) | One range at a time | **P3** Regions as a third marker kind, "export each region" |
 | Export presets, file name patterns | Fixed naming | **P3** Remember last settings per project (presets only if asked for) |
 | Podcast categories in metadata | Missing | **P3** Optional `TCON`/genre field |
@@ -204,7 +204,7 @@ came up during testing).
 13. ✅ **Track effects.** Done as filter stacks, see "Filters" above.
 14. ✅ **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
     envelope from the sum of speaker tracks), on/off and depth.
-15. **More formats (P2).** FLAC and Opus export (WASM encoders in the export
+15. **More formats (P2).** ✅ FLAC done. Opus export still open: (WASM encoders in the export
     worker). Clip loudness normalisation (`Alt+Shift+N`) is done.
 
 ### Phase 8 — Studio comfort (P3)

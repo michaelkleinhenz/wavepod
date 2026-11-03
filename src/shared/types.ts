@@ -296,7 +296,7 @@ export interface WaveformPeaks {
 export interface ExportOptions {
   /** Absolute output path without extension. */
   outputBase: string;
-  formats: Array<'wav' | 'mp3'>;
+  formats: Array<'wav' | 'mp3' | 'flac'>;
   mp3Bitrate: number;
   normalize: boolean;
   targetLufs: number;

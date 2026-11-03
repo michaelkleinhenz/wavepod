@@ -156,7 +156,7 @@ export class ExportDialog {
     const range = store.selection.range;
     const check = (label: string, checked: boolean, onChange: (v: boolean) => void, disabled = false) =>
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, disabled, onchange: (e: Event) => onChange((e.target as HTMLInputElement).checked) }), label);
-    const fmt = (f: 'mp3' | 'wav', label: string) =>
+    const fmt = (f: 'mp3' | 'wav' | 'flac', label: string) =>
       check(label, o.formats.includes(f), (v) => {
         o.formats = v ? [...new Set([...o.formats, f])] : o.formats.filter((x) => x !== f);
         this.render();
@@ -169,7 +169,7 @@ export class ExportDialog {
       { class: 'dialog' },
       h('h2', null, 'Export episode'),
       h('div', { class: 'grid' },
-        h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'),
+        h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'), fmt('flac', 'FLAC 24-bit (lossless, with chapters)'),
           h('label', { class: 'field' }, h('span', null, 'MP3 bitrate'),
             h('select', { disabled: !o.formats.includes('mp3'), onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
               ...[64, 96, 128, 160, 192, 256].map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps`)))),

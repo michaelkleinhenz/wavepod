@@ -117,7 +117,7 @@ describe('export with artwork', () => {
     const base = path.join(dir, 'export', 'ep');
     const res = exportProject(p, dir, {
       outputBase: base,
-      formats: ['mp3'],
+      formats: ['mp3', 'flac'],
       mp3Bitrate: 128,
       normalize: false,
       targetLufs: -16,
@@ -131,6 +131,11 @@ describe('export with artwork', () => {
     expect(chapters[0].picture!.data.equals(PNG)).toBe(true);
     expect(chapters[1].picture).toBeUndefined();
     expect(res.files).toContain(path.join(dir, 'export', 'ep-chapter-01.png'));
+    // the FLAC gets the same cover and chapters
+    expect(res.files).toContain(`${base}.flac`);
+    const flac = fs.readFileSync(`${base}.flac`);
+    expect(flac.includes(JPEG)).toBe(true);
+    expect(flac.toString('utf8')).toContain('CHAPTER001NAME=Intro');
     const json = JSON.parse(fs.readFileSync(`${base}.chapters.json`, 'utf8'));
     expect(json.chapters[0].img).toBe('ep-chapter-01.png');
     expect(json.chapters[1].img).toBeUndefined();

@@ -10,6 +10,7 @@ import { LoudnessMeter, normalizationGain } from './loudness';
 import { Mixer, ReaderCache, projectLength } from './mixer';
 import { markersToChapters } from './project';
 import { WavWriter } from './wav';
+import { FlacWriter } from './flac';
 
 const BLOCK = 4096;
 /** Width of the export waveform in columns, whatever the length of the export. */
@@ -184,6 +185,20 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         return picture ? { ...c, picture } : c;
       });
     const cover = loadPicture(projectDir, project.metadata.artwork);
+    const m0 = project.metadata;
+    const flac = opts.formats.includes('flac')
+      ? new FlacWriter(`${opts.outputBase}.flac`, 2, project.sampleRate, 24, {
+          title: m0.title || project.name,
+          artist: m0.author,
+          album: m0.podcast,
+          date: m0.year,
+          track: m0.episode,
+          description: m0.description,
+          genre: 'Podcast',
+          chapters,
+          ...(cover ? { cover } : {}),
+        })
+      : null;
     if (opts.formats.includes('mp3')) {
       const mp3Path = `${opts.outputBase}.mp3`;
       mp3Fd = fs.openSync(mp3Path, 'w');
@@ -217,6 +232,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) scaled[c][i] = b[c][i] * gain;
         renderTap.push(scaled, n);
         if (wav) wav.write(scaled, n);
+        if (flac) flac.write(scaled, n);
         if (encoder && mp3Fd !== null) {
           const data = encoder.encodeBuffer(toInt16(b[0], n, gain, l16).subarray(0, n), toInt16(b[1], n, gain, r16).subarray(0, n));
           if (data.length) fs.writeSync(mp3Fd, data);
@@ -227,6 +243,10 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     if (wav) {
       wav.close();
       files.push(wav.path);
+    }
+    if (flac) {
+      flac.close();
+      files.push(flac.path);
     }
     if (encoder && mp3Fd !== null) {
       const tail = encoder.flush();
