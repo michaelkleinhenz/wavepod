@@ -6,6 +6,7 @@ import { projectLength } from '../core/project';
 import { fadeGain, toDb } from '../core/dsp';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
+import { iconButton, setTip } from './icons';
 import { coughDown, coughUp, dropMarker, importAudioFiles, muteSelection, rippleCut, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
@@ -69,7 +70,7 @@ export class TimelineView {
   private snapLine: number | null = null;
   /** Clip under the mouse, whose fade handles are shown. */
   private hoverClipId: string | null = null;
-  private snapBtn = h('button', { class: 'small snap-btn' }, 'Snap');
+  private snapBtn = iconButton('snap', { label: 'Snapping' }, null, 'snap-btn');
   /** Opens the filter stack of a track. */
   onOpenFx: (trackId: string) => void = () => {};
   /** Opens the loudness analysis. */
@@ -126,25 +127,33 @@ export class TimelineView {
   // ------------------------------------------------------------ DOM
 
   private buildToolbar(): void {
-    const btn = (label: string, title: string, onclick: () => void, cls = '') => h('button', { class: `small ${cls}`, title, onclick }, label);
+    const btn = iconButton;
     this.toolbar.append(
-      btn('+ Track', 'Add an empty track', () => store.edit((p) => addTrack(p))),
-      btn('Import audio…', 'Import audio files as new tracks at the playhead (Ctrl+I)', () => void importAudioFiles()),
+      btn('addTrack', { label: 'Add track', detail: 'Add an empty track' }, () => store.edit((p) => addTrack(p))),
+      btn('import', { label: 'Import audio…', shortcut: 'Ctrl+I', detail: 'Import audio files as new tracks at the playhead' }, () => void importAudioFiles()),
       h('span', { class: 'sep' }),
-      btn('Split', 'Split clips at the playhead (S)', splitAtPlayhead),
-      btn('Ripple cut', 'Remove the selected time range from all tracks and close the gap (Ctrl+X or Shift+Delete)', rippleCut),
-      btn('Mute range', 'Silence the selected range on the selected tracks using their volume lines (Ctrl+Y)', muteSelection),
-      btn('Fade', 'Add short fades to selected clips (F); or drag the top corners of a clip', () => this.fadeSelected()),
-      btn('Normalise', 'Set the clip gain of the selected clips so each reaches the loudness target, −16 LUFS by default (Alt+Shift+N)', () => void normalizeClips([...store.selection.clipIds])),
-      btn('Loudness…', 'Loudness analysis of the selected clips, or of the mix and every track when no clip is selected (Shift+Ctrl+L)', () => this.onOpenLoudness()),
+      btn('split', { label: 'Split', shortcut: 'S', detail: 'Split clips at the playhead' }, splitAtPlayhead),
+      btn('rippleCut', { label: 'Ripple cut', shortcut: 'Ctrl+X or Shift+Delete', detail: 'Remove the selected time range from all tracks and close the gap' }, rippleCut),
+      btn('muteRange', { label: 'Mute range', shortcut: 'Ctrl+Y', detail: 'Silence the selected range on the selected tracks using their volume lines' }, muteSelection),
+      btn('fade', { label: 'Fade', shortcut: 'F', detail: 'Add short fades to selected clips, or drag the top corners of a clip' }, () => this.fadeSelected()),
+      btn(
+        'normalise',
+        { label: 'Normalise', shortcut: 'Alt+Shift+N', detail: 'Set the clip gain of the selected clips so each reaches the loudness target, −16 LUFS by default' },
+        () => void normalizeClips([...store.selection.clipIds]),
+      ),
+      btn(
+        'loudness',
+        { label: 'Loudness…', shortcut: 'Shift+Ctrl+L', detail: 'Loudness analysis of the selected clips, or of the mix and every track when no clip is selected' },
+        () => this.onOpenLoudness(),
+      ),
       this.snapBtn,
       h('span', { class: 'sep' }),
-      btn('⚑ Chapter', 'Add a chapter marker at the playhead (M)', () => dropMarker('chapter'), 'chapter'),
-      btn('✎ Edit mark', 'Add an edit marker at the playhead (E)', () => dropMarker('edit'), 'editmark'),
+      btn('chapter', { label: 'Chapter marker', shortcut: 'M', detail: 'Add a chapter marker at the playhead' }, () => dropMarker('chapter'), 'chapter'),
+      btn('editMark', { label: 'Edit marker', shortcut: 'E', detail: 'Add an edit marker at the playhead' }, () => dropMarker('edit'), 'editmark'),
       h('span', { class: 'sep' }),
-      btn('−', 'Zoom out (-)', () => this.zoomAtPlayhead(1 / 1.5)),
-      btn('+', 'Zoom in (+)', () => this.zoomAtPlayhead(1.5)),
-      btn('Fit', 'Zoom to fit the whole episode', () => this.zoomToFit()),
+      btn('zoomOut', { label: 'Zoom out', shortcut: '-' }, () => this.zoomAtPlayhead(1 / 1.5)),
+      btn('zoomIn', { label: 'Zoom in', shortcut: '+' }, () => this.zoomAtPlayhead(1.5)),
+      btn('fit', { label: 'Zoom to fit', detail: 'Zoom to fit the whole episode' }, () => this.zoomToFit()),
       h('span', { class: 'spacer' }),
       h('span', { class: 'muted hint-keys' }, 'Space play · R record · M chapter · S split · Ctrl+X ripple cut · Ctrl+Y mute range'),
     );
@@ -162,9 +171,13 @@ export class TimelineView {
 
   private updateSnapButton(): void {
     this.snapBtn.classList.toggle('on', this.snapping);
-    this.snapBtn.title = this.snapping
-      ? 'Snapping on: dragged edges lock to clip edges on other tracks, markers and the playhead (hold Alt to drag freely)'
-      : 'Snapping off';
+    this.snapBtn.setAttribute('aria-pressed', String(this.snapping));
+    setTip(this.snapBtn, {
+      label: this.snapping ? 'Snapping on' : 'Snapping off',
+      detail: this.snapping
+        ? 'Dragged edges lock to clip edges on other tracks, markers and the playhead. Hold Alt to drag freely.'
+        : 'Click to lock dragged edges to clips, markers and the playhead',
+    });
   }
 
   fadeSelected(): void {
