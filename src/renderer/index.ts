@@ -39,6 +39,7 @@ import { PLAYBACK_SPEEDS } from '../core/timeStretch';
 import { selectionSpan } from '../core/navigation';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
+import { MenuBar } from './menuBar';
 import { midi } from './midi';
 import { SetupView } from './setupView';
 import { TemplateDialog } from './templateDialog';
@@ -146,7 +147,7 @@ async function main(): Promise<void> {
   );
   const statusBar = h('footer', { class: 'statusbar' });
   const main = h('main');
-  root.append(header, main, statusBar);
+  root.append(new MenuBar().el, header, main, statusBar);
 
   // ---------------------------------------------------------------- render
   const renderView = () => {
