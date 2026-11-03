@@ -1,5 +1,6 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import { LevelMeter } from './levelMeter';
+import { selectionSpan } from '../core/navigation';
 import type { Clip, EnvelopePoint, PeakLevel, Track } from '../shared/types';
 import { formatTick } from '../shared/time';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
@@ -133,7 +134,42 @@ export class TimelineView {
     this.draw();
   }
 
+  /** View before the last "zoom to selection", for toggling back. */
+  private zoomBack: { pxPerSec: number; viewStart: number } | null = null;
+
+  /** Shift+Z: zooms to the selected range or clips; pressed again (or with nothing selected), zooms back. */
+  toggleZoomToSelection(span: [number, number] | null): boolean {
+    if (this.zoomBack && !span) {
+      ({ pxPerSec: this.pxPerSec, viewStart: this.viewStart } = this.zoomBack);
+      this.zoomBack = null;
+      this.draw();
+      return true;
+    }
+    if (!span) return false;
+    const before = { pxPerSec: this.pxPerSec, viewStart: this.viewStart };
+    const secs = Math.max(0.01, (span[1] - span[0]) / this.sr);
+    // a little room on both sides
+    this.pxPerSec = Math.min(this.sr * MAX_PX_PER_SAMPLE, Math.max(0.5, (this.width * 0.9) / secs));
+    this.viewStart = Math.max(0, span[0] / this.sr - (this.width * 0.05) / this.pxPerSec);
+    if (this.zoomBack && Math.abs(before.pxPerSec - this.pxPerSec) < 1e-6 && Math.abs(before.viewStart - this.viewStart) < 1e-6) {
+      // already zoomed to this selection: go back
+      ({ pxPerSec: this.pxPerSec, viewStart: this.viewStart } = this.zoomBack);
+      this.zoomBack = null;
+    } else {
+      this.zoomBack = this.zoomBack ?? before;
+    }
+    this.draw();
+    return true;
+  }
+
+  /** Scrolls only if `pos` is off screen. */
+  ensureVisible(pos: number): void {
+    const x = this.xOf(pos);
+    if (x < 0 || x > this.width * 0.95) this.reveal(pos);
+  }
+
   zoomToFit(): void {
+    this.zoomBack = null;
     const len = projectLength(store.project) / this.sr;
     this.pxPerSec = Math.max(0.5, (this.width - 20) / Math.max(10, len));
     this.viewStart = 0;
@@ -175,6 +211,8 @@ export class TimelineView {
       btn('zoomOut', { label: 'Zoom out', shortcut: '-' }, () => this.zoomAtPlayhead(1 / 1.5)),
       btn('zoomIn', { label: 'Zoom in', shortcut: '+' }, () => this.zoomAtPlayhead(1.5)),
       btn('fit', { label: 'Zoom to fit', detail: 'Zoom to fit the whole episode' }, () => this.zoomToFit()),
+      btn('zoomSel', { label: 'Zoom to selection', shortcut: 'Shift+Z', detail: 'Zoom to the selected range or clips; again to zoom back' }, () =>
+        void this.toggleZoomToSelection(selectionSpan(store.project, store.selection.range, store.selection.clipIds))),
       h('span', { class: 'spacer' }),
       h('span', { class: 'muted hint-keys' }, 'Space play · R record · M chapter · S split · Ctrl+X ripple cut · Ctrl+Y mute range'),
     );

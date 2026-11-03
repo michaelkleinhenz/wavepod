@@ -27,9 +27,13 @@ import {
   dropNamedChapter,
   jumpToRecordPosition,
   restoreBackup,
+  checkPreview,
+  previewCut,
+  stepPlayhead,
 } from './actions';
 import { ChaptersView } from './chaptersView';
 import { resetAllMeters } from './levelMeter';
+import { selectionSpan } from '../core/navigation';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
 import { midi } from './midi';
@@ -194,6 +198,7 @@ async function main(): Promise<void> {
     }
     if (u.recordingPeaks) store.addLivePeaks(u.recordingPeaks);
     store.transport = u;
+    checkPreview();
     store.notify('transport');
   });
   api().onStatus((s) => {
@@ -309,10 +314,25 @@ async function main(): Promise<void> {
         seek(projectLength(store.project));
         break;
       case 'ArrowLeft':
-        seek(store.transport.position - store.sampleRate * (e.shiftKey ? 10 : 1));
+      case 'ArrowRight': {
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        e.preventDefault();
+        if (e.altKey) {
+          // Alt: clip edges; Shift+Alt: markers
+          const pos = stepPlayhead(e.shiftKey ? 'marker' : 'edge', dir);
+          if (pos !== null) timeline.ensureVisible(pos);
+        } else seek(store.transport.position + dir * store.sampleRate * (e.shiftKey ? 10 : 1));
         break;
-      case 'ArrowRight':
-        seek(store.transport.position + store.sampleRate * (e.shiftKey ? 10 : 1));
+      }
+      case 'p':
+      case 'P':
+        void previewCut();
+        break;
+      case 'z':
+      case 'Z':
+        if (e.shiftKey && !timeline.toggleZoomToSelection(selectionSpan(store.project, store.selection.range, store.selection.clipIds))) {
+          toast('Select a range or clips to zoom to');
+        }
         break;
       case '+':
       case '=':

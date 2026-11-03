@@ -41,6 +41,8 @@ class Store {
   recordStart = 0;
   /** Where the last recording stopped (or the current one is now), for "jump to recording position". */
   recordPosition: number | null = null;
+  /** A running "preview cut": stop at `end`, then return to `origin`. */
+  preview: { end: number; origin: number; started?: boolean } | null = null;
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
   view: View = 'edit';
   /** Waveform data of media files: coarse peak levels, plus fine levels and samples in tiles. */

@@ -62,8 +62,8 @@ about it; the priority is explained in section 3.
 
 | Ultraschall feature | Gap in WavePod | Plan |
 | --- | --- | --- |
-| Check cuts: jump to next/previous clip edge or edit marker and play with preroll | Only seek and Home/End | **P1** Jump to next/previous edit marker, chapter marker and clip edge; "preview cut" with configurable preroll |
-| Zoom to selection and back (`Shift+Z`), zoom whole project | Zoom in/out only | **P1** |
+| Check cuts: jump to next/previous clip edge or edit marker and play with preroll | ✅ `Alt+←/→` clip edges, `Shift+Alt+←/→` markers, `P` plays 2 s before to 2 s after the playhead and returns | Done (pre/postroll fixed at 2 s) |
+| Zoom to selection and back (`Shift+Z`), zoom whole project | ✅ `Shift+Z` zooms to the selected range or clips and back; "Zoom to fit" shows the whole episode | Done |
 | Copy/cut/paste of clips and ranges; ripple cut on `Ctrl+X` | Delete and ripple delete only, no clipboard | **P2** Clipboard for clips and time ranges (paste at playhead, ripple insert) |
 | Ripple editing modes when moving clips (off / per track / all tracks) | Moving a clip never shifts others | **P2** Modifier-drag: move clip plus everything after it on the track or on all tracks, markers follow in all-tracks mode |
 | Automatic crossfade when clips overlap, fade curve shapes | Fades are linear and per clip, overlaps just sum | **P2** Auto crossfade on overlap; linear / equal-power / S-curve |
@@ -180,7 +180,7 @@ came up during testing).
 
 ### Phase 6 — Editing speed (P1/P2)
 
-7. **Navigation (P1).** Next/previous edit marker, chapter marker and clip edge
+7. ✅ **Navigation (P1).** (The project overview strip is still open; the scrollbar under the timeline does that job for now.) Next/previous edit marker, chapter marker and clip edge
    (`Alt+←/→`, `Ctrl+Alt+←/→`), "preview cut" plays from preroll to
    postroll around the playhead, `Shift+Z` zoom to selection / back, zoom to
    project, project overview strip.

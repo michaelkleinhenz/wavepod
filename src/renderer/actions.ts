@@ -9,6 +9,7 @@ import { baseName, decodeFile } from './audioFiles';
 import { errorMessage, h, toast } from './dom';
 import { api, store } from './store';
 import { runSoundcheck } from '../core/soundcheck';
+import { clipEdges, markerPositions, stepTo } from '../core/navigation';
 import { confirmStop, showSoundcheck } from './recordDialogs';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
@@ -149,6 +150,63 @@ export function jumpToRecordPosition(reveal: (pos: number) => void): void {
   if (pos === null) return toast('Nothing recorded yet in this session');
   seek(pos);
   reveal(pos);
+}
+
+/** Alt+←/→ (clip edges) and Shift+Alt+←/→ (markers): step to the previous or next one. */
+export function stepPlayhead(target: 'edge' | 'marker', dir: 1 | -1): number | null {
+  const positions = target === 'edge' ? clipEdges(store.project) : markerPositions(store.project);
+  // a few ms of slack so a repeated press moves on from where the last one landed
+  const pos = stepTo(positions, store.transport.position, dir, Math.round(store.sampleRate * 0.005));
+  if (pos === null) {
+    toast(`No ${target === 'edge' ? 'clip edge' : 'marker'} ${dir > 0 ? 'after' : 'before'} the playhead`);
+    return null;
+  }
+  seek(pos);
+  return pos;
+}
+
+export const PREVIEW_PREROLL_SECONDS = 2;
+export const PREVIEW_POSTROLL_SECONDS = 2;
+
+/**
+ * P: "preview cut": plays from a little before the playhead to a little after it, then puts the
+ * playhead back, so a cut can be checked again and again.
+ */
+export async function previewCut(): Promise<void> {
+  if (store.transport.state === 'recording') return;
+  const origin = store.transport.position;
+  const from = Math.max(0, origin - Math.round(PREVIEW_PREROLL_SECONDS * store.sampleRate));
+  store.preview = { end: origin + Math.round(PREVIEW_POSTROLL_SECONDS * store.sampleRate), origin };
+  try {
+    if (store.transport.state === 'playing') await api().stop();
+    await api().play(from);
+  } catch (e) {
+    store.preview = null;
+    toast(errorMessage(e), 'error');
+  }
+}
+
+/** Called on every transport update: ends a preview at its end point. */
+export function checkPreview(): void {
+  const pv = store.preview;
+  if (!pv) return;
+  const t = store.transport;
+  if (t.state === 'recording') {
+    store.preview = null;
+    return;
+  }
+  if (t.state === 'playing') pv.started = true;
+  else if (pv.started) {
+    // stopped by hand: leave the playhead where it is
+    store.preview = null;
+    return;
+  }
+  if (t.state === 'playing' && t.position >= pv.end) {
+    store.preview = null;
+    void api()
+      .stop()
+      .then(() => seek(pv.origin));
+  }
 }
 
 export function splitAtPlayhead(): void {
