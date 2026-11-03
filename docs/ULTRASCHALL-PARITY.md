@@ -71,12 +71,12 @@ about it; the priority is explained in section 3.
 | Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. VST3 plug-ins in the same stack (generated sliders, no plug-in editors). Noise reduction and reverb later |
 | Normalise selected clips (`Alt+Shift+N`) | ✅ Done | **P2, done** Clip loudness normalisation via clip gain (`Alt+Shift+N`), to the target chosen in the loudness analysis |
 | Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
-| Drag-and-drop media import, drop on empty space creates a track | Import via menu | **P2** |
+| Drag-and-drop media import, drop on empty space creates a track | ✅ Drop audio files on a track (at the drop position, one after the other) or below the tracks for new tracks | Done |
 | Marker ping when the playhead passes a marker | Missing | **P3** Optional |
 | Project backups every 10 minutes | ✅ `backup/` in the project folder: every 10 minutes when something changed and before each recording, newest 20 kept, File › Restore Backup… (undoable) | Done |
 | Distraction-free editing mode, customisable shortcuts, shortcut list | Fixed shortcuts | **P3** Shortcut overlay (`?`); customisable keymap later |
 | Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | Missing | **P3, reduced**: clip colours/notes and a project overview strip (navigator). Tag search across projects is not planned |
-| Double-ender: guest's local backup recording replaces the remote track | Missing | **P2** Import a guest's local file and auto-align it to the remote track by cross-correlation |
+| Double-ender: guest's local backup recording replaces the remote track | ✅ "Align to track…" toolbar button: FFT cross-correlation (±60 s search over 90 s at ~2 kHz) moves the guest's clip onto the call recording, one undo step, warns on a weak match | Done |
 
 ### Export
 
@@ -191,7 +191,7 @@ came up during testing).
    fade shape per fade. *Files:* `core/mixer.ts`, `core/dsp.ts`, timeline.
 10. ✅ **Playback speed (P2).** 1×, 1.25×, 1.5×, 2× in the transport, pitch kept
     with WSOLA in `core/dsp.ts`; recording and export ignore it.
-11. **Drag-and-drop import and double-ender alignment (P2).** Drop files on a
+11. ✅ **Drag-and-drop import and double-ender alignment (P2).** Drop files on a
     track or empty space; "Align to track…" cross-correlates the first
     minutes against a reference track and sets the clip offset.
 

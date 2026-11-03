@@ -1,11 +1,11 @@
 // Commands shared by keyboard shortcuts, menus and buttons.
 import type { MarkerKind } from '../shared/types';
-import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt, updateMarker } from '../core/project';
+import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt, updateClip, updateMarker } from '../core/project';
 import { importChapters } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
 import { uid } from '../shared/time';
-import { baseName, decodeFile } from './audioFiles';
+import { baseName, decodeBytes, decodeFile } from './audioFiles';
 import { errorMessage, h, toast } from './dom';
 import { api, store } from './store';
 import { runSoundcheck } from '../core/soundcheck';
@@ -407,5 +407,85 @@ export async function restoreBackup(): Promise<void> {
     toast('Backup restored. Undo brings back the episode as it was.');
   } catch (e) {
     toast(errorMessage(e), 'error');
+  }
+}
+
+/** Double-ender: moves the selected clip so it lines up with a reference track the user picks. */
+export async function alignSelectedClip(): Promise<void> {
+  const ids = [...store.selection.clipIds];
+  const track = store.project.tracks.find((t) => t.clips.some((c) => c.id === ids[0]));
+  if (ids.length !== 1 || !track) return toast('Select one clip: the guest’s own recording');
+  const refs = store.project.tracks.filter((t) => t.id !== track.id && t.clips.length > 0);
+  if (!refs.length) return toast('There is no other track with audio to align to');
+  const refId = await pickTrack(refs, 'Align to which track?', 'Pick the track that recorded this guest during the call (for example the RØDECaster’s USB Chat channel).');
+  if (!refId) return;
+  const clipId = ids[0];
+  toast('Aligning…');
+  try {
+    const r = await api().alignClip(clipId, refId);
+    store.edit((p) => updateClip(p, clipId, { start: r.start }));
+    const ms = (r.shift / store.sampleRate) * 1000;
+    const moved = Math.abs(ms) < 1000 ? `${ms.toFixed(0)} ms` : `${(ms / 1000).toFixed(2)} s`;
+    if (r.confidence < 0.3) toast(`Moved by ${moved}, but the match is weak (${Math.round(r.confidence * 100)}%). Listen and undo if it’s off.`, 'error');
+    else toast(`Aligned: moved by ${moved} (match ${Math.round(r.confidence * 100)}%)`);
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
+function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, title: string, hint: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const overlay = h('div', { class: 'overlay' });
+    const done = (v: string | null) => {
+      window.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      resolve(v);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        done(null);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    overlay.addEventListener('mousedown', (e) => e.target === overlay && done(null));
+    overlay.append(
+      h(
+        'div',
+        { class: 'dialog narrow' },
+        h('h2', null, title),
+        h('p', { class: 'muted' }, hint),
+        h('div', { class: 'track-pick' }, ...tracks.map((t) => h('button', { style: { borderLeft: `4px solid ${t.color}` }, onclick: () => done(t.id) }, t.name))),
+        h('div', { class: 'row end' }, h('button', { onclick: () => done(null) }, 'Cancel')),
+      ),
+    );
+    document.body.append(overlay);
+  });
+}
+
+/** Files dropped on the timeline: onto a track at the drop position, or as new tracks. */
+export async function importDroppedFiles(files: File[], at: number, trackId: string | null): Promise<void> {
+  const sr = store.sampleRate;
+  let pos = at;
+  for (const file of files) {
+    try {
+      toast(`Importing ${file.name}…`);
+      const channels = await decodeBytes(await file.arrayBuffer(), sr);
+      const res = await api().importAudio(file.name, channels, sr);
+      store.edit((p) => {
+        let q = p;
+        let id = trackId && q.tracks.some((t) => t.id === trackId) ? trackId : null;
+        if (!id) {
+          q = addTrack(q, { name: file.name.replace(/\.[^.]+$/, '') });
+          id = q.tracks[q.tracks.length - 1].id;
+        }
+        return addClip(q, id, { id: uid('clp'), file: res.file, start: pos, offset: 0, length: res.length, gain: 0, fadeIn: 0, fadeOut: 0 });
+      });
+      // several files on one track go one after the other
+      if (trackId) pos += res.length;
+      toast(`Imported ${file.name}`);
+    } catch (e) {
+      toast(`${file.name}: ${errorMessage(e)}`, 'error');
+    }
   }
 }

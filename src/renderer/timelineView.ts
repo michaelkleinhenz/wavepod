@@ -10,7 +10,7 @@ import { fadesAt, trackFades, type EffectiveFades } from '../core/crossfade';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
-import { coughDown, coughUp, dropMarker, importAudioFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
+import { alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
@@ -203,6 +203,11 @@ export class TimelineView {
         'loudness',
         { label: 'Loudness…', shortcut: 'Shift+Ctrl+L', detail: 'Loudness analysis of the selected clips, or of the mix and every track when no clip is selected' },
         () => this.onOpenLoudness(),
+      ),
+      btn(
+        'align',
+        { label: 'Align to track…', detail: 'Double-ender: line up the selected clip (a guest’s own recording) with what another track recorded during the call' },
+        () => void alignSelectedClip(),
       ),
       this.snapBtn,
       h('span', { class: 'sep' }),
@@ -1119,6 +1124,28 @@ export class TimelineView {
       }
     };
     this.canvas.addEventListener('wheel', (e) => onWheel(e, this.canvas), { passive: false });
+    // drag-and-drop audio files: onto a track to add them there, below the tracks for new tracks
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+    this.scroll.addEventListener('dragover', (e) => {
+      if (!hasFiles(e) || !store.project) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'copy';
+      this.scroll.classList.add('drop-target');
+    });
+    this.scroll.addEventListener('dragleave', () => this.scroll.classList.remove('drop-target'));
+    this.scroll.addEventListener('drop', (e) => {
+      this.scroll.classList.remove('drop-target');
+      if (!hasFiles(e) || !store.project) return;
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer!.files);
+      if (!files.length) return;
+      const r = this.canvas.getBoundingClientRect();
+      const x = Math.max(0, e.clientX - r.left);
+      const ti = Math.floor((e.clientY - r.top) / TRACK_H);
+      const track = ti >= 0 ? store.project.tracks[ti] : undefined;
+      void importDroppedFiles(files, this.frameOf(x), track?.id ?? null);
+    });
+
     this.rulerCanvas.addEventListener('wheel', (e) => onWheel(e, this.rulerCanvas), { passive: false });
 
     // Middle mouse button drag pans the view, horizontally and vertically, like in Reaper.

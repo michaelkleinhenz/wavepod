@@ -21,6 +21,7 @@ import type {
   WaveformPeaks,
 } from './types';
 import type { TemplateSummary } from '../core/template';
+import type { AlignResult } from '../core/align';
 
 export interface OpenedProject {
   project: Project;
@@ -133,6 +134,8 @@ export interface WavePodApi {
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;
+  /** Where a clip should start to line up with a reference track (double-ender alignment). */
+  alignClip(clipId: string, refTrackId: string): Promise<AlignResult>;
 
   // VST3 plug-ins (hosted in a separate process; editors are never shown)
   vstStatus(): Promise<{ available: boolean; dirs: string[] }>;
@@ -215,6 +218,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'measureLoudness',
   'measureClips',
   'revealFile',
+  'alignClip',
   'vstStatus',
   'vstScan',
   'vstDescribe',

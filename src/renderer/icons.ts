@@ -17,6 +17,7 @@ const PATHS = {
   zoomIn: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/>',
   prepareEdit: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M5.6 5.6l12.8 12.8"/>',
   fit: '<path d="M3 5v14M21 5v14M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/>',
+  align: '<path d="M4 7h10M8 17h12M12 3v18"/><path d="M17 4l3 3-3 3M7 14l-3 3 3 3"/>',
   zoomSel: '<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><rect x="8" y="9" width="8" height="6" rx="1"/>',
 } as const;
 
