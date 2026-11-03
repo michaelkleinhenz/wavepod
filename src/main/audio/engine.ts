@@ -200,7 +200,7 @@ export class AudioEngine extends EventEmitter {
         });
         this.inputPeaks = new Array(inDev.inputChannels).fill(0);
       } catch (e) {
-        errors.push(`Could not open input "${inDev.name}": ${(e as Error).message}`);
+        errors.push(`Could not open input "${inDev.name}" (${this.config.api}, ${inDev.inputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`);
       }
     }
     if (outDev) {
@@ -215,7 +215,7 @@ export class AudioEngine extends EventEmitter {
           onError: (m) => this.reportError(`Output: ${m}`),
         });
       } catch (e) {
-        errors.push(`Could not open output "${outDev.name}": ${(e as Error).message}`);
+        errors.push(`Could not open output "${outDev.name}" (${this.config.api}, ${outDev.outputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`);
       }
     }
     if (errors.length) this.error = [this.error, ...errors].filter(Boolean).join('\n');

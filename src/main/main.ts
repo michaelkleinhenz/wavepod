@@ -330,7 +330,12 @@ function registerIpc(): void {
   ipcMain.handle(IPC.invoke, async (_e, method: InvokeMethod, ...args: unknown[]) => {
     const h = handlers[method];
     if (!h) throw new Error(`Unknown method ${method}`);
-    return (h as (...a: unknown[]) => unknown)(...args);
+    try {
+      return await (h as (...a: unknown[]) => unknown)(...args);
+    } catch (e) {
+      console.error(`[ipc] ${method} failed:`, e);
+      throw e;
+    }
   });
 }
 
@@ -421,6 +426,13 @@ function createWindow(): void {
       sandbox: true,
     },
   });
+  // Mirror renderer warnings and errors (including error toasts) to the terminal.
+  win.webContents.on('console-message', (event) => {
+    if (event.level === 'error' || event.level === 'warning') {
+      const where = event.sourceId ? ` (${path.basename(event.sourceId)}:${event.lineNumber})` : '';
+      console.error(`[renderer ${event.level}] ${event.message}${where}`);
+    }
+  });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.on('closed', () => {
     win = null;
@@ -437,7 +449,13 @@ app.whenReady().then(() => {
     setVstHost(vstHost, (_id, message) => engine.reportError(message));
   }
   engine.on('transport', (u) => send(IPC.transport, u));
-  engine.on('status', (s) => send(IPC.status, s));
+  let loggedEngineError: string | null = null;
+  engine.on('status', (s) => {
+    // Every audio engine error also goes to the terminal, once per change.
+    if (s.error && s.error !== loggedEngineError) console.error(`[audio] ${s.error}`);
+    loggedEngineError = s.error;
+    send(IPC.status, s);
+  });
   engine.on('recordingFinished', (takes: RecordedTake[]) => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
     let project = current.project;
