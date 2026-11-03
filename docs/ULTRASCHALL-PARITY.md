@@ -24,7 +24,7 @@ Sources: the [Ultraschall feature page](https://ultraschall.fm/) and the
 | Soundboard for jingles | ✅ 12 slots, keys `1`–`9` (but not recorded, see below) |
 | Non-destructive editing, undo | ✅ |
 | Split (`S`), fades by dragging, ripple cut across all tracks | ✅ split, trim, fades by dragging clip corners, ripple cut (`Ctrl+X`), resizable time selection, snapping to clip edges |
-| Volume envelope per track, mute a selection (`Ctrl+Y`) | ✅ volume line with points, `Ctrl+Y` bends it to silence the selected range |
+| Volume envelope, mute a selection (`Ctrl+Y`) | ✅ volume line per clip with points, `Ctrl+Y` bends it to silence the selected range |
 | Mute/solo per track | ✅ |
 | Loudness normalisation | ✅ EBU R128 to −16 / −19 / −23 LUFS (Ultraschall: ~−18 LUFS), at export and per clip |
 | Loudness analysis (integrated, LRA, short-term / momentary max, true peak) | ✅ Loudness analysis of the mix, each track or selected clips, with a short-term curve |

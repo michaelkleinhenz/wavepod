@@ -280,9 +280,8 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .vst-name { font-weight: 600; }
 .vst-vendor { font-size: 10px; color: var(--muted); }
 
-/* timeline: snapping toggle and volume line button */
+/* timeline: snapping toggle */
 .snap-btn.on { color: #ffd54f; border-color: #6b5b23; }
-.env-btn.active { color: #69f0ae; border-color: #2e6b4f; }
 .fx-meter { display: flex; flex-direction: column; gap: 3px; margin: 0 0 8px; padding: 6px 8px; background: #121419; border-radius: 6px; }
 .fxm-row { display: grid; grid-template-columns: 30px 1fr 52px; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
 .fxm-track { position: relative; height: 6px; background: #22262f; border-radius: 3px; overflow: hidden; }

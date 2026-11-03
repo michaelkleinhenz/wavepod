@@ -1,6 +1,6 @@
-// Track volume envelopes (Reaper-style volume line): points in timeline frames with a gain in dB.
-// Between points the linear gain is interpolated, so a ramp down to the floor is a plain fade.
-import type { EnvelopePoint, Frames, Project } from '../shared/types';
+// Clip volume envelopes (Reaper-style volume line): points with a gain in dB, positioned in
+// source-file frames of the clip. Between points the gain is interpolated in dB.
+import type { Clip, EnvelopePoint, Frames, Project } from '../shared/types';
 
 /** At or below this value the envelope is silent. */
 export const ENV_MIN_DB = -60;
@@ -37,23 +37,21 @@ function segmentIndex(points: EnvelopePoint[], pos: Frames): number {
   return ans;
 }
 
-/** Linear gain of the envelope at `pos` (1 without points). */
-export function envelopeAmpAt(points: EnvelopePoint[] | undefined, pos: Frames): number {
-  if (!points?.length) return 1;
+/** Envelope value at `pos` in dB (0 without points), interpolated in dB between points. */
+export function envelopeDbAt(points: EnvelopePoint[] | undefined, pos: Frames): number {
+  if (!points?.length) return 0;
   const i = segmentIndex(points, pos);
-  if (i < 0) return envAmp(points[0].db);
-  if (i === points.length - 1) return envAmp(points[i].db);
+  if (i < 0) return points[0].db;
+  if (i === points.length - 1) return points[i].db;
   const a = points[i];
   const b = points[i + 1];
-  const ga = envAmp(a.db);
-  const gb = envAmp(b.db);
-  if (b.pos <= a.pos) return gb;
-  return ga + ((gb - ga) * (pos - a.pos)) / (b.pos - a.pos);
+  if (b.pos <= a.pos) return b.db;
+  return a.db + ((b.db - a.db) * (pos - a.pos)) / (b.pos - a.pos);
 }
 
-/** Envelope value at `pos` in dB. */
-export function envelopeDbAt(points: EnvelopePoint[] | undefined, pos: Frames): number {
-  return ampToDb(envelopeAmpAt(points, pos));
+/** Linear gain of the envelope at `pos` (1 without points). */
+export function envelopeAmpAt(points: EnvelopePoint[] | undefined, pos: Frames): number {
+  return envAmp(envelopeDbAt(points, pos));
 }
 
 /** True if the envelope never changes the signal. */
@@ -67,14 +65,15 @@ export function fillEnvelope(points: EnvelopePoint[], from: Frames, n: number, o
   for (let k = 0; k < n; k++) {
     const pos = from + k;
     while (i + 1 < points.length && points[i + 1].pos <= pos) i++;
-    if (i < 0) out[k] = envAmp(points[0].db);
-    else if (i === points.length - 1) out[k] = envAmp(points[i].db);
+    let db: number;
+    if (i < 0) db = points[0].db;
+    else if (i === points.length - 1) db = points[i].db;
     else {
       const a = points[i];
       const b = points[i + 1];
-      const ga = envAmp(a.db);
-      out[k] = b.pos <= a.pos ? envAmp(b.db) : ga + ((envAmp(b.db) - ga) * (pos - a.pos)) / (b.pos - a.pos);
+      db = b.pos <= a.pos ? b.db : a.db + ((b.db - a.db) * (pos - a.pos)) / (b.pos - a.pos);
     }
+    out[k] = envAmp(db);
   }
 }
 
@@ -118,47 +117,60 @@ export function muteRange(points: EnvelopePoint[], start: Frames, end: Frames, r
   ];
 }
 
-/** Envelope after removing [start, end) from the timeline and closing the gap. */
-export function rippleEnvelope(points: EnvelopePoint[], start: Frames, end: Frames): EnvelopePoint[] {
-  if (!points.length || end <= start) return points;
-  const len = end - start;
-  const vStart = envelopeDbAt(points, start);
-  const vEnd = envelopeDbAt(points, end);
-  const head = points.filter((p) => p.pos < start);
-  const tail = points.filter((p) => p.pos > end).map((p) => ({ pos: p.pos - len, db: p.db }));
-  const join = vStart === vEnd ? [{ pos: start, db: vStart }] : [{ pos: start, db: vStart }, { pos: start, db: vEnd }];
-  return [...head, ...join, ...tail];
-}
-
-/** Envelope after inserting `length` frames at `position` (the line stays flat across the gap). */
-export function insertIntoEnvelope(points: EnvelopePoint[], position: Frames, length: Frames): EnvelopePoint[] {
-  if (!points.length || length <= 0) return points;
-  const v = envelopeDbAt(points, position);
-  const head = points.filter((p) => p.pos < position);
-  const tail = points.filter((p) => p.pos > position).map((p) => ({ pos: p.pos + length, db: p.db }));
-  return [...head, { pos: position, db: v }, { pos: position + length, db: v }, ...tail];
-}
-
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
 }
 
-/** Replaces a track's envelope points (sorted on the way in). */
-export function setEnvelope(project: Project, trackId: string, points: EnvelopePoint[]): Project {
+/** Source-file frame of a timeline frame inside `clip`. */
+export function toSource(clip: Clip, timeline: Frames): Frames {
+  return clip.offset + (timeline - clip.start);
+}
+
+/** Replaces a clip's envelope points (sorted on the way in). */
+export function setClipEnvelope(project: Project, clipId: string, points: EnvelopePoint[]): Project {
   const p = clone(project);
-  const t = p.tracks.find((x) => x.id === trackId);
-  if (t) t.envelope = sortPoints(points);
+  for (const t of p.tracks) {
+    const c = t.clips.find((x) => x.id === clipId);
+    if (c) c.envelope = sortPoints(points);
+  }
   return p;
 }
 
-/** Mutes [start, end) on the given tracks via their volume lines and shows the lines. */
+/**
+ * Mutes [start, end) on the given tracks (Ctrl+Y) by bending the volume line of every clip
+ * the range or its ramps touch, and shows those lines.
+ */
 export function muteSelection(project: Project, trackIds: string[], start: Frames, end: Frames): Project {
   const p = clone(project);
   const ramp = Math.round(ENV_MUTE_RAMP_SECONDS * p.sampleRate);
   for (const t of p.tracks) {
     if (!trackIds.includes(t.id)) continue;
-    t.envelope = muteRange(t.envelope ?? [], start, end, ramp);
-    t.showEnvelope = true;
+    for (const c of t.clips) {
+      if (c.start + c.length <= start - ramp || c.start >= end + ramp) continue;
+      // a range reaching past the clip is silent from the clip's edge, without a ramp outside it
+      const from = Math.max(c.offset, toSource(c, start));
+      const to = Math.min(c.offset + c.length, toSource(c, end));
+      if (to <= from) continue;
+      c.envelope = sortPoints(muteRange(c.envelope ?? [], from, to, ramp));
+      c.showEnvelope = true;
+    }
   }
   return p;
+}
+
+/**
+ * Projects saved with the short-lived per-track volume lines: copies a track's line onto
+ * each of its clips (converted to source frames).
+ */
+export function migrateTrackEnvelope(points: EnvelopePoint[] | undefined, clips: Clip[], show: boolean): void {
+  if (!points?.length) return;
+  for (const c of clips) {
+    if (c.envelope?.length) continue;
+    const inside = points.filter((q) => q.pos > c.start && q.pos < c.start + c.length);
+    const edges = [c.start, c.start + c.length].map((pos) => ({ pos, db: envelopeDbAt(points, pos) }));
+    const all = [edges[0], ...inside, edges[1]];
+    if (all.every((q) => q.db === 0)) continue;
+    c.envelope = all.map((q) => ({ pos: toSource(c, q.pos), db: q.db }));
+    c.showEnvelope = show;
+  }
 }

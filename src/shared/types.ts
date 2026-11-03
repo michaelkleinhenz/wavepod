@@ -16,6 +16,10 @@ export interface Clip {
   gain: number;
   fadeIn: Frames;
   fadeOut: Frames;
+  /** Volume line; point positions are frames in the source file (so trims and splits keep them in place). */
+  envelope?: EnvelopePoint[];
+  /** Volume line is drawn and editable on the clip. */
+  showEnvelope?: boolean;
 }
 
 export interface Track {
@@ -38,13 +42,9 @@ export interface Track {
   muteRegions?: MuteRegion[];
   /** Filter stack, processed top to bottom before track gain and pan. */
   fx?: Fx[];
-  /** Volume line: gain points in timeline order (none = 0 dB throughout). */
-  envelope?: EnvelopePoint[];
-  /** Volume line is drawn and editable on the timeline. */
-  showEnvelope?: boolean;
 }
 
-/** One point of a track's volume line. */
+/** One point of a clip's volume line. */
 export interface EnvelopePoint {
   pos: Frames;
   /** Gain in dB; at or below -60 the track is silent. */

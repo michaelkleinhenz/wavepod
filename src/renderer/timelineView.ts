@@ -8,7 +8,7 @@ import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { coughDown, coughUp, dropMarker, importAudioFiles, muteSelection, rippleCut, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
-import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeDbAt, setEnvelope } from '../core/envelope';
+import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
@@ -30,6 +30,10 @@ const ENV_HIT_PX = 5;
 const SNAP_PX = 8;
 const RANGE_EDGE_PX = 5;
 const SNAP_KEY = 'soundpod.timeline.snap';
+/** While a clip is dragged to another track, horizontal movement below this keeps its position (sync). */
+const TRACK_MOVE_LOCK_PX = 20;
+/** Volume-line toggle shown at the top left of a hovered clip (offsets from the clip's top left). */
+const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
 
 type Drag =
   | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean }
@@ -37,8 +41,8 @@ type Drag =
   | { kind: 'fade'; clipId: string; side: 'in' | 'out'; startX: number; orig: Clip; moved: boolean }
   | { kind: 'range'; startFrame: number; endFrame: number; startTrack: number | null; endTrack: number | null }
   | { kind: 'rangeEdge'; fixed: number; current: number; tracks: string[] | null; moved: boolean }
-  | { kind: 'envPoint'; trackId: string; index: number; orig: EnvelopePoint[]; moved: boolean }
-  | { kind: 'envLine'; trackId: string; indices: number[]; orig: EnvelopePoint[]; startY: number; moved: boolean }
+  | { kind: 'envPoint'; clipId: string; ti: number; index: number; orig: EnvelopePoint[]; moved: boolean }
+  | { kind: 'envLine'; clipId: string; ti: number; indices: number[]; orig: EnvelopePoint[]; startY: number; moved: boolean }
   | { kind: 'marker'; markerId: string; startX: number; origPos: number; dx: number; moved: boolean }
   | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean };
 
@@ -282,15 +286,6 @@ export class TimelineView {
               },
               t.fx?.some((f) => f.enabled) ? `FX ${t.fx.filter((f) => f.enabled).length}` : 'FX',
             ),
-            h(
-              'button',
-              {
-                class: `fx-btn env-btn${t.showEnvelope ? ' active' : ''}`,
-                title: 'Show the volume line: double-click it to add points, drag points or the line up and down',
-                onclick: () => store.patch((p) => updateTrack(p, t.id, { showEnvelope: !t.showEnvelope })),
-              },
-              'Vol',
-            ),
             h('span', { class: 'gain-label', title: 'Track gain' }, `${t.gain > 0 ? '+' : ''}${t.gain.toFixed(1)} dB`),
             h('input', {
               type: 'range',
@@ -533,7 +528,6 @@ export class TimelineView {
       for (const clip of t.clips) if (!this.isDragged(clip.id)) this.drawClip(ctx, t, i, clip);
       if (recording && t.kind === 'soundboard') this.drawLiveJingles(ctx, y);
       this.drawMuteRegions(ctx, t, y);
-      if (t.showEnvelope) this.drawEnvelope(ctx, t, i);
       if (recording && t.armed && t.inputChannels.length) {
         const x0 = this.xOf(store.recordStart);
         const x1 = this.xOf(store.transport.position);
@@ -612,84 +606,112 @@ export class TimelineView {
     return Math.round(ampToDb(Math.pow(frac * Math.cbrt(envAmp(ENV_MAX_DB)), 3)) * 10) / 10;
   }
 
-  private drawEnvelope(ctx: CanvasRenderingContext2D, t: Track, ti: number): void {
-    const points = t.envelope ?? [];
+  /** Timeline x of a source-frame position of a clip drawn at `g`. */
+  private envX(g: { x: number; offset: number }, pos: number): number {
+    return g.x + ((pos - g.offset) / this.sr) * this.pxPerSec;
+  }
+
+  /** The clip's volume line, drawn inside the clip at its (possibly dragged) geometry. */
+  private drawClipEnvelope(ctx: CanvasRenderingContext2D, clip: Clip, g: { x: number; w: number; offset: number; trackIndex: number }): void {
+    const ti = g.trackIndex;
+    const points = clip.envelope ?? [];
     const framesPerPx = this.sr / this.pxPerSec;
+    const x0 = Math.max(0, Math.floor(g.x));
+    const x1 = Math.min(this.width, Math.ceil(g.x + g.w));
+    if (x1 <= x0) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(g.x, ti * TRACK_H, g.w, TRACK_H);
+    ctx.clip();
     ctx.strokeStyle = '#69f0ae';
     ctx.lineWidth = 1.5;
-    // one sample per pixel (gain is interpolated linearly, so the dB line curves), plus the exact
-    // corners at the points so steps and steep ramps stay sharp
+    // one sample per pixel (interpolated in dB, so the line curves on the fader scale), plus the
+    // exact corners at the points so steps and steep ramps stay sharp
     ctx.beginPath();
     let k = 0;
-    for (let x = 0; x <= this.width; x++) {
-      for (; k < points.length && this.xOf(points[k].pos) <= x; k++) {
-        const px = this.xOf(points[k].pos);
-        if (px >= 0) ctx.lineTo(px, this.yOfDb(points[k].db, ti));
+    for (let x = x0; x <= x1; x++) {
+      for (; k < points.length && this.envX(g, points[k].pos) <= x; k++) {
+        const px = this.envX(g, points[k].pos);
+        if (px >= x0) ctx.lineTo(px, this.yOfDb(points[k].db, ti));
       }
-      const y = this.yOfDb(envelopeDbAt(points, this.viewStart * this.sr + x * framesPerPx), ti);
-      if (x === 0) ctx.moveTo(x, y);
+      const y = this.yOfDb(envelopeDbAt(points, g.offset + (x - g.x) * framesPerPx), ti);
+      if (x === x0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
     ctx.lineWidth = 1;
-    ctx.fillStyle = '#69f0ae';
-    ctx.strokeStyle = '#0f1014';
     const d = this.drag;
+    const active = (d?.kind === 'envPoint' || d?.kind === 'envLine') && d.clipId === clip.id && d.moved ? d : null;
     for (let i = 0; i < points.length; i++) {
-      const x = this.xOf(points[i].pos);
-      if (x < -5 || x > this.width + 5) continue;
+      const x = this.envX(g, points[i].pos);
+      if (x < x0 - 5 || x > x1 + 5) continue;
       const y = this.yOfDb(points[i].db, ti);
+      ctx.fillStyle = '#69f0ae';
+      ctx.strokeStyle = '#0f1014';
       ctx.fillRect(x - 3, y - 3, 6, 6);
       ctx.strokeRect(x - 3.5, y - 3.5, 7, 7);
-      if (d?.kind === 'envPoint' && d.trackId === t.id && d.index === i) {
+      const label = active && (active.kind === 'envPoint' ? active.index === i : active.indices[0] === i);
+      if (label) {
         ctx.fillStyle = '#e0f2f1';
         ctx.font = '10px system-ui, sans-serif';
         ctx.textBaseline = 'bottom';
         ctx.fillText(formatDb(points[i].db), x + 6, y - 2);
-        ctx.fillStyle = '#69f0ae';
       }
     }
-    if (d?.kind === 'envLine' && d.trackId === t.id && d.moved) {
-      const pt = points[d.indices[0]];
-      if (pt) {
-        ctx.fillStyle = '#e0f2f1';
-        ctx.font = '10px system-ui, sans-serif';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(formatDb(pt.db), Math.max(4, this.xOf(pt.pos) + 6), this.yOfDb(pt.db, ti) - 2);
-      }
-    }
+    ctx.restore();
   }
 
-  /** Point or line segment of a visible volume line under the mouse. */
-  private hitEnvelope(x: number, y: number): { track: Track; ti: number; point: number | null; frame: number } | null {
-    const ti = Math.floor(y / TRACK_H);
-    const track = store.project.tracks[ti];
-    if (!track?.showEnvelope) return null;
-    if (y < this.envTop(ti) - ENV_HIT_PX || y > this.envBottom(ti) + ENV_HIT_PX) return null;
-    const points = track.envelope ?? [];
+  /** Point or line of a visible clip volume line under the mouse. */
+  private hitEnvelope(x: number, y: number): { clip: Clip; ti: number; point: number | null; src: number } | null {
+    const area = this.inEnvelopeArea(x, y, ENV_HIT_PX);
+    if (!area) return null;
+    const { clip, ti } = area;
+    const g = { x: this.xOf(clip.start), offset: clip.offset };
+    const points = clip.envelope ?? [];
     let best: number | null = null;
     let bestD = Infinity;
     for (let i = 0; i < points.length; i++) {
-      const dx = Math.abs(x - this.xOf(points[i].pos));
+      const dx = Math.abs(x - this.envX(g, points[i].pos));
       const dy = Math.abs(y - this.yOfDb(points[i].db, ti));
       if (dx <= ENV_HIT_PX && dy <= ENV_HIT_PX && dx + dy < bestD) {
         best = i;
         bestD = dx + dy;
       }
     }
-    const frame = this.frameOf(x);
-    if (best !== null) return { track, ti, point: best, frame };
-    if (Math.abs(y - this.yOfDb(envelopeDbAt(points, frame), ti)) <= ENV_HIT_PX - 1) return { track, ti, point: null, frame };
+    const src = toSource(clip, this.frameOf(x));
+    if (best !== null) return { clip, ti, point: best, src };
+    if (Math.abs(y - this.yOfDb(envelopeDbAt(points, src), ti)) <= ENV_HIT_PX - 1) return { clip, ti, point: null, src };
     return null;
   }
 
-  /** True if (x, y) is inside the volume line area of a track that shows it. */
-  private inEnvelopeArea(x: number, y: number): { track: Track; ti: number } | null {
+  /** The clip whose visible volume line area contains (x, y). */
+  private inEnvelopeArea(x: number, y: number, slack = 0): { clip: Clip; ti: number } | null {
     const ti = Math.floor(y / TRACK_H);
     const track = store.project.tracks[ti];
-    if (!track?.showEnvelope || x < 0) return null;
-    if (y < ti * TRACK_H + FADE_ZONE_PX + 4 || y > this.envBottom(ti) + 2) return null;
-    return { track, ti };
+    if (!track) return null;
+    if (y < Math.max(ti * TRACK_H + FADE_ZONE_PX + 4, this.envTop(ti) - slack) || y > this.envBottom(ti) + slack) return null;
+    for (let k = track.clips.length - 1; k >= 0; k--) {
+      const clip = track.clips[k];
+      if (!clip.showEnvelope) continue;
+      if (x >= this.xOf(clip.start) && x <= this.xOf(clip.start + clip.length)) return { clip, ti };
+    }
+    return null;
+  }
+
+  /** The volume-line toggle at the top left of a clip. */
+  private hitVolButton(x: number, y: number): Clip | null {
+    const ti = Math.floor(y / TRACK_H);
+    const track = store.project.tracks[ti];
+    if (!track) return null;
+    const top = ti * TRACK_H + 4;
+    for (let k = track.clips.length - 1; k >= 0; k--) {
+      const clip = track.clips[k];
+      const x0 = this.xOf(clip.start);
+      const w = (clip.length / this.sr) * this.pxPerSec;
+      if (w < VOL_BTN.x + VOL_BTN.w + 8) continue;
+      if (x >= x0 + VOL_BTN.x && x <= x0 + VOL_BTN.x + VOL_BTN.w && y >= top + VOL_BTN.y && y <= top + VOL_BTN.y + VOL_BTN.h) return clip;
+    }
+    return null;
   }
 
   /** Regions as drawn, including one being dragged and a cough button being held. */
@@ -842,9 +864,10 @@ export class TimelineView {
           if (lo < mn) mn = lo;
           if (hi > mx) mx = hi;
         }
-        const env = fadeEnvelope(clip, relA);
-        const top = mid - mx * amp * env;
-        const bot = mid - mn * amp * env;
+        // the waveform shows the clip as it sounds: fades and volume line applied
+        const env = fadeEnvelope(clip, relA) * envelopeAmpAt(clip.envelope, g.offset + Math.max(0, relA));
+        const top = Math.max(g.y + 4, mid - mx * amp * env);
+        const bot = Math.min(g.y + hgt - 1, mid - mn * amp * env);
         ctx.fillRect(x, top, 1, Math.max(1, bot - top));
       }
     } else if (!peaks) {
@@ -894,6 +917,20 @@ export class TimelineView {
         const lx = fadeDrag.side === 'in' ? g.x + fi + 6 : g.x + g.w - fo - 6 - ctx.measureText(label).width;
         ctx.fillText(label, lx, g.y + 20);
       }
+    }
+    if (clip.showEnvelope) this.drawClipEnvelope(ctx, clip, g);
+    // volume-line toggle, shown while hovering (and while the line is visible)
+    if ((this.hoverClipId === clip.id || clip.showEnvelope) && g.w >= VOL_BTN.x + VOL_BTN.w + 8 && !this.drag) {
+      const bx = g.x + VOL_BTN.x;
+      const by = g.y + VOL_BTN.y;
+      ctx.fillStyle = clip.showEnvelope ? 'rgba(105,240,174,0.28)' : 'rgba(15,16,20,0.45)';
+      ctx.fillRect(bx, by, VOL_BTN.w, VOL_BTN.h);
+      ctx.strokeStyle = clip.showEnvelope ? 'rgba(105,240,174,0.8)' : 'rgba(255,255,255,0.35)';
+      ctx.strokeRect(bx + 0.5, by + 0.5, VOL_BTN.w - 1, VOL_BTN.h - 1);
+      ctx.fillStyle = clip.showEnvelope ? '#b9f6ca' : 'rgba(255,255,255,0.75)';
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Vol', bx + 6, by + VOL_BTN.h / 2 + 0.5);
     }
     ctx.strokeStyle = selected ? '#9ab8ff' : '#11131a';
     ctx.strokeRect(g.x + 0.5, g.y + 0.5, g.w - 1, hgt - 1);
@@ -1061,6 +1098,11 @@ export class TimelineView {
         this.canvas.title = hit.fade === 'in' ? 'Drag to fade in' : 'Drag to fade out';
         return;
       }
+      if (this.hitVolButton(x, y)) {
+        this.canvas.style.cursor = 'pointer';
+        this.canvas.title = 'Show or hide this clip\'s volume line';
+        return;
+      }
       const env = this.hitEnvelope(x, y);
       if (env) {
         this.canvas.style.cursor = env.point !== null ? 'move' : 'ns-resize';
@@ -1082,17 +1124,18 @@ export class TimelineView {
       }
       if (lane) return;
       // volume line: double-click a point to remove it, anywhere else on the track to add one on the line
+      if (this.hitVolButton(x, y)) return;
       const env = this.hitEnvelope(x, y);
       if (env && env.point !== null) {
         const index = env.point;
-        store.edit((p) => setEnvelope(p, env.track.id, (env.track.envelope ?? []).filter((_, i) => i !== index)));
+        store.edit((p) => setClipEnvelope(p, env.clip.id, (env.clip.envelope ?? []).filter((_, i) => i !== index)));
         return;
       }
       const area = env ?? this.inEnvelopeArea(x, y);
       if (area && !this.hitClip(x, y)?.fade) {
-        const pts = area.track.envelope ?? [];
-        const f = this.frameOf(x);
-        store.edit((p) => setEnvelope(p, area.track.id, addPoint(pts, f, envelopeDbAt(pts, f)).points));
+        const pts = area.clip.envelope ?? [];
+        const src = toSource(area.clip, this.frameOf(x));
+        store.edit((p) => setClipEnvelope(p, area.clip.id, addPoint(pts, src, envelopeDbAt(pts, src)).points));
       }
     });
 
@@ -1129,26 +1172,33 @@ export class TimelineView {
         this.drag = { kind: 'fade', clipId: hit.clip.id, side: hit.fade, startX: e.clientX, orig: { ...hit.clip }, moved: false };
         return;
       }
-      // 3. volume line points and segments
+      // 3. the clip's volume-line toggle
+      const volClip = this.hitVolButton(x, y);
+      if (volClip) {
+        store.edit((p) => updateClip(p, volClip.id, { showEnvelope: !volClip.showEnvelope }));
+        return;
+      }
+      // 4. volume line points and segments
       const env = this.hitEnvelope(x, y);
       if (env) {
-        const orig = env.track.envelope ?? [];
+        const orig = env.clip.envelope ?? [];
+        const base = { clipId: env.clip.id, ti: env.ti, startY: e.clientY, moved: false };
         if (env.point !== null) {
-          this.drag = { kind: 'envPoint', trackId: env.track.id, index: env.point, orig, moved: false };
+          this.drag = { kind: 'envPoint', clipId: env.clip.id, ti: env.ti, index: env.point, orig, moved: false };
         } else if (!orig.length) {
           // no points yet: the first drag creates one and moves the whole line
-          this.drag = { kind: 'envLine', trackId: env.track.id, indices: [0], orig: [{ pos: env.frame, db: 0 }], startY: e.clientY, moved: false };
+          this.drag = { kind: 'envLine', ...base, indices: [0], orig: [{ pos: env.src, db: 0 }] };
         } else {
           // the two points around the mouse (one at either end of the line)
-          let i1 = orig.findIndex((p) => p.pos > env.frame);
+          let i1 = orig.findIndex((p) => p.pos > env.src);
           if (i1 < 0) i1 = orig.length;
           const indices = [i1 - 1, i1].filter((i) => i >= 0 && i < orig.length);
-          this.drag = { kind: 'envLine', trackId: env.track.id, indices, orig, startY: e.clientY, moved: false };
+          this.drag = { kind: 'envLine', ...base, indices, orig };
         }
         this.draw();
         return;
       }
-      // 4. clips: trim edges or move
+      // 5. clips: trim edges or move
       if (hit) {
         const sel = new Set(e.shiftKey ? store.selection.clipIds : []);
         if (e.shiftKey && sel.has(hit.clip.id)) sel.delete(hit.clip.id);
@@ -1175,7 +1225,7 @@ export class TimelineView {
           };
         }
       } else {
-        // 5. empty space: select a time range on the tracks dragged across
+        // 6. empty space: select a time range on the tracks dragged across
         const f = this.snappedFrame(x, e);
         store.select({ clipIds: new Set(), markerId: null });
         const row = Math.max(0, Math.min(store.project.tracks.length - 1, ti));
@@ -1192,10 +1242,13 @@ export class TimelineView {
         const dx = e.clientX - d.startX;
         d.dTrack = Math.max(d.minDTrack, Math.min(d.maxDTrack, Math.round((e.clientY - d.startY) / TRACK_H)));
         if (Math.abs(dx) > 3 || d.dTrack) d.moved = true;
-        let delta = framesOf(dx);
+        // moving to another track with little sideways movement keeps the position, so tracks stay in sync
+        const locked = d.dTrack !== 0 && Math.abs(dx) < TRACK_MOVE_LOCK_PX;
+        let delta = locked ? 0 : framesOf(dx);
+        this.snapLine = null;
         // snap the dragged clip's start or end to edges of the clips that stay put
         const clip = store.project.tracks.flatMap((t) => t.clips).find((c) => c.id === d.clipId);
-        if (clip && d.moved) delta += this.snapDelta([clip.start + delta, clip.start + clip.length + delta], d.ids, e);
+        if (clip && d.moved && !locked) delta += this.snapDelta([clip.start + delta, clip.start + clip.length + delta], d.ids, e);
         // no selected clip may move before zero
         const minStart = Math.min(...store.project.tracks.flatMap((t) => t.clips.filter((c) => d.ids.has(c.id)).map((c) => c.start)));
         d.delta = Math.max(-minStart, delta);
@@ -1231,18 +1284,19 @@ export class TimelineView {
         this.draw();
       } else if (d.kind === 'envPoint') {
         d.moved = true;
-        const ti = store.project.tracks.findIndex((t) => t.id === d.trackId);
-        const prev = d.orig[d.index - 1]?.pos ?? 0;
-        const next = d.orig[d.index + 1]?.pos ?? Infinity;
-        const pts = d.orig.map((p) => ({ ...p }));
-        pts[d.index] = { pos: Math.max(prev, Math.min(next, this.frameOf(pos.x))), db: this.dbOfY(pos.y, ti) };
-        store.editLive((p) => setEnvelope(p, d.trackId, pts));
+        const clip = store.project.tracks[d.ti]?.clips.find((c) => c.id === d.clipId);
+        if (clip) {
+          const prev = d.orig[d.index - 1]?.pos ?? clip.offset;
+          const next = d.orig[d.index + 1]?.pos ?? clip.offset + clip.length;
+          const pts = d.orig.map((p) => ({ ...p }));
+          pts[d.index] = { pos: Math.max(prev, Math.min(next, toSource(clip, this.frameOf(pos.x)))), db: this.dbOfY(pos.y, d.ti) };
+          store.editLive((p) => setClipEnvelope(p, d.clipId, pts));
+        }
       } else if (d.kind === 'envLine') {
         d.moved = true;
-        const ti = store.project.tracks.findIndex((t) => t.id === d.trackId);
         const dy = e.clientY - d.startY;
-        const pts = d.orig.map((p, i) => (d.indices.includes(i) ? { pos: p.pos, db: this.dbOfY(this.yOfDb(p.db, ti) + dy, ti) } : { ...p }));
-        store.editLive((p) => setEnvelope(p, d.trackId, pts));
+        const pts = d.orig.map((p, i) => (d.indices.includes(i) ? { pos: p.pos, db: this.dbOfY(this.yOfDb(p.db, d.ti) + dy, d.ti) } : { ...p }));
+        store.editLive((p) => setClipEnvelope(p, d.clipId, pts));
       } else if (d.kind === 'marker') {
         d.dx = e.clientX - d.startX;
         if (Math.abs(d.dx) > 3) d.moved = true;
