@@ -13,6 +13,8 @@ const BUFFER_SIZES = [128, 256, 512, 1024, 2048];
 export class SetupView {
   readonly el = h('div', { class: 'view setup-view' });
   private meterEls: Array<{ bar: HTMLElement; db: HTMLElement }> = [];
+  /** Opens the template dialogs (set by the app shell). */
+  onTemplates?: { start: () => void; save: () => void };
 
   async refreshDevices(): Promise<void> {
     try {
@@ -142,7 +144,7 @@ export class SetupView {
       ),
     );
 
-    this.el.append(deviceCard, this.renderChannels(store.profile, s.inputChannelCount), renderMidiCard());
+    this.el.append(deviceCard, this.renderChannels(store.profile, s.inputChannelCount), renderMidiCard(), this.renderTemplates());
   }
 
   private renderChannels(profile: DeviceProfile | null, channelCount: number): HTMLElement {
@@ -216,6 +218,21 @@ export class SetupView {
     }
     card.append(list);
     return card;
+  }
+
+  private renderTemplates(): HTMLElement {
+    return h(
+      'section',
+      { class: 'card' },
+      h('h2', null, 'Templates'),
+      h(
+        'div',
+        { class: 'row' },
+        h('button', { onclick: () => this.onTemplates?.start() }, 'New episode from template…'),
+        h('button', { disabled: !store.project.tracks.length, onclick: () => this.onTemplates?.save() }, 'Save setup as template…'),
+        h('span', { class: 'muted' }, 'Tracks, input channels, filters and soundboard, without recordings.'),
+      ),
+    );
   }
 
   updateMeters(): void {

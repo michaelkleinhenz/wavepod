@@ -29,6 +29,7 @@ import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
 import { midi } from './midi';
 import { SetupView } from './setupView';
+import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
 import { TimelineView } from './timelineView';
@@ -56,6 +57,8 @@ async function main(): Promise<void> {
   const exportDialog = new ExportDialog();
   const loudnessDialog = new LoudnessDialog();
   const fxPanel = new FxPanel();
+  const templates = new TemplateDialog();
+  setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
   timeline.onOpenLoudness = () => loudnessDialog.open();
 
@@ -192,6 +195,9 @@ async function main(): Promise<void> {
     switch (cmd) {
       case 'new-project': return void newProject();
       case 'open-project': return void openProject();
+      case 'new-from-template': return void templates.openNew();
+      case 'save-template': return void templates.openSave();
+      case 'show-templates-folder': return void api().showTemplatesFolder();
       case 'import-audio': return void importAudioFiles();
       case 'import-chapters': return void importChapterFile();
       case 'export': return exportDialog.open();

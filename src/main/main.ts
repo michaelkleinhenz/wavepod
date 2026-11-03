@@ -14,6 +14,7 @@ import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
 import { createProjectDir, isProjectDir, loadProject, saveProject } from './projectStore';
+import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 
 interface Settings {
@@ -49,6 +50,16 @@ function saveSettings(): void {
 
 function projectsRoot(): string {
   return process.env.SOUNDPOD_PROJECT_ROOT ?? path.join(app.getPath('documents'), 'SoundPod');
+}
+
+function templatesRoot(): string {
+  return path.join(projectsRoot(), 'Templates');
+}
+
+/** Name of the open input device, stored with a template as a hint for its channel mapping. */
+function inputDeviceName(): string | undefined {
+  const id = engine.config.inputDeviceId;
+  return id === null ? undefined : engine.listDevices().find((d) => d.id === id)?.name;
 }
 
 let settings: Settings;
@@ -157,6 +168,22 @@ const handlers: Record<InvokeMethod, Handler> = {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(flushSave, 400);
   },
+  listTemplates: () => listTemplates(templatesRoot()),
+  saveTemplate: (name: string) => {
+    flushSave();
+    return saveTemplate(templatesRoot(), current.project, current.dir, name, inputDeviceName());
+  },
+  deleteTemplate: (id: string) => deleteTemplate(templatesRoot(), id),
+  newProjectFromTemplate: (id: string) => {
+    if (engine.transportState !== 'stopped') engine.stop();
+    flushSave();
+    const { dir } = createProjectFromTemplate(projectsRoot(), templatesRoot(), id, engine.config.sampleRate);
+    return openProjectDir(dir);
+  },
+  showTemplatesFolder: () => {
+    fs.mkdirSync(templatesRoot(), { recursive: true });
+    return shell.openPath(templatesRoot()).then(() => undefined);
+  },
   getPeaks: (file: string) => engine.getPeaks(file),
   showProjectFolder: () => shell.openPath(current.dir).then(() => undefined),
 
@@ -168,7 +195,8 @@ const handlers: Record<InvokeMethod, Handler> = {
     });
     return res.canceled ? [] : res.filePaths;
   },
-  readFile: (p: string) => new Uint8Array(fs.readFileSync(p)),
+  // Relative paths (e.g. soundboard jingles copied from a template) are inside the project folder.
+  readFile: (p: string) => new Uint8Array(fs.readFileSync(path.resolve(current.dir, p))),
   importAudio: (name: string, channels: Float32Array[], sampleRate: number) => {
     const media = path.join(current.dir, 'media');
     fs.mkdirSync(media, { recursive: true });
@@ -268,7 +296,11 @@ function buildMenu(): void {
       label: 'File',
       submenu: [
         { label: 'New Episode', accelerator: 'CmdOrCtrl+N', click: menuSend('new-project') },
+        { label: 'New Episode from Template…', accelerator: 'Shift+CmdOrCtrl+N', click: menuSend('new-from-template') },
         { label: 'Open Episode…', accelerator: 'CmdOrCtrl+O', click: menuSend('open-project') },
+        { type: 'separator' },
+        { label: 'Save as Template…', click: menuSend('save-template') },
+        { label: 'Show Templates Folder', click: menuSend('show-templates-folder') },
         { type: 'separator' },
         { label: 'Import Audio…', accelerator: 'CmdOrCtrl+I', click: menuSend('import-audio') },
         { label: 'Import Chapters…', click: menuSend('import-chapters') },
