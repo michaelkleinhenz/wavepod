@@ -34,8 +34,14 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   **VST3 plug-ins** work in the same stack, with plain sliders instead of
   the plug-in's own window; they run in a separate process, so a crashing
   plug-in can't take a recording down.
-- **Loudness**: EBU R128 analysis per track and mix, normalisation to −16 /
-  −19 / −23 LUFS with a peak ceiling.
+- **Loudness**: EBU R128 analysis of the mix, every track or selected clips
+  (Loudness… in the toolbar, `Shift+Ctrl+L`) with the figures Ultraschall
+  shows: integrated, loudness range (LRA), short-term and momentary maximum,
+  true peak and sample peak, plus a short-term loudness curve against the
+  target. **Normalise** (`Alt+Shift+N`) sets the clip gain of the selected
+  clips so each reaches the target (−16 LUFS by default) without the true
+  peak going over the ceiling. The export normalises the mix to −16 / −19 /
+  −23 LUFS with a peak ceiling.
 - **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter
   files (Podlove Simple Chapters, Podcasting 2.0 JSON, mp4chaps, Audacity
   labels).

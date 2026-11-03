@@ -129,6 +129,30 @@ main { flex: 1; min-height: 0; display: flex; }
 table.markers, table.loudness { width: 100%; border-collapse: collapse; }
 table.markers th, table.loudness th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px; }
 table.markers td, table.loudness td { padding: 3px 4px; border-top: 1px solid var(--border); }
+table.loudness td { font-variant-numeric: tabular-nums; }
+table.loudness td.lu.ok { color: #81c784; }
+table.loudness td.lu.warn { color: var(--warn); }
+table.loudness td.lu.bad { color: #e57373; }
+table.loudness tr.pick { cursor: pointer; }
+table.loudness tr.pick:hover td { background: #22262f; }
+table.loudness tr.selected td { background: #262c3a; }
+/* loudness analysis dialog */
+.loudness-dialog { width: min(820px, 94vw); }
+.loudness-dialog > p { margin: -6px 0 12px; }
+.loudness-target { gap: 16px; margin-bottom: 12px; }
+.loudness-empty { padding: 40px 0; text-align: center; }
+.loudness-empty.error { color: #e57373; }
+.lu-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.lu-tile { background: #121419; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.lu-label { font-size: 11px; color: var(--muted); }
+.lu-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lu-note { font-size: 10px; color: var(--warn); margin-top: 2px; }
+.lu-tile.ok { border-color: #2e6b3a; } .lu-tile.ok .lu-value { color: #81c784; }
+.lu-tile.warn { border-color: #6b5023; } .lu-tile.warn .lu-value { color: var(--warn); }
+.lu-tile.bad { border-color: #6b2e2e; } .lu-tile.bad .lu-value { color: #e57373; }
+.lu-curve-wrap { margin-bottom: 12px; }
+.lu-curve-label { font-size: 11px; margin-bottom: 4px; }
+.lu-curve { display: block; border-radius: 6px; }
 table.markers tr.selected td { background: #2a3142; }
 table.markers input { width: 100%; background: transparent; border-color: transparent; }
 table.markers input:hover, table.markers input:focus { border-color: var(--border); background: var(--panel-2); }

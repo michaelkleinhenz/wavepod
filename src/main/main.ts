@@ -195,6 +195,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     return runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, (p) => send(IPC.exportProgress, p));
   },
   measureLoudness: () => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir }),
+  measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
   revealFile: (p: string) => shell.showItemInFolder(p),
 
   vstStatus: () => ({ available: !!vstExe, dirs: defaultVstDirs() }),
@@ -272,6 +273,9 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Ripple Cut', accelerator: 'CmdOrCtrl+X', click: menuSend('ripple-cut') },
         { label: 'Mute Selection', accelerator: 'CmdOrCtrl+Y', click: menuSend('mute-selection') },
+        { type: 'separator' },
+        { label: 'Normalize Clip Loudness', accelerator: 'Alt+Shift+N', click: menuSend('normalize-clips') },
+        { label: 'Loudness Analysis…', accelerator: 'Shift+CmdOrCtrl+L', click: menuSend('loudness-analysis') },
         { type: 'separator' },
         { role: 'copy' },
         { role: 'paste' },

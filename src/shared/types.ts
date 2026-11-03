@@ -286,8 +286,34 @@ export interface ExportProgress {
   fraction: number;
 }
 
-export interface LoudnessReport {
-  trackId: string | 'master';
+/**
+ * Loudness figures of a piece of audio, as Ultraschall (via SWS loudness
+ * analysis) shows them. Silent material reads −Infinity.
+ */
+export interface LoudnessStats {
+  /** Integrated (programme) loudness, gated, in LUFS. */
   integrated: number;
-  peakDb: number;
+  /** Loudness range (LRA) in LU. */
+  range: number;
+  /** Highest short-term loudness (3 s window) in LUFS. */
+  shortTermMax: number;
+  /** Highest momentary loudness (400 ms window) in LUFS. */
+  momentaryMax: number;
+  /** True peak (4x oversampled) in dBTP. */
+  truePeak: number;
+  /** Sample peak in dBFS. */
+  samplePeak: number;
+  /** Seconds of audio measured. */
+  duration: number;
+  /** Short-term loudness curve in LUFS, one value per `historyStep` seconds (after the first 3 s). */
+  history: number[];
+  historyStep: number;
+}
+
+export interface LoudnessReport {
+  kind: 'mix' | 'track' | 'clip';
+  /** Track or clip id ('mix' for the mix). */
+  id: string;
+  name: string;
+  stats: LoudnessStats;
 }

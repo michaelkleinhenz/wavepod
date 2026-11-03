@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Mp3Encoder } from '@breezystack/lamejs';
-import type { ExportOptions, ExportProgress, ExportResult, Project, Track } from '../shared/types';
+import type { ExportOptions, ExportProgress, ExportResult, LoudnessStats, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from './chapters';
 import { buildId3Tag } from './id3';
@@ -44,13 +44,13 @@ function renderRange(
   }
 }
 
-export function measureLoudness(project: Project, projectDir: string, tracks?: Track[]): { integrated: number; peakDb: number } {
+export function measureLoudness(project: Project, projectDir: string, tracks?: Track[]): LoudnessStats {
   const readers = new ReaderCache(projectDir);
   const mixer = new Mixer(project, readers);
   try {
     const meter = new LoudnessMeter(project.sampleRate, 2);
     renderRange(mixer, 0, projectLength(project), tracks ?? null, (b, n) => meter.push(b, n));
-    return { integrated: meter.integrated(), peakDb: meter.peakDb() };
+    return meter.stats();
   } finally {
     mixer.dispose();
     readers.closeAll();

@@ -1,13 +1,10 @@
 // Export dialog: formats, loudness target, stems, chapter files, range, progress.
 import type { ExportOptions, LoudnessReport } from '../shared/types';
 import { clear, errorMessage, h, toast } from './dom';
+import { LOUDNESS_PRESETS, loudnessTable } from './loudnessDialog';
 import { api, store } from './store';
 
-const PRESETS = [
-  { label: 'Podcast stereo (−16 LUFS)', value: -16 },
-  { label: 'Podcast mono / Apple (−19 LUFS)', value: -19 },
-  { label: 'EBU R128 broadcast (−23 LUFS)', value: -23 },
-];
+const PRESETS = LOUDNESS_PRESETS;
 
 export class ExportDialog {
   private overlay = h('div', { class: 'overlay' });
@@ -58,26 +55,7 @@ export class ExportDialog {
         this.render();
       });
 
-    const loudnessRows = this.loudness
-      ? h(
-          'table',
-          { class: 'loudness' },
-          h('thead', null, h('tr', null, h('th', null, 'Source'), h('th', null, 'Integrated'), h('th', null, 'Peak'))),
-          h(
-            'tbody',
-            null,
-            ...this.loudness.map((r) =>
-              h(
-                'tr',
-                null,
-                h('td', null, r.trackId === 'master' ? 'Mix' : store.project.tracks.find((t) => t.id === r.trackId)?.name ?? '?'),
-                h('td', null, Number.isFinite(r.integrated) ? `${r.integrated.toFixed(1)} LUFS` : '—'),
-                h('td', null, Number.isFinite(r.peakDb) ? `${r.peakDb.toFixed(1)} dBFS` : '—'),
-              ),
-            ),
-          ),
-        )
-      : null;
+    const loudnessRows = this.loudness ? loudnessTable(this.loudness, { lufs: o.targetLufs, ceiling: o.peakCeiling }) : null;
 
     const dialog = h(
       'div',

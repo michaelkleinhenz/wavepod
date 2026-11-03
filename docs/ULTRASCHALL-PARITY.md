@@ -26,7 +26,8 @@ Sources: the [Ultraschall feature page](https://ultraschall.fm/) and the
 | Split (`S`), fades by dragging, ripple cut across all tracks | ✅ split, trim, fades by dragging clip corners, ripple cut (`Ctrl+X`), resizable time selection, snapping to clip edges |
 | Volume envelope per track, mute a selection (`Ctrl+Y`) | ✅ volume line with points, `Ctrl+Y` bends it to silence the selected range |
 | Mute/solo per track | ✅ |
-| Loudness normalisation | ✅ EBU R128 to −16 / −19 / −23 LUFS (Ultraschall: ~−18 LUFS) |
+| Loudness normalisation | ✅ EBU R128 to −16 / −19 / −23 LUFS (Ultraschall: ~−18 LUFS), at export and per clip |
+| Loudness analysis (integrated, LRA, short-term / momentary max, true peak) | ✅ Loudness analysis of the mix, each track or selected clips, with a short-term curve |
 | MP3 export with metadata and chapters | ✅ ID3v2 + CHAP/CTOC |
 | Chapter export for Podlove / Auphonic | ✅ PSC, Podcasting 2.0 JSON, mp4chaps, Audacity labels |
 | Multitrack / stems export (e.g. for Auphonic) | ✅ stems |
@@ -67,7 +68,7 @@ about it; the priority is explained in section 3.
 | Automatic crossfade when clips overlap, fade curve shapes | Fades are linear and per clip, overlaps just sum | **P2** Auto crossfade on overlap; linear / equal-power / S-curve |
 | Variable playback speed with constant pitch for listening through | Missing | **P2** 1×–2× playback speed (WSOLA time-stretch in the playback path only; export is always 1×) |
 | Per-track podcast effects: expander/gate, compressor, limiter, parametric EQ, De-esser, Ultraschall Dynamics; optional noise filter | ✅ Done: filter stacks on every track and the master | **P1, done** Filter stack per track and on the master (add, bypass, edit, reorder by drag or arrows): high-pass, EQ, noise gate, compressor, de-esser, limiter and a port of Ultraschall Dynamics; live and in export. VST3 plug-ins in the same stack (generated sliders, no plug-in editors). Noise reduction and reverb later |
-| Normalise selected clips (`Alt+Shift+N`) | Only whole-mix normalisation at export | **P2** Clip loudness normalisation via clip gain |
+| Normalise selected clips (`Alt+Shift+N`) | ✅ Done | **P2, done** Clip loudness normalisation via clip gain (`Alt+Shift+N`), to the target chosen in the loudness analysis |
 | Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
 | Drag-and-drop media import, drop on empty space creates a track | Import via menu | **P2** |
 | Marker ping when the playhead passes a marker | Missing | **P3** Optional |
@@ -195,7 +196,7 @@ came up during testing).
 14. **Ducking (P2).** Soundboard track ducks under speaker tracks (sidechain
     envelope from the sum of speaker tracks), on/off and depth.
 15. **More formats (P2).** FLAC and Opus export (WASM encoders in the export
-    worker); clip loudness normalisation (`Alt+Shift+N`).
+    worker). Clip loudness normalisation (`Alt+Shift+N`) is done.
 
 ### Phase 8 — Studio comfort (P3)
 
