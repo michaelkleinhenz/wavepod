@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import type { VstPluginInfo } from '../../shared/types';
 
 export function defaultVstDirs(): string[] {
-  const extra = (process.env.SOUNDPOD_VST3_PATH ?? '').split(path.delimiter).filter(Boolean);
+  const extra = (process.env.WAVEPOD_VST3_PATH ?? '').split(path.delimiter).filter(Boolean);
   return [...extra, ...platformVstDirs()];
 }
 

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { INVOKE_METHODS, IPC, type SoundPodApi } from '../shared/api';
+import { INVOKE_METHODS, IPC, type WavePodApi } from '../shared/api';
 
 function subscribe<T>(channel: string) {
   return (cb: (payload: T) => void) => {
@@ -23,4 +23,4 @@ for (const method of INVOKE_METHODS) {
   api[method] = (...args: unknown[]) => ipcRenderer.invoke(IPC.invoke, method, ...args);
 }
 
-contextBridge.exposeInMainWorld('soundpod', api as unknown as SoundPodApi);
+contextBridge.exposeInMainWorld('wavepod', api as unknown as WavePodApi);

@@ -1,5 +1,5 @@
 // Integration test for the VST3 host helper, run against the SDK's sample plug-ins.
-// Skipped unless native/vsthost was built with -DSOUNDPOD_VST3_SAMPLES=ON.
+// Skipped unless native/vsthost was built with -DWAVEPOD_VST3_SAMPLES=ON.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,7 +23,7 @@ describe.skipIf(!ready)('VST3 host helper', () => {
   let host: VstHostProcess;
 
   beforeAll(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'soundpod-vst-'));
+    dir = mkdtempSync(join(tmpdir(), 'wavepod-vst-'));
     bridge = join(dir, 'vstBridge.js');
     await esbuild.build({ entryPoints: [join(root, 'src/main/vst/bridgeWorker.ts')], outfile: bridge, bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent' });
     host = new VstHostProcess(exe!, bridge);

@@ -81,7 +81,7 @@ async function main(): Promise<void> {
   const header = h(
     'header',
     null,
-    h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' SoundPod'),
+    h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
     h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),

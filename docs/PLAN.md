@@ -1,6 +1,6 @@
-# SoundPod – Plan
+# WavePod – Plan
 
-SoundPod is a desktop DAW built for podcasting. It takes the ideas that make
+WavePod is a desktop DAW built for podcasting. It takes the ideas that make
 [Ultraschall](https://ultraschall.fm/) great — one track per speaker, chapter
 markers set live while recording, simple editing, loudness-correct export with
 chapters — and packages them as a standalone Electron app. There is no Reaper
@@ -63,7 +63,7 @@ makes 16-channel multitrack capture impossible from the renderer. `audify`
 wraps RtAudio, supports arbitrary channel counts in both directions, exposes
 device enumeration, and ships N-API prebuilt binaries for Linux, macOS and
 Windows, so packaging does not need a compiler. If the native module fails to
-load, SoundPod falls back to the simulated device so the UI keeps working and
+load, WavePod falls back to the simulated device so the UI keeps working and
 the error is shown in the Setup view.
 
 ### Data model (`project.json`)

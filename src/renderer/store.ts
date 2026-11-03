@@ -1,15 +1,15 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
-import type { SoundPodApi } from '../shared/api';
+import type { WavePodApi } from '../shared/api';
 import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
 import { History } from '../core/project';
 
 declare global {
   interface Window {
-    soundpod: SoundPodApi;
+    wavepod: WavePodApi;
   }
 }
 
-export const api = (): SoundPodApi => window.soundpod;
+export const api = (): WavePodApi => window.wavepod;
 
 export type View = 'setup' | 'edit' | 'chapters';
 

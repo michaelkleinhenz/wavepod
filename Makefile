@@ -1,4 +1,4 @@
-# SoundPod build entry points. Run `make help` for a list.
+# WavePod build entry points. Run `make help` for a list.
 NPM ?= npm
 
 .PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac clean distclean
@@ -22,7 +22,7 @@ start: build ## Build and launch the app
 	npx electron .
 
 demo: build ## Launch with virtual devices only (no audio hardware needed)
-	SOUNDPOD_SIMULATED=1 npx electron .
+	WAVEPOD_SIMULATED=1 npx electron .
 
 typecheck: node_modules ## Type-check all sources
 	$(NPM) run typecheck
@@ -39,11 +39,11 @@ CMAKE ?= cmake
 
 vsthost: ## Build the VST3 plug-in host (fetches Steinberg's VST3 SDK; needs CMake and a C++ compiler)
 	$(CMAKE) -S native/vsthost -B $(VSTHOST_BUILD) -DCMAKE_BUILD_TYPE=Release
-	$(CMAKE) --build $(VSTHOST_BUILD) --config Release --target soundpod-vsthost
+	$(CMAKE) --build $(VSTHOST_BUILD) --config Release --target wavepod-vsthost
 
 vsthost-test: ## Build the VST3 host plus the SDK's sample plug-ins, then run the tests against them
-	$(CMAKE) -S native/vsthost -B $(VSTHOST_BUILD) -DCMAKE_BUILD_TYPE=Release -DSOUNDPOD_VST3_SAMPLES=ON
-	$(CMAKE) --build $(VSTHOST_BUILD) --config Release --target soundpod-vsthost test_plugins
+	$(CMAKE) -S native/vsthost -B $(VSTHOST_BUILD) -DCMAKE_BUILD_TYPE=Release -DWAVEPOD_VST3_SAMPLES=ON
+	$(CMAKE) --build $(VSTHOST_BUILD) --config Release --target wavepod-vsthost test_plugins
 	$(NPM) test
 
 dist: build vsthost ## Package for the current OS into release/

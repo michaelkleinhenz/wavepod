@@ -16,6 +16,10 @@ import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
 import { createProjectDir, isProjectDir, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
+import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
+
+// Carry settings over from the SoundPod era before anything reads userData.
+migrateUserData(app.getPath('appData'), app.getPath('userData'));
 
 interface Settings {
   device: DeviceConfig;
@@ -49,7 +53,7 @@ function saveSettings(): void {
 }
 
 function projectsRoot(): string {
-  return process.env.SOUNDPOD_PROJECT_ROOT ?? path.join(app.getPath('documents'), 'SoundPod');
+  return process.env.WAVEPOD_PROJECT_ROOT ?? resolveProjectsRoot(app.getPath('documents'), 'WavePod');
 }
 
 function templatesRoot(): string {
@@ -78,7 +82,7 @@ function openProjectDir(dir: string): OpenedProject {
   engine.setProject(project, dir);
   settings.lastProject = dir;
   saveSettings();
-  win?.setTitle(`${project.name} — SoundPod`);
+  win?.setTitle(`${project.name} — WavePod`);
   return current;
 }
 
@@ -150,13 +154,13 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   openProject: async () => {
     const res = await dialog.showOpenDialog(win!, {
-      title: 'Open SoundPod project folder',
+      title: 'Open WavePod project folder',
       defaultPath: projectsRoot(),
       properties: ['openDirectory'],
     });
     const dir = res.filePaths[0];
     if (res.canceled || !dir) return null;
-    if (!isProjectDir(dir)) throw new Error('That folder does not contain a SoundPod project (project.json).');
+    if (!isProjectDir(dir)) throw new Error('That folder does not contain a WavePod project (project.json).');
     if (engine.transportState !== 'stopped') engine.stop();
     flushSave();
     return openProjectDir(dir);
@@ -164,7 +168,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   updateProject: (project: Project) => {
     current.project = project;
     engine.setProject(project);
-    win?.setTitle(`${project.name} — SoundPod`);
+    win?.setTitle(`${project.name} — WavePod`);
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(flushSave, 400);
   },
@@ -352,7 +356,7 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#15171c',
-    title: 'SoundPod',
+    title: 'WavePod',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -368,7 +372,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   settings = loadSettings();
-  const useNative = process.env.SOUNDPOD_SIMULATED !== '1';
+  const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
   vstExe = vstHostExecutable(app.getAppPath(), process.resourcesPath);
   if (vstExe) {

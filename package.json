@@ -1,13 +1,13 @@
 {
-  "name": "soundpod",
-  "productName": "SoundPod",
+  "name": "wavepod",
+  "productName": "WavePod",
   "version": "0.1.0",
   "description": "A simple multitrack DAW for podcasting",
   "author": "Michael Kleinhenz <michael@kleinhenz.net>",
   "license": "UNLICENSED",
   "main": "dist/main/main.js",
-  "homepage": "https://github.com/michaelkleinhenz/soundpod",
-  "repository": "github:michaelkleinhenz/soundpod",
+  "homepage": "https://github.com/michaelkleinhenz/wavepod",
+  "repository": "github:michaelkleinhenz/wavepod",
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "npm run build && electron .",
@@ -20,8 +20,8 @@
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never"
   },
   "build": {
-    "appId": "net.kleinhenz.soundpod",
-    "productName": "SoundPod",
+    "appId": "net.kleinhenz.wavepod",
+    "productName": "WavePod",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -39,8 +39,8 @@
         "from": "native/vsthost/bin",
         "to": "vsthost",
         "filter": [
-          "soundpod-vsthost",
-          "soundpod-vsthost.exe"
+          "wavepod-vsthost",
+          "wavepod-vsthost.exe"
         ]
       }
     ],
@@ -69,7 +69,7 @@
       ],
       "category": "public.app-category.music",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "SoundPod records audio from your audio interface."
+        "NSMicrophoneUsageDescription": "WavePod records audio from your audio interface."
       },
       "icon": "build/icon.png"
     }
@@ -86,5 +86,5 @@
     "typescript": "5.9",
     "vitest": "^5.1.0"
   },
-  "desktopName": "soundpod.desktop"
+  "desktopName": "wavepod.desktop"
 }

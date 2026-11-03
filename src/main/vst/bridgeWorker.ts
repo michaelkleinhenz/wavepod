@@ -1,4 +1,4 @@
-// Runs in a worker thread: owns the soundpod-vsthost child process and moves requests and
+// Runs in a worker thread: owns the wavepod-vsthost child process and moves requests and
 // replies between it and the thread that waits synchronously on a SharedArrayBuffer.
 //
 // Shared layout: Int32 ctrl[0] = state (0 idle, 1 request ready, 2 reply ready, 3 host dead),

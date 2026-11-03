@@ -31,8 +31,8 @@ jobs:
       - name: Build VST3 host and sample plug-ins
         shell: bash
         run: |
-          cmake -S native/vsthost -B native/vsthost/build -DCMAKE_BUILD_TYPE=Release -DSOUNDPOD_VST3_SAMPLES=ON
-          cmake --build native/vsthost/build --config Release --parallel --target soundpod-vsthost test_plugins
+          cmake -S native/vsthost -B native/vsthost/build -DCMAKE_BUILD_TYPE=Release -DWAVEPOD_VST3_SAMPLES=ON
+          cmake --build native/vsthost/build --config Release --parallel --target wavepod-vsthost test_plugins
       - run: npm test
       - run: npm run build
       # Runners have no audio devices, so only check that the prebuilt binary loads.
@@ -53,6 +53,6 @@ jobs:
       - run: make dist-linux
       - uses: actions/upload-artifact@v4
         with:
-          name: SoundPod-linux-ci
+          name: WavePod-linux-ci
           path: release/*.AppImage
           retention-days: 7

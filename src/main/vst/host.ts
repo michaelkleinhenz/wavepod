@@ -1,4 +1,4 @@
-// Synchronous client for soundpod-vsthost, used from the audio engine and the export worker.
+// Synchronous client for wavepod-vsthost, used from the audio engine and the export worker.
 // A bridge worker owns the child process; this thread waits on shared memory with a timeout,
 // so a hung or crashed plug-in bypasses itself instead of stalling playback or recording.
 import * as fs from 'node:fs';
@@ -12,9 +12,9 @@ const DATA_BYTES = 4 << 20;
 const TIMEOUT = { create: 15000, process: 250, other: 3000 };
 
 export function vstHostExecutable(appRoot: string, resourcesPath?: string): string | null {
-  const name = process.platform === 'win32' ? 'soundpod-vsthost.exe' : 'soundpod-vsthost';
+  const name = process.platform === 'win32' ? 'wavepod-vsthost.exe' : 'wavepod-vsthost';
   const candidates = [
-    process.env.SOUNDPOD_VSTHOST,
+    process.env.WAVEPOD_VSTHOST,
     resourcesPath && path.join(resourcesPath, 'vsthost', name),
     path.join(appRoot, 'native', 'vsthost', 'bin', name),
   ].filter((p): p is string => !!p);

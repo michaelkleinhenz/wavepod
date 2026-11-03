@@ -1,4 +1,4 @@
-// The API the preload script exposes to the renderer as `window.soundpod`.
+// The API the preload script exposes to the renderer as `window.wavepod`.
 import type {
   AudioDevice,
   DeviceConfig,
@@ -50,7 +50,7 @@ export type MenuCommand =
   | 'view-chapters'
   | 'show-project-folder';
 
-export interface SoundPodApi {
+export interface WavePodApi {
   // devices
   getStatus(): Promise<EngineStatus>;
   listDevices(): Promise<AudioDevice[]>;
@@ -126,17 +126,17 @@ export interface SoundPodApi {
 }
 
 export const IPC = {
-  invoke: 'soundpod:invoke',
-  transport: 'soundpod:transport',
-  status: 'soundpod:status',
-  recordingFinished: 'soundpod:recordingFinished',
-  exportProgress: 'soundpod:exportProgress',
-  menu: 'soundpod:menu',
+  invoke: 'wavepod:invoke',
+  transport: 'wavepod:transport',
+  status: 'wavepod:status',
+  recordingFinished: 'wavepod:recordingFinished',
+  exportProgress: 'wavepod:exportProgress',
+  menu: 'wavepod:menu',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
-  keyof SoundPodApi,
+  keyof WavePodApi,
   'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'platform'
 >;
 
