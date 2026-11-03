@@ -1,8 +1,9 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain, shell, type MenuItemConstructorOptions } from 'electron';
+import { BrowserWindow, Menu, MenuItem, app, dialog, ipcMain, shell, type MenuItemConstructorOptions } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { IPC, type InvokeMethod, type MenuCommand, type OpenedProject } from '../shared/api';
+import { IPC, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject } from '../shared/api';
+import { acceleratorLabel, menuLabel } from '../core/menuText';
 import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, McpSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip, prepareForEditing } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
@@ -233,6 +234,11 @@ const handlers: Record<InvokeMethod, Handler> = {
   getPeakTile: (file: string, samplesPerPeak: number, tile: number) => engine.getPeakTile(file, samplesPerPeak, tile),
   getSampleTile: (file: string, tile: number) => engine.getSampleTile(file, tile),
   showProjectFolder: () => shell.openPath(current.dir).then(() => undefined),
+  getMenu: () => menuModel(),
+  menuClick: (id: string) => {
+    const item = menuItems.get(id);
+    if (item?.enabled && win && !win.isDestroyed()) item.click(undefined, win, win.webContents);
+  },
 
   pickAudioFiles: async () => {
     const res = await dialog.showOpenDialog(win!, {
@@ -362,6 +368,44 @@ function menuSend(cmd: MenuCommand) {
   return () => send(IPC.menu, cmd);
 }
 
+/** On Linux and Windows the renderer draws the menu bar itself, so it matches the app's dark theme and font. */
+const inAppMenuBar = process.platform !== 'darwin';
+let appMenu: Menu | null = null;
+/** Menu items by the ids handed to the renderer. */
+const menuItems = new Map<string, MenuItem>();
+
+function menuModel(): MenuModelTop[] {
+  menuItems.clear();
+  if (!inAppMenuBar || !appMenu) return [];
+  let n = 0;
+  const top: MenuModelTop[] = [];
+  for (const t of appMenu.items) {
+    if (!t.visible || !t.submenu) continue;
+    const items: MenuModelItem[] = [];
+    for (const item of t.submenu.items) {
+      // "Zoom" only does something on macOS.
+      if (!item.visible || item.role === 'zoom') continue;
+      if (item.type === 'separator') {
+        if (items.length && items[items.length - 1].type !== 'separator') items.push({ id: '', type: 'separator', label: '', enabled: true });
+        continue;
+      }
+      const id = String(n++);
+      menuItems.set(id, item);
+      items.push({
+        id,
+        type: item.type === 'checkbox' ? 'checkbox' : 'normal',
+        label: menuLabel(item.label),
+        accelerator: acceleratorLabel(item.accelerator as string | undefined),
+        checked: item.type === 'checkbox' ? item.checked : undefined,
+        enabled: item.enabled,
+      });
+    }
+    if (items[items.length - 1]?.type === 'separator') items.pop();
+    top.push({ label: menuLabel(t.label), items });
+  }
+  return top;
+}
+
 function buildMenu(): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
@@ -427,7 +471,9 @@ function buildMenu(): void {
     },
     { role: 'windowMenu' },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  appMenu = Menu.buildFromTemplate(template);
+  // Still set on Linux and Windows (hidden there), so its accelerators and roles keep working.
+  Menu.setApplicationMenu(appMenu);
 }
 
 function createWindow(): void {
@@ -446,6 +492,7 @@ function createWindow(): void {
     },
   });
   // Mirror renderer warnings and errors (including error toasts) to the terminal.
+  if (inAppMenuBar) win.setMenuBarVisibility(false);
   win.webContents.on('console-message', (event) => {
     if (event.level === 'error' || event.level === 'warning') {
       const where = event.sourceId ? ` (${path.basename(event.sourceId)}:${event.lineNumber})` : '';
