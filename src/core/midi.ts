@@ -13,7 +13,16 @@ export const MIDI_ACTIONS: Array<{ action: MidiAction; label: string }> = [
   { action: 'play-toggle', label: 'Play / Pause' },
   { action: 'stop', label: 'Stop' },
   { action: 'prepare-for-editing', label: 'Prepare for editing' },
+  ...([1, 2, 3, 4, 5, 6] as const).map((n) => ({ action: `cough-${n}` as MidiAction, label: `Cough button, speaker ${n} (hold)` })),
+  ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({ action: `sound-${n}` as MidiAction, label: `Soundboard ${n}` })),
+  { action: 'sounds-stop', label: 'Stop all sounds' },
+  { action: 'preshow-toggle', label: 'Pre-show on / off (only the soundboard is heard)' },
 ];
+
+/** Actions that act on release too (held buttons). */
+export function isHoldAction(action: MidiAction): boolean {
+  return action.startsWith('cough-');
+}
 
 export function defaultMidiSettings(): MidiSettings {
   return { enabled: true, bindings: [] };
@@ -77,7 +86,10 @@ export function triggerMatches(trigger: MidiTrigger, ev: MidiEvent, device: stri
 }
 
 /** Whether a message counts as a press, for a button in each mode. */
-export type MidiPress = Record<MidiButtonMode, boolean>;
+export type MidiPress = Record<MidiButtonMode, boolean> & {
+  /** A momentary button let go (note-off, or a controller back to 0); held actions such as cough act on it. */
+  release?: boolean;
+};
 
 /**
  * Turns raw messages into presses. It remembers the last value of every note and controller so that:
@@ -88,15 +100,16 @@ export type MidiPress = Record<MidiButtonMode, boolean>;
 export class MidiPressDetector {
   private last = new Map<string, number>();
 
-  /** Records the message and says whether it is a press. */
+  /** Records the message and says whether it is a press, and whether it releases a held button. */
   press(ev: MidiEvent, device: string): MidiPress {
-    if (ev.type === 'program') return { momentary: true, toggle: true };
+    if (ev.type === 'program') return { momentary: true, toggle: true, release: false };
     const key = `${normalizeDeviceName(device)}|${ev.type}|${ev.channel}|${ev.number}`;
     const prev = this.last.get(key);
     const value = ev.pressed ? ev.value || 1 : 0;
     this.last.set(key, value);
     const momentary = ev.type === 'note' ? ev.pressed : ev.pressed && (prev === undefined || prev === 0 || prev === value);
-    return { momentary, toggle: true };
+    const release = !ev.pressed && (ev.type === 'note' || (prev !== undefined && prev !== 0));
+    return { momentary, toggle: true, release };
   }
 }
 

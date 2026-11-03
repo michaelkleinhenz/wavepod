@@ -25,9 +25,20 @@ import {
   syncLoop,
   togglePlay,
   toggleRecord,
+  dropNamedChapter,
+  jumpToRecordPosition,
+  restoreBackup,
+  checkPreview,
+  previewCut,
+  stepPlayhead,
+  copySelection,
+  pasteClipboard,
   toggleRepeat,
 } from './actions';
 import { ChaptersView } from './chaptersView';
+import { resetAllMeters } from './levelMeter';
+import { PLAYBACK_SPEEDS } from '../core/timeStretch';
+import { selectionSpan } from '../core/navigation';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
 import { iconButton } from './icons';
@@ -37,6 +48,9 @@ import { SetupView } from './setupView';
 import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
+import { showShortcuts } from './shortcuts';
+import { remoteHooks, runRemote } from './remote';
+import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
 
 const METER_DECAY = 0.85;
@@ -63,6 +77,7 @@ async function main(): Promise<void> {
   const loudnessDialog = new LoudnessDialog();
   const fxPanel = new FxPanel();
   const templates = new TemplateDialog();
+  const auphonic = new AuphonicDialog();
   setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
   timeline.onOpenLoudness = () => loudnessDialog.open();
@@ -79,18 +94,57 @@ async function main(): Promise<void> {
   const stopBtn = h('button', { class: 'transport', title: 'Stop', onclick: () => void stop() }, '■');
   const repeatBtn = iconButton('repeat', { label: 'Repeat', shortcut: 'L', detail: 'Loop playback of the selected time range' }, toggleRepeat, 'transport repeat');
   const homeBtn = h('button', { class: 'transport', title: 'To start (Home)', onclick: () => seek(0) }, '⏮');
+  // listening speed (pitch kept); playback only, remembered on this computer
+  const SPEED_KEY = 'wavepod.playbackSpeed';
+  let speed = 1;
+  try {
+    speed = Number(localStorage.getItem(SPEED_KEY)) || 1;
+  } catch {
+    /* no storage: 1x */
+  }
+  if (!PLAYBACK_SPEEDS.includes(speed as (typeof PLAYBACK_SPEEDS)[number])) speed = 1;
+  const speedSel = h(
+    'select',
+    {
+      class: 'speed-select',
+      title: 'Playback speed (pitch kept). Recording and export always run at 1×.',
+      onchange: (e: Event) => {
+        speed = Number((e.target as HTMLSelectElement).value);
+        speedSel.classList.toggle('fast', speed !== 1);
+        try {
+          localStorage.setItem(SPEED_KEY, String(speed));
+        } catch {
+          /* ignore */
+        }
+        void api().setPlaybackSpeed(speed);
+      },
+    },
+    ...PLAYBACK_SPEEDS.map((v) => h('option', { value: String(v), selected: v === speed }, `${v}×`)),
+  ) as HTMLSelectElement;
+  speedSel.classList.toggle('fast', speed !== 1);
+  void api().setPlaybackSpeed(speed);
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
   const masterFxBtn = h('button', { class: 'fx-btn', title: 'Filters on the master bus', onclick: () => fxPanel.toggle(MASTER) }, 'Master FX');
+  const preShowBtn = h(
+    'button',
+    {
+      class: 'fx-btn preshow-btn',
+      title: 'Pre-show: only the soundboard is heard (waiting music before the show); the episode playback is silent. Click again for Show.',
+      onclick: () => void api().setPreShow(!store.status?.preShow),
+    },
+    'Pre-show',
+  );
   const header = h(
     'header',
     null,
     h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
-    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, repeatBtn, timeEl),
+    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, repeatBtn, timeEl, speedSel),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
     masterFxBtn,
+    preShowBtn,
     h('div', { class: 'spacer' }),
     projectName,
     h('button', { class: 'primary', title: 'Export (Ctrl+E)', onclick: () => exportDialog.open() }, 'Export…'),
@@ -159,7 +213,7 @@ async function main(): Promise<void> {
       soundboard.render();
       void soundboard.ensureLoaded();
     }
-    if (kinds.has('devices') || kinds.has('status') || kinds.has('midi') || kinds.has('mcp')) {
+    if (kinds.has('devices') || kinds.has('status') || kinds.has('midi') || kinds.has('mcp') || kinds.has('osc')) {
       if (store.view === 'setup') setup.render();
       if (store.view === 'edit') timeline.renderHeaders();
     }
@@ -179,6 +233,8 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------------------- engine events
   api().onTransport((u) => {
+    // updates can arrive before the episode has loaded at startup
+    if (!store.project) return;
     const hold = store.meterHold;
     for (let i = 0; i < u.inputPeaks.length; i++) hold[i] = Math.max(u.inputPeaks[i], (hold[i] ?? 0) * METER_DECAY);
     hold.length = u.inputPeaks.length;
@@ -188,17 +244,24 @@ async function main(): Promise<void> {
       if (v > 1e-4) trackHold.set(t.id, v);
       else trackHold.delete(t.id);
     }
+    if (u.state === 'recording') store.recordPosition = u.position;
     if (u.state === 'recording' && store.transport.state !== 'recording') {
+      // a new take starts with clean peak numbers and clip lights
+      resetAllMeters();
       store.recordStart = u.position;
       store.livePeaks.clear();
     }
     if (u.recordingPeaks) store.addLivePeaks(u.recordingPeaks);
     store.transport = u;
+    checkPreview();
     store.notify('transport');
   });
   api().onStatus((s) => {
     store.status = s;
-    store.notify('status');
+    if (store.project) store.notify('status');
+  });
+  store.subscribe((kinds) => {
+    if (kinds.has('status')) preShowBtn.classList.toggle('on', !!store.status?.preShow);
   });
   api().onRecordingFinished(({ takes, project, preparedForEditing }) => {
     store.history.push(store.project);
@@ -213,6 +276,9 @@ async function main(): Promise<void> {
     store.applyExternal(project);
     toast(`AI agent: ${summary}`);
   });
+  remoteHooks.playSound = (i) => void soundboard.trigger(i);
+  api().onRemote(runRemote);
+
   api().onMenu((cmd) => {
     switch (cmd) {
       case 'new-project': return void newProject();
@@ -227,6 +293,13 @@ async function main(): Promise<void> {
       case 'ripple-cut':
         if (typingInField()) return void document.execCommand('cut');
         return void (Date.now() - editKeyAt > 500 && rippleCut());
+      case 'copy':
+        if (typingInField()) return void document.execCommand('copy');
+        return void (Date.now() - editKeyAt > 500 && copySelection());
+      case 'paste':
+      case 'paste-ripple':
+        if (typingInField()) return void document.execCommand('paste');
+        return void (Date.now() - editKeyAt > 500 && pasteClipboard(cmd === 'paste-ripple'));
       case 'mute-selection':
         return void (!typingInField() && Date.now() - editKeyAt > 500 && muteSelection());
       case 'normalize-clips':
@@ -239,6 +312,9 @@ async function main(): Promise<void> {
       case 'view-edit': return store.setView('edit');
       case 'view-chapters': return store.setView('chapters');
       case 'show-project-folder': return void api().showProjectFolder();
+      case 'restore-backup': return void restoreBackup();
+      case 'shortcuts': return showShortcuts();
+      case 'auphonic': return void auphonic.open();
     }
   });
 
@@ -246,15 +322,28 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (isTyping(e) || document.querySelector('.overlay')) return;
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && !e.shiftKey && !e.altKey && (e.code === 'KeyX' || e.code === 'KeyY')) {
+    if (mod && !e.shiftKey && !e.altKey && (e.code === 'KeyX' || e.code === 'KeyY' || e.code === 'KeyC' || e.code === 'KeyV')) {
       // handled here as well as in the Edit menu, whichever sees the key first
       e.preventDefault();
       editKeyAt = Date.now();
       if (e.code === 'KeyX') rippleCut();
-      else muteSelection();
+      else if (e.code === 'KeyY') muteSelection();
+      else if (e.code === 'KeyC') copySelection();
+      else pasteClipboard(false);
+      return;
+    }
+    if (mod && e.shiftKey && !e.altKey && e.code === 'KeyV') {
+      e.preventDefault();
+      editKeyAt = Date.now();
+      pasteClipboard(true);
       return;
     }
     if (mod) return; // menu accelerators
+    if (e.key === '?') {
+      e.preventDefault();
+      showShortcuts();
+      return;
+    }
     const cough = /^Digit([1-9])$/.exec(e.code);
     if (cough && e.shiftKey) {
       e.preventDefault();
@@ -277,7 +366,17 @@ async function main(): Promise<void> {
         break;
       case 'm':
       case 'M':
-        dropMarker('chapter');
+        if (e.shiftKey) {
+          e.preventDefault(); // keep the M out of the title field that opens
+          dropNamedChapter();
+        } else dropMarker('chapter');
+        break;
+      case 'y':
+      case 'Y':
+        jumpToRecordPosition((pos) => {
+          store.setView('edit');
+          timeline.reveal(pos);
+        });
         break;
       case 'e':
       case 'E':
@@ -302,10 +401,25 @@ async function main(): Promise<void> {
         seek(projectLength(store.project));
         break;
       case 'ArrowLeft':
-        seek(store.transport.position - store.sampleRate * (e.shiftKey ? 10 : 1));
+      case 'ArrowRight': {
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        e.preventDefault();
+        if (e.altKey) {
+          // Alt: clip edges; Shift+Alt: markers
+          const pos = stepPlayhead(e.shiftKey ? 'marker' : 'edge', dir);
+          if (pos !== null) timeline.ensureVisible(pos);
+        } else seek(store.transport.position + dir * store.sampleRate * (e.shiftKey ? 10 : 1));
         break;
-      case 'ArrowRight':
-        seek(store.transport.position + store.sampleRate * (e.shiftKey ? 10 : 1));
+      }
+      case 'p':
+      case 'P':
+        void previewCut();
+        break;
+      case 'z':
+      case 'Z':
+        if (e.shiftKey && !timeline.toggleZoomToSelection(selectionSpan(store.project, store.selection.range, store.selection.clipIds))) {
+          toast('Select a range or clips to zoom to');
+        }
         break;
       case '+':
       case '=':

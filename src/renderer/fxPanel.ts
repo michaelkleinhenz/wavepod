@@ -6,6 +6,8 @@ import { createVstFx, visibleVstParams } from '../core/fx/vst';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
 import { clear, errorMessage, h, toast } from './dom';
 import { api, store } from './store';
+import { updateTrack } from '../core/project';
+import { DUCK_DEFAULT_DEPTH } from '../core/ducking';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
 
@@ -116,6 +118,7 @@ export class FxPanel {
       ),
       h('div', { class: 'fx-toolbar' }, add, list.length === 0 && target !== MASTER ? h('button', { class: 'small', title: 'High-pass, De-esser and Dynamics', onclick: () => this.addVoiceChain() }, 'Voice chain') : null),
     );
+    if (target !== MASTER) this.el.append(this.renderDuck(target));
     if (this.picker) this.el.append(this.renderPicker(target));
     const cards = h('div', { class: 'fx-list' });
     if (!list.length) {
@@ -123,6 +126,28 @@ export class FxPanel {
     }
     list.forEach((fx, i) => cards.append(this.card(target, fx, i, list.length)));
     this.el.append(cards);
+  }
+
+  /** Ducking for this track: quieter while the other tracks play (for the soundboard and music beds). */
+  private renderDuck(trackId: string): HTMLElement {
+    const track = store.project.tracks.find((t) => t.id === trackId);
+    const duck = track?.duck ?? { enabled: false, depth: DUCK_DEFAULT_DEPTH };
+    const set = (patch: Partial<typeof duck>) => this.edit((p) => updateTrack(p, trackId, { duck: { ...duck, ...patch } }));
+    return h(
+      'div',
+      { class: 'fx-duck' },
+      h(
+        'label',
+        { class: 'check', title: 'This track gets quieter while the other tracks play, and comes back up in the pauses. Playback and export.' },
+        h('input', { type: 'checkbox', checked: duck.enabled, onchange: (e: Event) => set({ enabled: (e.target as HTMLInputElement).checked }) }),
+        'Duck under the other tracks',
+      ),
+      h(
+        'select',
+        { disabled: !duck.enabled, title: 'How much quieter', onchange: (e: Event) => set({ depth: Number((e.target as HTMLSelectElement).value) }) },
+        ...[6, 9, 12, 18, 24].map((d) => h('option', { value: String(d), selected: d === duck.depth }, `−${d} dB`)),
+      ),
+    );
   }
 
   private addVoiceChain(): void {
@@ -434,7 +459,7 @@ const GAIN_RANGE = 24;
 const PEAK_DECAY = 0.8;
 const toDb = (v: number) => (v > 1e-6 ? Math.max(METER_FLOOR, 20 * Math.log10(v)) : METER_FLOOR);
 /** Filters that change gain dynamically show a gain meter; the others show in/out levels only. */
-const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamics']);
+const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamics', 'denoise']);
 
 /**
  * Live meters of one filter card: input and output level, and for dynamic filters the gain they

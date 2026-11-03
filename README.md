@@ -165,13 +165,43 @@ its edges to adjust it, double-click or `Delete` to remove it.
 
 Any class-compliant USB MIDI controller (pad controller, keyboard, foot
 switch, a mixer's MIDI out) can start and stop recording and drop chapter
-and edit markers; play/pause, stop and record on/off can be mapped too.
+and edit markers; play/pause, stop, record on/off, the cough buttons of
+speakers 1–6 (muted while held) and soundboard slots 1–9 can be mapped too.
 In **Setup → MIDI controller**, click *Learn* next to a function and press
 the pad, key or button. Notes fire on note-on, controllers when they go
 to 64 or above (once per press, so a fader doesn't repeat), program
 changes always. A mapping listens to the device it was learned from;
 switch it to *Any device* if you use more than one. Mappings are stored in
 the app settings, not in the episode, so they work in every project.
+
+## Remote control (OSC)
+
+For a Stream Deck through [Bitfocus Companion](https://bitfocus.io/companion)
+(a *Generic OSC* connection), TouchOSC or anything else that sends OSC over
+UDP, switch on **Setup → Remote control (OSC)**. WavePod listens on port 9000
+(changeable), only for this computer unless *Accept from other computers*
+is ticked. Addresses:
+
+| Address | Does |
+| --- | --- |
+| `/wavepod/record`, `/wavepod/record/start`, `/wavepod/record/stop` | Record on/off, start, stop |
+| `/wavepod/play`, `/wavepod/stop` | Play/pause, stop |
+| `/wavepod/marker/chapter`, `/wavepod/marker/edit` | Drop a marker |
+| `/wavepod/prepare` | Prepare for editing |
+| `/wavepod/cough/1` … `/6` | Cough button: argument 1 mutes the speaker, 0 releases |
+| `/wavepod/sound/1` … `/9`, `/wavepod/sounds/stop` | Soundboard slot, stop all sounds |
+
+A button that sends 1 on press and 0 on release fires once; a message
+without arguments counts as a press.
+
+## Auphonic
+
+**File → Send to Auphonic…** creates a multitrack production on
+[auphonic.com](https://auphonic.com) with one FLAC per track (track filters
+and volume rendered in), the chapters, the episode details and the cover.
+Paste the API key from Auphonic's Account Settings once; pick one of your
+multitrack presets and whether to start the production right away or review
+it on the website first.
 
 ## AI agents (MCP)
 
@@ -269,3 +299,5 @@ certificates are configured as repository secrets.
 - [audify](https://github.com/almoghamdani/audify) (RtAudio bindings, MIT)
 - [@breezystack/lamejs](https://github.com/breezystack/lamejs) (MP3 encoder,
   LGPL-3.0), bundled into the export worker
+- [opusscript](https://github.com/abalabahaha/opusscript) (libopus 1.4 as
+  WebAssembly, MIT; libopus itself is BSD-3-Clause) for the Opus export

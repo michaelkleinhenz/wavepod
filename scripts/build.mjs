@@ -17,7 +17,8 @@ const configs = [
     outdir: 'dist/main',
     platform: 'node',
     format: 'cjs',
-    external: ['electron', 'audify'],
+    // opusscript loads its .wasm next to its own files, so it stays in node_modules
+    external: ['electron', 'audify', 'opusscript'],
   },
   {
     ...common,

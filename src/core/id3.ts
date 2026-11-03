@@ -1,6 +1,18 @@
 // Minimal ID3v2.3 writer with text frames and chapter frames (CHAP/CTOC, ID3v2 Chapter Frame Addendum).
 import type { Chapter } from './chapters';
 
+/** An embedded picture (APIC). */
+export interface Id3Picture {
+  /** 'image/jpeg' or 'image/png'. */
+  mime: string;
+  data: Buffer;
+}
+
+/** A chapter as written into the tag; `picture` is embedded in its CHAP frame. */
+export interface Id3Chapter extends Chapter {
+  picture?: Id3Picture;
+}
+
 export interface Id3Tags {
   title?: string;
   artist?: string;
@@ -9,7 +21,9 @@ export interface Id3Tags {
   track?: string;
   comment?: string;
   genre?: string;
-  chapters?: Chapter[];
+  /** Episode cover. */
+  cover?: Id3Picture;
+  chapters?: Id3Chapter[];
   /** Total duration in seconds; used to close the last chapter. */
   durationSeconds?: number;
 }
@@ -44,6 +58,18 @@ function commentFrame(text: string): Buffer {
   return frame('COMM', Buffer.concat([Buffer.from([1]), Buffer.from('eng', 'latin1'), utf16('', true), utf16(text, false)]));
 }
 
+/** APIC: encoding, MIME type, picture type (3 = front cover, 0 = other), description, image data. */
+function pictureFrame(pic: Id3Picture, type: number, description = ''): Buffer {
+  return frame('APIC', Buffer.concat([Buffer.from([1]), latin1(pic.mime, true), Buffer.from([type]), utf16(description, true), pic.data]));
+}
+
+/** MIME type of a JPEG or PNG file, from its first bytes (null for anything else). */
+export function imageMime(data: Buffer): string | null {
+  if (data.length > 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg';
+  if (data.length > 8 && data.toString('latin1', 1, 4) === 'PNG') return 'image/png';
+  return null;
+}
+
 function syncsafe(n: number): Buffer {
   const b = Buffer.alloc(4);
   b[0] = (n >> 21) & 0x7f;
@@ -62,6 +88,7 @@ export function buildId3Tag(tags: Id3Tags): Buffer {
   if (tags.track) frames.push(textFrame('TRCK', tags.track));
   if (tags.genre) frames.push(textFrame('TCON', tags.genre));
   if (tags.comment) frames.push(commentFrame(tags.comment));
+  if (tags.cover) frames.push(pictureFrame(tags.cover, 3));
 
   const chapters = [...(tags.chapters ?? [])].sort((a, b) => a.start - b.start);
   if (chapters.length) {
@@ -85,6 +112,7 @@ export function buildId3Tag(tags: Id3Tags): Buffer {
       times.writeUInt32BE(0xffffffff, 12);
       const sub = [textFrame('TIT2', c.title)];
       if (c.url) sub.push(urlFrame(c.url));
+      if (c.picture) sub.push(pictureFrame(c.picture, 0, c.title));
       frames.push(frame('CHAP', Buffer.concat([latin1(ids[i], true), times, ...sub])));
     });
   }
@@ -133,8 +161,28 @@ function decodeText(body: Buffer): string {
   return data.toString('latin1').replace(/\0+$/, '');
 }
 
-export function readId3Chapters(buf: Buffer): Chapter[] {
-  const chapters: Chapter[] = [];
+function parsePicture(body: Buffer): Id3Picture {
+  const mimeEnd = body.indexOf(0, 1);
+  const mime = body.toString('latin1', 1, mimeEnd);
+  // after the picture type: description in the frame's encoding
+  let o = mimeEnd + 2;
+  if (body[0] === 1 || body[0] === 2) {
+    while (o + 1 < body.length && !(body[o] === 0 && body[o + 1] === 0)) o += 2;
+    o += 2;
+  } else {
+    o = body.indexOf(0, o) + 1;
+  }
+  return { mime, data: body.subarray(o) };
+}
+
+/** The episode cover of a tag, if it has one. */
+export function readId3Cover(buf: Buffer): Id3Picture | null {
+  const f = parseId3Frames(buf).find((x) => x.id === 'APIC');
+  return f ? parsePicture(f.body) : null;
+}
+
+export function readId3Chapters(buf: Buffer): Id3Chapter[] {
+  const chapters: Id3Chapter[] = [];
   for (const f of parseId3Frames(buf)) {
     if (f.id !== 'CHAP') continue;
     const end = f.body.indexOf(0);
@@ -148,7 +196,13 @@ export function readId3Chapters(buf: Buffer): Chapter[] {
       const desc = url.body.indexOf(Buffer.from([0, 0]), 1);
       urlText = url.body.subarray(desc + 2).toString('latin1');
     }
-    chapters.push({ start: startMs / 1000, title: title ? decodeText(title.body) : '', ...(urlText ? { url: urlText } : {}) });
+    const pic = subs.find((s) => s.id === 'APIC');
+    chapters.push({
+      start: startMs / 1000,
+      title: title ? decodeText(title.body) : '',
+      ...(urlText ? { url: urlText } : {}),
+      ...(pic ? { picture: parsePicture(pic.body) } : {}),
+    });
   }
   return chapters.sort((a, b) => a.start - b.start);
 }

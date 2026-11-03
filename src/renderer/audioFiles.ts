@@ -3,11 +3,15 @@ import { api } from './store';
 
 export async function decodeFile(path: string, sampleRate: number): Promise<Float32Array[]> {
   const bytes = await api().readFile(path);
+  return decodeBytes(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, sampleRate);
+}
+
+/** Decodes an encoded audio file's bytes and resamples to `sampleRate`. */
+export async function decodeBytes(data: ArrayBuffer, sampleRate: number): Promise<Float32Array[]> {
   const ctx = new AudioContext();
   let decoded: AudioBuffer;
   try {
-    const copy = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-    decoded = await ctx.decodeAudioData(copy);
+    decoded = await ctx.decodeAudioData(data);
   } finally {
     void ctx.close();
   }

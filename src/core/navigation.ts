@@ -1,0 +1,44 @@
+// Navigation targets for checking cuts: clip edges and markers, before or after a position.
+import type { MarkerKind, Project } from '../shared/types';
+
+/** Start and end of every clip on every track, sorted, without duplicates. */
+export function clipEdges(project: Project): number[] {
+  const set = new Set<number>();
+  for (const t of project.tracks) {
+    for (const c of t.clips) {
+      set.add(c.start);
+      set.add(c.start + c.length);
+    }
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+/** Marker positions (optionally of one kind), sorted. */
+export function markerPositions(project: Project, kind?: MarkerKind): number[] {
+  return [...new Set(project.markers.filter((m) => !kind || m.kind === kind).map((m) => m.position))].sort((a, b) => a - b);
+}
+
+/**
+ * The next position after `pos` (dir 1) or the previous one before it (dir -1).
+ * `slack` frames around `pos` count as "here", so pressing again moves on.
+ */
+export function stepTo(positions: number[], pos: number, dir: 1 | -1, slack = 0): number | null {
+  if (dir > 0) return positions.find((p) => p > pos + slack) ?? null;
+  for (let i = positions.length - 1; i >= 0; i--) if (positions[i] < pos - slack) return positions[i];
+  return null;
+}
+
+/** Frames to view for "zoom to selection": the time range, or the span of the selected clips. */
+export function selectionSpan(project: Project, range: [number, number] | null, clipIds: Set<string>): [number, number] | null {
+  if (range && range[1] > range[0]) return range;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const t of project.tracks) {
+    for (const c of t.clips) {
+      if (!clipIds.has(c.id)) continue;
+      lo = Math.min(lo, c.start);
+      hi = Math.max(hi, c.start + c.length);
+    }
+  }
+  return hi > lo ? [lo, hi] : null;
+}

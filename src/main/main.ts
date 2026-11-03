@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { IPC, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject } from '../shared/api';
 import { acceleratorLabel, menuLabel } from '../core/menuText';
-import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, McpSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
+import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip, prepareForEditing } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
@@ -15,13 +15,16 @@ import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
 import { leadingNumber, searchNormalized } from '../core/numberInput';
-import { createProjectDir, isProjectDir, loadProject, saveProject } from './projectStore';
+import { BACKUP_DIR, backupProject, createProjectDir, importImage, isProjectDir, loadBackup, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
 import { exportDialogDir } from './exportPaths';
 import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
 import { McpController, normalizeMcpSettings } from './mcp/controller';
+import { OscServer } from './oscServer';
+import { auphonicInfo, auphonicPresets, normalizeAuphonic, sendToAuphonic, updateAuphonic, type StoredAuphonic } from './auphonic';
+import { normalizeOscSettings } from '../core/osc';
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
@@ -33,8 +36,15 @@ interface Settings {
   midi: MidiSettings;
   /** Unarm all tracks when a recording stops (off by default, as in Ultraschall where it is a manual step). */
   prepareForEditingAfterRecording: boolean;
+  /** Ask before stopping a recording (Ultraschall's recording safe mode). */
+  confirmStopRecording: boolean;
+  /** Beep when playback passes a marker. */
+  markerPing: boolean;
   /** Local MCP server for AI agents; off unless the user switches it on in Setup. */
   mcp: McpSettings;
+  /** OSC remote control; off unless switched on in Setup. */
+  osc: OscSettings;
+  auphonic: StoredAuphonic;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -47,10 +57,14 @@ function loadSettings(): Settings {
       lastProject: raw.lastProject ?? null,
       midi: normalizeMidiSettings(raw.midi),
       prepareForEditingAfterRecording: raw.prepareForEditingAfterRecording === true,
+      confirmStopRecording: raw.confirmStopRecording !== false,
+      markerPing: raw.markerPing === true,
       mcp: normalizeMcpSettings(raw.mcp),
+      osc: normalizeOscSettings(raw.osc),
+      auphonic: normalizeAuphonic(raw.auphonic),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, mcp: normalizeMcpSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null) };
   }
 }
 
@@ -92,6 +106,7 @@ let win: BrowserWindow | null = null;
 let current: OpenedProject;
 let saveTimer: NodeJS.Timeout | null = null;
 let mcp: McpController;
+let osc: OscServer;
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -100,6 +115,8 @@ function send(channel: string, payload: unknown): void {
 function openProjectDir(dir: string): OpenedProject {
   const project = loadProject(dir);
   current = { project, dir };
+  // the project as opened is what a backup would hold; nothing to back up until it changes
+  lastBackup = JSON.stringify(project);
   engine.setProject(project, dir);
   settings.lastProject = dir;
   saveSettings();
@@ -119,6 +136,22 @@ function flushSave(): void {
     saveProject(current.dir, current.project);
   } catch (e) {
     console.error('save failed', e);
+  }
+}
+
+/** JSON of the project as last backed up, so unchanged projects aren't backed up again. */
+let lastBackup = '';
+const BACKUP_INTERVAL_MS = 10 * 60 * 1000;
+
+/** Rolling backup of project.json into the project's backup folder (keeps the newest 20). */
+function backupNow(reason = ''): void {
+  const json = JSON.stringify(current.project);
+  if (!reason && json === lastBackup) return;
+  try {
+    backupProject(current.dir, current.project, reason);
+    lastBackup = json;
+  } catch (e) {
+    console.error('backup failed', e);
   }
 }
 
@@ -185,6 +218,34 @@ const handlers: Record<InvokeMethod, Handler> = {
     return dev ? findProfile(dev.name, dev.inputChannels, dev.outputChannels) : null;
   },
 
+  getAuphonicSettings: () => auphonicInfo(settings.auphonic),
+  setAuphonicSettings: (input: AuphonicSettingsInput) => {
+    settings.auphonic = updateAuphonic(settings.auphonic, input);
+    saveSettings();
+    return auphonicInfo(settings.auphonic);
+  },
+  auphonicPresets: () => auphonicPresets(settings.auphonic),
+  sendToAuphonic: () => {
+    flushSave();
+    const send2 = (p: unknown) => send(IPC.exportProgress, p);
+    return sendToAuphonic(
+      settings.auphonic,
+      current.project,
+      current.dir,
+      (opts) => runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, send2),
+      send2,
+    );
+  },
+  openAuphonic: async (url: string) => {
+    if (!/^https:\/\/auphonic\.com\//.test(url)) throw new Error('Not an Auphonic link');
+    await shell.openExternal(url);
+  },
+  getOscStatus: () => osc.status(),
+  setOscSettings: async (next: OscSettings) => {
+    settings.osc = normalizeOscSettings(next);
+    saveSettings();
+    return osc.apply(settings.osc);
+  },
   getMcpStatus: () => mcp.status(),
   setMcpSettings: async (next: McpSettings) => {
     settings.mcp = normalizeMcpSettings(next);
@@ -199,10 +260,40 @@ const handlers: Record<InvokeMethod, Handler> = {
     return settings.midi;
   },
 
+  soundcheckInfo: () => {
+    let freeBytes: number | null = null;
+    try {
+      const st = fs.statfsSync(current.dir);
+      freeBytes = st.bavail * st.bsize;
+    } catch {
+      // unknown: the soundcheck skips the disk space check
+    }
+    return { inputDeviceName: inputDeviceName(), freeBytes };
+  },
+  confirmStopRecording: () => settings.confirmStopRecording,
+  restoreBackup: async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Restore backup',
+      defaultPath: path.join(current.dir, BACKUP_DIR),
+      properties: ['openFile'],
+      filters: [{ name: 'WavePod backups', extensions: ['json'] }],
+    });
+    const file = res.filePaths[0];
+    if (res.canceled || !file) return null;
+    // keep the state we are leaving, so restoring is never a one-way door
+    backupNow('before-restore');
+    return loadBackup(file);
+  },
+
   play: (from?: number) => engine.play(from),
   stop: () => engine.stop(),
-  record: () => engine.record(),
+  record: () => {
+    backupNow('before-recording');
+    return engine.record();
+  },
   seek: (pos: number) => engine.seek(pos),
+  setPlaybackSpeed: (speed: number) => engine.setPlaybackSpeed(speed),
+  setPreShow: (on: boolean) => engine.setPreShow(on),
   setLoop: (range: [number, number] | null) => engine.setLoop(range),
 
   currentProject: () => current,
@@ -283,6 +374,17 @@ const handlers: Record<InvokeMethod, Handler> = {
     return res.filePath;
   },
 
+  pickImage: async (title: string) => {
+    const res = await dialog.showOpenDialog(win!, {
+      title,
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }],
+    });
+    const src = res.filePaths[0];
+    if (res.canceled || !src) return null;
+    return importImage(current.dir, src);
+  },
+
   loadSound: (id: string, channels: Float32Array[]) => engine.loadSound(id, channels),
   playSound: (id: string) => engine.playSound(id),
   stopSounds: () => engine.stopSounds(),
@@ -294,7 +396,7 @@ const handlers: Record<InvokeMethod, Handler> = {
       buttonLabel: 'Export',
     });
     if (res.canceled || !res.filePath) return null;
-    return res.filePath.replace(/\.(wav|mp3)$/i, '');
+    return res.filePath.replace(/\.(wav|mp3|flac|opus)$/i, '');
   },
   exportProject: (opts: ExportOptions) => {
     flushSave();
@@ -303,6 +405,8 @@ const handlers: Record<InvokeMethod, Handler> = {
   measureLoudness: (mixOnly?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly }),
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
   revealFile: (p: string) => shell.showItemInFolder(p),
+  alignClip: (clipId: string, refTrackId: string) =>
+    runWorker({ kind: 'align', project: current.project, dir: current.dir, clipIds: [clipId], refTrackId }),
 
   vstStatus: () => ({ available: !!vstExe, dirs: defaultVstDirs() }),
   vstScan: (force?: boolean) => {
@@ -435,7 +539,9 @@ function buildMenu(): void {
         { label: 'Import Chapters…', click: menuSend('import-chapters') },
         { type: 'separator' },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: menuSend('export') },
+        { label: 'Send to Auphonic…', click: menuSend('auphonic') },
         { label: 'Show Project Folder', click: menuSend('show-project-folder') },
+        { label: 'Restore Backup…', click: menuSend('restore-backup') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
@@ -447,6 +553,9 @@ function buildMenu(): void {
         { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', click: menuSend('redo') },
         { type: 'separator' },
         { label: 'Ripple Cut', accelerator: 'CmdOrCtrl+X', click: menuSend('ripple-cut') },
+        { label: 'Copy', accelerator: 'CmdOrCtrl+C', click: menuSend('copy') },
+        { label: 'Paste', accelerator: 'CmdOrCtrl+V', click: menuSend('paste') },
+        { label: 'Paste and Move Later Material', accelerator: 'Shift+CmdOrCtrl+V', click: menuSend('paste-ripple') },
         { label: 'Mute Selection', accelerator: 'CmdOrCtrl+Y', click: menuSend('mute-selection') },
         { type: 'separator' },
         { label: 'Normalize Clip Loudness', accelerator: 'Alt+Shift+N', click: menuSend('normalize-clips') },
@@ -462,9 +571,16 @@ function buildMenu(): void {
             saveSettings();
           },
         },
+        {
+          label: 'Confirm Before Stopping a Recording',
+          type: 'checkbox',
+          checked: settings.confirmStopRecording,
+          click: (item) => {
+            settings.confirmStopRecording = item.checked;
+            saveSettings();
+          },
+        },
         { type: 'separator' },
-        { role: 'copy' },
-        { role: 'paste' },
         { role: 'selectAll' },
       ],
     },
@@ -475,12 +591,27 @@ function buildMenu(): void {
         { label: 'Record && Edit', accelerator: 'CmdOrCtrl+2', click: menuSend('view-edit') },
         { label: 'Chapters', accelerator: 'CmdOrCtrl+3', click: menuSend('view-chapters') },
         { type: 'separator' },
+        {
+          label: 'Ping at Markers During Playback',
+          type: 'checkbox',
+          checked: settings.markerPing,
+          click: (item) => {
+            settings.markerPing = item.checked;
+            engine.setMarkerPing(item.checked);
+            saveSettings();
+          },
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
         { role: 'togglefullscreen' },
       ],
     },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [{ label: 'Keyboard Shortcuts', click: menuSend('shortcuts') }],
+    },
   ];
   appMenu = Menu.buildFromTemplate(template);
   // Still set on Linux and Windows (hidden there), so its accelerators and roles keep working.
@@ -520,6 +651,7 @@ app.whenReady().then(() => {
   settings = loadSettings();
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
+  engine.setMarkerPing(settings.markerPing);
   vstExe = vstHostExecutable(app.getAppPath(), process.resourcesPath);
   if (vstExe) {
     vstHost = new VstHostProcess(vstExe, path.join(__dirname, 'vstBridge.js'));
@@ -558,6 +690,8 @@ app.whenReady().then(() => {
   settings.device = engine.config;
   saveSettings();
 
+  osc = new OscServer((cmd) => send(IPC.remote, cmd));
+  void osc.apply(settings.osc);
   mcp = new McpController(createWavePodServer(mcpHost, app.getVersion()));
   void mcp.apply(settings.mcp).then((s) => {
     if (s.error) console.error('MCP server:', s.error);
@@ -566,6 +700,7 @@ app.whenReady().then(() => {
   registerIpc();
   buildMenu();
   createWindow();
+  setInterval(() => backupNow(), BACKUP_INTERVAL_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -573,6 +708,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   void mcp?.dispose();
+  void osc?.close();
   if (engine) {
     engine.stop();
     flushSave();

@@ -4,6 +4,8 @@ import { VstProcessor } from './vst';
 import { Biquad } from './biquad';
 import { PeakLimiter, UltraschallDynamics } from './ultraschallDynamics';
 import { GainMeter } from './meter';
+import { NoiseReduction } from './denoise';
+import { Reverb } from './reverb';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -312,6 +314,10 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new Limiter(sampleRate);
     case 'dynamics':
       return new UltraschallDynamics(sampleRate);
+    case 'denoise':
+      return new NoiseReduction(sampleRate);
+    case 'reverb':
+      return new Reverb(sampleRate);
   }
 }
 

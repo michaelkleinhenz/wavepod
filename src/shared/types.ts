@@ -1,5 +1,7 @@
 // Types shared by main, preload, renderer and core.
 
+export type FadeShape = 'linear' | 'equalPower' | 'sCurve';
+
 /** Positions and lengths are integer sample frames at the project sample rate. */
 export type Frames = number;
 
@@ -16,10 +18,16 @@ export interface Clip {
   gain: number;
   fadeIn: Frames;
   fadeOut: Frames;
+  /** Curve of the fades (linear when not set). */
+  fadeInShape?: FadeShape;
+  fadeOutShape?: FadeShape;
   /** Volume line; point positions are frames in the source file (so trims and splits keep them in place). */
   envelope?: EnvelopePoint[];
   /** Volume line is drawn and editable on the clip. */
   showEnvelope?: boolean;
+  /** Storyboard: a colour and a free-text note for the clip. */
+  color?: string;
+  note?: string;
 }
 
 export interface Track {
@@ -42,6 +50,8 @@ export interface Track {
   muteRegions?: MuteRegion[];
   /** Filter stack, processed top to bottom before track gain and pan. */
   fx?: Fx[];
+  /** Gets quieter by `depth` dB while the other tracks play (soundboard, music beds). */
+  duck?: { enabled: boolean; depth: number };
 }
 
 /** One point of a clip's volume line. */
@@ -51,7 +61,7 @@ export interface EnvelopePoint {
   db: number;
 }
 
-export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'vst3';
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'vst3';
 
 /** One filter in a track's or the master's filter stack. */
 export interface Fx {
@@ -102,12 +112,22 @@ export type MuteRegion = [Frames, Frames];
 
 export type MarkerKind = 'chapter' | 'edit';
 
+/** A named time span of the episode, e.g. one part of a long session; exportable on its own. */
+export interface Region {
+  id: string;
+  start: Frames;
+  end: Frames;
+  title: string;
+}
+
 export interface Marker {
   id: string;
   kind: MarkerKind;
   position: Frames;
   title: string;
   url?: string;
+  /** Chapter image, relative to the project folder ("images/…"). */
+  image?: string;
 }
 
 export interface SoundboardSlot {
@@ -130,6 +150,10 @@ export interface EpisodeMetadata {
   episode: string;
   description: string;
   year: string;
+  /** Episode cover (JPEG or PNG), relative to the project folder ("images/…"). */
+  artwork?: string;
+  /** Podcast category, written as the genre (ID3 TCON, FLAC GENRE); "Podcast" when empty. */
+  category?: string;
 }
 
 export type BitDepth = 16 | 24 | 32;
@@ -142,10 +166,14 @@ export interface Project {
   masterGain: number;
   /** Filter stack on the master bus, processed before the master gain. */
   masterFx?: Fx[];
+  /** Named time spans that can be exported as separate files. */
+  regions?: Region[];
   tracks: Track[];
   markers: Marker[];
   soundboard: SoundboardSlot[];
   metadata: EpisodeMetadata;
+  /** Soundcheck warnings the user chose not to see again for this episode. */
+  soundcheckIgnored?: string[];
 }
 
 // ---------------------------------------------------------------- devices
@@ -175,7 +203,14 @@ export interface DeviceConfig {
   bufferSize: number;
   /** First zero-based output channel used for the stereo playback pair. */
   outputFirstChannel: number;
+  /** A second stereo output pair (first zero-based channel), e.g. for a stream or a guest feed; null for none. */
+  output2FirstChannel?: number | null;
+  /** What the second pair carries. */
+  output2Source?: OutputSource;
 }
+
+/** master: everything; soundboard: only jingles; episode: the timeline without live jingles. */
+export type OutputSource = 'master' | 'soundboard' | 'episode';
 
 export interface ChannelLabel {
   index: number;
@@ -204,6 +239,8 @@ export interface EngineStatus {
   inputChannelCount: number;
   outputChannelCount: number;
   error: string | null;
+  /** Pre-show output preset: only the soundboard is heard, timeline playback is silent. */
+  preShow: boolean;
 }
 
 export type TransportState = 'stopped' | 'playing' | 'recording';
@@ -283,13 +320,17 @@ export interface WaveformPeaks {
 export interface ExportOptions {
   /** Absolute output path without extension. */
   outputBase: string;
-  formats: Array<'wav' | 'mp3'>;
+  formats: Array<'wav' | 'mp3' | 'flac' | 'opus'>;
   mp3Bitrate: number;
+  /** Opus bitrate in kbps (stereo); 64 when not given. */
+  opusBitrate?: number;
   normalize: boolean;
   targetLufs: number;
-  /** Ceiling for sample peaks in dBFS after normalisation. */
+  /** Ceiling for true peaks in dBTP after normalisation. */
   peakCeiling: number;
   stems: boolean;
+  /** Stem files as WAV (default) or FLAC (half the size, e.g. for uploading). */
+  stemFormat?: 'wav' | 'flac';
   chapterFiles: boolean;
   start?: Frames;
   end?: Frames;
@@ -367,7 +408,7 @@ export interface LoudnessReport {
 
 // ---------------------------------------------------------------- MIDI controller
 
-/** Functions a MIDI button can trigger. */
+/** Functions a MIDI button (or an OSC message) can trigger. */
 export type MidiAction =
   | 'record-start'
   | 'record-stop'
@@ -376,7 +417,52 @@ export type MidiAction =
   | 'stop'
   | 'chapter-marker'
   | 'edit-marker'
-  | 'prepare-for-editing';
+  | 'prepare-for-editing'
+  | 'sounds-stop'
+  | 'preshow-toggle'
+  /** Cough button of speaker track n: mutes while held. */
+  | `cough-${CoughSlot}`
+  /** Soundboard slot n. */
+  | `sound-${SoundSlot}`;
+
+export type CoughSlot = 1 | 2 | 3 | 4 | 5 | 6;
+export type SoundSlot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/** A remote-control command (MIDI or OSC): an action, pressed or released (only cough buttons use release). */
+export interface RemoteCommand {
+  action: MidiAction;
+  pressed: boolean;
+}
+
+/** Auphonic settings as the renderer sees them (the key itself stays in the main process). */
+export interface AuphonicInfo {
+  hasKey: boolean;
+  /** Multitrack preset uuid, or '' for none. */
+  preset: string;
+  /** Start the production right after uploading. */
+  start: boolean;
+}
+
+export interface AuphonicSettingsInput {
+  /** New key; '' removes it; undefined keeps the stored one. */
+  apiKey?: string;
+  preset?: string;
+  start?: boolean;
+}
+
+export interface OscSettings {
+  enabled: boolean;
+  port: number;
+  /** Accept messages from other computers (Companion on another machine); otherwise only this computer. */
+  allowNetwork: boolean;
+}
+
+export interface OscStatus extends OscSettings {
+  running: boolean;
+  error: string | null;
+  /** Messages received since start (for a "it works" hint in Setup). */
+  received: number;
+}
 
 export type MidiMessageType = 'note' | 'cc' | 'program';
 

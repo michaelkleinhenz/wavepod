@@ -1,25 +1,31 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
-import type { Clip, EnvelopePoint, PeakLevel, Track } from '../shared/types';
+import { LevelMeter } from './levelMeter';
+import { selectionSpan } from '../core/navigation';
+import type { Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
 import { dbToGain, formatTick } from '../shared/time';
+import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
-import { fadeGain, toDb } from '../core/dsp';
+import { FADE_SHAPES, fadeCurve, type FadeShape } from '../core/dsp';
+import { fadesAt, trackFades, type EffectiveFades } from '../core/crossfade';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
-import { coughDown, coughUp, dropMarker, importAudioFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
+import { regionFromSelection, alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
+import { showClipLabel } from './clipLabel';
 import { editableNumber, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
 const TRACK_H = 84;
+const OVERVIEW_H = 30;
 const RULER_H = 26;
 const MARKER_H = 24;
-const HEADER_W = 250;
+const HEADER_W = 290;
 const EDGE_PX = 6;
 /** Strip at the bottom of each track where mute (cough) regions are drawn and edited. */
 const MUTE_LANE_H = 12;
@@ -55,7 +61,7 @@ const TICK_STEPS = [
 const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
 
 type Drag =
-  | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean }
+  | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean; ripple?: RippleSet }
   | { kind: 'trim'; clipId: string; side: 'left' | 'right'; startX: number; orig: Clip; delta: number }
   | { kind: 'fade'; clipId: string; side: 'in' | 'out'; startX: number; orig: Clip; moved: boolean }
   | { kind: 'range'; startFrame: number; endFrame: number; startTrack: number | null; endTrack: number | null }
@@ -73,8 +79,9 @@ export class TimelineView {
   private scroll = h('div', { class: 'tracks-scroll' });
   private headers = h('div', { class: 'track-headers' });
   private canvas = h('canvas', { class: 'tracks-canvas' });
-  private hscroll = h('input', { type: 'range', class: 'hscroll', min: '0', max: '1000', value: '0' });
-  private trackMeters = new Map<string, HTMLElement>();
+  /** Overview strip (navigator): the whole episode, with the visible part framed; click or drag to move there. */
+  private overview = h('canvas', { class: 'overview' });
+  private trackMeters = new Map<string, LevelMeter>();
 
   /** Seconds at the left edge. */
   viewStart = 0;
@@ -105,7 +112,7 @@ export class TimelineView {
     );
     const body = h('div', { class: 'tracks-body' }, this.headers, this.canvas);
     this.scroll.append(body);
-    this.el.append(this.toolbar, rulerRow, this.scroll, h('div', { class: 'hscroll-row' }, h('div', { style: { width: `${HEADER_W}px` } }), this.hscroll), this.footer);
+    this.el.append(this.toolbar, rulerRow, this.scroll, h('div', { class: 'hscroll-row' }, h('div', { class: 'overview-label muted', style: { width: `${HEADER_W}px` } }, 'Overview'), this.overview), this.footer);
     this.buildToolbar();
     this.bindEvents();
     new ResizeObserver(() => this.resize()).observe(this.scroll);
@@ -142,7 +149,42 @@ export class TimelineView {
     this.draw();
   }
 
+  /** View before the last "zoom to selection", for toggling back. */
+  private zoomBack: { pxPerSec: number; viewStart: number } | null = null;
+
+  /** Shift+Z: zooms to the selected range or clips; pressed again (or with nothing selected), zooms back. */
+  toggleZoomToSelection(span: [number, number] | null): boolean {
+    if (this.zoomBack && !span) {
+      ({ pxPerSec: this.pxPerSec, viewStart: this.viewStart } = this.zoomBack);
+      this.zoomBack = null;
+      this.draw();
+      return true;
+    }
+    if (!span) return false;
+    const before = { pxPerSec: this.pxPerSec, viewStart: this.viewStart };
+    const secs = Math.max(0.01, (span[1] - span[0]) / this.sr);
+    // a little room on both sides
+    this.pxPerSec = Math.min(this.sr * MAX_PX_PER_SAMPLE, Math.max(0.5, (this.width * 0.9) / secs));
+    this.viewStart = Math.max(0, span[0] / this.sr - (this.width * 0.05) / this.pxPerSec);
+    if (this.zoomBack && Math.abs(before.pxPerSec - this.pxPerSec) < 1e-6 && Math.abs(before.viewStart - this.viewStart) < 1e-6) {
+      // already zoomed to this selection: go back
+      ({ pxPerSec: this.pxPerSec, viewStart: this.viewStart } = this.zoomBack);
+      this.zoomBack = null;
+    } else {
+      this.zoomBack = this.zoomBack ?? before;
+    }
+    this.draw();
+    return true;
+  }
+
+  /** Scrolls only if `pos` is off screen. */
+  ensureVisible(pos: number): void {
+    const x = this.xOf(pos);
+    if (x < 0 || x > this.width * 0.95) this.reveal(pos);
+  }
+
   zoomToFit(): void {
+    this.zoomBack = null;
     const len = projectLength(store.project) / this.sr;
     this.pxPerSec = Math.max(0.5, (this.width - 20) / Math.max(10, len));
     this.viewStart = 0;
@@ -176,16 +218,24 @@ export class TimelineView {
         { label: 'Loudness…', shortcut: 'Shift+Ctrl+L', detail: 'Loudness analysis of the selected clips, or of the mix and every track when no clip is selected' },
         () => this.onOpenLoudness(),
       ),
+      btn(
+        'align',
+        { label: 'Align to track…', detail: 'Double-ender: line up the selected clip (a guest’s own recording) with what another track recorded during the call' },
+        () => void alignSelectedClip(),
+      ),
       this.snapBtn,
       h('span', { class: 'sep' }),
       btn('chapter', { label: 'Chapter marker', shortcut: 'M', detail: 'Add a chapter marker at the playhead' }, () => dropMarker('chapter'), 'chapter'),
       btn('editMark', { label: 'Edit marker', shortcut: 'E', detail: 'Add an edit marker at the playhead' }, () => dropMarker('edit'), 'editmark'),
+      btn('region', { label: 'Region from selection', detail: 'Make the selected range a region: a part of the episode that can be exported as its own file' }, regionFromSelection),
       h('span', { class: 'sep' }),
       btn('zoomOut', { label: 'Zoom out', shortcut: '-' }, () => this.zoomAtPlayhead(1 / 1.5)),
       btn('zoomIn', { label: 'Zoom in', shortcut: '+' }, () => this.zoomAtPlayhead(1.5)),
       btn('fit', { label: 'Zoom to fit', detail: 'Zoom to fit the whole episode' }, () => this.zoomToFit()),
+      btn('zoomSel', { label: 'Zoom to selection', shortcut: 'Shift+Z', detail: 'Zoom to the selected range or clips; again to zoom back' }, () =>
+        void this.toggleZoomToSelection(selectionSpan(store.project, store.selection.range, store.selection.clipIds))),
       h('span', { class: 'spacer' }),
-      h('span', { class: 'muted hint-keys' }, 'Space play · R record · L repeat · M chapter · S split · Ctrl+X ripple cut · Ctrl+Y mute range'),
+      h('span', { class: 'muted hint-keys' }, 'Space play · R record · L repeat · M chapter · S split · Ctrl+X ripple cut · ? all shortcuts'),
     );
     this.snapBtn.addEventListener('click', () => {
       this.snapping = !this.snapping;
@@ -240,7 +290,7 @@ export class TimelineView {
     store.project.tracks.forEach((t: Track) => {
       const cur = t.inputChannels.join(',');
       if (cur && !inputOptions.some((o) => o.value === cur)) inputOptions.push({ value: cur, label: `${cur} (unavailable)` });
-      const meter = h('div', { class: 'meter-fill' });
+      const meter = new LevelMeter(`trk:${t.id}`);
       this.trackMeters.set(t.id, meter);
       const toggle = (key: 'armed' | 'mute' | 'solo', label: string, title: string) =>
         h(
@@ -352,7 +402,7 @@ export class TimelineView {
               ondblclick: () => store.edit((p) => updateTrack(p, t.id, { gain: 0 })),
               onchange: (e: Event) => store.edit((p) => updateTrack(p, t.id, { gain: Number((e.target as HTMLInputElement).value) })),
             }),
-            h('div', { class: 'meter small' }, meter),
+            meter.el,
           ),
         ),
       );
@@ -374,14 +424,13 @@ export class TimelineView {
   updateMeters(): void {
     const peaks = store.meterHold;
     for (const t of store.project.tracks) {
-      const el = this.trackMeters.get(t.id);
-      if (!el) continue;
+      const meter = this.trackMeters.get(t.id);
+      if (!meter) continue;
       // armed: live input of its channels; unarmed: only what the track itself plays back
+      const raw = store.transport;
       const v = t.armed ? Math.max(0, ...t.inputChannels.map((c) => peaks[c] ?? 0)) : (store.trackMeterHold.get(t.id) ?? 0);
-      const db = toDb(v, -60);
-      el.style.width = `${((db + 60) / 60) * 100}%`;
-      el.classList.toggle('hot', db > -6);
-      el.classList.toggle('clip', db > -0.5);
+      const p = t.armed ? Math.max(0, ...t.inputChannels.map((c) => raw.inputPeaks[c] ?? 0)) : (raw.trackPeaks?.[t.id] ?? 0);
+      meter.update(v, p);
     }
   }
 
@@ -393,6 +442,7 @@ export class TimelineView {
     for (const [c, height] of [
       [this.rulerCanvas, RULER_H + MARKER_H],
       [this.canvas, hTracks],
+      [this.overview, OVERVIEW_H],
     ] as const) {
       c.width = Math.round(w * dpr);
       c.height = Math.round(height * dpr);
@@ -416,6 +466,12 @@ export class TimelineView {
     }
   }
 
+  /** Scrolls so `pos` is in view (a tenth from the left edge), whatever the transport does. */
+  reveal(pos: number): void {
+    this.viewStart = Math.max(0, pos / this.sr - (this.width * 0.1) / this.pxPerSec);
+    this.draw();
+  }
+
   /** Zooms around the playhead when it is visible, otherwise around the centre. */
   zoomAtPlayhead(factor: number): void {
     const x = this.xOf(store.transport.position);
@@ -426,11 +482,46 @@ export class TimelineView {
     if (!store.project) return;
     this.drawRuler();
     this.drawTracks();
-    const total = this.totalSeconds();
-    const visible = this.width / this.pxPerSec;
-    const maxStart = Math.max(0, total - visible);
-    this.hscroll.max = String(Math.round(maxStart * 1000));
-    this.hscroll.value = String(Math.round(Math.min(this.viewStart, maxStart) * 1000));
+    this.drawOverview();
+  }
+
+  /** Seconds per overview pixel: the whole episode fits, or the view if it reaches further. */
+  private overviewScale(): number {
+    const total = Math.max(this.totalSeconds(), this.viewStart + this.width / this.pxPerSec);
+    return total / Math.max(1, this.width);
+  }
+
+  private drawOverview(): void {
+    const ctx = this.ctx(this.overview);
+    const w = this.width;
+    const spp = this.overviewScale();
+    const xs = (frames: number) => frames / this.sr / spp;
+    ctx.fillStyle = '#16181e';
+    ctx.fillRect(0, 0, w, OVERVIEW_H);
+    const tracks = store.project.tracks;
+    const laneH = Math.max(2, Math.min(8, (OVERVIEW_H - 6) / Math.max(1, tracks.length)));
+    const top = Math.max(3, (OVERVIEW_H - laneH * tracks.length) / 2);
+    tracks.forEach((t, i) => {
+      for (const c of t.clips) {
+        ctx.fillStyle = c.color ?? t.color;
+        ctx.globalAlpha = t.mute ? 0.35 : 0.85;
+        ctx.fillRect(xs(c.start), top + i * laneH, Math.max(1, xs(c.length)), Math.max(1, laneH - 1));
+      }
+    });
+    ctx.globalAlpha = 1;
+    for (const m of store.project.markers) {
+      ctx.fillStyle = m.kind === 'chapter' ? '#ffca28' : '#ef5350';
+      ctx.fillRect(Math.round(xs(m.position)), 0, 1, OVERVIEW_H);
+    }
+    // the visible part of the timeline
+    const vx = this.viewStart / spp;
+    const vw = Math.max(4, this.width / this.pxPerSec / spp);
+    ctx.fillStyle = 'rgba(154,184,255,0.14)';
+    ctx.fillRect(vx, 0, vw, OVERVIEW_H);
+    ctx.strokeStyle = 'rgba(154,184,255,0.85)';
+    ctx.strokeRect(Math.round(vx) + 0.5, 0.5, Math.round(vw) - 1, OVERVIEW_H - 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(Math.round(xs(store.transport.position)), 0, 1, OVERVIEW_H);
   }
 
   private ctx(c: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -490,10 +581,30 @@ export class TimelineView {
       ctx.fillStyle = '#9ab8ff';
       for (const f of r) ctx.fillRect(Math.round(this.cx(this.xOf(f))) - 1, 0, 2, RULER_H);
     }
-    // markers
+    // regions: bands in the marker lane, behind the markers
     ctx.textBaseline = 'middle';
+    for (const r of store.project.regions ?? []) {
+      const x0 = this.cx(this.xOf(r.start));
+      const x1 = this.cx(this.xOf(r.end));
+      if (x1 < 0 || x0 > w) continue;
+      ctx.fillStyle = 'rgba(149,117,205,0.28)';
+      ctx.fillRect(x0, RULER_H + 1, x1 - x0, MARKER_H - 2);
+      ctx.fillStyle = '#9575cd';
+      ctx.fillRect(Math.round(x0), RULER_H + 1, 2, MARKER_H - 2);
+      ctx.fillRect(Math.round(x1) - 2, RULER_H + 1, 2, MARKER_H - 2);
+      ctx.fillRect(x0, RULER_H + MARKER_H - 3, x1 - x0, 2);
+      ctx.fillStyle = '#d1c4e9';
+      ctx.font = '10px system-ui, sans-serif';
+      const label = `▭ ${r.title}`;
+      const lx = Math.max(0, x0) + 5;
+      // keep the title clear of a marker flag and title at the region start
+      const atStart = store.project.markers.find((m) => Math.abs(this.xOf(m.position) - x0) < 6);
+      const tx = atStart ? lx + Math.min(160, ctx.measureText(atStart.title).width + 24) : lx;
+      if (x1 - tx > 30) ctx.fillText(label, tx, RULER_H + MARKER_H / 2 - 1, Math.max(10, x1 - tx - 6));
+    }
+    // markers
     for (const m of store.project.markers) {
-      const pos = this.drag?.kind === 'marker' && this.drag.markerId === m.id ? this.drag.origPos + Math.round((this.drag.dx / this.pxPerSec) * this.sr) : m.position;
+      const pos = this.markerPos(m);
       const x = Math.round(this.xOf(pos)) + 0.5;
       if (x < -200 || x > w + 2) continue;
       const color = m.kind === 'chapter' ? '#ffca28' : '#ef5350';
@@ -677,7 +788,7 @@ export class TimelineView {
     }
     // marker lines
     for (const m of store.project.markers) {
-      const x = Math.round(this.xOf(m.position)) + 0.5;
+      const x = Math.round(this.xOf(this.markerPos(m))) + 0.5;
       if (x < 0 || x > w) continue;
       ctx.strokeStyle = m.kind === 'chapter' ? 'rgba(255,202,40,0.45)' : 'rgba(239,83,80,0.45)';
       ctx.setLineDash([4, 4]);
@@ -689,6 +800,14 @@ export class TimelineView {
     }
     this.drawPlayhead(ctx, height);
     this.drawSnapLine(ctx, height);
+  }
+
+  /** A marker's position, following a marker drag or a ripple move across all tracks. */
+  private markerPos(m: Marker): number {
+    const d = this.drag;
+    if (d?.kind === 'marker' && d.markerId === m.id) return d.origPos + Math.round((d.dx / this.pxPerSec) * this.sr);
+    if (d?.kind === 'clip' && d.moved && d.ripple?.markerIds.has(m.id)) return m.position + d.delta;
+    return m.position;
   }
 
   private isDragged(clipId: string): boolean {
@@ -946,15 +1065,23 @@ export class TimelineView {
     const vx1 = this.cx(g.x + g.w);
     ctx.fillStyle = selected ? '#2f3b52' : '#262b36';
     ctx.fillRect(vx0, g.y, vx1 - vx0, hgt);
-    ctx.fillStyle = track.color;
-    ctx.fillRect(vx0, g.y, vx1 - vx0, 3);
+    if (clip.color) {
+      // a coloured clip gets a tinted body and its colour as the top bar
+      ctx.globalAlpha = (muted ? 0.4 : 1) * 0.22;
+      ctx.fillStyle = clip.color;
+      ctx.fillRect(vx0, g.y, vx1 - vx0, hgt);
+      ctx.globalAlpha = muted ? 0.4 : 1;
+    }
+    ctx.fillStyle = clip.color ?? track.color;
+    ctx.fillRect(vx0, g.y, vx1 - vx0, clip.color ? 5 : 3);
     // waveform
     const peaks = store.requestPeaks(clip.file);
     if (peaks && peaks.levels.length) {
       // the waveform shows the clip as it sounds: clip gain (normalisation), fades and
       // volume line applied
       const env = clip.envelope?.length ? clip.envelope : undefined;
-      const fades = clip.fadeIn > 0 || clip.fadeOut > 0;
+      const fx = fadesOf(track, clip);
+      const fades = fx.fadeIn > 0 || fx.fadeOut > 0;
       const cg = clip.gain ? dbToGain(clip.gain) : 1;
       drawFileWaveform(ctx, store.waves, clip.file, peaks, {
         x0: Math.max(0, Math.floor(g.x)),
@@ -970,7 +1097,7 @@ export class TimelineView {
         color: track.color,
         gain:
           env || fades || cg !== 1
-            ? (src) => cg * (fades ? fadeEnvelope(clip, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
+            ? (src) => cg * (fades ? fadesAt(fx, clip.length, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
             : undefined,
       });
     } else if (!peaks) {
@@ -978,12 +1105,17 @@ export class TimelineView {
       ctx.fillRect(vx0, g.y + hgt / 2, vx1 - vx0, 1);
     }
     // fades: the faded-out part is shaded, the curve drawn on top
+    const eff = fadesOf(track, clip);
     const fi = (clip.fadeIn / this.sr) * this.pxPerSec;
     const fo = (clip.fadeOut / this.sr) * this.pxPerSec;
+    const efi = (eff.fadeIn / this.sr) * this.pxPerSec;
+    const efo = (eff.fadeOut / this.sr) * this.pxPerSec;
     ctx.fillStyle = 'rgba(8,9,12,0.45)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    if (fi > 0) this.drawFade(ctx, g.x, g.y + hgt, g.x + fi, g.y + 3);
-    if (fo > 0) this.drawFade(ctx, g.x + g.w - fo, g.y + 3, g.x + g.w, g.y + hgt);
+    // crossfades over an overlap are drawn in the accent colour
+    ctx.strokeStyle = eff.autoIn ? 'rgba(255,202,40,0.9)' : 'rgba(255,255,255,0.7)';
+    if (efi > 0) this.drawFade(ctx, g.x, g.x + efi, g.y + 3, g.y + hgt, 'in', eff.inShape);
+    ctx.strokeStyle = eff.autoOut ? 'rgba(255,202,40,0.9)' : 'rgba(255,255,255,0.7)';
+    if (efo > 0) this.drawFade(ctx, g.x + g.w - efo, g.x + g.w, g.y + 3, g.y + hgt, 'out', eff.outShape);
     // fade handles at the top corners of the hovered or dragged clip
     const fadeDrag = this.drag?.kind === 'fade' && this.drag.clipId === clip.id ? this.drag : null;
     if ((this.hoverClipId === clip.id || fadeDrag) && g.w > 2 * FADE_HANDLE_PX) {
@@ -1022,6 +1154,17 @@ export class TimelineView {
       const jingle = track.kind === 'soundboard' ? store.project.soundboard.find((s) => jingleMediaFile(s.id, this.sr) === clip.file) : undefined;
       const name = jingle ? `♪ ${jingle.name}` : clip.file.split('/').pop() ?? '';
       ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
+      if (clip.note) {
+        ctx.font = 'italic 11px system-ui, sans-serif';
+        ctx.textBaseline = 'bottom';
+        const text = `✎ ${clip.note.split('\n')[0]}`;
+        const tx = Math.max(g.x, 0) + 5;
+        const tw = Math.min(ctx.measureText(text).width, Math.max(10, vx1 - tx - 8));
+        ctx.fillStyle = 'rgba(15,16,20,0.7)';
+        ctx.fillRect(tx - 3, g.y + hgt - 19, tw + 6, 16);
+        ctx.fillStyle = '#fff3c4';
+        ctx.fillText(text, tx, g.y + hgt - 4, Math.max(10, vx1 - tx - 8));
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -1030,22 +1173,29 @@ export class TimelineView {
    * A fade's gain line from (xa, ya) to (xb, yb), with the part above it shaded, cut to the
    * visible columns so it stays exact however far the view is zoomed in.
    */
-  private drawFade(ctx: CanvasRenderingContext2D, xa: number, ya: number, xb: number, yb: number): void {
-    const top = Math.min(ya, yb);
+  private drawFade(ctx: CanvasRenderingContext2D, xa: number, xb: number, top: number, bottom: number, dir: 'in' | 'out', shape: FadeShape): void {
     const l = this.cx(xa);
     const r = this.cx(xb);
     if (r <= l) return;
-    const yAt = (x: number) => ya + ((yb - ya) * (x - xa)) / (xb - xa);
+    const yAt = (x: number) => {
+      const t = (x - xa) / (xb - xa);
+      return bottom - (bottom - top) * fadeCurve(dir === 'in' ? t : 1 - t, shape);
+    };
+    // the curve, sampled every few pixels of what is visible
+    const steps = Math.max(1, Math.min(64, Math.ceil((r - l) / 3)));
+    const pts: Array<[number, number]> = [];
+    for (let k = 0; k <= steps; k++) {
+      const x = l + ((r - l) * k) / steps;
+      pts.push([x, yAt(x)]);
+    }
     ctx.beginPath();
     ctx.moveTo(l, top);
     ctx.lineTo(r, top);
-    ctx.lineTo(r, yAt(r));
-    ctx.lineTo(l, yAt(l));
+    for (let k = pts.length - 1; k >= 0; k--) ctx.lineTo(pts[k][0], pts[k][1]);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(l, yAt(l));
-    ctx.lineTo(r, yAt(r));
+    pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.stroke();
   }
 
@@ -1114,10 +1264,30 @@ export class TimelineView {
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
 
-    this.hscroll.addEventListener('input', () => {
-      this.viewStart = Number(this.hscroll.value) / 1000;
-      this.draw();
+    // overview: click centres the view there, dragging the frame scrolls
+    this.overview.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const spp = this.overviewScale();
+      const visible = this.width / this.pxPerSec;
+      const vx = this.viewStart / spp;
+      const x0 = local(e, this.overview).x;
+      // grabbing the frame keeps the grab point; clicking elsewhere centres the view first
+      const grab = x0 >= vx && x0 <= vx + visible / spp ? x0 * spp - this.viewStart : visible / 2;
+      const moveTo = (x: number) => {
+        this.viewStart = Math.max(0, Math.min(this.totalSeconds(), x * spp - grab));
+        this.draw();
+      };
+      moveTo(x0);
+      const onMove = (ev: MouseEvent) => moveTo(local(ev, this.overview).x);
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
     });
+    this.overview.addEventListener('wheel', (e) => onWheel(e, this.overview), { passive: false });
 
     const onWheel = (e: WheelEvent, el: HTMLElement) => {
       if (e.ctrlKey || e.metaKey) {
@@ -1131,6 +1301,28 @@ export class TimelineView {
       }
     };
     this.canvas.addEventListener('wheel', (e) => onWheel(e, this.canvas), { passive: false });
+    // drag-and-drop audio files: onto a track to add them there, below the tracks for new tracks
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+    this.scroll.addEventListener('dragover', (e) => {
+      if (!hasFiles(e) || !store.project) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'copy';
+      this.scroll.classList.add('drop-target');
+    });
+    this.scroll.addEventListener('dragleave', () => this.scroll.classList.remove('drop-target'));
+    this.scroll.addEventListener('drop', (e) => {
+      this.scroll.classList.remove('drop-target');
+      if (!hasFiles(e) || !store.project) return;
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer!.files);
+      if (!files.length) return;
+      const r = this.canvas.getBoundingClientRect();
+      const x = Math.max(0, e.clientX - r.left);
+      const ti = Math.floor((e.clientY - r.top) / TRACK_H);
+      const track = ti >= 0 ? store.project.tracks[ti] : undefined;
+      void importDroppedFiles(files, this.frameOf(x), track?.id ?? null);
+    });
+
     this.rulerCanvas.addEventListener('wheel', (e) => onWheel(e, this.rulerCanvas), { passive: false });
 
     // Middle mouse button drag pans the view, horizontally and vertically, like in Reaper.
@@ -1204,7 +1396,12 @@ export class TimelineView {
       if (m) {
         store.select({ markerId: m.id });
         store.setView('chapters');
+        return;
       }
+      // double-click a region: select its time range
+      const f = this.frameOf(x);
+      const r = (store.project.regions ?? []).find((g) => f >= g.start && f <= g.end);
+      if (r) store.select({ range: [r.start, r.end], rangeTracks: null, clipIds: new Set(), markerId: null });
     });
 
     this.canvas.addEventListener('mouseleave', () => {
@@ -1256,7 +1453,7 @@ export class TimelineView {
         this.canvas.title = env.point !== null ? 'Volume point: drag to move, double-click to remove' : 'Volume line: drag up or down, double-click to add a point';
         return;
       }
-      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : '';
+      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click to edit the note` : hit ? 'Right-click for colour and note' : '';
       this.canvas.style.cursor = hit?.edge ? 'ew-resize' : hit ? 'grab' : 'text';
     });
 
@@ -1278,15 +1475,34 @@ export class TimelineView {
         store.edit((p) => setClipEnvelope(p, env.clip.id, (env.clip.envelope ?? []).filter((_, i) => i !== index)));
         return;
       }
+      const fadeHit = this.hitClip(x, y);
+      if (fadeHit?.fade) {
+        const key = fadeHit.fade === 'in' ? 'fadeInShape' : 'fadeOutShape';
+        const cur = fadeHit.clip[key] ?? 'linear';
+        const next = FADE_SHAPES[(FADE_SHAPES.findIndex((f) => f.id === cur) + 1) % FADE_SHAPES.length];
+        store.edit((p) => updateClip(p, fadeHit.clip.id, { [key]: next.id }));
+        toast(`Fade ${fadeHit.fade}: ${next.label}`);
+        return;
+      }
       const area = env ?? this.inEnvelopeArea(x, y);
-      if (area && !this.hitClip(x, y)?.fade) {
+      if (area && !fadeHit?.fade) {
         const pts = area.clip.envelope ?? [];
         const src = toSource(area.clip, this.frameOf(x));
         store.edit((p) => setClipEnvelope(p, area.clip.id, addPoint(pts, src, envelopeDbAt(pts, src)).points));
       }
     });
 
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const { x, y } = local(e, this.canvas);
+      const hit = this.hitClip(x, y);
+      if (!hit) return;
+      if (!store.selection.clipIds.has(hit.clip.id)) store.select({ clipIds: new Set([hit.clip.id]), range: null, rangeTracks: null, markerId: null });
+      showClipLabel(hit.clip, e.clientX, e.clientY);
+    });
+
     this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 2) return; // right-click opens the clip's colour and note
       const { x, y } = local(e, this.canvas);
       this.snapLine = null;
       const lane = this.hitMuteLane(x, y);
@@ -1351,7 +1567,13 @@ export class TimelineView {
         return;
       }
       // 5. clips: trim edges or move
-      if (hit) {
+      if (hit && !hit.edge && (e.ctrlKey || e.metaKey)) {
+        // ripple move: Ctrl-drag takes later clips on the track along, Ctrl+Shift-drag everything later
+        const ids = store.selection.clipIds.has(hit.clip.id) ? new Set(store.selection.clipIds) : new Set([hit.clip.id]);
+        store.select({ clipIds: ids, range: null, rangeTracks: null, markerId: null });
+        const ripple = rippleSet(store.project, ids, e.shiftKey ? 'all' : 'track');
+        this.drag = { kind: 'clip', clipId: hit.clip.id, ids: ripple.clipIds, startX: e.clientX, startY: e.clientY, delta: 0, dTrack: 0, minDTrack: 0, maxDTrack: 0, moved: false, ripple };
+      } else if (hit) {
         const sel = new Set(e.shiftKey ? store.selection.clipIds : []);
         if (e.shiftKey && sel.has(hit.clip.id)) sel.delete(hit.clip.id);
         else sel.add(hit.clip.id);
@@ -1403,7 +1625,7 @@ export class TimelineView {
         if (clip && d.moved && !locked) delta += this.snapDelta([clip.start + delta, clip.start + clip.length + delta], d.ids, e);
         // no selected clip may move before zero
         const minStart = Math.min(...store.project.tracks.flatMap((t) => t.clips.filter((c) => d.ids.has(c.id)).map((c) => c.start)));
-        d.delta = Math.max(-minStart, delta);
+        d.delta = Math.max(d.ripple ? rippleMinDelta(store.project, d.ripple) : -minStart, delta);
         this.draw();
       } else if (d.kind === 'trim') {
         let delta = framesOf(e.clientX - d.startX);
@@ -1478,7 +1700,10 @@ export class TimelineView {
       document.body.classList.remove('scrubbing');
       if (!d) return;
       if (d.kind === 'playhead' && d.moved) seek(d.current);
-      if (d.kind === 'clip' && d.moved) {
+      if (d.kind === 'clip' && d.moved && d.ripple) {
+        const ripple = d.ripple;
+        store.edit((p) => rippleMove(p, ripple, d.delta));
+      } else if (d.kind === 'clip' && d.moved) {
         store.edit((p) => {
           let q = p;
           for (const id of d.ids) {
@@ -1563,6 +1788,14 @@ function readSnapSetting(): boolean {
   }
 }
 
-function fadeEnvelope(clip: Clip, rel: number): number {
-  return fadeGain(rel, clip.length, clip.fadeIn, clip.fadeOut);
+/** Effective fades per track object (tracks are replaced on every edit, so this never goes stale). */
+const fadeCache = new WeakMap<Track, Map<string, EffectiveFades>>();
+
+function fadesOf(track: Track, clip: Clip): EffectiveFades {
+  let m = fadeCache.get(track);
+  if (!m) {
+    m = trackFades(track);
+    fadeCache.set(track, m);
+  }
+  return m.get(clip.id) ?? trackFades({ ...track, clips: [clip] }).get(clip.id)!;
 }

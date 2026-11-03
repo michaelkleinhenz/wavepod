@@ -6,6 +6,8 @@ export interface Chapter {
   start: number;
   title: string;
   url?: string;
+  /** Image file name or URL, as it should appear in chapter files. */
+  image?: string;
 }
 
 export type ChapterFormat = 'psc' | 'mp4chaps' | 'json' | 'audacity';
@@ -40,7 +42,8 @@ export function exportChapters(chapters: Chapter[], format: ChapterFormat, total
     case 'psc': {
       const lines = list.map((c) => {
         const href = c.url ? ` href="${xmlEscape(c.url)}"` : '';
-        return `  <psc:chapter start="${formatTimestamp(c.start)}" title="${xmlEscape(c.title)}"${href} />`;
+        const image = c.image ? ` image="${xmlEscape(c.image)}"` : '';
+        return `  <psc:chapter start="${formatTimestamp(c.start)}" title="${xmlEscape(c.title)}"${href}${image} />`;
       });
       return [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -61,6 +64,7 @@ export function exportChapters(chapters: Chapter[], format: ChapterFormat, total
               startTime: round3(c.start),
               title: c.title,
               ...(c.url ? { url: c.url } : {}),
+              ...(c.image ? { img: c.image } : {}),
             })),
           },
           null,
@@ -97,11 +101,11 @@ export function detectChapterFormat(text: string): ChapterFormat | null {
 export function importChapters(text: string, format = detectChapterFormat(text)): Chapter[] {
   switch (format) {
     case 'json': {
-      const data = JSON.parse(text) as { chapters?: Array<{ startTime: number; title?: string; url?: string; toc?: boolean }> };
+      const data = JSON.parse(text) as { chapters?: Array<{ startTime: number; title?: string; url?: string; img?: string; toc?: boolean }> };
       return sorted(
         (data.chapters ?? [])
           .filter((c) => typeof c.startTime === 'number' && c.toc !== false)
-          .map((c) => ({ start: c.startTime, title: c.title ?? '', ...(c.url ? { url: c.url } : {}) })),
+          .map((c) => ({ start: c.startTime, title: c.title ?? '', ...(c.url ? { url: c.url } : {}), ...(c.img ? { image: c.img } : {}) })),
       );
     }
     case 'psc': {
@@ -112,7 +116,7 @@ export function importChapters(text: string, format = detectChapterFormat(text))
         const attrs = parseAttrs(m[1]);
         const start = parseTimestamp(attrs.start ?? '');
         if (Number.isNaN(start)) continue;
-        out.push({ start, title: attrs.title ?? '', ...(attrs.href ? { url: attrs.href } : {}) });
+        out.push({ start, title: attrs.title ?? '', ...(attrs.href ? { url: attrs.href } : {}), ...(attrs.image ? { image: attrs.image } : {}) });
       }
       return sorted(out);
     }

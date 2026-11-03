@@ -20,7 +20,7 @@ export interface ProjectTemplate {
   /** Slot files are relative to the template folder ("sounds/…") or absolute. */
   soundboard: SoundboardSlot[];
   /** Show-level metadata that stays the same from episode to episode. */
-  metadata: Pick<EpisodeMetadata, 'podcast' | 'author'>;
+  metadata: Pick<EpisodeMetadata, 'podcast' | 'author' | 'artwork' | 'category'>;
 }
 
 export interface TemplateSummary {
@@ -55,7 +55,12 @@ export function projectToTemplate(project: Project, name: string, inputDevice?: 
       return { ...rest, solo: false };
     }),
     soundboard: p.soundboard,
-    metadata: { podcast: p.metadata.podcast, author: p.metadata.author },
+    metadata: {
+      podcast: p.metadata.podcast,
+      author: p.metadata.author,
+      ...(p.metadata.artwork ? { artwork: p.metadata.artwork } : {}),
+      ...(p.metadata.category ? { category: p.metadata.category } : {}),
+    },
   };
 }
 
@@ -71,7 +76,12 @@ export function normalizeTemplate(raw: Partial<ProjectTemplate>, fallbackName = 
   });
   const t = projectToTemplate(p, typeof raw.name === 'string' && raw.name.trim() ? raw.name : fallbackName, raw.inputDevice);
   t.savedAt = typeof raw.savedAt === 'string' ? raw.savedAt : new Date(0).toISOString();
-  t.metadata = { podcast: raw.metadata?.podcast ?? '', author: raw.metadata?.author ?? '' };
+  t.metadata = {
+    podcast: raw.metadata?.podcast ?? '',
+    author: raw.metadata?.author ?? '',
+    ...(typeof raw.metadata?.artwork === 'string' && raw.metadata.artwork ? { artwork: raw.metadata.artwork } : {}),
+    ...(typeof raw.metadata?.category === 'string' && raw.metadata.category ? { category: raw.metadata.category } : {}),
+  };
   t.soundboard = t.soundboard.filter((s) => s && typeof s.file === 'string');
   return t;
 }
@@ -91,7 +101,13 @@ export function projectFromTemplate(template: ProjectTemplate, name: string, sam
     masterFx: freshFx(t.masterFx),
     tracks: t.tracks.map((tr) => ({ ...tr, fx: freshFx(tr.fx), clips: [] })),
     soundboard: t.soundboard,
-    metadata: { ...base.metadata, podcast: t.metadata.podcast, author: t.metadata.author },
+    metadata: {
+      ...base.metadata,
+      podcast: t.metadata.podcast,
+      author: t.metadata.author,
+      ...(t.metadata.artwork ? { artwork: t.metadata.artwork } : {}),
+      ...(t.metadata.category ? { category: t.metadata.category } : {}),
+    },
   });
 }
 

@@ -15,12 +15,18 @@ import type {
   McpSettings,
   McpStatus,
   MidiSettings,
+  OscSettings,
+  OscStatus,
+  AuphonicInfo,
+  AuphonicSettingsInput,
+  RemoteCommand,
   Project,
   RecordedTake,
   TransportUpdate,
   WaveformPeaks,
 } from './types';
 import type { TemplateSummary } from '../core/template';
+import type { AlignResult } from '../core/align';
 
 export interface OpenedProject {
   project: Project;
@@ -43,6 +49,9 @@ export type MenuCommand =
   | 'export'
   | 'undo'
   | 'ripple-cut'
+  | 'copy'
+  | 'paste'
+  | 'paste-ripple'
   | 'mute-selection'
   | 'normalize-clips'
   | 'loudness-analysis'
@@ -51,7 +60,10 @@ export type MenuCommand =
   | 'view-setup'
   | 'view-edit'
   | 'view-chapters'
-  | 'show-project-folder';
+  | 'show-project-folder'
+  | 'restore-backup'
+  | 'shortcuts'
+  | 'auphonic';
 
 /** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
 export interface MenuModelItem {
@@ -86,11 +98,37 @@ export interface WavePodApi {
   /** Stores the settings and starts, restarts or stops the server. */
   setMcpSettings(settings: McpSettings): Promise<McpStatus>;
 
+  // Auphonic hand-off
+  getAuphonicSettings(): Promise<AuphonicInfo>;
+  setAuphonicSettings(input: AuphonicSettingsInput): Promise<AuphonicInfo>;
+  /** The account's multitrack presets. */
+  auphonicPresets(): Promise<Array<{ uuid: string; name: string }>>;
+  /** Renders stems, creates the production and uploads; progress comes as export progress. */
+  sendToAuphonic(): Promise<{ uuid: string; url: string; started: boolean }>;
+  /** Opens a production page on auphonic.com in the browser. */
+  openAuphonic(url: string): Promise<void>;
+
+  // OSC remote control (app settings, off by default)
+  getOscStatus(): Promise<OscStatus>;
+  /** Stores the settings and starts, restarts or stops the OSC server. */
+  setOscSettings(settings: OscSettings): Promise<OscStatus>;
+
+  /** What the soundcheck needs from the main process: input device name and free disk space. */
+  soundcheckInfo(): Promise<{ inputDeviceName?: string; freeBytes: number | null }>;
+  /** Ask before stopping a recording (Edit menu setting, on by default). */
+  confirmStopRecording(): Promise<boolean>;
+  /** Lets the user pick one of the project's backups; returns it, or null if cancelled. */
+  restoreBackup(): Promise<Project | null>;
+
   // transport
   play(from?: number): Promise<void>;
   stop(): Promise<RecordedTake[]>;
   record(): Promise<string[]>;
   seek(position: number): Promise<void>;
+  /** Playback speed, 1 to 2, pitch kept (recording and export always run at 1x). */
+  setPlaybackSpeed(speed: number): Promise<void>;
+  /** Output preset: Pre-show (only the soundboard is heard) or Show. */
+  setPreShow(on: boolean): Promise<void>;
   /** Range in frames that playback repeats (the selection while Repeat is on), or null. */
   setLoop(range: [number, number] | null): Promise<void>;
 
@@ -127,6 +165,8 @@ export interface WavePodApi {
   importAudio(name: string, channels: Float32Array[], sampleRate: number): Promise<ImportedAudio>;
   openTextFile(title: string, extensions: string[]): Promise<{ path: string; text: string } | null>;
   saveTextFile(defaultName: string, text: string): Promise<string | null>;
+  /** Lets the user choose a JPEG or PNG and copies it into the project's images folder; returns its relative path. */
+  pickImage(title: string): Promise<string | null>;
 
   // soundboard
   loadSound(id: string, channels: Float32Array[]): Promise<void>;
@@ -141,6 +181,8 @@ export interface WavePodApi {
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;
+  /** Where a clip should start to line up with a reference track (double-ender alignment). */
+  alignClip(clipId: string, refTrackId: string): Promise<AlignResult>;
 
   // VST3 plug-ins (hosted in a separate process; editors are never shown)
   vstStatus(): Promise<{ available: boolean; dirs: string[] }>;
@@ -159,6 +201,8 @@ export interface WavePodApi {
   onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean }) => void): () => void;
   onExportProgress(cb: (p: ExportProgress) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
+  /** OSC remote-control commands. */
+  onRemote(cb: (cmd: RemoteCommand) => void): () => void;
   /** An AI agent changed the project over MCP; it is already applied in the main process. */
   onProjectEdited(cb: (e: { project: Project; summary: string }) => void): () => void;
 
@@ -172,13 +216,14 @@ export const IPC = {
   recordingFinished: 'wavepod:recordingFinished',
   exportProgress: 'wavepod:exportProgress',
   menu: 'wavepod:menu',
+  remote: 'wavepod:remote',
   projectEdited: 'wavepod:projectEdited',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onProjectEdited' | 'platform'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'platform'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
@@ -190,10 +235,22 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'setMidiSettings',
   'getMcpStatus',
   'setMcpSettings',
+  'getAuphonicSettings',
+  'setAuphonicSettings',
+  'auphonicPresets',
+  'sendToAuphonic',
+  'openAuphonic',
+  'getOscStatus',
+  'setOscSettings',
+  'soundcheckInfo',
+  'confirmStopRecording',
+  'restoreBackup',
   'play',
   'stop',
   'record',
   'seek',
+  'setPlaybackSpeed',
+  'setPreShow',
   'setLoop',
   'currentProject',
   'newProject',
@@ -215,6 +272,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'importAudio',
   'openTextFile',
   'saveTextFile',
+  'pickImage',
   'loadSound',
   'playSound',
   'stopSounds',
@@ -223,6 +281,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'measureLoudness',
   'measureClips',
   'revealFile',
+  'alignClip',
   'vstStatus',
   'vstScan',
   'vstDescribe',

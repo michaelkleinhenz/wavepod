@@ -115,7 +115,7 @@ describe('WavePod MCP tools', () => {
     let r = await call(server, 'get_filter_stack', { target: 'Nobody' });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/"Host"/);
-    r = await call(server, 'add_filter', { target: 'Host', type: 'reverb' });
+    r = await call(server, 'add_filter', { target: 'Host', type: 'chorus' });
     expect(r.text).toMatch(/Unknown filter type/);
     r = await call(server, 'add_filter', { target: 'Host', type: 'compressor', params: { nonsense: 1 } });
     expect(r.text).toMatch(/no parameter "nonsense"/);
