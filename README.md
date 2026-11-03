@@ -81,6 +81,37 @@ Steinberg's VST3 SDK), and `make dist*` builds it automatically. Without it
 WavePod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`
 (present on normal desktop installs).
 
+#### Linux: Chromium sandbox
+
+Electron sandboxes its renderer processes. On Linux it does this with
+unprivileged user namespaces, or, where those are blocked, with the setuid
+helper `node_modules/electron/dist/chrome-sandbox`, which must be owned by
+root. Ubuntu 23.10+ blocks user namespaces through AppArmor, and npm installs
+the helper as your user, so plain `npx electron .` aborts with
+`SIGTRAP` ("The SUID sandbox helper binary was found, but is not configured
+correctly"). WavePod itself never needs root. `make start` detects this and
+prints the options instead of crashing:
+
+- Keep the sandbox (redo after every `npm ci`):
+  ```sh
+  sudo chown root:root node_modules/electron/dist/chrome-sandbox
+  sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+  ```
+- Keep the sandbox permanently by allowing user namespaces for this Electron
+  binary with an AppArmor profile (run from the repo root):
+  ```sh
+  sudo tee /etc/apparmor.d/wavepod-electron-dev >/dev/null <<EOF
+  abi <abi/4.0>,
+  include <tunables/global>
+  profile wavepod-electron-dev "$PWD/node_modules/electron/dist/electron" flags=(unconfined) {
+    userns,
+    include if exists <local/wavepod-electron-dev>
+  }
+  EOF
+  sudo apparmor_parser -r /etc/apparmor.d/wavepod-electron-dev
+  ```
+- Development only, without the sandbox: `WAVEPOD_NO_SANDBOX=1 make start`.
+
 ### Using a RØDECaster Pro II
 
 1. Enable multitrack mode in the RØDECaster's USB audio settings
