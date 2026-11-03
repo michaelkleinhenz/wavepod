@@ -194,7 +194,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
           date: m0.year,
           track: m0.episode,
           description: m0.description,
-          genre: 'Podcast',
+          genre: m0.category || 'Podcast',
           chapters,
           ...(cover ? { cover } : {}),
         })
@@ -210,7 +210,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         year: m.year,
         track: m.episode,
         comment: m.description,
-        genre: 'Podcast',
+        genre: m.category || 'Podcast',
         ...(cover ? { cover } : {}),
         chapters,
         durationSeconds,

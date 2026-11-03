@@ -9,6 +9,8 @@ export interface RippleSet {
   pivot: Frames;
   clipIds: Set<string>;
   markerIds: Set<string>;
+  /** Everything later moves, on all tracks (markers and regions too). */
+  all: boolean;
   /** Per affected track: mute regions starting at or after this frame move along. */
   trackFrom: Map<string, Frames>;
 }
@@ -29,7 +31,7 @@ export function rippleSet(project: Project, clipIds: Iterable<string>, scope: Ri
     for (const c of t.clips) if (c.start >= from) clips.add(c.id);
   }
   const markerIds = new Set(scope === 'all' ? project.markers.filter((m) => m.position >= pivot).map((m) => m.id) : []);
-  return { pivot, clipIds: clips, markerIds, trackFrom };
+  return { pivot, all: scope === 'all', clipIds: clips, markerIds, trackFrom };
 }
 
 /** The most a ripple set may move left: nothing goes before zero. */
@@ -37,6 +39,7 @@ export function rippleMinDelta(project: Project, set: RippleSet): Frames {
   let min = Infinity;
   for (const t of project.tracks) for (const c of t.clips) if (set.clipIds.has(c.id)) min = Math.min(min, c.start);
   for (const m of project.markers) if (set.markerIds.has(m.id)) min = Math.min(min, m.position);
+  if (set.all) for (const r of project.regions ?? []) if (r.start >= set.pivot) min = Math.min(min, r.start);
   return Number.isFinite(min) ? -min : 0;
 }
 
@@ -54,6 +57,14 @@ export function rippleMove(project: Project, set: RippleSet, delta: Frames): Pro
     }
   }
   for (const m of p.markers) if (set.markerIds.has(m.id)) m.position += d;
+  if (set.all) {
+    // all tracks: regions from the pivot on move along
+    for (const r of p.regions ?? []) {
+      if (r.start < set.pivot) continue;
+      r.start += d;
+      r.end += d;
+    }
+  }
   p.markers.sort((a, b) => a.position - b.position);
   return p;
 }

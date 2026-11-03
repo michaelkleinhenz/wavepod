@@ -11,7 +11,7 @@ import { fadesAt, trackFades, type EffectiveFades } from '../core/crossfade';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
-import { alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
+import { regionFromSelection, alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
@@ -217,6 +217,7 @@ export class TimelineView {
       h('span', { class: 'sep' }),
       btn('chapter', { label: 'Chapter marker', shortcut: 'M', detail: 'Add a chapter marker at the playhead' }, () => dropMarker('chapter'), 'chapter'),
       btn('editMark', { label: 'Edit marker', shortcut: 'E', detail: 'Add an edit marker at the playhead' }, () => dropMarker('edit'), 'editmark'),
+      btn('region', { label: 'Region from selection', detail: 'Make the selected range a region: a part of the episode that can be exported as its own file' }, regionFromSelection),
       h('span', { class: 'sep' }),
       btn('zoomOut', { label: 'Zoom out', shortcut: '-' }, () => this.zoomAtPlayhead(1 / 1.5)),
       btn('zoomIn', { label: 'Zoom in', shortcut: '+' }, () => this.zoomAtPlayhead(1.5)),
@@ -560,8 +561,28 @@ export class TimelineView {
       ctx.fillStyle = '#9ab8ff';
       for (const f of r) ctx.fillRect(Math.round(this.cx(this.xOf(f))) - 1, 0, 2, RULER_H);
     }
-    // markers
+    // regions: bands in the marker lane, behind the markers
     ctx.textBaseline = 'middle';
+    for (const r of store.project.regions ?? []) {
+      const x0 = this.cx(this.xOf(r.start));
+      const x1 = this.cx(this.xOf(r.end));
+      if (x1 < 0 || x0 > w) continue;
+      ctx.fillStyle = 'rgba(149,117,205,0.28)';
+      ctx.fillRect(x0, RULER_H + 1, x1 - x0, MARKER_H - 2);
+      ctx.fillStyle = '#9575cd';
+      ctx.fillRect(Math.round(x0), RULER_H + 1, 2, MARKER_H - 2);
+      ctx.fillRect(Math.round(x1) - 2, RULER_H + 1, 2, MARKER_H - 2);
+      ctx.fillRect(x0, RULER_H + MARKER_H - 3, x1 - x0, 2);
+      ctx.fillStyle = '#d1c4e9';
+      ctx.font = '10px system-ui, sans-serif';
+      const label = `▭ ${r.title}`;
+      const lx = Math.max(0, x0) + 5;
+      // keep the title clear of a marker flag and title at the region start
+      const atStart = store.project.markers.find((m) => Math.abs(this.xOf(m.position) - x0) < 6);
+      const tx = atStart ? lx + Math.min(160, ctx.measureText(atStart.title).width + 24) : lx;
+      if (x1 - tx > 30) ctx.fillText(label, tx, RULER_H + MARKER_H / 2 - 1, Math.max(10, x1 - tx - 6));
+    }
+    // markers
     for (const m of store.project.markers) {
       const pos = this.markerPos(m);
       const x = Math.round(this.xOf(pos)) + 0.5;
@@ -1296,7 +1317,12 @@ export class TimelineView {
       if (m) {
         store.select({ markerId: m.id });
         store.setView('chapters');
+        return;
       }
+      // double-click a region: select its time range
+      const f = this.frameOf(x);
+      const r = (store.project.regions ?? []).find((g) => f >= g.start && f <= g.end);
+      if (r) store.select({ range: [r.start, r.end], rangeTracks: null, clipIds: new Set(), markerId: null });
     });
 
     this.canvas.addEventListener('mouseleave', () => {

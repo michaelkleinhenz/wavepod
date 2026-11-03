@@ -85,9 +85,9 @@ about it; the priority is explained in section 3.
 | Episode artwork (JPG/PNG) in the MP3, recently used images | ✅ Episode cover in the Episode card, embedded as ID3 `APIC`, kept by templates | Done (no "recently used" list) |
 | Chapter images and URLs per chapter; warn on unnamed markers; marker at 00:00 | ✅ Image per chapter, embedded as `APIC` inside `CHAP`, copied next to the chapter files and referenced from PSC (`image`) and JSON (`img`); warnings in the Chapters view and export dialog with "Add chapter at 0:00" | Done |
 | Formats FLAC, OGG Vorbis, AIFF in addition to WAV/MP3 | ✅ FLAC 24-bit with Vorbis-comment chapters and the cover (own pure-TypeScript encoder, `core/flac.ts`). Opus/Ogg still open (needs a WASM encoder) | FLAC done; Opus open; AIFF not planned |
-| Export regions (split a long recording into several files) | One range at a time | **P3** Regions as a third marker kind, "export each region" |
+| Export regions (split a long recording into several files) | ✅ Regions (toolbar "Region from selection", purple bands in the marker lane, listed and renamed in the Chapters view); export "Each region as its own file" writes `<name> - 01 Title.mp3` etc., each with its own chapters and loudness | Done |
 | Export presets, file name patterns | Fixed naming | **P3** Remember last settings per project (presets only if asked for) |
-| Podcast categories in metadata | Missing | **P3** Optional `TCON`/genre field |
+| Podcast categories in metadata | ✅ Category field (podcast directory list or free text) written as ID3 `TCON` and FLAC `GENRE`; kept in templates | Done |
 | Auphonic hand-off | Stems + chapter files only | **P3** Direct upload to Auphonic multitrack (API key in settings) — already listed under "Later" in PLAN.md |
 
 ### Deliberately not adopted
@@ -215,7 +215,7 @@ came up during testing).
 17. **Output presets.** Choose per output pair what it carries (master,
     soundboard only, selected tracks); presets "Pre-show" (soundboard only)
     and "Show". No full routing matrix.
-18. **Regions and export per region; Auphonic upload; podcast category.**
+18. **Regions and export per region; Auphonic upload; podcast category.** ✅ Regions and category done; Auphonic upload still open.
 19. ✅ **Shortcut overlay, marker ping, clip colours and notes.**
 
 ## 4. Suggested order

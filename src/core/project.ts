@@ -4,6 +4,7 @@ import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
 import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
 import { normalizeFx } from './fx/definitions';
+import { insertIntoRegionList, normalizeRegions, rippleDeleteRegions } from './regions';
 import { migrateTrackEnvelope, sortPoints } from './envelope';
 
 function normalizeFxList(list: unknown): Fx[] {
@@ -79,6 +80,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
   p.markers = (p.markers ?? []).map((m) => ({ ...m, id: m.id ?? uid('mrk'), kind: m.kind ?? 'chapter', title: m.title ?? '' }));
   p.soundboard = p.soundboard ?? [];
   p.masterFx = normalizeFxList(p.masterFx);
+  if (raw.regions !== undefined) p.regions = normalizeRegions(raw.regions);
   return p;
 }
 
@@ -215,6 +217,7 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
       .map((c) => (c.start >= end ? { ...c, start: c.start - len } : c));
     if (t.muteRegions?.length) t.muteRegions = rippleRegions(t.muteRegions, start, end);
   }
+  if (p.regions?.length) p.regions = rippleDeleteRegions(p.regions, start, end);
   p.markers = p.markers
     .filter((m) => m.position < start || m.position >= end)
     .map((m) => (m.position >= end ? { ...m, position: m.position - len } : m));
@@ -230,6 +233,7 @@ export function insertSilence(project: Project, position: number, length: number
     if (t.muteRegions?.length) t.muteRegions = insertIntoRegions(t.muteRegions, position, length);
   }
   for (const m of p.markers) if (m.position >= position) m.position += length;
+  if (p.regions?.length) p.regions = insertIntoRegionList(p.regions, position, length);
   return p;
 }
 

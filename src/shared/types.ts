@@ -112,6 +112,14 @@ export type MuteRegion = [Frames, Frames];
 
 export type MarkerKind = 'chapter' | 'edit';
 
+/** A named time span of the episode, e.g. one part of a long session; exportable on its own. */
+export interface Region {
+  id: string;
+  start: Frames;
+  end: Frames;
+  title: string;
+}
+
 export interface Marker {
   id: string;
   kind: MarkerKind;
@@ -144,6 +152,8 @@ export interface EpisodeMetadata {
   year: string;
   /** Episode cover (JPEG or PNG), relative to the project folder ("images/…"). */
   artwork?: string;
+  /** Podcast category, written as the genre (ID3 TCON, FLAC GENRE); "Podcast" when empty. */
+  category?: string;
 }
 
 export type BitDepth = 16 | 24 | 32;
@@ -156,6 +166,8 @@ export interface Project {
   masterGain: number;
   /** Filter stack on the master bus, processed before the master gain. */
   masterFx?: Fx[];
+  /** Named time spans that can be exported as separate files. */
+  regions?: Region[];
   tracks: Track[];
   markers: Marker[];
   soundboard: SoundboardSlot[];

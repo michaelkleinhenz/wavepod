@@ -11,6 +11,8 @@ import { api, store } from './store';
 import { runSoundcheck } from '../core/soundcheck';
 import { clipEdges, markerPositions, stepTo } from '../core/navigation';
 import { copyClips, copyRange, pasteClipboard as pasteInto } from '../core/clipboard';
+import { addRegion } from '../core/regions';
+import { selectionSpan } from '../core/navigation';
 import { confirmStop, showSoundcheck } from './recordDialogs';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
@@ -99,6 +101,14 @@ export function dropMarker(kind: MarkerKind): void {
   // Markers set while recording don't need undo granularity per keypress, but keeping it is harmless.
   store.edit((p) => addMarker(p, pos, kind).project);
   toast(kind === 'chapter' ? 'Chapter marker added' : 'Edit marker added');
+}
+
+/** Makes the selected time range a region (a part that can be exported as its own file). */
+export function regionFromSelection(): void {
+  const span = selectionSpan(store.project, store.selection.range, store.selection.clipIds);
+  if (!span || span[1] <= span[0]) return toast('Select a time range (or clips) to make a region');
+  store.edit((p) => addRegion(p, span[0], span[1]).project);
+  toast('Region added. Rename it in the Chapters view; export it with “Each region as its own file”.');
 }
 
 /** Shift+M: a chapter marker whose title can be typed right away, without stopping anything. */

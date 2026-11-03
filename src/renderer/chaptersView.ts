@@ -1,5 +1,5 @@
 // Chapters & episode info: edit chapter titles/URLs/times, edit markers, import/export chapter files, metadata.
-import type { EpisodeMetadata, Marker } from '../shared/types';
+import type { Region, EpisodeMetadata, Marker } from '../shared/types';
 import { formatTimestamp, parseTimestamp } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from '../core/chapters';
 import { addMarker, chapterWarnings, markersToChapters, removeMarker, updateMarker } from '../core/project';
@@ -7,6 +7,10 @@ import { projectLength } from '../core/project';
 import { clear, errorMessage, h, toast } from './dom';
 import { importChapterFile, seek } from './actions';
 import { api, store } from './store';
+
+/** Top-level podcast directory categories (Apple Podcasts / Podcasting 2.0 list). */
+const PODCAST_CATEGORIES = ['Arts', 'Business', 'Comedy', 'Education', 'Fiction', 'Government', 'Health & Fitness', 'History', 'Kids & Family', 'Leisure', 'Music', 'News', 'Religion & Spirituality', 'Science', 'Society & Culture', 'Sports', 'Technology', 'True Crime', 'TV & Film'];
+import { removeRegion, updateRegion } from '../core/regions';
 import { thumbnail } from './images';
 
 /** Asks for an image and copies it into the project; null if cancelled or failed (failure is shown). */
@@ -183,6 +187,25 @@ export class ChaptersView {
         field('author', 'Author'),
         field('episode', 'Episode number'),
         field('year', 'Year'),
+        h(
+          'label',
+          { class: 'field' },
+          h('span', null, 'Category'),
+          h('input', {
+            value: meta.category ?? '',
+            placeholder: 'Podcast',
+            list: 'podcast-categories',
+            title: 'Written into the MP3 and FLAC as the genre. Pick one of the podcast directory categories or type your own.',
+            onchange: (e: Event) => {
+              const v = (e.target as HTMLInputElement).value.trim();
+              store.edit((p) => {
+                const { category: _c, ...rest } = p.metadata;
+                return { ...p, metadata: v ? { ...rest, category: v } : rest };
+              });
+            },
+          }),
+          h('datalist', { id: 'podcast-categories' }, ...PODCAST_CATEGORIES.map((c) => h('option', { value: c }))),
+        ),
       ),
       field('description', 'Description', true),
       h(
@@ -199,7 +222,54 @@ export class ChaptersView {
       ),
     );
 
-    this.el.append(h('div', { class: 'columns' }, h('div', null, chapterCard, editCard), h('div', null, metaCard)));
+    const regions = store.project.regions ?? [];
+    const regionTime = (r: Region, key: 'start' | 'end') =>
+      h('input', {
+        class: 'time',
+        value: formatTimestamp(r[key] / sr),
+        onchange: (e: Event) => {
+          const secs = parseTimestamp((e.target as HTMLInputElement).value);
+          if (Number.isNaN(secs)) {
+            toast('Use HH:MM:SS.mmm', 'error');
+            this.render();
+            return;
+          }
+          store.edit((p) => updateRegion(p, r.id, { [key]: Math.round(secs * sr) }));
+        },
+      });
+    const regionCard = h(
+      'section',
+      { class: 'card' },
+      h('h2', null, `Regions (${regions.length})`),
+      regions.length
+        ? h(
+            'table',
+            { class: 'markers' },
+            h('thead', null, h('tr', null, h('th', null, 'Start'), h('th', null, 'End'), h('th', null, 'Title'), h('th', null, ''))),
+            h(
+              'tbody',
+              null,
+              ...regions.map((r) =>
+                h(
+                  'tr',
+                  null,
+                  h('td', null, regionTime(r, 'start')),
+                  h('td', null, regionTime(r, 'end')),
+                  h('td', null, h('input', { class: 'title', value: r.title, placeholder: 'Title', onchange: (e: Event) => store.edit((p) => updateRegion(p, r.id, { title: (e.target as HTMLInputElement).value })) })),
+                  h(
+                    'td',
+                    { class: 'actions' },
+                    h('button', { class: 'small', title: 'Select on the timeline', onclick: () => { store.select({ range: [r.start, r.end], rangeTracks: null, clipIds: new Set(), markerId: null }); seek(r.start); store.setView('edit'); } }, '▶'),
+                    h('button', { class: 'small danger', title: 'Delete region', onclick: () => store.edit((p) => removeRegion(p, r.id)) }, '×'),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : h('p', { class: 'muted' }, 'Select a time range and click “Region from selection” in the timeline toolbar to mark a part of the session (for example two episodes recorded in one go). The export can write each region as its own file.'),
+    );
+
+    this.el.append(h('div', { class: 'columns' }, h('div', null, chapterCard, editCard, regionCard), h('div', null, metaCard)));
   }
 }
 
