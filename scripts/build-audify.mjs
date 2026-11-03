@@ -3,8 +3,14 @@
 // audify 1.10.1 allocates its audio buffers with `new int8_t[]` but holds them
 // in `std::shared_ptr<int8_t>`, which frees them with scalar `delete`. Electron
 // 43+ uses an allocator that checks this and traps (SIGTRAP, no message) on the
-// first audio callback. patches/audify+*.patch fixes the source; the prebuilt
-// binary that audify downloads still has the bug, so we compile it here.
+// first audio callback. patches/audify+*.patch fixes that, plus:
+//  - PulseAudio streams with more than 6 channels (e.g. a 16-channel
+//    RØDECaster) failed to open because RtAudio passed no channel map;
+//  - one global error callback shared by all streams was released while other
+//    streams' audio threads still used it (SIGSEGV when reopening devices);
+//  - a JS exception in a stream callback ended in std::terminate (SIGABRT).
+// The prebuilt binary that audify downloads has none of these fixes, so we
+// compile it here.
 //
 // Skips the build when the module was already built from the current patch.
 import { spawnSync } from 'node:child_process';

@@ -190,3 +190,55 @@ describe('AudioEngine with virtual devices', () => {
     expect(ch2).toBeGreaterThan(0.3);
   });
 });
+
+describe('AudioEngine with a native backend', () => {
+  let engine: AudioEngine;
+  afterEach(() => engine?.dispose());
+
+  /** Mimics RtAudioBackend: prefills the output synchronously inside openOutput and rejects wrong sizes. */
+  function fakeNative(outputChannels: number, compiledApis = ['alsa']): AudioBackend & { pulled: number[] } {
+    let api = 'default';
+    const pulled: number[] = [];
+    return {
+      name: 'Fake',
+      pulled,
+      get api() {
+        return api;
+      },
+      listApis: () => ['default', ...compiledApis].map((id) => ({ id, label: id })),
+      setApi(next: string) {
+        if (next !== 'default' && !compiledApis.includes(next)) throw new Error(`${next} is not available`);
+        api = next;
+      },
+      listDevices: () => [
+        { id: 1, name: 'Multi', inputChannels: 2, outputChannels, sampleRates: [48000], preferredSampleRate: 48000, isDefaultInput: true, isDefaultOutput: true },
+      ],
+      openInput: (o) => ({ channels: o.channels, sampleRate: o.sampleRate, frameSize: o.frameSize, close() {} }),
+      openOutput(o) {
+        for (let i = 0; i < 3; i++) {
+          const data = o.pull(o.frameSize);
+          pulled.push(data.length);
+          if (data.length !== o.frameSize * o.channels) throw new Error('Invalid size of the PCM data!');
+        }
+        return { channels: o.channels, sampleRate: o.sampleRate, frameSize: o.frameSize, close() {} };
+      },
+      dispose() {},
+    };
+  }
+
+  it('prefills a multichannel output with the device channel count', () => {
+    const native = fakeNative(64);
+    engine = new AudioEngine(() => native);
+    const s = engine.applyConfig({ api: 'default', inputDeviceId: 1, outputDeviceId: 1, sampleRate: 48000, bufferSize: 512 });
+    expect(s.error).toBeNull();
+    expect(native.pulled).toEqual([512 * 64, 512 * 64, 512 * 64]);
+  });
+
+  it('falls back to the default API when the saved one is not compiled in', () => {
+    engine = new AudioEngine(() => fakeNative(2));
+    const s = engine.applyConfig({ api: 'jack', inputDeviceId: 1, outputDeviceId: 1, sampleRate: 48000, bufferSize: 512 });
+    expect(s.error).toContain('jack is not available');
+    expect(engine.config.api).toBe('default');
+    expect(s.outputChannelCount).toBe(2);
+  });
+});

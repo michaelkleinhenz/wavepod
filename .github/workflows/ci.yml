@@ -45,7 +45,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=ci
+          pactl load-module module-null-sink sink_name=ci sink_properties=device.description=CI-Stereo
+          # 16 channels like a RØDECaster in multitrack mode. Descriptions must differ:
+          # RtAudio merges PulseAudio devices with the same description.
+          pactl load-module module-null-sink sink_name=ci16 channels=16 rate=48000 sink_properties=device.description=CI-16ch
           xvfb-run -a npx electron --no-sandbox test/electron/audio-smoke.cjs
 
   package:
