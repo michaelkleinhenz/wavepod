@@ -56,7 +56,8 @@ export type MenuCommand =
   | 'view-edit'
   | 'view-chapters'
   | 'show-project-folder'
-  | 'restore-backup';
+  | 'restore-backup'
+  | 'shortcuts';
 
 export interface WavePodApi {
   // devices

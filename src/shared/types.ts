@@ -25,6 +25,9 @@ export interface Clip {
   envelope?: EnvelopePoint[];
   /** Volume line is drawn and editable on the clip. */
   showEnvelope?: boolean;
+  /** Storyboard: a colour and a free-text note for the clip. */
+  color?: string;
+  note?: string;
 }
 
 export interface Track {

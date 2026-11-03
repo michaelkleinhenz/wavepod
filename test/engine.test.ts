@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AudioEngine, VIRTUAL_API } from '../src/main/audio/engine';
-import { addTrack, createProject } from '../src/core/project';
+import { addMarker, addTrack, createProject } from '../src/core/project';
 import { WavReader, writeWavFile } from '../src/core/wav';
 import type { AudioBackend } from '../src/main/audio/backend';
 import type { TransportUpdate } from '../src/shared/types';
@@ -188,5 +188,23 @@ describe('AudioEngine with virtual devices', () => {
     }
     expect(ch0).toBe(0);
     expect(ch2).toBeGreaterThan(0.3);
+  });
+
+  it('pings when playback passes a marker, only when switched on', async () => {
+    const peakWhilePlaying = async (ping: boolean) => {
+      engine?.dispose();
+      engine = new AudioEngine(null);
+      engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480 });
+      engine.setProject(addMarker(createProject('Ping', 48000), 4800).project, tmpDir());
+      engine.setMarkerPing(ping);
+      const updates: TransportUpdate[] = [];
+      engine.on('transport', (u) => updates.push(u));
+      engine.play(0);
+      await wait(300);
+      engine.stop();
+      return Math.max(...updates.map((u) => Math.max(...u.outputPeaks)));
+    };
+    expect(await peakWhilePlaying(false)).toBe(0);
+    expect(await peakWhilePlaying(true)).toBeGreaterThan(0.1);
   });
 });

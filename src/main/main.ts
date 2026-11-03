@@ -32,6 +32,8 @@ interface Settings {
   prepareForEditingAfterRecording: boolean;
   /** Ask before stopping a recording (Ultraschall's recording safe mode). */
   confirmStopRecording: boolean;
+  /** Beep when playback passes a marker. */
+  markerPing: boolean;
   /** Local MCP server for AI agents; off unless the user switches it on in Setup. */
   mcp: McpSettings;
 }
@@ -47,10 +49,11 @@ function loadSettings(): Settings {
       midi: normalizeMidiSettings(raw.midi),
       prepareForEditingAfterRecording: raw.prepareForEditingAfterRecording === true,
       confirmStopRecording: raw.confirmStopRecording !== false,
+      markerPing: raw.markerPing === true,
       mcp: normalizeMcpSettings(raw.mcp),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, mcp: normalizeMcpSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null) };
   }
 }
 
@@ -470,12 +473,27 @@ function buildMenu(): void {
         { label: 'Record && Edit', accelerator: 'CmdOrCtrl+2', click: menuSend('view-edit') },
         { label: 'Chapters', accelerator: 'CmdOrCtrl+3', click: menuSend('view-chapters') },
         { type: 'separator' },
+        {
+          label: 'Ping at Markers During Playback',
+          type: 'checkbox',
+          checked: settings.markerPing,
+          click: (item) => {
+            settings.markerPing = item.checked;
+            engine.setMarkerPing(item.checked);
+            saveSettings();
+          },
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
         { role: 'togglefullscreen' },
       ],
     },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [{ label: 'Keyboard Shortcuts', click: menuSend('shortcuts') }],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -505,6 +523,7 @@ app.whenReady().then(() => {
   settings = loadSettings();
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
+  engine.setMarkerPing(settings.markerPing);
   vstExe = vstHostExecutable(app.getAppPath(), process.resourcesPath);
   if (vstExe) {
     vstHost = new VstHostProcess(vstExe, path.join(__dirname, 'vstBridge.js'));

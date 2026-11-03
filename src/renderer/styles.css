@@ -393,3 +393,16 @@ button.primary.danger { background: #c62828; border-color: #c62828; }
 .track-pick { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
 .track-pick button { text-align: left; padding: 8px 12px; }
 .drop-target { outline: 2px dashed var(--accent); outline-offset: -4px; }
+.shortcut-dialog { width: min(1000px, 94vw); }
+.shortcut-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 8px 28px; }
+.shortcut-groups dl { display: grid; grid-template-columns: 170px 1fr; gap: 3px 12px; margin: 0 0 12px; align-items: baseline; }
+.shortcut-groups dt { white-space: nowrap; color: var(--muted); }
+.shortcut-groups dd { margin: 0; }
+kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg, #15171c); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; color: var(--text, #e6e6e6); }
+.clip-label { position: fixed; z-index: 20; width: 280px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; gap: 8px; }
+.clip-label .swatches { display: flex; gap: 6px; }
+.clip-label .swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
+.clip-label .swatch.active { border-color: #fff; }
+.clip-label .swatch.none { background: transparent; border: 2px dashed var(--muted); }
+.clip-label .swatch.none.active { border-style: solid; border-color: #fff; }
+.clip-label textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }

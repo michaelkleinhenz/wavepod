@@ -72,10 +72,10 @@ about it; the priority is explained in section 3.
 | Normalise selected clips (`Alt+Shift+N`) | ✅ Done | **P2, done** Clip loudness normalisation via clip gain (`Alt+Shift+N`), to the target chosen in the loudness analysis |
 | Mute envelopes (`Ctrl+Y`) for removing noises without cutting | Missing | Comes with the P1 cough mute regions, which are editable on any track |
 | Drag-and-drop media import, drop on empty space creates a track | ✅ Drop audio files on a track (at the drop position, one after the other) or below the tracks for new tracks | Done |
-| Marker ping when the playhead passes a marker | Missing | **P3** Optional |
+| Marker ping when the playhead passes a marker | ✅ View › Ping at Markers During Playback (off by default; higher beep for chapters, lower for edit markers, not in the export) | Done |
 | Project backups every 10 minutes | ✅ `backup/` in the project folder: every 10 minutes when something changed and before each recording, newest 20 kept, File › Restore Backup… (undoable) | Done |
-| Distraction-free editing mode, customisable shortcuts, shortcut list | Fixed shortcuts | **P3** Shortcut overlay (`?`); customisable keymap later |
-| Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | Missing | **P3, reduced**: clip colours/notes and a project overview strip (navigator). Tag search across projects is not planned |
+| Distraction-free editing mode, customisable shortcuts, shortcut list | ✅ Shortcut overlay (`?`, Help › Keyboard Shortcuts) | **P3** Customisable keymap later |
+| Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | ✅ Clip colours and notes (right-click a clip) | **P3, reduced**: project overview strip (navigator) still open. Tag search across projects is not planned |
 | Double-ender: guest's local backup recording replaces the remote track | ✅ "Align to track…" toolbar button: FFT cross-correlation (±60 s search over 90 s at ~2 kHz) moves the guest's clip onto the call recording, one undo step, warns on a weak match | Done |
 
 ### Export
@@ -216,7 +216,7 @@ came up during testing).
     soundboard only, selected tracks); presets "Pre-show" (soundboard only)
     and "Show". No full routing matrix.
 18. **Regions and export per region; Auphonic upload; podcast category.**
-19. **Shortcut overlay, marker ping, clip colours and notes.**
+19. ✅ **Shortcut overlay, marker ping, clip colours and notes.**
 
 ## 4. Suggested order
 

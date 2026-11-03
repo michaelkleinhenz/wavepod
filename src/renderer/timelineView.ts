@@ -17,6 +17,7 @@ import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, set
 import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
+import { showClipLabel } from './clipLabel';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
 const TRACK_H = 84;
@@ -221,7 +222,7 @@ export class TimelineView {
       btn('zoomSel', { label: 'Zoom to selection', shortcut: 'Shift+Z', detail: 'Zoom to the selected range or clips; again to zoom back' }, () =>
         void this.toggleZoomToSelection(selectionSpan(store.project, store.selection.range, store.selection.clipIds))),
       h('span', { class: 'spacer' }),
-      h('span', { class: 'muted hint-keys' }, 'Space play · R record · M chapter · S split · Ctrl+X ripple cut · Ctrl+Y mute range'),
+      h('span', { class: 'muted hint-keys' }, 'Space play · R record · M chapter · S split · Ctrl+X ripple cut · ? all shortcuts'),
     );
     this.snapBtn.addEventListener('click', () => {
       this.snapping = !this.snapping;
@@ -937,8 +938,15 @@ export class TimelineView {
     const vx1 = this.cx(g.x + g.w);
     ctx.fillStyle = selected ? '#2f3b52' : '#262b36';
     ctx.fillRect(vx0, g.y, vx1 - vx0, hgt);
-    ctx.fillStyle = track.color;
-    ctx.fillRect(vx0, g.y, vx1 - vx0, 3);
+    if (clip.color) {
+      // a coloured clip gets a tinted body and its colour as the top bar
+      ctx.globalAlpha = (muted ? 0.4 : 1) * 0.22;
+      ctx.fillStyle = clip.color;
+      ctx.fillRect(vx0, g.y, vx1 - vx0, hgt);
+      ctx.globalAlpha = muted ? 0.4 : 1;
+    }
+    ctx.fillStyle = clip.color ?? track.color;
+    ctx.fillRect(vx0, g.y, vx1 - vx0, clip.color ? 5 : 3);
     // waveform
     const peaks = store.requestPeaks(clip.file);
     if (peaks && peaks.levels.length) {
@@ -1017,6 +1025,17 @@ export class TimelineView {
       const jingle = track.kind === 'soundboard' ? store.project.soundboard.find((s) => jingleMediaFile(s.id, this.sr) === clip.file) : undefined;
       const name = jingle ? `♪ ${jingle.name}` : clip.file.split('/').pop() ?? '';
       ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
+      if (clip.note) {
+        ctx.font = 'italic 11px system-ui, sans-serif';
+        ctx.textBaseline = 'bottom';
+        const text = `✎ ${clip.note.split('\n')[0]}`;
+        const tx = Math.max(g.x, 0) + 5;
+        const tw = Math.min(ctx.measureText(text).width, Math.max(10, vx1 - tx - 8));
+        ctx.fillStyle = 'rgba(15,16,20,0.7)';
+        ctx.fillRect(tx - 3, g.y + hgt - 19, tw + 6, 16);
+        ctx.fillStyle = '#fff3c4';
+        ctx.fillText(text, tx, g.y + hgt - 4, Math.max(10, vx1 - tx - 8));
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -1266,7 +1285,7 @@ export class TimelineView {
         this.canvas.title = env.point !== null ? 'Volume point: drag to move, double-click to remove' : 'Volume line: drag up or down, double-click to add a point';
         return;
       }
-      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : '';
+      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click to edit the note` : hit ? 'Right-click for colour and note' : '';
       this.canvas.style.cursor = hit?.edge ? 'ew-resize' : hit ? 'grab' : 'text';
     });
 
@@ -1305,7 +1324,17 @@ export class TimelineView {
       }
     });
 
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const { x, y } = local(e, this.canvas);
+      const hit = this.hitClip(x, y);
+      if (!hit) return;
+      if (!store.selection.clipIds.has(hit.clip.id)) store.select({ clipIds: new Set([hit.clip.id]), range: null, rangeTracks: null, markerId: null });
+      showClipLabel(hit.clip, e.clientX, e.clientY);
+    });
+
     this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 2) return; // right-click opens the clip's colour and note
       const { x, y } = local(e, this.canvas);
       this.snapLine = null;
       const lane = this.hitMuteLane(x, y);

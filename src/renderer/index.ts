@@ -44,6 +44,7 @@ import { SetupView } from './setupView';
 import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
+import { showShortcuts } from './shortcuts';
 import { TimelineView } from './timelineView';
 
 const METER_DECAY = 0.85;
@@ -284,6 +285,7 @@ async function main(): Promise<void> {
       case 'view-chapters': return store.setView('chapters');
       case 'show-project-folder': return void api().showProjectFolder();
       case 'restore-backup': return void restoreBackup();
+      case 'shortcuts': return showShortcuts();
     }
   });
 
@@ -308,6 +310,11 @@ async function main(): Promise<void> {
       return;
     }
     if (mod) return; // menu accelerators
+    if (e.key === '?') {
+      e.preventDefault();
+      showShortcuts();
+      return;
+    }
     const cough = /^Digit([1-9])$/.exec(e.code);
     if (cough && e.shiftKey) {
       e.preventDefault();

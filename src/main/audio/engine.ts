@@ -32,6 +32,7 @@ import {
 } from '../../core/soundboard';
 import { WavReader, WavWriter, writeWavFile } from '../../core/wav';
 import type { AudioBackend, StreamHandle } from './backend';
+import { markersCrossed, pingTone } from '../../core/markerPing';
 import { SimulatedBackend } from './simulatedBackend';
 
 export const VIRTUAL_API = 'virtual';
@@ -117,6 +118,10 @@ export class AudioEngine extends EventEmitter {
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
   private voices: Voice[] = [];
+  /** Marker ping on/off, and the pings sounding now. */
+  private markerPing = false;
+  private pings: Array<{ tone: Float32Array; pos: number }> = [];
+  private pingTones = new Map<string, Float32Array>();
   private meterTimer: NodeJS.Timeout | null = null;
   private fallbackClock: NodeJS.Timeout | null = null;
 
@@ -277,6 +282,11 @@ export class AudioEngine extends EventEmitter {
   }
 
   /** 1 (normal) up to 2; playback only. */
+  setMarkerPing(on: boolean): void {
+    this.markerPing = on;
+    if (!on) this.pings = [];
+  }
+
   setPlaybackSpeed(speed: number): void {
     this.speed = Math.max(0.5, Math.min(2, Number.isFinite(speed) ? speed : 1));
     this.stretcher = null;
@@ -522,6 +532,34 @@ export class AudioEngine extends EventEmitter {
 
   private renderTimeline(frames: number): void {
     if (this.state === 'stopped') return;
+    const before = this.playPos;
+    this.renderTimelineMix(frames);
+    if (this.state === 'playing' && this.markerPing) this.renderPings(before, this.playPos, frames);
+  }
+
+  /** Beeps for markers that playback just passed. */
+  private renderPings(from: number, to: number, frames: number): void {
+    for (const m of markersCrossed(this.project.markers, from, to)) {
+      const key = `${this.project.sampleRate}:${m.kind}`;
+      let tone = this.pingTones.get(key);
+      if (!tone) this.pingTones.set(key, (tone = pingTone(this.project.sampleRate, m.kind)));
+      this.pings.push({ tone, pos: 0 });
+    }
+    if (!this.pings.length) return;
+    const [L, R] = this.mixBuf;
+    for (const p of this.pings) {
+      const n = Math.min(frames, p.tone.length - p.pos);
+      for (let i = 0; i < n; i++) {
+        const v = p.tone[p.pos + i];
+        L[i] += v;
+        R[i] += v;
+      }
+      p.pos += n;
+    }
+    this.pings = this.pings.filter((p) => p.pos < p.tone.length);
+  }
+
+  private renderTimelineMix(frames: number): void {
     let tracks = audibleTracks(this.project);
     // While recording, don't play back what is being recorded (avoids hearing yourself late).
     if (this.state === 'recording') tracks = tracks.filter((t) => !this.armedTrackIds.has(t.id));
