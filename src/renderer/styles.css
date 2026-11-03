@@ -168,7 +168,7 @@ table.markers td.actions { white-space: nowrap; text-align: right; width: 1%; }
 .toggle.remove:hover { background: #5a2324; color: #fff; }
 .input-select { flex: 1; min-width: 0; padding: 2px 4px; font-size: 12px; }
 .gain-label { font-size: 11px; color: var(--muted); width: 54px; font-variant-numeric: tabular-nums; }
-.gain { width: 90px; padding: 0; }
+.gain { width: 64px; padding: 0; }
 .empty-tracks { padding: 20px 14px; width: 250px; }
 .hscroll-row { display: flex; background: var(--panel); border-top: 1px solid var(--border); }
 .hscroll { flex: 1; margin: 2px 4px; padding: 0; height: 12px; }
@@ -255,3 +255,7 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .vst-item { display: flex; flex-direction: column; align-items: flex-start; text-align: left; height: auto; padding: 5px 8px; gap: 1px; }
 .vst-name { font-weight: 600; }
 .vst-vendor { font-size: 10px; color: var(--muted); }
+
+/* timeline: snapping toggle and volume line button */
+.snap-btn.on { color: #ffd54f; border-color: #6b5b23; }
+.env-btn.active { color: #69f0ae; border-color: #2e6b4f; }

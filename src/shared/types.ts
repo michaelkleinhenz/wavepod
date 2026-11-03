@@ -38,6 +38,17 @@ export interface Track {
   muteRegions?: MuteRegion[];
   /** Filter stack, processed top to bottom before track gain and pan. */
   fx?: Fx[];
+  /** Volume line: gain points in timeline order (none = 0 dB throughout). */
+  envelope?: EnvelopePoint[];
+  /** Volume line is drawn and editable on the timeline. */
+  showEnvelope?: boolean;
+}
+
+/** One point of a track's volume line. */
+export interface EnvelopePoint {
+  pos: Frames;
+  /** Gain in dB; at or below -60 the track is silent. */
+  db: number;
 }
 
 export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'vst3';

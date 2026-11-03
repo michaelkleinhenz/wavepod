@@ -3,6 +3,7 @@ import type { MarkerKind } from '../shared/types';
 import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, rippleDelete, splitAt } from '../core/project';
 import { importChapters } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
+import { muteSelection as muteEnvelopeRange } from '../core/envelope';
 import { uid } from '../shared/time';
 import { baseName, decodeFile } from './audioFiles';
 import { errorMessage, toast } from './dom';
@@ -105,7 +106,7 @@ export function deleteSelection(ripple: boolean): void {
   if (range && range[1] > range[0]) {
     if (ripple) {
       store.edit((p) => rippleDelete(p, range[0], range[1]));
-      store.select({ range: null });
+      store.select({ range: null, rangeTracks: null });
       seek(range[0]);
     } else {
       // remove material in range on all tracks but keep the gap
@@ -127,6 +128,37 @@ export function deleteSelection(ripple: boolean): void {
     store.edit((p) => ({ ...p, markers: p.markers.filter((m) => m.id !== markerId) }));
     store.select({ markerId: null });
   }
+}
+
+/** Ctrl+X: removes the selected time range from all tracks and closes the gap. */
+export function rippleCut(): void {
+  const r = store.selection.range;
+  if (!r || r[1] <= r[0]) {
+    toast('Select a time range first: drag across the ruler or an empty part of a track');
+    return;
+  }
+  deleteSelection(true);
+  toast('Ripple cut');
+}
+
+/** Tracks a Ctrl+Y mute applies to: the tracks the range was dragged across, else those of selected clips, else all. */
+export function selectionTracks(): string[] {
+  const { rangeTracks, clipIds } = store.selection;
+  if (rangeTracks?.length) return rangeTracks;
+  if (clipIds.size) return store.project.tracks.filter((t) => t.clips.some((c) => clipIds.has(c.id))).map((t) => t.id);
+  return store.project.tracks.map((t) => t.id);
+}
+
+/** Ctrl+Y: silences the selected range on the selected tracks by bending their volume lines. */
+export function muteSelection(): void {
+  const r = store.selection.range;
+  if (!r || r[1] <= r[0]) {
+    toast('Select a time range on a track first');
+    return;
+  }
+  const ids = selectionTracks();
+  store.edit((p) => muteEnvelopeRange(p, ids, r[0], r[1]));
+  toast(`Muted the selection on ${ids.length} track${ids.length === 1 ? '' : 's'}`);
 }
 
 export async function importAudioFiles(): Promise<void> {

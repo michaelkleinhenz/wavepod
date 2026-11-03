@@ -17,6 +17,8 @@ export interface Selection {
   clipIds: Set<string>;
   /** Time range in frames, for ripple delete / export range. */
   range: [number, number] | null;
+  /** Tracks the range was dragged across; null/undefined = all tracks (dragged on the ruler). */
+  rangeTracks?: string[] | null;
   markerId: string | null;
   /** A selected cough/mute region. */
   muteRegion?: { trackId: string; index: number } | null;
