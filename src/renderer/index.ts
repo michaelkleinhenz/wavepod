@@ -27,6 +27,7 @@ import {
 import { ChaptersView } from './chaptersView';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
+import { midi } from './midi';
 import { SetupView } from './setupView';
 import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
@@ -151,7 +152,7 @@ async function main(): Promise<void> {
       soundboard.render();
       void soundboard.ensureLoaded();
     }
-    if (kinds.has('devices') || kinds.has('status')) {
+    if (kinds.has('devices') || kinds.has('status') || kinds.has('midi')) {
       if (store.view === 'setup') setup.render();
       if (store.view === 'edit') timeline.renderHeaders();
     }
@@ -287,6 +288,7 @@ async function main(): Promise<void> {
         timeline.zoomAtPlayhead(1 / 1.5);
         break;
       case 'Escape':
+        if (midi.learning) return midi.learn(null);
         void api().stopSounds();
         store.select({ clipIds: new Set(), range: null, rangeTracks: null, markerId: null });
         break;
@@ -314,6 +316,7 @@ async function main(): Promise<void> {
   renderTransport();
   soundboard.render();
   void soundboard.ensureLoaded();
+  await midi.init();
 }
 
 window.addEventListener('error', (e) => toast(e.message, 'error'));

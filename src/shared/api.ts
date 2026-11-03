@@ -12,6 +12,7 @@ import type {
   VstPluginInfo,
   VstPluginRef,
   LoudnessReport,
+  MidiSettings,
   Project,
   RecordedTake,
   TransportUpdate,
@@ -55,6 +56,11 @@ export interface SoundPodApi {
   listDevices(): Promise<AudioDevice[]>;
   applyConfig(config: Partial<DeviceConfig>): Promise<EngineStatus>;
   getProfile(deviceId: number): Promise<DeviceProfile | null>;
+
+  // MIDI controller mappings (app settings, shared by all projects)
+  getMidiSettings(): Promise<MidiSettings>;
+  /** Stores the mappings and returns them as saved (validated). */
+  setMidiSettings(settings: MidiSettings): Promise<MidiSettings>;
 
   // transport
   play(from?: number): Promise<void>;
@@ -139,6 +145,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'listDevices',
   'applyConfig',
   'getProfile',
+  'getMidiSettings',
+  'setMidiSettings',
   'play',
   'stop',
   'record',

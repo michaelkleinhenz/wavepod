@@ -302,3 +302,14 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .template-use .muted { font-size: 11px; }
 .template-name { width: 100%; }
 .template-hint { min-height: 1em; margin: 0 0 6px; font-size: 12px; }
+/* MIDI controller mapping (Setup) */
+table.midi-map { width: 100%; border-collapse: collapse; margin-top: 6px; }
+table.midi-map th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px; }
+table.midi-map td { padding: 4px; border-top: 1px solid var(--border); }
+table.midi-map tr.learning td { background: #2a2a1c; }
+table.midi-map select { padding: 2px 6px; max-width: 220px; }
+.midi-buttons { text-align: right; white-space: nowrap; }
+.midi-buttons button + button { margin-left: 4px; }
+.midi-activity { font: 12px ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--text); }
+.midi-activity.blink { animation: midi-blink 0.6s ease-out; }
+@keyframes midi-blink { from { color: var(--ok); } to { color: var(--text); } }

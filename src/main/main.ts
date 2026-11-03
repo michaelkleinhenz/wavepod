@@ -15,10 +15,13 @@ import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
 import { createProjectDir, isProjectDir, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
+import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 
 interface Settings {
   device: DeviceConfig;
   lastProject: string | null;
+  /** MIDI controller mappings; app-wide so the same controller works in every episode. */
+  midi: MidiSettings;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -26,9 +29,13 @@ const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 function loadSettings(): Settings {
   try {
     const raw = JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) as Partial<Settings>;
-    return { device: { ...defaultConfig(), ...(raw.device ?? {}) }, lastProject: raw.lastProject ?? null };
+    return {
+      device: { ...defaultConfig(), ...(raw.device ?? {}) },
+      lastProject: raw.lastProject ?? null,
+      midi: normalizeMidiSettings(raw.midi),
+    };
   } catch {
-    return { device: defaultConfig(), lastProject: null };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null) };
   }
 }
 
@@ -121,6 +128,13 @@ const handlers: Record<InvokeMethod, Handler> = {
   getProfile: (deviceId: number) => {
     const dev = engine.listDevices().find((d) => d.id === deviceId);
     return dev ? findProfile(dev.name, dev.inputChannels, dev.outputChannels) : null;
+  },
+
+  getMidiSettings: () => settings.midi,
+  setMidiSettings: (midi: MidiSettings) => {
+    settings.midi = normalizeMidiSettings(midi);
+    saveSettings();
+    return settings.midi;
   },
 
   play: (from?: number) => engine.play(from),
