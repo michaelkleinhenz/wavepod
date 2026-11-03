@@ -24,6 +24,16 @@ const API_LABELS: Record<string, string> = {
   wasapi: 'WASAPI',
   directsound: 'DirectSound',
 };
+// RtAudio::getApiDisplayName() for each API, lower-cased.
+const API_NAMES: Record<string, string> = {
+  coreaudio: 'coreaudio',
+  alsa: 'alsa',
+  jack: 'jack',
+  pulse: 'pulse',
+  asio: 'asio',
+  wasapi: 'wasapi',
+  directsound: 'directsound',
+};
 const RTAUDIO_FLOAT32 = 0x10;
 const PREFILL_BUFFERS = 3;
 
@@ -57,11 +67,31 @@ export class RtAudioBackend implements AudioBackend {
   }
 
   listApis(): AudioApiInfo[] {
-    return ['default', ...platformApis()].map((id) => ({ id, label: API_LABELS[id] ?? id }));
+    return ['default', ...this.compiledApis()].map((id) => ({ id, label: API_LABELS[id] ?? id }));
+  }
+
+  private compiled: string[] | null = null;
+
+  /**
+   * The platform APIs this audify build actually supports. RtAudio silently
+   * falls back to another API for one it wasn't compiled with (e.g. JACK when
+   * its headers were missing), so ask each one which API it really opened.
+   */
+  private compiledApis(): string[] {
+    if (!this.compiled) {
+      this.compiled = platformApis().filter((id) => {
+        const name = safe(() => new this.audify.RtAudio(API_IDS[id] as never).getApi(), '');
+        return name.toLowerCase() === API_NAMES[id];
+      });
+    }
+    return this.compiled;
   }
 
   setApi(api: string): void {
     if (!(api in API_IDS)) throw new Error(`Unknown audio API ${api}`);
+    if (api !== 'default' && !this.compiledApis().includes(api)) {
+      throw new Error(`${API_LABELS[api] ?? api} is not available in this build; using the system default`);
+    }
     this._api = api;
     this.probe = null;
   }
@@ -96,7 +126,7 @@ export class RtAudioBackend implements AudioBackend {
       opts.sampleRate,
       opts.frameSize,
       'WavePod Input',
-      (pcm: Buffer) => opts.onData(bufferToFloat32(pcm)),
+      (pcm: Buffer) => guard(() => opts.onData(bufferToFloat32(pcm)), opts.onError),
       null,
       0 as never,
       (_type: unknown, msg: string) => opts.onError?.(msg),
@@ -121,7 +151,7 @@ export class RtAudioBackend implements AudioBackend {
         opts.frameSize,
         'WavePod Output',
         null,
-        () => writeNext(),
+        () => guard(writeNext, opts.onError),
         0 as never,
         (_type: unknown, msg: string) => opts.onError?.(msg),
       ) || opts.frameSize;
@@ -148,6 +178,19 @@ function handle(rt: RtAudioInstance, channels: number, sampleRate: number, frame
       safe(() => rt.closeStream(), undefined);
     },
   };
+}
+
+/**
+ * Runs a callback that audify invokes from its audio threads. audify is built
+ * with C++ exceptions, so a JS exception escaping such a callback becomes an
+ * uncaught Napi::Error and aborts the whole app (SIGABRT). Report it instead.
+ */
+function guard(fn: () => void, onError?: (message: string) => void): void {
+  try {
+    fn();
+  } catch (e) {
+    onError?.((e as Error).message ?? String(e));
+  }
 }
 
 function safe<T>(fn: () => T, fallback: T): T {

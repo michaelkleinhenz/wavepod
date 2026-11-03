@@ -173,6 +173,9 @@ export class AudioEngine extends EventEmitter {
         this.native.setApi(this.config.api);
       } catch (e) {
         this.error = (e as Error).message;
+        // Fall back to the system default rather than keep an API that can't open.
+        this.config.api = 'default';
+        this.native.setApi('default');
       }
     }
     const devices = this.listDevices();
@@ -211,7 +214,8 @@ export class AudioEngine extends EventEmitter {
           channels: outDev.outputChannels,
           sampleRate: this.config.sampleRate,
           frameSize: this.config.bufferSize,
-          pull: (n) => this.onOutput(n),
+          // The prefill pull runs inside openOutput, before this.output is set.
+          pull: (n) => this.onOutput(n, outDev.outputChannels),
           onError: (m) => this.reportError(`Output: ${m}`),
         });
       } catch (e) {
@@ -479,8 +483,7 @@ export class AudioEngine extends EventEmitter {
   }
 
   /** Renders the next output buffer (interleaved, all device output channels). */
-  private onOutput(frames: number): Float32Array {
-    const nch = this.output?.channels ?? 2;
+  private onOutput(frames: number, nch: number): Float32Array {
     if (this.mixBuf[0].length < frames) this.mixBuf = [new Float32Array(frames), new Float32Array(frames)];
     if (this.outBuf.length !== frames * nch) this.outBuf = new Float32Array(frames * nch);
     const [L, R] = this.mixBuf;
