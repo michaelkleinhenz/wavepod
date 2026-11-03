@@ -100,6 +100,35 @@ async function main() {
     log('no PulseAudio input wider than 2 channels; skipping the multichannel check');
   }
 
+  // 4. PulseAudio playback keeps up. With PulseAudio's default ~2 s buffer the
+  // callbacks came in bursts and most of them found audify's queue empty, so
+  // playback ran slow and crackled (see the audify patch). Count how much of the
+  // audio the device played was actually supplied.
+  const pulseOut = pulseDevices.find((d) => d.outputChannels > 0);
+  if (pulseOut) {
+    const rt = new RtAudio(PULSE);
+    let frames = FRAMES;
+    let written = 0;
+    const write = () => {
+      try {
+        rt.write(Buffer.alloc(frames * 2 * 4));
+        written += frames;
+      } catch {
+        /* closing */
+      }
+    };
+    frames = rt.openStream({ deviceId: pulseOut.id, nChannels: 2, firstChannel: 0 }, null, FLOAT32, RATE, FRAMES, 'smoke-play',
+      null, write, 0, (_t, msg) => onError(`playback: ${msg}`)) || FRAMES;
+    rt.start();
+    for (let n = 0; n < 3; n++) write();
+    await wait(3000);
+    const played = rt.streamTime * RATE;
+    const supplied = Math.min(1, written / played);
+    close({ rt });
+    log(`pulse playback on "${pulseOut.name}": supplied ${(supplied * 100).toFixed(1)}% of ${Math.round(played)} played frames`);
+    if (supplied < 0.95) failures.push(`pulse playback underran: only ${(supplied * 100).toFixed(1)}% of played audio was supplied`);
+  }
+
   if (failures.length) throw new Error(failures.join('; '));
 }
 
