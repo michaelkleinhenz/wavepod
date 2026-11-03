@@ -26,6 +26,10 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   tracks it was dragged across.
 - Dragging a clip straight up or down to another track keeps its time
   position, so the tracks stay in sync.
+- **Zoom down to single samples**: waveforms use multi-resolution peaks
+  (cached in `.peaks` files next to the audio), so long multitrack episodes
+  scroll smoothly; past the finest peak level the samples themselves are
+  drawn, as a line with a dot per sample at the deepest zoom.
 - **Chapter markers** while recording (`M`), edit markers for later fixes (`E`).
 - **Soundboard** for jingles (keys `1`–`9`) with loop and soft fade-in.
   Jingles played while recording land on a Soundboard track, so they are
@@ -106,7 +110,7 @@ driver; pick **ASIO** as audio system if it is offered.
 | `1`–`9`, `Esc` | Soundboard slots (again: fade out), stop all jingles |
 | `Shift`+`1`–`9` (hold) | Cough button for speaker track 1–9 |
 | `←` `→` (with `Shift`) | Move playhead 1 s (10 s) |
-| `+` `-` | Zoom |
+| `+` `-`, `Ctrl/Cmd`+wheel | Zoom (down to single samples) |
 | `Ctrl/Cmd+Z`, `Shift+Ctrl/Cmd+Z` | Undo / redo |
 
 Drag across the ruler to select a time range; drag clips to move them

@@ -19,6 +19,18 @@ export function formatTimestamp(seconds: number, withMillis = true): string {
   return withMillis ? `${base}.${String(ms).padStart(3, '0')}` : base;
 }
 
+/** Ruler label with as many decimals as the tick step needs (down to microseconds), e.g. "00:01:02.0105". */
+export function formatTick(seconds: number, step: number): string {
+  let decimals = 0;
+  while (decimals < 6 && Math.abs(step * 10 ** decimals - Math.round(step * 10 ** decimals)) > 1e-6) decimals++;
+  const unit = 10 ** decimals;
+  const total = Math.round(Math.max(0, seconds) * unit);
+  const whole = Math.floor(total / unit);
+  const frac = total - whole * unit;
+  const base = `${pad(Math.floor(whole / 3600))}:${pad(Math.floor(whole / 60) % 60)}:${pad(whole % 60)}`;
+  return decimals ? `${base}.${String(frac).padStart(decimals, '0')}` : base;
+}
+
 /** Parses "HH:MM:SS(.mmm)", "MM:SS(.mmm)" or plain seconds. Returns NaN when invalid. */
 export function parseTimestamp(text: string): number {
   const t = text.trim();

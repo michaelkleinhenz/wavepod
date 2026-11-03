@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PeakBuilder, decodePeaks, deinterleave, encodePeaks, fadeGain, interleave, interleavedPeaks, panGains, toDb } from '../src/core/dsp';
+import { deinterleave, fadeGain, interleave, interleavedPeaks, panGains, toDb } from '../src/core/dsp';
 
 describe('dsp', () => {
   it('deinterleaves and interleaves', () => {
@@ -15,18 +15,6 @@ describe('dsp', () => {
     const p = interleavedPeaks(Float32Array.from([0.1, -0.9, -0.5, 0.2]), 2);
     expect(p[0]).toBeCloseTo(0.5);
     expect(p[1]).toBeCloseTo(0.9);
-  });
-
-  it('builds and serialises waveform peaks', () => {
-    const pb = new PeakBuilder(4);
-    pb.push([Float32Array.from([0, 0.5, -0.5, 0.25, 1, 1])]);
-    const peaks = pb.finish();
-    expect(peaks.length).toBe(6);
-    expect(Array.from(peaks.data)).toEqual([-63, 64, 127, 127]);
-    const back = decodePeaks(encodePeaks(peaks));
-    expect(back.samplesPerPeak).toBe(4);
-    expect(back.length).toBe(6);
-    expect(Array.from(back.data)).toEqual(Array.from(peaks.data));
   });
 
   it('computes fades and pan', () => {

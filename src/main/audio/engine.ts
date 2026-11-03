@@ -15,7 +15,8 @@ import type {
   WaveformPeaks,
 } from '../../shared/types';
 import { dbToGain, uid } from '../../shared/time';
-import { PeakBuilder, decodePeaks, encodePeaks, interleavedPeaks } from '../../core/dsp';
+import { interleavedPeaks } from '../../core/dsp';
+import { MipmapBuilder, PEAK_TILE, SAMPLE_TILE, TILED_MAX_SPP, encodePeaks, headerSize, mixToMono, parsePeakHeader, type PeakFileLayout } from '../../core/peaks';
 import { Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
 import { createProject } from '../../core/project';
 import {
@@ -33,13 +34,12 @@ import { SimulatedBackend } from './simulatedBackend';
 
 export const VIRTUAL_API = 'virtual';
 const METER_HZ = 30;
-export const PEAK_RESOLUTION = 256;
 
 interface Recorder {
   trackId: string;
   channels: number[];
   writer: WavWriter;
-  peaks: PeakBuilder;
+  peaks: MipmapBuilder;
   file: string;
   scratch: Float32Array[];
   /** Buckets already sent to the renderer as live peaks. */
@@ -93,6 +93,8 @@ export class AudioEngine extends EventEmitter {
   project: Project = createProject();
   projectDir = '';
   private readers = new ReaderCache('');
+  /** Peak file layouts by absolute media path, with the media file's mtime they belong to. */
+  private peakLayouts = new Map<string, { mtimeMs: number; layout: PeakFileLayout }>();
   private mixer = Object.assign(new Mixer(this.project, this.readers), { metering: true });
 
   private state: TransportState = 'stopped';
@@ -306,7 +308,7 @@ export class AudioEngine extends EventEmitter {
         trackId: t.id,
         channels: [...t.inputChannels],
         writer: new WavWriter(abs, t.inputChannels.length, sr, this.project.bitDepth),
-        peaks: new PeakBuilder(PEAK_RESOLUTION),
+        peaks: new MipmapBuilder(),
         file: rel.split(path.sep).join('/'),
         scratch: t.inputChannels.map(() => new Float32Array(0)),
         sentBuckets: 0,
@@ -607,26 +609,89 @@ export class AudioEngine extends EventEmitter {
 
   // ------------------------------------------------------------ waveforms
 
-  getPeaks(file: string): WaveformPeaks | null {
-    const abs = path.isAbsolute(file) ? file : path.join(this.projectDir, file);
+  private absPath(file: string): string {
+    return path.isAbsolute(file) ? file : path.join(this.projectDir, file);
+  }
+
+  /** Layout of the up-to-date peak file of `abs`, computing it first if needed. */
+  private peakLayout(abs: string): PeakFileLayout | null {
     const cache = `${abs}.peaks`;
+    let wavStat: fs.Stats;
     try {
-      const wavStat = fs.statSync(abs);
-      if (fs.existsSync(cache) && fs.statSync(cache).mtimeMs >= wavStat.mtimeMs) {
-        return decodePeaks(fs.readFileSync(cache));
-      }
+      wavStat = fs.statSync(abs);
     } catch {
       return null;
     }
-    const peaks = computePeaks(abs);
-    if (peaks) {
+    const known = this.peakLayouts.get(abs);
+    if (known && known.mtimeMs === wavStat.mtimeMs) return known.layout;
+    let layout: PeakFileLayout | null = null;
+    try {
+      if (fs.statSync(cache).mtimeMs >= wavStat.mtimeMs) layout = readPeakHeader(cache);
+    } catch {
+      /* no cache yet */
+    }
+    if (!layout) {
+      // missing, stale or from before multi-resolution peaks: (re)compute
+      const peaks = computePeaks(abs);
+      if (!peaks) return null;
       try {
         fs.writeFileSync(cache, encodePeaks(peaks));
+        layout = readPeakHeader(cache);
       } catch {
-        /* ignore */
+        layout = null;
       }
+      if (!layout) return null;
     }
-    return peaks;
+    this.peakLayouts.set(abs, { mtimeMs: wavStat.mtimeMs, layout });
+    return layout;
+  }
+
+  /** The coarse levels of a file's waveform; finer ones are listed as tiled. */
+  getPeaks(file: string): WaveformPeaks | null {
+    const abs = this.absPath(file);
+    const layout = this.peakLayout(abs);
+    if (!layout) return null;
+    const coarse = layout.levels.filter((l) => l.samplesPerPeak > TILED_MAX_SPP);
+    const tiled = layout.levels.filter((l) => l.samplesPerPeak <= TILED_MAX_SPP).map((l) => l.samplesPerPeak);
+    const fd = fs.openSync(`${abs}.peaks`, 'r');
+    try {
+      const levels = coarse.map((l) => {
+        const data = new Int8Array(l.buckets * 2);
+        fs.readSync(fd, data, 0, data.length, l.offset);
+        return { samplesPerPeak: l.samplesPerPeak, data };
+      });
+      return { length: layout.length, levels, tiled };
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  /** PEAK_TILE buckets of one level, read from the peak file. */
+  getPeakTile(file: string, samplesPerPeak: number, tile: number): Int8Array | null {
+    const abs = this.absPath(file);
+    const level = this.peakLayout(abs)?.levels.find((l) => l.samplesPerPeak === samplesPerPeak);
+    if (!level || tile < 0) return null;
+    const first = tile * PEAK_TILE;
+    const n = Math.min(PEAK_TILE, level.buckets - first);
+    if (n <= 0) return new Int8Array(0);
+    const data = new Int8Array(n * 2);
+    const fd = fs.openSync(`${abs}.peaks`, 'r');
+    try {
+      fs.readSync(fd, data, 0, data.length, level.offset + first * 2);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return data;
+  }
+
+  /** SAMPLE_TILE mono samples of a file, for drawing single samples. */
+  getSampleTile(file: string, tile: number): Float32Array | null {
+    const reader = this.readers.get(file);
+    if (!reader || tile < 0) return null;
+    const start = tile * SAMPLE_TILE;
+    const n = Math.min(SAMPLE_TILE, reader.frames - start);
+    if (n <= 0) return new Float32Array(0);
+    return mixToMono(reader.read(start, n), n);
   }
 
   dispose(): void {
@@ -639,7 +704,7 @@ export class AudioEngine extends EventEmitter {
   }
 }
 
-export function computePeaks(absPath: string, resolution = PEAK_RESOLUTION): WaveformPeaks | null {
+export function computePeaks(absPath: string): WaveformPeaks | null {
   let reader: WavReader;
   try {
     reader = new WavReader(absPath);
@@ -647,8 +712,8 @@ export function computePeaks(absPath: string, resolution = PEAK_RESOLUTION): Wav
     return null;
   }
   try {
-    const pb = new PeakBuilder(resolution);
-    const chunk = resolution * 1024;
+    const pb = new MipmapBuilder(undefined, undefined, undefined, reader.frames);
+    const chunk = 256 * 1024;
     let buf: Float32Array[] | undefined;
     for (let pos = 0; pos < reader.frames; pos += chunk) {
       const n = Math.min(chunk, reader.frames - pos);
@@ -658,5 +723,17 @@ export function computePeaks(absPath: string, resolution = PEAK_RESOLUTION): Wav
     return pb.finish();
   } finally {
     reader.close();
+  }
+}
+
+function readPeakHeader(file: string): PeakFileLayout | null {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const head = Buffer.alloc(Math.min(size, headerSize(32)));
+    fs.readSync(fd, head, 0, head.length, 0);
+    return parsePeakHeader(head, size);
+  } finally {
+    fs.closeSync(fd);
   }
 }

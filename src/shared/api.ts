@@ -74,7 +74,12 @@ export interface WavePodApi {
   newProject(): Promise<OpenedProject | null>;
   openProject(): Promise<OpenedProject | null>;
   updateProject(project: Project): Promise<void>;
+  /** Coarse waveform levels of a media file (computed and cached next to it on first use). */
   getPeaks(file: string): Promise<WaveformPeaks | null>;
+  /** PEAK_TILE buckets of a finer level, starting at bucket tile * PEAK_TILE (null if unavailable). */
+  getPeakTile(file: string, samplesPerPeak: number, tile: number): Promise<Int8Array | null>;
+  /** SAMPLE_TILE mono samples starting at frame tile * SAMPLE_TILE, for drawing at sample level. */
+  getSampleTile(file: string, tile: number): Promise<Float32Array | null>;
 
   // templates (tracks, input channels, filters and soundboard, without recorded audio)
   listTemplates(): Promise<TemplateSummary[]>;
@@ -157,6 +162,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'openProject',
   'updateProject',
   'getPeaks',
+  'getPeakTile',
+  'getSampleTile',
   'listTemplates',
   'saveTemplate',
   'deleteTemplate',

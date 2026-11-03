@@ -264,12 +264,18 @@ export interface RecordedTake {
   clip: Clip;
 }
 
-export interface WaveformPeaks {
-  /** Samples per peak bucket. */
+/** One resolution of a waveform: interleaved min,max pairs scaled to -127..127, mono (channels averaged). */
+export interface PeakLevel {
   samplesPerPeak: number;
-  /** Interleaved min,max pairs scaled to -127..127, mono (stereo files are averaged). */
   data: Int8Array;
+}
+
+export interface WaveformPeaks {
   length: Frames;
+  /** Resolutions held in memory, finest first. */
+  levels: PeakLevel[];
+  /** Finer resolutions that are read in tiles (getPeakTile) instead of sent whole. */
+  tiled?: number[];
 }
 
 export interface ExportOptions {
