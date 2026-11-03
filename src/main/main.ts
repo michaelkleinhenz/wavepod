@@ -282,7 +282,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     flushSave();
     return runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, (p) => send(IPC.exportProgress, p));
   },
-  measureLoudness: () => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir }),
+  measureLoudness: (mixOnly?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly }),
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
   revealFile: (p: string) => shell.showItemInFolder(p),
 

@@ -1,11 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { exportProject, measureLoudness } from '../src/core/exporter';
+import { LiveTap, exportProject, measureLoudness } from '../src/core/exporter';
 import { readId3Chapters } from '../src/core/id3';
 import { LoudnessMeter } from '../src/core/loudness';
 import { addMarker, addTrack, createProject } from '../src/core/project';
 import { readWavFile, writeWavFile } from '../src/core/wav';
+import type { ExportProgress } from '../src/shared/types';
 import { sine, tmpDir } from './helpers';
 
 describe('exporter', () => {
@@ -29,6 +30,7 @@ describe('exporter', () => {
     expect(before.integrated).toBeLessThan(-20);
 
     const phases = new Set<string>();
+    const renders: ExportProgress[] = [];
     const res = exportProject(
       p,
       dir,
@@ -42,9 +44,21 @@ describe('exporter', () => {
         stems: true,
         chapterFiles: true,
       },
-      (pr) => phases.add(pr.phase),
+      (pr) => {
+        phases.add(pr.phase);
+        if (pr.phase === 'Rendering mix') renders.push(pr);
+      },
     );
     expect(phases.has('Rendering mix')).toBe(true);
+    // the live figures of the render pass end at the loudness of the written file
+    const last = renders[renders.length - 1];
+    expect(last.fraction).toBe(1);
+    expect(last.live!.integrated).toBeCloseTo(-16, 0);
+    // the waveform stretches together cover every column
+    const wave = new Float32Array(last.wave!.columns * 2);
+    for (const r of renders) wave.set(r.wave!.peaks, r.wave!.start * 2);
+    expect(Math.min(...wave.filter((_, i) => i % 2 === 0))).toBeLessThan(0);
+    expect(wave.filter((_, i) => i % 2 === 1).every((v) => v > 0)).toBe(true);
     expect(res.appliedGainDb).toBeGreaterThan(5);
     const names = res.files.map((f) => path.basename(f));
     expect(names).toEqual(
@@ -66,5 +80,25 @@ describe('exporter', () => {
 
     const json = JSON.parse(fs.readFileSync(path.join(dir, 'export/ep1.chapters.json'), 'utf8'));
     expect(json.chapters).toHaveLength(2);
+  });
+
+  it('follows the rendered audio with a waveform and running loudness', () => {
+    const sr = 48000;
+    const loud = sine(1000, 2, sr, 0.5);
+    const quiet = sine(1000, 2, sr, 0.05);
+    const tap = new LiveTap(4 * sr, new LoudnessMeter(sr, 2), 100);
+    tap.push([loud, loud], loud.length);
+    const first = tap.take();
+    expect(first.wave.start).toBe(0);
+    expect(first.wave.peaks.length).toBe(100);
+    expect(first.wave.peaks[1]).toBeCloseTo(0.5, 2);
+    expect(first.live.momentary).toBeGreaterThan(-10);
+    expect(first.live.shortTerm).toBe(-Infinity); // not 3 s yet
+    tap.push([quiet, quiet], quiet.length);
+    const second = tap.take();
+    expect(second.wave.start).toBe(50); // continues where the first stretch ended
+    expect(second.wave.peaks.slice(-1)[0]).toBeCloseTo(0.05, 2);
+    expect(second.live.momentary).toBeLessThan(first.live.momentary - 15);
+    expect(second.live.truePeak).toBeCloseTo(first.live.truePeak, 3);
   });
 });

@@ -97,6 +97,26 @@ export function loudnessTable(reports: LoudnessReport[], target: LoudnessTarget,
   );
 }
 
+/** The figures of one source as tiles, the way Ultraschall's loudness summary lists them. Shared with the export dialog. */
+export function loudnessTiles(s: LoudnessStats, t: LoudnessTarget): HTMLElement {
+  const g = gainToTarget(s, t);
+  const tile = (label: string, value: string, hint: string, state = '', note: string | null = null) =>
+    h('div', { class: `lu-tile ${state}`, title: hint }, h('div', { class: 'lu-label' }, label), h('div', { class: 'lu-value' }, value), note ? h('div', { class: 'lu-note' }, note) : null);
+  // the true-peak ceiling keeps the gain from reaching the target
+  const limited = g !== null && s.integrated + g < t.lufs - 0.05;
+  return h(
+    'div',
+    { class: 'lu-tiles' },
+    tile('Integrated', fmtLufs(s.integrated), `Programme loudness; target ${t.lufs} LUFS (green within 1 LU)`, integratedState(s, t)),
+    tile('Loudness range', s.duration >= 3 ? `${s.range.toFixed(1)} LU` : '—', 'LRA: how much the loudness varies (10th to 95th percentile of short-term loudness)'),
+    tile('Short-term max', fmtLufs(s.shortTermMax), 'Loudest 3-second stretch'),
+    tile('Momentary max', fmtLufs(s.momentaryMax), 'Loudest 400-millisecond stretch'),
+    tile('True peak', fmtLufs(s.truePeak, 'dBTP'), `Highest peak between samples; ceiling ${t.ceiling} dBTP`, peakState(s, t)),
+    tile('Sample peak', fmtLufs(s.samplePeak, 'dBFS'), 'Highest sample value'),
+    tile('To target', g === null ? '—' : fmtGain(g), `Gain to reach ${t.lufs} LUFS without the true peak going over ${t.ceiling} dBTP`, '', limited ? `held back by the true-peak ceiling (reaches ${(s.integrated + g).toFixed(1)} LUFS)` : null),
+  );
+}
+
 /**
  * Normalises clips to the loudness target by setting their clip gain (one undo step).
  * Each clip is measured on its own, with its fades, before the track's filters and gain.
@@ -272,29 +292,7 @@ export class LoudnessDialog {
 
   /** The figures of one source as tiles, the way Ultraschall's loudness summary lists them. */
   private summary(r: LoudnessReport): HTMLElement {
-    const s = r.stats;
-    const t = this.target;
-    const g = gainToTarget(s, t);
-    const tile = (label: string, value: string, hint: string, state = '', note: string | null = null) =>
-      h('div', { class: `lu-tile ${state}`, title: hint }, h('div', { class: 'lu-label' }, label), h('div', { class: 'lu-value' }, value), note ? h('div', { class: 'lu-note' }, note) : null);
-    // the true-peak ceiling keeps the gain from reaching the target
-    const limited = g !== null && s.integrated + g < t.lufs - 0.05;
-    return h(
-      'div',
-      null,
-      h('h3', null, r.name, h('span', { class: 'muted' }, `  ${formatTimestamp(s.duration, false)}`)),
-      h(
-        'div',
-        { class: 'lu-tiles' },
-        tile('Integrated', fmtLufs(s.integrated), `Programme loudness; target ${t.lufs} LUFS (green within 1 LU)`, integratedState(s, t)),
-        tile('Loudness range', s.duration >= 3 ? `${s.range.toFixed(1)} LU` : '—', 'LRA: how much the loudness varies (10th to 95th percentile of short-term loudness)'),
-        tile('Short-term max', fmtLufs(s.shortTermMax), 'Loudest 3-second stretch'),
-        tile('Momentary max', fmtLufs(s.momentaryMax), 'Loudest 400-millisecond stretch'),
-        tile('True peak', fmtLufs(s.truePeak, 'dBTP'), `Highest peak between samples; ceiling ${t.ceiling} dBTP`, peakState(s, t)),
-        tile('Sample peak', fmtLufs(s.samplePeak, 'dBFS'), 'Highest sample value'),
-        tile('To target', g === null ? '—' : fmtGain(g), `Gain to reach ${t.lufs} LUFS without the true peak going over ${t.ceiling} dBTP`, '', limited ? `held back by the true-peak ceiling (reaches ${(s.integrated + g).toFixed(1)} LUFS)` : null),
-      ),
-    );
+    return h('div', null, h('h3', null, r.name, h('span', { class: 'muted' }, `  ${formatTimestamp(r.stats.duration, false)}`)), loudnessTiles(r.stats, this.target));
   }
 
   /** Short-term loudness over time with the target band. */

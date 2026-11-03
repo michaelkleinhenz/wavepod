@@ -187,6 +187,18 @@ export class LoudnessMeter {
     return gatedLoudness(this.blockEnergies, -10);
   }
 
+  /** Loudness of the last 400 ms in LUFS (−Infinity before the first block). */
+  momentary(): number {
+    const z = this.blockEnergies[this.blockEnergies.length - 1];
+    return z > 0 ? energyToLufs(z) : -Infinity;
+  }
+
+  /** Loudness of the last 3 s in LUFS (−Infinity before the first 3 s). */
+  shortTerm(): number {
+    const z = this.shortEnergies[this.shortEnergies.length - 1];
+    return z > 0 ? energyToLufs(z) : -Infinity;
+  }
+
   /** Sample peak in dBFS. */
   peakDb(): number {
     return linToDb(this.peak);

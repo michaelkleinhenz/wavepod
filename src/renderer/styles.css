@@ -143,10 +143,13 @@ table.loudness tr.selected td { background: #262c3a; }
 .loudness-empty { padding: 40px 0; text-align: center; }
 .loudness-empty.error { color: #e57373; }
 /* export dialog */
-.export-loudness { margin-bottom: 10px; }
-.export-loudness table.loudness { font-size: 12px; }
-.export-loudness table.loudness th, .export-loudness table.loudness td { white-space: nowrap; }
-.export-loudness table.loudness td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.export-loudness .lu-tiles { margin-bottom: 10px; }
+.export-progress { margin: 4px 0 6px; }
+.export-wave { display: block; width: 100%; height: 72px; background: #121419; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+.lu-tiles.export-live { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 4px; }
+/* compact tiles so analysis and progress fit without scrolling */
+.export-loudness .lu-tile, .export-live .lu-tile { padding: 5px 9px; }
+.export-loudness .lu-value, .export-live .lu-value { font-size: 16px; }
 .lu-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .lu-tile { background: #121419; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .lu-label { font-size: 11px; color: var(--muted); }
@@ -223,8 +226,6 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .dialog { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; width: min(760px, 92vw); max-height: 90vh; overflow: auto; }
 .dialog h2 { margin: 0 0 12px; }
 .dialog h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
-.progress { flex: 1; height: 6px; background: #0d0e11; border-radius: 3px; overflow: hidden; }
-.progress-fill { height: 100%; width: 0; background: var(--accent); }
 
 #toast {
   position: fixed;

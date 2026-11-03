@@ -12,6 +12,7 @@ interface Job {
   dir: string;
   opts?: ExportOptions;
   clipIds?: string[];
+  mixOnly?: boolean;
   vstExe?: string | null;
   vstBridge?: string;
 }
@@ -28,7 +29,7 @@ try {
   } else if (job.kind === 'clips') {
     parentPort!.postMessage({ type: 'done', result: analyseClips(job.project, job.dir, job.clipIds ?? []) });
   } else {
-    parentPort!.postMessage({ type: 'done', result: analyseProject(job.project, job.dir) });
+    parentPort!.postMessage({ type: 'done', result: analyseProject(job.project, job.dir, job.mixOnly) });
   }
 } catch (e) {
   parentPort!.postMessage({ type: 'error', message: (e as Error).message });
