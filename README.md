@@ -42,7 +42,10 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   each filter shows live in/out levels and how much gain it is applying. Installed
   **VST3 plug-ins** work in the same stack, with plain sliders instead of
   the plug-in's own window; they run in a separate process, so a crashing
-  plug-in can't take a recording down.
+  plug-in can't take a recording down. Every slider's value (filter
+  parameters, VST3 parameters, track gain) can be clicked to type an exact
+  number, e.g. `-3,5 dB`, `1.2 kHz` or `250 ms`; Enter applies it (kept within
+  the slider's range), Escape cancels.
 - **Templates**: save an episode's setup (tracks and their input channels,
   filter stacks including Master FX and VST3 settings, soundboard jingles)
   with File › Save as Template…, and start the next episode from it with
@@ -75,11 +78,46 @@ make test      # unit + engine tests
 make help      # all targets
 ```
 
-Requires Node.js 22. VST3 support needs the helper in `native/vsthost`:
+Requires Node.js 22, CMake and a C++ compiler: `npm ci` compiles a patched copy
+of the `audify` audio module (see `patches/` and `scripts/build-audify.mjs`;
+the upstream prebuilt binary crashes under Electron 43+). On Linux this also
+needs the ALSA and PulseAudio headers (`sudo apt install libasound2-dev
+libpulse-dev pkg-config` on Debian/Ubuntu). VST3 support needs the helper in `native/vsthost`:
 `make vsthost` builds it (CMake 3.25+ and a C++17 compiler; it downloads
 Steinberg's VST3 SDK), and `make dist*` builds it automatically. Without it
 WavePod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`
 (present on normal desktop installs).
+
+#### Linux: Chromium sandbox
+
+Electron sandboxes its renderer processes. On Linux it does this with
+unprivileged user namespaces, or, where those are blocked, with the setuid
+helper `node_modules/electron/dist/chrome-sandbox`, which must be owned by
+root. Ubuntu 23.10+ blocks user namespaces through AppArmor, and npm installs
+the helper as your user, so plain `npx electron .` aborts with
+`SIGTRAP` ("The SUID sandbox helper binary was found, but is not configured
+correctly"). WavePod itself never needs root. `make start` detects this and
+prints the options instead of crashing:
+
+- Keep the sandbox (redo after every `npm ci`):
+  ```sh
+  sudo chown root:root node_modules/electron/dist/chrome-sandbox
+  sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+  ```
+- Keep the sandbox permanently by allowing user namespaces for this Electron
+  binary with an AppArmor profile (run from the repo root):
+  ```sh
+  sudo tee /etc/apparmor.d/wavepod-electron-dev >/dev/null <<EOF
+  abi <abi/4.0>,
+  include <tunables/global>
+  profile wavepod-electron-dev "$PWD/node_modules/electron/dist/electron" flags=(unconfined) {
+    userns,
+    include if exists <local/wavepod-electron-dev>
+  }
+  EOF
+  sudo apparmor_parser -r /etc/apparmor.d/wavepod-electron-dev
+  ```
+- Development only, without the sandbox: `WAVEPOD_NO_SANDBOX=1 make start`.
 
 ### Using a RØDECaster Pro II
 

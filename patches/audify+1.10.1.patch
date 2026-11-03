@@ -1,0 +1,302 @@
+diff --git a/node_modules/audify/src/rt_audio.cpp b/node_modules/audify/src/rt_audio.cpp
+index cb25aff..091cfc7 100644
+--- a/node_modules/audify/src/rt_audio.cpp
++++ b/node_modules/audify/src/rt_audio.cpp
+@@ -1,11 +1,30 @@
+ #include "rt_audio.h"
+ 
+ #include <cmath>
++#include <cstdio>
+ #include <sstream>
+ 
+ #include "rt_audio_converter.h"
+ 
+-Napi::ThreadSafeFunction errorTsfn;
++// WavePod: runs a JS callback from a thread-safe function without letting a C++
++// exception escape. An escaping Napi::Error (a throwing JS callback, or a call
++// queued while Node shuts down) otherwise ends in std::terminate (SIGABRT).
++template <typename Fn>
++static void callJsSafely(Fn&& fn)
++{
++    try
++    {
++        fn();
++    }
++    catch (const std::exception& ex)
++    {
++        fprintf(stderr, "audify: callback failed: %s\n", ex.what());
++    }
++    catch (...)
++    {
++        fprintf(stderr, "audify: callback failed\n");
++    }
++}
+ 
+ int rt_callback(void* outputBuffer,
+                 void* inputBuffer,
+@@ -16,7 +35,7 @@ int rt_callback(void* outputBuffer,
+ {
+     const auto wrap = static_cast<RtAudioWrap*>(userData);
+ 
+-    std::shared_ptr<int8_t> inputData(
++    std::shared_ptr<int8_t[]> inputData(
+         new int8_t[wrap->_frameSize * wrap->_inputChannels * wrap->_sampleSize]);
+ 
+     std::unique_lock outputLock(wrap->_outputDataMutex, std::defer_lock);
+@@ -50,7 +69,7 @@ int rt_callback(void* outputBuffer,
+             {
+                 // Call the frame output callback
+                 wrap->_frameOutputTsfn.NonBlockingCall(
+-                    [](Napi::Env, Napi::Function callback) { callback.Call({}); });
++                    [](Napi::Env, Napi::Function callback) { callJsSafely([&] { callback.Call({}); }); });
+             }
+         }
+         else
+@@ -82,15 +101,14 @@ int rt_callback(void* outputBuffer,
+                    inputBuffer,
+                    wrap->_frameSize * wrap->_inputChannels * wrap->_sampleSize);
+ 
+-            // Call the input callback
++            // Call the input callback. Capture the size, not `wrap`: the call
++            // can run after the RtAudio object is gone.
++            const size_t inputBytes = wrap->_frameSize * wrap->_inputChannels * wrap->_sampleSize;
+             wrap->_inputTsfn.NonBlockingCall(
+-                [wrap, inputData](Napi::Env env, Napi::Function callback)
++                [inputBytes, inputData](Napi::Env env, Napi::Function callback)
+                 {
+-                    callback.Call({
+-                        Napi::Buffer<int8_t>::Copy(
+-                            env,
+-                            inputData.get(),
+-                            wrap->_frameSize * wrap->_inputChannels * wrap->_sampleSize)
++                    callJsSafely([&] {
++                        callback.Call({ Napi::Buffer<int8_t>::Copy(env, inputData.get(), inputBytes) });
+                     });
+                 });
+         }
+@@ -138,12 +156,6 @@ Napi::Object RtAudioWrap::Init(Napi::Env env, Napi::Object exports)
+ void RtAudioWrap::Destroy()
+ {
+     constructor.Reset();
+-
+-    if (errorTsfn != nullptr)
+-    {
+-        errorTsfn.Release();
+-        errorTsfn = nullptr;
+-    }
+ }
+ 
+ RtAudioWrap::RtAudioWrap(const Napi::CallbackInfo& info)
+@@ -163,16 +175,19 @@ RtAudioWrap::RtAudioWrap(const Napi::CallbackInfo& info)
+         // Init the RtAudio object with the wanted api
+         _rtAudio = std::make_shared<RtAudio>(
+             api,
+-            [](RtAudioErrorType type, const std::string& errorMsg)
++            [this](RtAudioErrorType type, const std::string& errorMsg)
+             {
+-                if (errorTsfn != nullptr)
++                std::lock_guard lk(_errorTsfnMutex);
++                if (_errorTsfn != nullptr)
+                 {
+-                    errorTsfn.NonBlockingCall(
++                    _errorTsfn.NonBlockingCall(
+                         [type, errorMsg](Napi::Env env, Napi::Function callback)
+                         {
+-                            callback.Call({
+-                                Napi::Number::New(env, type),
+-                                Napi::String::New(env, errorMsg)
++                            callJsSafely([&] {
++                                callback.Call({
++                                    Napi::Number::New(env, type),
++                                    Napi::String::New(env, errorMsg)
++                                });
+                             });
+                         });
+                 }
+@@ -184,7 +199,20 @@ RtAudioWrap::RtAudioWrap(const Napi::CallbackInfo& info)
+     }
+ }
+ 
+-RtAudioWrap::~RtAudioWrap() { _rtAudio->closeStream(); }
++RtAudioWrap::~RtAudioWrap()
++{
++    _rtAudio->closeStream();
++    {
++        // Detach, but don't Release(): during Node's shutdown the finalizer
++        // runs after the environment has already freed its thread-safe
++        // functions, and releasing one then aborts. Like the input and output
++        // functions, it is cleaned up with the environment.
++        std::lock_guard lk(_errorTsfnMutex);
++        _errorTsfn = nullptr;
++    }
++    // Destroy RtAudio while the mutex above still exists; it may report errors.
++    _rtAudio.reset();
++}
+ 
+ Napi::Value RtAudioWrap::getDevices(const Napi::CallbackInfo& info)
+ {
+@@ -265,9 +293,13 @@ Napi::Value RtAudioWrap::openStream(const Napi::CallbackInfo& info)
+     }
+ 
+     // If there is already an error threadsafe-function, release it
+-    if (errorTsfn != nullptr)
+     {
+-        errorTsfn.Release();
++        std::lock_guard lk(_errorTsfnMutex);
++        if (_errorTsfn != nullptr)
++        {
++            _errorTsfn.Release();
++            _errorTsfn = nullptr;
++        }
+     }
+ 
+     // If there is already an input threadsafe-function, release it
+@@ -299,7 +331,8 @@ Napi::Value RtAudioWrap::openStream(const Napi::CallbackInfo& info)
+     // Create ThreadSafeFunction for error callback
+     if (!errorCallback.IsEmpty())
+     {
+-        errorTsfn = Napi::ThreadSafeFunction::New(
++        std::lock_guard lk(_errorTsfnMutex);
++        _errorTsfn = Napi::ThreadSafeFunction::New(
+             info.Env(),
+             errorCallback,
+             "errorCallback",
+@@ -411,7 +444,7 @@ void RtAudioWrap::write(const Napi::CallbackInfo& info)
+ {
+     Napi::Buffer buf = info[0].As<Napi::Buffer<uint8_t>>();
+ 
+-    std::shared_ptr<int8_t> data;
++    std::shared_ptr<int8_t[]> data;
+ 
+     std::unique_lock lk(_outputDataMutex, std::defer_lock);
+ 
+@@ -422,7 +455,7 @@ void RtAudioWrap::write(const Napi::CallbackInfo& info)
+     }
+ 
+     // Allocate buffer for the PCM data
+-    data = std::shared_ptr<int8_t>(
++    data = std::shared_ptr<int8_t[]>(
+         new int8_t[_frameSize * _outputChannels * _sampleSize]);
+ 
+     // Copy the data to the new buffer
+@@ -443,7 +476,7 @@ void RtAudioWrap::clearOutputQueue(const Napi::CallbackInfo& info)
+     std::lock_guard lk(_outputDataMutex);
+ 
+     // Clear the output queue
+-    std::queue<std::shared_ptr<int8_t>> empty;
++    std::queue<std::shared_ptr<int8_t[]>> empty;
+     std::swap(_outputData, empty);
+ }
+ 
+diff --git a/node_modules/audify/src/rt_audio.h b/node_modules/audify/src/rt_audio.h
+index 99b0442..7722188 100644
+--- a/node_modules/audify/src/rt_audio.h
++++ b/node_modules/audify/src/rt_audio.h
+@@ -72,11 +72,15 @@ private:
+     RtAudioFormat _format;
+ 
+     std::mutex _tsfnMutex;
++    // WavePod: per-instance error callback. The upstream global one was
++    // released by one stream while another stream's audio thread still used it.
++    std::mutex _errorTsfnMutex;
++    Napi::ThreadSafeFunction _errorTsfn;
+     Napi::ThreadSafeFunction _inputTsfn;
+     Napi::ThreadSafeFunction _frameOutputTsfn;
+ 
+     std::mutex _outputDataMutex;
+-    std::queue<std::shared_ptr<int8_t>> _outputData;
++    std::queue<std::shared_ptr<int8_t[]>> _outputData;
+     double _outputVolume;
+     double _outputMultiplier;
+ };
+diff --git a/node_modules/audify/vendor/rtaudio/RtAudio.cpp b/node_modules/audify/vendor/rtaudio/RtAudio.cpp
+index 73cee2b..9a5201b 100644
+--- a/node_modules/audify/vendor/rtaudio/RtAudio.cpp
++++ b/node_modules/audify/vendor/rtaudio/RtAudio.cpp
+@@ -362,6 +362,11 @@ public:
+   struct PaDeviceInfo {
+     std::string sinkName;
+     std::string sourceName;
++    // WavePod: the device's own channel maps, so multichannel streams open
++    // without PulseAudio having to invent (or fail to invent) one.
++    pa_channel_map sinkMap;
++    pa_channel_map sourceMap;
++    PaDeviceInfo() { pa_channel_map_init( &sinkMap ); pa_channel_map_init( &sourceMap ); }
+   };
+ 
+  private:
+@@ -9231,6 +9236,7 @@ static void rt_pa_set_sink_info( pa_context * /*c*/, const pa_sink_info *i,
+ 
+   RtApiPulse::PaDeviceInfo painfo;
+   painfo.sinkName = i->name;
++  painfo.sinkMap = i->channel_map;
+   paProbeInfo->paDeviceList->push_back( painfo );
+ }
+ 
+@@ -9252,6 +9258,7 @@ static void rt_pa_set_source_info_and_quit( pa_context * /*c*/, const pa_source_
+       if ( !paProbeInfo->paDeviceList->at(n).sinkName.empty() ) {
+         // This must be a duplex device. Update the device info.
+         paProbeInfo->paDeviceList->at(n).sourceName = i->name;
++        paProbeInfo->paDeviceList->at(n).sourceMap = i->channel_map;
+         paProbeInfo->rtDeviceList->at(n).inputChannels = i->sample_spec.channels;
+         paProbeInfo->rtDeviceList->at(n).isDefaultInput = ( paProbeInfo->defaultSourceName == i->name );
+         paProbeInfo->rtDeviceList->at(n).duplexChannels = 
+@@ -9277,6 +9284,7 @@ static void rt_pa_set_source_info_and_quit( pa_context * /*c*/, const pa_source_
+ 
+   RtApiPulse::PaDeviceInfo painfo;
+   painfo.sourceName = i->name;
++  painfo.sourceMap = i->channel_map;
+   paProbeInfo->paDeviceList->push_back( painfo );
+ }
+ 
+@@ -9560,6 +9568,18 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
+ 
+   int error;
+   if ( options && !options->streamName.empty() ) streamName = options->streamName;
++  // WavePod: PulseAudio has no default channel map for more than 6 channels,
++  // so pa_simple_new() fails for e.g. a 16-channel interface. Use the device's
++  // own map when all its channels are opened, otherwise an AUX-padded default.
++  pa_channel_map channelMap;
++  {
++    const pa_channel_map &deviceMap = ( mode == INPUT ) ? paDeviceList_[deviceIdx].sourceMap
++                                                        : paDeviceList_[deviceIdx].sinkMap;
++    if ( pa_channel_map_valid( &deviceMap ) && deviceMap.channels == channels )
++      channelMap = deviceMap;
++    else
++      pa_channel_map_init_extend( &channelMap, channels, PA_CHANNEL_MAP_DEFAULT );
++  }
+   switch ( mode ) {
+     pa_buffer_attr buffer_attr;
+   case INPUT:
+@@ -9570,7 +9590,7 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
+       buffer_attr.maxlength = bufferBytes * 4;
+ 
+     pah->s_rec = pa_simple_new( NULL, streamName.c_str(), PA_STREAM_RECORD,
+-                                dev_input, "Record", &ss, NULL, &buffer_attr, &error );
++                                dev_input, "Record", &ss, &channelMap, &buffer_attr, &error );
+     if ( !pah->s_rec ) {
+       errorText_ = "RtApiPulse::probeDeviceOpen: error connecting input to PulseAudio server.";
+       goto error;
+@@ -9588,11 +9608,20 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
+       buffer_attr.tlength = -1;
+       attr_ptr = &buffer_attr;
+     } else {
+-      attr_ptr = nullptr;
++      // WavePod: without explicit attributes PulseAudio uses a ~2 s target
++      // buffer refilled in large bursts, so the callback fires dozens of times
++      // back to back and a client feeding it from another thread (audify's
++      // write queue) underruns: playback stutters. Ask for a few buffers of
++      // latency, refilled one buffer at a time.
++      buffer_attr.maxlength = (uint32_t) -1;
++      buffer_attr.tlength = bufferBytes * 4;
++      buffer_attr.prebuf = (uint32_t) -1;
++      buffer_attr.minreq = bufferBytes;
++      attr_ptr = &buffer_attr;
+     }
+ 
+     pah->s_play = pa_simple_new( NULL, streamName.c_str(), PA_STREAM_PLAYBACK,
+-                                 dev_output, "Playback", &ss, NULL, attr_ptr, &error );
++                                 dev_output, "Playback", &ss, &channelMap, attr_ptr, &error );
+     if ( !pah->s_play ) {
+       errorText_ = "RtApiPulse::probeDeviceOpen: error connecting output to PulseAudio server.";
+       goto error;

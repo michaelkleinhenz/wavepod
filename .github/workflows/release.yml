@@ -33,6 +33,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # npm ci compiles the patched audify, which needs the ALSA/PulseAudio headers on Linux.
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libpulse-dev pkg-config
       - run: npm ci
       - name: Set version from tag
         shell: bash

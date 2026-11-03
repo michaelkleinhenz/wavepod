@@ -89,7 +89,6 @@ async function main(): Promise<void> {
   const playBtn = h('button', { class: 'transport play', title: 'Play / Stop (Space)', onclick: () => void togglePlay() }, '▶');
   const stopBtn = h('button', { class: 'transport', title: 'Stop', onclick: () => void stop() }, '■');
   const homeBtn = h('button', { class: 'transport', title: 'To start (Home)', onclick: () => seek(0) }, '⏮');
-  const chapterBtn = h('button', { class: 'transport chapter', title: 'Chapter marker (M)', onclick: () => dropMarker('chapter') }, '⚑');
   // listening speed (pitch kept); playback only, remembered on this computer
   const SPEED_KEY = 'wavepod.playbackSpeed';
   let speed = 1;
@@ -137,7 +136,7 @@ async function main(): Promise<void> {
     null,
     h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
-    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl, speedSel),
+    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, timeEl, speedSel),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
     masterFxBtn,
     preShowBtn,

@@ -47,6 +47,8 @@ export function isTyping(e: Event): boolean {
 
 let toastTimer: number | undefined;
 export function toast(message: string, kind: 'info' | 'error' = 'info'): void {
+  // The main process mirrors renderer console errors to the terminal.
+  if (kind === 'error') console.error(`[toast] ${message}`);
   let el = document.getElementById('toast');
   if (!el) {
     el = h('div', { id: 'toast' });

@@ -189,6 +189,9 @@ export class AudioEngine extends EventEmitter {
         this.native.setApi(this.config.api);
       } catch (e) {
         this.error = (e as Error).message;
+        // Fall back to the system default rather than keep an API that can't open.
+        this.config.api = 'default';
+        this.native.setApi('default');
       }
     }
     const devices = this.listDevices();
@@ -216,7 +219,7 @@ export class AudioEngine extends EventEmitter {
         });
         this.inputPeaks = new Array(inDev.inputChannels).fill(0);
       } catch (e) {
-        errors.push(`Could not open input "${inDev.name}": ${(e as Error).message}`);
+        errors.push(`Could not open input "${inDev.name}" (${this.config.api}, ${inDev.inputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`);
       }
     }
     if (outDev) {
@@ -231,11 +234,12 @@ export class AudioEngine extends EventEmitter {
           channels: outDev.outputChannels,
           sampleRate: this.config.sampleRate,
           frameSize: this.config.bufferSize,
-          pull: (n) => this.onOutput(n),
+          // The prefill pull runs inside openOutput, before this.output is set.
+          pull: (n) => this.onOutput(n, outDev.outputChannels),
           onError: (m) => this.reportError(`Output: ${m}`),
         });
       } catch (e) {
-        errors.push(`Could not open output "${outDev.name}": ${(e as Error).message}`);
+        errors.push(`Could not open output "${outDev.name}" (${this.config.api}, ${outDev.outputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`);
       }
     }
     if (errors.length) this.error = [this.error, ...errors].filter(Boolean).join('\n');
@@ -523,8 +527,7 @@ export class AudioEngine extends EventEmitter {
   }
 
   /** Renders the next output buffer (interleaved, all device output channels). */
-  private onOutput(frames: number): Float32Array {
-    const nch = this.output?.channels ?? 2;
+  private onOutput(frames: number, nch: number): Float32Array {
     if (this.mixBuf[0].length < frames) this.mixBuf = [new Float32Array(frames), new Float32Array(frames)];
     if (this.sbBuf[0].length < frames) this.sbBuf = [new Float32Array(frames), new Float32Array(frames)];
     if (this.outBuf.length !== frames * nch) this.outBuf = new Float32Array(frames * nch);

@@ -13,6 +13,8 @@ export interface VstInstance {
   setState(state: Uint8Array): Array<{ id: number; value: number }>;
   getState(): Uint8Array;
   format(paramId: number, value: number): string;
+  /** The normalized value for the plug-in's own text, or null if it can't read it. */
+  parse?(paramId: number, text: string): number | null;
   destroy(): void;
   /** False once the host process died or the plug-in stopped answering. */
   readonly alive: boolean;

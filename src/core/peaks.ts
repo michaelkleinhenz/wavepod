@@ -18,7 +18,8 @@ export const PEAK_TILE = 4096;
 /** Frames per raw sample tile. */
 export const SAMPLE_TILE = 16384;
 
-const MAGIC = 0x324b5057; // "WPK2"
+// v3: peaks follow the played channels (envelope of L and R) instead of averaging all
+const MAGIC = 0x334b5057; // "WPK3"
 
 /** Growable int8 buffer of interleaved min,max pairs. */
 export class PairBuffer {
@@ -129,8 +130,10 @@ export class PeakPyramid {
 }
 
 /**
- * Accumulates mipmapped min/max peaks from audio. Feed planar chunks; multichannel
- * input is averaged to mono.
+ * Accumulates mipmapped min/max peaks from audio. Feed planar chunks. The peaks are the
+ * envelope of the channels that play (the first two, as the mixer plays L and R), so a
+ * multichannel or half-silent stereo file is drawn at the level it is heard, not averaged
+ * down.
  */
 export class MipmapBuilder {
   readonly pyramid: PeakPyramid;
@@ -158,14 +161,15 @@ export class MipmapBuilder {
   }
 
   push(channels: Float32Array[], frames = channels[0]?.length ?? 0): void {
-    const nch = channels.length;
     const spp = this.pyramid.base;
+    const l = channels[0];
+    const r = channels.length > 1 ? channels[1] : null;
+    if (!l) return;
     for (let i = 0; i < frames; i++) {
-      let v = 0;
-      for (let c = 0; c < nch; c++) v += channels[c][i];
-      if (nch > 1) v /= nch;
-      if (v < this.min) this.min = v;
-      if (v > this.max) this.max = v;
+      const a = l[i];
+      const b = r ? r[i] : a;
+      if ((a < b ? a : b) < this.min) this.min = a < b ? a : b;
+      if ((a < b ? b : a) > this.max) this.max = a < b ? b : a;
       if (++this.n === spp) this.emit();
     }
     this.total += frames;
@@ -244,13 +248,20 @@ export function decodePeaks(buf: Buffer): WaveformPeaks | null {
   };
 }
 
-/** Mixes planar channels to one mono array (averaged, like the peaks). */
+/**
+ * One drawable value per frame, like the peaks: of the played channels (L and R) the one
+ * further from zero, so single samples line up with the peak bars around them.
+ */
 export function mixToMono(channels: Float32Array[], frames: number): Float32Array {
   const out = new Float32Array(frames);
-  const n = channels.length;
-  if (!n) return out;
-  for (const ch of channels) for (let i = 0; i < frames; i++) out[i] += ch[i];
-  if (n > 1) for (let i = 0; i < frames; i++) out[i] /= n;
+  const l = channels[0];
+  if (!l) return out;
+  const r = channels.length > 1 ? channels[1] : null;
+  for (let i = 0; i < frames; i++) {
+    const a = l[i];
+    const b = r ? r[i] : a;
+    out[i] = Math.abs(b) > Math.abs(a) ? b : a;
+  }
   return out;
 }
 

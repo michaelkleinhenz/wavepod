@@ -19,7 +19,8 @@ describe('parseMidiMessage', () => {
     expect(parseMidiMessage([0x91, 60, 0])?.pressed).toBe(false); // note-on with velocity 0 is a release
     expect(parseMidiMessage([0x80, 60, 64])?.pressed).toBe(false);
     expect(parseMidiMessage([0xb0, 20, 127])).toEqual({ type: 'cc', channel: 0, number: 20, value: 127, pressed: true });
-    expect(parseMidiMessage([0xb0, 20, 10])?.pressed).toBe(false);
+    expect(parseMidiMessage([0xb0, 20, 1])?.pressed).toBe(true); // RØDECaster buttons send 1
+    expect(parseMidiMessage([0xb0, 20, 0])?.pressed).toBe(false);
     expect(parseMidiMessage([0xcf, 4])).toEqual({ type: 'program', channel: 15, number: 4, value: 0, pressed: true });
   });
 
@@ -33,24 +34,40 @@ describe('parseMidiMessage', () => {
 });
 
 describe('MidiPressDetector', () => {
+  const momentary = (d: MidiPressDetector, bytes: number[], device = 'ctl') => d.press(parseMidiMessage(bytes)!, device).momentary;
+
   it('fires notes on note-on only', () => {
     const d = new MidiPressDetector();
-    expect(d.press(parseMidiMessage([0x90, 36, 90])!, 'pad')).not.toBeNull();
-    expect(d.press(parseMidiMessage([0x80, 36, 0])!, 'pad')).toBeNull();
+    expect(momentary(d, [0x90, 36, 90])).toBe(true);
+    expect(momentary(d, [0x80, 36, 0])).toBe(false);
   });
 
-  it('fires a controller once when it crosses the middle, not on every value of a fader', () => {
+  it('fires a controller once when it leaves 0, not on every value of a fader', () => {
     const d = new MidiPressDetector();
-    const fire = (v: number) => d.press(parseMidiMessage([0xb0, 7, v])!, 'ctl') !== null;
-    expect([10, 40, 70, 90, 127, 100, 30, 0, 127].map(fire)).toEqual([false, false, true, false, false, false, false, false, true]);
+    expect([10, 40, 70, 90, 127, 100, 30, 0, 127].map((v) => momentary(d, [0xb0, 7, v]))).toEqual([true, false, false, false, false, false, false, false, true]);
+  });
+
+  it('fires RØDECaster buttons that send value 1', () => {
+    const d = new MidiPressDetector();
+    expect([1, 0, 1, 0].map((v) => momentary(d, [0xb0, 17, v]))).toEqual([true, false, true, false]);
+  });
+
+  it('fires buttons that send the same on value every press and no release', () => {
+    const d = new MidiPressDetector();
+    expect([127, 127, 127].map((v) => momentary(d, [0xb0, 20, v]))).toEqual([true, true, true]);
+  });
+
+  it('counts every message of a toggle button as a press', () => {
+    const d = new MidiPressDetector();
+    expect([127, 0, 127, 0].map((v) => d.press(parseMidiMessage([0xb0, 20, v])!, 'rc').toggle)).toEqual([true, true, true, true]);
+    expect(d.press(parseMidiMessage([0x80, 36, 0])!, 'rc').toggle).toBe(true);
   });
 
   it('keeps controller state per device', () => {
     const d = new MidiPressDetector();
-    const cc = parseMidiMessage([0xb0, 7, 127])!;
-    expect(d.press(cc, 'a')).not.toBeNull();
-    expect(d.press(cc, 'b')).not.toBeNull();
-    expect(d.press(cc, 'a')).toBeNull();
+    expect(momentary(d, [0xb0, 7, 127], 'a')).toBe(true);
+    expect(momentary(d, [0xb0, 7, 127], 'b')).toBe(true);
+    expect(momentary(d, [0xb0, 7, 100], 'a')).toBe(false);
   });
 });
 
@@ -64,6 +81,18 @@ describe('bindings', () => {
     expect(actionsFor(s, parseMidiMessage([0x91, 36, 100])!, 'nanoPAD2')).toEqual([]);
     expect(actionsFor(s, parseMidiMessage([0xb0, 36, 127])!, 'nanoPAD2')).toEqual([]);
     expect(actionsFor({ ...s, enabled: false }, ev, 'nanoPAD2')).toEqual([]);
+  });
+
+  it('runs a toggle mapping on every press of a latching button, a momentary one on presses only', () => {
+    let s = bindTrigger(defaultMidiSettings(), 'chapter-marker', { type: 'cc', channel: 0, number: 20, device: 'RODECaster Pro II' }, 'toggle').settings;
+    s = bindTrigger(s, 'edit-marker', { type: 'cc', channel: 0, number: 21, device: 'RODECaster Pro II' }).settings;
+    const d = new MidiPressDetector();
+    const fired = (cc: number, v: number) => {
+      const ev = parseMidiMessage([0xb0, cc, v])!;
+      return actionsFor(s, ev, 'RODECaster Pro II', d.press(ev, 'RODECaster Pro II'));
+    };
+    expect([127, 0, 127, 0].map((v) => fired(20, v))).toEqual([['chapter-marker'], ['chapter-marker'], ['chapter-marker'], ['chapter-marker']]);
+    expect([127, 0, 127, 0].map((v) => fired(21, v))).toEqual([['edit-marker'], [], ['edit-marker'], []]);
   });
 
   it('an empty device name matches every device', () => {
@@ -105,6 +134,8 @@ describe('normalizeMidiSettings', () => {
         { action: 'explode', trigger: { type: 'note', channel: 0, number: 1 } }, // unknown action
         { action: 'edit-marker', trigger: { type: 'program', channel: 2, number: 5 } }, // no device -> any
         { action: 'chapter-marker', trigger: { type: 'note', channel: 0, number: 36, device: 'pad' } }, // duplicate trigger wins
+        { action: 'record-toggle', trigger: { type: 'cc', channel: 0, number: 20, device: 'rc' }, mode: 'toggle' },
+        { action: 'play-toggle', trigger: { type: 'cc', channel: 0, number: 21, device: 'rc' }, mode: 'bogus' }, // -> momentary
       ],
     };
     const s = normalizeMidiSettings(JSON.parse(JSON.stringify(raw)));
@@ -112,6 +143,8 @@ describe('normalizeMidiSettings', () => {
     expect(s.bindings).toEqual([
       { action: 'chapter-marker', trigger: { type: 'note', channel: 0, number: 36, device: 'pad' } },
       { action: 'edit-marker', trigger: { type: 'program', channel: 2, number: 5, device: '' } },
+      { action: 'record-toggle', trigger: { type: 'cc', channel: 0, number: 20, device: 'rc' }, mode: 'toggle' },
+      { action: 'play-toggle', trigger: { type: 'cc', channel: 0, number: 21, device: 'rc' } },
     ]);
   });
 });
@@ -129,11 +162,15 @@ describe('held MIDI buttons', () => {
     const { MidiPressDetector, isHoldAction, MIDI_ACTIONS } = await import('../src/core/midi');
     const d = new MidiPressDetector();
     const ev = (type: 'note' | 'cc', pressed: boolean) => ({ type, channel: 0, number: 10, value: pressed ? 127 : 0, pressed });
-    expect(d.edge(ev('note', true), 'X')).toBe('press');
-    expect(d.edge(ev('note', false), 'X')).toBe('release');
-    expect(d.edge(ev('cc', true), 'X')).toBe('press');
-    expect(d.edge(ev('cc', true), 'X')).toBeNull();
-    expect(d.edge(ev('cc', false), 'X')).toBe('release');
+    const edge = (e: ReturnType<typeof ev>) => {
+      const p = d.press(e, 'X');
+      return p.momentary ? 'press' : p.release ? 'release' : null;
+    };
+    expect(edge(ev('note', true))).toBe('press');
+    expect(edge(ev('note', false))).toBe('release');
+    expect(edge(ev('cc', true))).toBe('press');
+    expect(edge(ev('cc', false))).toBe('release');
+    expect(edge(ev('cc', false))).toBeNull();
     expect(isHoldAction('cough-2')).toBe(true);
     expect(isHoldAction('sound-2')).toBe(false);
     expect(MIDI_ACTIONS.map((a) => a.action)).toEqual(expect.arrayContaining(['cough-1', 'cough-6', 'sound-9', 'sounds-stop']));

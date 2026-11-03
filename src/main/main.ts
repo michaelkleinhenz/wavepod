@@ -13,10 +13,12 @@ import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
+import { leadingNumber, searchNormalized } from '../core/numberInput';
 import { BACKUP_DIR, backupProject, createProjectDir, importImage, isProjectDir, loadBackup, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
+import { exportDialogDir } from './exportPaths';
 import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
 import { McpController, normalizeMcpSettings } from './mcp/controller';
 import { OscServer } from './oscServer';
@@ -76,6 +78,15 @@ function saveSettings(): void {
 
 function projectsRoot(): string {
   return process.env.WAVEPOD_PROJECT_ROOT ?? resolveProjectsRoot(app.getPath('documents'), 'WavePod');
+}
+
+/** app.getPath throws for some names on systems without that folder configured. */
+function safeGetPath(name: 'music' | 'documents'): string {
+  try {
+    return app.getPath(name);
+  } catch {
+    return '';
+  }
 }
 
 function templatesRoot(): string {
@@ -374,7 +385,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   chooseExportBase: async (defaultName: string) => {
     const res = await dialog.showSaveDialog(win!, {
       title: 'Export episode',
-      defaultPath: path.join(current.dir, 'export', defaultName),
+      defaultPath: path.join(exportDialogDir(current.dir, [safeGetPath('music'), app.getPath('home')]), defaultName),
       buttonLabel: 'Export',
     });
     if (res.canceled || !res.filePath) return null;
@@ -397,6 +408,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   vstDescribe: (plugin: VstPluginRef) => describeVst(plugin),
   vstFormat: (fx: Fx, paramId: number, value: number) => formatVst(fx, paramId, value),
+  vstParse: (fx: Fx, paramId: number, text: string) => parseVst(fx, paramId, text),
 };
 
 function describeVst(plugin: VstPluginRef) {
@@ -411,7 +423,24 @@ function describeVst(plugin: VstPluginRef) {
 }
 
 function formatVst(fx: Fx, paramId: number, value: number): string {
-  if (!vstHost || !fx.plugin) return '';
+  const inst = vstShadow(fx);
+  return inst ? inst.format(paramId, value) : '';
+}
+
+/** Typed text to a normalized value: the plug-in's own parser, else a search over its display text. */
+function parseVst(fx: Fx, paramId: number, text: string): number | null {
+  const inst = vstShadow(fx);
+  if (!inst) return null;
+  const own = inst.parse?.(paramId, text) ?? null;
+  if (own !== null && Number.isFinite(own)) return Math.min(1, Math.max(0, own));
+  const target = leadingNumber(text);
+  if (target === null) return null;
+  return searchNormalized(target, (v) => leadingNumber(inst.format(paramId, v)));
+}
+
+/** A plug-in instance used only to format and parse parameter text, per filter id. */
+function vstShadow(fx: Fx): VstInstance | null {
+  if (!vstHost || !fx.plugin) return null;
   const key = `${fx.plugin.path}|${fx.plugin.cid}|${fx.state ?? ''}`;
   let shadow = vstShadows.get(fx.id);
   if (!shadow || shadow.key !== key || !shadow.inst.alive) {
@@ -422,7 +451,7 @@ function formatVst(fx: Fx, paramId: number, value: number): string {
     shadow = { key, inst };
     vstShadows.set(fx.id, shadow);
   }
-  return shadow.inst.format(paramId, value);
+  return shadow.inst;
 }
 
 // Instances used only to turn parameter values into the plug-in's own text, per filter id.
@@ -434,7 +463,12 @@ function registerIpc(): void {
   ipcMain.handle(IPC.invoke, async (_e, method: InvokeMethod, ...args: unknown[]) => {
     const h = handlers[method];
     if (!h) throw new Error(`Unknown method ${method}`);
-    return (h as (...a: unknown[]) => unknown)(...args);
+    try {
+      return await (h as (...a: unknown[]) => unknown)(...args);
+    } catch (e) {
+      console.error(`[ipc] ${method} failed:`, e);
+      throw e;
+    }
   });
 }
 
@@ -552,6 +586,13 @@ function createWindow(): void {
       sandbox: true,
     },
   });
+  // Mirror renderer warnings and errors (including error toasts) to the terminal.
+  win.webContents.on('console-message', (event) => {
+    if (event.level === 'error' || event.level === 'warning') {
+      const where = event.sourceId ? ` (${path.basename(event.sourceId)}:${event.lineNumber})` : '';
+      console.error(`[renderer ${event.level}] ${event.message}${where}`);
+    }
+  });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.on('closed', () => {
     win = null;
@@ -569,7 +610,13 @@ app.whenReady().then(() => {
     setVstHost(vstHost, (_id, message) => engine.reportError(message));
   }
   engine.on('transport', (u) => send(IPC.transport, u));
-  engine.on('status', (s) => send(IPC.status, s));
+  let loggedEngineError: string | null = null;
+  engine.on('status', (s) => {
+    // Every audio engine error also goes to the terminal, once per change.
+    if (s.error && s.error !== loggedEngineError) console.error(`[audio] ${s.error}`);
+    loggedEngineError = s.error;
+    send(IPC.status, s);
+  });
   engine.on('recordingFinished', (takes: RecordedTake[]) => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
     let project = current.project;

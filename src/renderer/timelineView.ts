@@ -2,7 +2,7 @@
 import { LevelMeter } from './levelMeter';
 import { selectionSpan } from '../core/navigation';
 import type { Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
-import { formatTick } from '../shared/time';
+import { dbToGain, formatTick } from '../shared/time';
 import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
@@ -18,6 +18,7 @@ import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
 import { showClipLabel } from './clipLabel';
+import { editableNumber, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
 const TRACK_H = 84;
@@ -265,6 +266,8 @@ export class TimelineView {
   }
 
   renderHeaders(): void {
+    // don't pull a value field away while it is being typed into; it re-renders when it closes
+    if (isEditingValue(this.headers)) return;
     clear(this.headers);
     this.trackMeters.clear();
     const status = store.status;
@@ -370,7 +373,15 @@ export class TimelineView {
               },
               t.fx?.some((f) => f.enabled) ? `FX ${t.fx.filter((f) => f.enabled).length}` : 'FX',
             ),
-            h('span', { class: 'gain-label', title: 'Track gain' }, `${t.gain > 0 ? '+' : ''}${t.gain.toFixed(1)} dB`),
+            editableNumber(h('span', { class: 'gain-label', title: 'Track gain (click to type a value)' }, `${t.gain > 0 ? '+' : ''}${t.gain.toFixed(1)} dB`), {
+              min: -24,
+              max: 12,
+              unit: 'dB',
+              precision: 0.1,
+              get: () => t.gain,
+              commit: (gain) => store.edit((p) => updateTrack(p, t.id, { gain })),
+              onClose: () => this.renderHeaders(),
+            }),
             h('input', {
               type: 'range',
               class: 'gain',
@@ -1009,10 +1020,12 @@ export class TimelineView {
     // waveform
     const peaks = store.requestPeaks(clip.file);
     if (peaks && peaks.levels.length) {
-      // the waveform shows the clip as it sounds: fades and volume line applied
+      // the waveform shows the clip as it sounds: clip gain (normalisation), fades and
+      // volume line applied
       const env = clip.envelope?.length ? clip.envelope : undefined;
       const fx = fadesOf(track, clip);
       const fades = fx.fadeIn > 0 || fx.fadeOut > 0;
+      const cg = clip.gain ? dbToGain(clip.gain) : 1;
       drawFileWaveform(ctx, store.waves, clip.file, peaks, {
         x0: Math.max(0, Math.floor(g.x)),
         x1: Math.min(this.width, Math.ceil(g.x + g.w)),
@@ -1026,8 +1039,8 @@ export class TimelineView {
         bottom: g.y + hgt - 1,
         color: track.color,
         gain:
-          env || fades
-            ? (src) => (fades ? fadesAt(fx, clip.length, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
+          env || fades || cg !== 1
+            ? (src) => cg * (fades ? fadesAt(fx, clip.length, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
             : undefined,
       });
     } else if (!peaks) {

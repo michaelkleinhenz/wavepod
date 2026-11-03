@@ -168,6 +168,8 @@ export interface WavePodApi {
   vstDescribe(plugin: VstPluginRef): Promise<{ params: Array<VstParamInfo & { value: number }>; state: string; latency: number }>;
   /** The plug-in's own text for a parameter value, e.g. "-12.0 dB". */
   vstFormat(fx: Fx, paramId: number, value: number): Promise<string>;
+  /** The normalized value (0..1) for typed text such as "-12 dB", or null if it can't be read. */
+  vstParse(fx: Fx, paramId: number, text: string): Promise<number | null>;
 
   // events (return an unsubscribe function)
   onTransport(cb: (u: TransportUpdate) => void): () => void;
@@ -258,4 +260,5 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'vstScan',
   'vstDescribe',
   'vstFormat',
+  'vstParse',
 ];

@@ -8,6 +8,8 @@ import { clear, errorMessage, h, toast } from './dom';
 import { api, store } from './store';
 import { updateTrack } from '../core/project';
 import { DUCK_DEFAULT_DEPTH } from '../core/ducking';
+import { editableNumber, editableValue, isEditingValue } from './valueEdit';
+import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
 
 const VST_OPTION = '__vst3';
 /** Plug-ins with many parameters show this many sliders until "Show all" is clicked. */
@@ -70,7 +72,7 @@ export class FxPanel {
 
   /** Re-renders when the stack changed from outside (undo, other edits), but not during slider drags. */
   refresh(): void {
-    if (!this.target || store.liveEditing) return;
+    if (!this.target || store.liveEditing || isEditingValue(this.el)) return;
     if (this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target)) return this.close();
     const key = JSON.stringify(fxList(store.project, this.target)) + this.title();
     if (key !== this.structure) this.render();
@@ -337,12 +339,18 @@ export class FxPanel {
     const fallback = (v: number) => (info.steps === 1 ? (v >= 0.5 ? 'On' : 'Off') : `${Math.round(v * 100)}%`);
     const value = h('span', { class: 'fx-value' }, fallback(current()));
     let seq = 0;
+    /** True while the value shows WavePod's 0..100 % stand-in rather than the plug-in's own text. */
+    let generic = true;
     const label = (v: number) => {
       const mine = ++seq;
+      generic = true;
       api()
         .vstFormat(fx, info.id, v)
         .then((text) => {
-          if (mine === seq && text) value.textContent = info.units && !text.includes(info.units) ? `${text} ${info.units}` : text;
+          if (mine === seq && text) {
+            value.textContent = info.units && !text.includes(info.units) ? `${text} ${info.units}` : text;
+            generic = false;
+          }
         })
         .catch(() => {});
     };
@@ -356,7 +364,29 @@ export class FxPanel {
       if (commit) store.commitLive();
     };
     label(current());
-    const control =
+    let control: HTMLInputElement;
+    if (info.steps !== 1)
+      editableValue(value, {
+        initial: () => {
+          const shown = value.textContent ?? '';
+          const n = leadingNumber(shown);
+          return n === null ? shown : String(n);
+        },
+        parse: async (text) => {
+          const v = generic ? null : await api().vstParse(fx, info.id, text);
+          if (v !== null) return v;
+          // the 0..100 % stand-in (plug-ins that format nothing), or a percentage typed on purpose
+          if (!generic && !/%\s*$/.test(text)) return null;
+          const pct = parseNumberInput(text, { min: 0, max: 100, unit: '%' });
+          return pct === null ? null : pct / 100;
+        },
+        commit: (v) => {
+          set(v, true);
+          control.value = String(current());
+        },
+        onClose: () => this.refresh(),
+      });
+    control =
       info.steps === 1
         ? h('input', { type: 'checkbox', checked: current() >= 0.5, onchange: (e: Event) => set((e.target as HTMLInputElement).checked ? 1 : 0, true) })
         : h('input', {
@@ -385,7 +415,21 @@ export class FxPanel {
       onChange();
       if (commit) store.commitLive();
     };
-    const control = spec.options
+    let control: HTMLInputElement | HTMLSelectElement;
+    if (!spec.options)
+      editableNumber(value, {
+        min: spec.min,
+        max: spec.max,
+        unit: spec.unit,
+        precision: spec.unit === 'Hz' ? 1 : precisionForStep(spec.step),
+        get: () => fx.params[spec.key],
+        commit: (v) => {
+          set(v, true);
+          control.value = String(toSlider(spec, v));
+        },
+        onClose: () => this.refresh(),
+      });
+    control = spec.options
       ? h(
           'select',
           { onchange: (e: Event) => set(Number((e.target as HTMLSelectElement).value), true) },

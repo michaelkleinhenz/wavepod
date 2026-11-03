@@ -1,6 +1,6 @@
 // MIDI controller input: listens to every connected MIDI device (Web MIDI), runs learned mappings and
 // handles "learn" mode in Setup. Mappings live in the app settings via the main process.
-import type { MidiAction, MidiSettings, MidiTrigger } from '../shared/types';
+import type { MidiAction, MidiButtonMode, MidiSettings, MidiTrigger } from '../shared/types';
 import {
   MIDI_ACTIONS,
   MidiPressDetector,
@@ -9,7 +9,10 @@ import {
   defaultMidiSettings,
   describeTrigger,
   isHoldAction,
+  modeOf,
   parseMidiMessage,
+  sameTrigger,
+  triggerMatches,
   unbindAction,
   type MidiEvent,
 } from '../core/midi';
@@ -18,6 +21,9 @@ import { errorMessage, toast } from './dom';
 import { api, store } from './store';
 
 export type MidiAccessState = 'off' | 'starting' | 'ready' | 'unsupported' | 'denied';
+
+/** How long Learn waits for a button's release before deciding it is a toggle (latching) button. */
+const LEARN_RELEASE_MS = 1000;
 
 export const actionLabel = (a: MidiAction): string => MIDI_ACTIONS.find((x) => x.action === a)?.label ?? a;
 
@@ -34,7 +40,8 @@ class MidiController {
 
   private access: MIDIAccess | null = null;
   private presses = new MidiPressDetector();
-  /** Transport actions run one after the other so quick presses can't overlap. */
+  /** A control just learned, waiting to see whether it sends a release (momentary) or not (toggle). */
+  private probe: { action: MidiAction; trigger: MidiTrigger; replaced: MidiAction | null; timer: ReturnType<typeof setTimeout> } | null = null;
 
   async init(): Promise<void> {
     try {
@@ -60,6 +67,7 @@ class MidiController {
 
   async clear(action: MidiAction): Promise<void> {
     if (this.learning === action) this.learning = null;
+    this.endProbe(action);
     await this.save(unbindAction(this.settings, action));
     this.changed();
   }
@@ -68,8 +76,22 @@ class MidiController {
   async setDevice(action: MidiAction, device: string): Promise<void> {
     const b = this.settings.bindings.find((x) => x.action === action);
     if (!b) return;
-    await this.save(bindTrigger(this.settings, action, { ...b.trigger, device }).settings);
+    await this.save(bindTrigger(this.settings, action, { ...b.trigger, device }, modeOf(b)).settings);
     this.changed();
+  }
+
+  /** Sets whether a mapping's button is momentary or a toggle (latching) button. */
+  async setMode(action: MidiAction, mode: MidiButtonMode): Promise<void> {
+    const b = this.settings.bindings.find((x) => x.action === action);
+    if (!b) return;
+    this.endProbe(action);
+    await this.save(bindTrigger(this.settings, action, b.trigger, mode).settings);
+    this.changed();
+  }
+
+  modeFor(action: MidiAction): MidiButtonMode {
+    const b = this.settings.bindings.find((x) => x.action === action);
+    return b ? modeOf(b) : 'momentary';
   }
 
   triggerFor(action: MidiAction): MidiTrigger | undefined {
@@ -138,25 +160,64 @@ class MidiController {
     const ev = parseMidiMessage(data);
     if (!ev) return;
     this.onActivity?.(`${device}: ${describeEvent(ev)}`);
-    const edge = this.presses.edge(ev, device);
-    if (!edge) return;
-    if (edge === 'release') {
-      // only held buttons (cough) act on release
-      if (!this.learning) for (const action of actionsFor(this.settings, ev, device)) if (isHoldAction(action)) this.run(action, false);
+    const press = this.presses.press(ev, device);
+    const trigger: MidiTrigger = { type: ev.type, channel: ev.channel, number: ev.number, device };
+
+    if (this.probe && sameTrigger(this.probe.trigger, trigger)) {
+      // The button just learned: a release means momentary, another "on" without a release means toggle.
+      const { action, replaced, trigger: probeTrigger } = this.probe;
+      this.endProbe(action);
+      this.learned(action, probeTrigger, ev.pressed ? 'toggle' : 'momentary', replaced);
       return;
     }
-    const press = ev;
 
     if (this.learning) {
       const action = this.learning;
       this.learning = null;
-      const trigger: MidiTrigger = { type: press.type, channel: press.channel, number: press.number, device };
-      const { settings, replaced } = bindTrigger(this.settings, action, trigger);
-      void this.save(settings).then(() => this.changed());
-      toast(`${actionLabel(action)}: ${describeTrigger(trigger)}${replaced ? ` (removed from ${actionLabel(replaced)})` : ''}`);
+      if (ev.type === 'program' || !ev.pressed) {
+        // Program changes have no release; an "off" first is a toggle button that was on.
+        this.learned(action, trigger, ev.type === 'program' ? 'momentary' : 'toggle');
+        return;
+      }
+      // Bind right away, then watch for the release to tell momentary from toggle buttons.
+      const replaced = this.bind(action, trigger, 'momentary');
+      this.probe = { action, trigger, replaced, timer: setTimeout(() => this.probeTimedOut(), LEARN_RELEASE_MS) };
       return;
     }
-    for (const action of actionsFor(this.settings, press, device)) this.run(action);
+    for (const action of actionsFor(this.settings, ev, device, press)) if (!isHoldAction(action)) this.run(action);
+    // held buttons (cough): a momentary button holds while down; a toggle button holds while latched on
+    for (const b of this.settings.enabled ? this.settings.bindings : []) {
+      if (!isHoldAction(b.action) || !triggerMatches(b.trigger, ev, device)) continue;
+      if (modeOf(b) === 'toggle') this.run(b.action, ev.pressed);
+      else if (press.momentary) this.run(b.action, true);
+      else if (press.release) this.run(b.action, false);
+    }
+  }
+
+  private probeTimedOut(): void {
+    if (!this.probe) return;
+    const { action, trigger, replaced } = this.probe;
+    this.probe = null;
+    this.learned(action, trigger, 'toggle', replaced);
+  }
+
+  private endProbe(action: MidiAction): void {
+    if (this.probe?.action !== action) return;
+    clearTimeout(this.probe.timer);
+    this.probe = null;
+  }
+
+  private bind(action: MidiAction, trigger: MidiTrigger, mode: MidiButtonMode): MidiAction | null {
+    const { settings, replaced } = bindTrigger(this.settings, action, trigger, mode);
+    void this.save(settings).then(() => this.changed());
+    this.changed();
+    return replaced;
+  }
+
+  private learned(action: MidiAction, trigger: MidiTrigger, mode: MidiButtonMode, earlier: MidiAction | null = null): void {
+    const replaced = this.bind(action, trigger, mode) ?? earlier;
+    const kind = trigger.type === 'program' ? '' : mode === 'toggle' ? ' (toggle button)' : ' (momentary button)';
+    toast(`${actionLabel(action)}: ${describeTrigger(trigger)}${kind}${replaced ? ` (removed from ${actionLabel(replaced)})` : ''}`);
   }
 
   /** Runs a mapped function, the same way the keyboard shortcut does. */

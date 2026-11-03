@@ -45,6 +45,13 @@ export class SetupView {
   }
 
   render(): void {
+    // Re-rendering empties the view for a moment, which would jump it back to the top (e.g. on Learn).
+    const top = this.el.scrollTop;
+    this.build();
+    this.el.scrollTop = top;
+  }
+
+  private build(): void {
     clear(this.el);
     const s = store.status;
     if (!s) {
