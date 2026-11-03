@@ -16,6 +16,10 @@ export interface Clip {
   gain: number;
   fadeIn: Frames;
   fadeOut: Frames;
+  /** Volume line; point positions are frames in the source file (so trims and splits keep them in place). */
+  envelope?: EnvelopePoint[];
+  /** Volume line is drawn and editable on the clip. */
+  showEnvelope?: boolean;
 }
 
 export interface Track {
@@ -38,13 +42,9 @@ export interface Track {
   muteRegions?: MuteRegion[];
   /** Filter stack, processed top to bottom before track gain and pan. */
   fx?: Fx[];
-  /** Volume line: gain points in timeline order (none = 0 dB throughout). */
-  envelope?: EnvelopePoint[];
-  /** Volume line is drawn and editable on the timeline. */
-  showEnvelope?: boolean;
 }
 
-/** One point of a track's volume line. */
+/** One point of a clip's volume line. */
 export interface EnvelopePoint {
   pos: Frames;
   /** Gain in dB; at or below -60 the track is silent. */
@@ -299,8 +299,34 @@ export interface ExportProgress {
   fraction: number;
 }
 
-export interface LoudnessReport {
-  trackId: string | 'master';
+/**
+ * Loudness figures of a piece of audio, as Ultraschall (via SWS loudness
+ * analysis) shows them. Silent material reads −Infinity.
+ */
+export interface LoudnessStats {
+  /** Integrated (programme) loudness, gated, in LUFS. */
   integrated: number;
-  peakDb: number;
+  /** Loudness range (LRA) in LU. */
+  range: number;
+  /** Highest short-term loudness (3 s window) in LUFS. */
+  shortTermMax: number;
+  /** Highest momentary loudness (400 ms window) in LUFS. */
+  momentaryMax: number;
+  /** True peak (4x oversampled) in dBTP. */
+  truePeak: number;
+  /** Sample peak in dBFS. */
+  samplePeak: number;
+  /** Seconds of audio measured. */
+  duration: number;
+  /** Short-term loudness curve in LUFS, one value per `historyStep` seconds (after the first 3 s). */
+  history: number[];
+  historyStep: number;
+}
+
+export interface LoudnessReport {
+  kind: 'mix' | 'track' | 'clip';
+  /** Track or clip id ('mix' for the mix). */
+  id: string;
+  name: string;
+  stats: LoudnessStats;
 }

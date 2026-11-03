@@ -20,9 +20,12 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   edges on other tracks, markers and the playhead (toolbar `Snap`, hold
   `Alt` to drag freely). Time selections can be resized by dragging their
   edges.
-- **Volume line** per track (`Vol` in the track header): double-click to add
-  points, drag points or the line up and down. `Ctrl+Y` silences the
-  selected range on the tracks it was dragged across.
+- **Volume line** per clip (hover a clip and click `Vol` at its top left):
+  double-click to add points, drag points or the line up and down; the
+  waveform shows the result. `Ctrl+Y` silences the selected range on the
+  tracks it was dragged across.
+- Dragging a clip straight up or down to another track keeps its time
+  position, so the tracks stay in sync.
 - **Chapter markers** while recording (`M`), edit markers for later fixes (`E`).
 - **Soundboard** for jingles (keys `1`–`9`) with loop and soft fade-in.
   Jingles played while recording land on a Soundboard track, so they are
@@ -40,8 +43,14 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   with File › Save as Template…, and start the next episode from it with
   File › New Episode from Template… (`Shift+Ctrl+N`) or the Setup view.
   No recordings, markers or volume lines are stored in a template.
-- **Loudness**: EBU R128 analysis per track and mix, normalisation to −16 /
-  −19 / −23 LUFS with a peak ceiling.
+- **Loudness**: EBU R128 analysis of the mix, every track or selected clips
+  (Loudness… in the toolbar, `Shift+Ctrl+L`) with the figures Ultraschall
+  shows: integrated, loudness range (LRA), short-term and momentary maximum,
+  true peak and sample peak, plus a short-term loudness curve against the
+  target. **Normalise** (`Alt+Shift+N`) sets the clip gain of the selected
+  clips so each reaches the target (−16 LUFS by default) without the true
+  peak going over the ceiling. The export normalises the mix to −16 / −19 /
+  −23 LUFS with a peak ceiling.
 - **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter
   files (Podlove Simple Chapters, Podcasting 2.0 JSON, mp4chaps, Audacity
   labels).

@@ -41,6 +41,8 @@ export type MenuCommand =
   | 'undo'
   | 'ripple-cut'
   | 'mute-selection'
+  | 'normalize-clips'
+  | 'loudness-analysis'
   | 'redo'
   | 'view-setup'
   | 'view-edit'
@@ -92,7 +94,10 @@ export interface SoundPodApi {
   // export
   chooseExportBase(defaultName: string): Promise<string | null>;
   exportProject(opts: ExportOptions): Promise<ExportResult>;
+  /** Loudness of the mix and of every track with clips. */
   measureLoudness(): Promise<LoudnessReport[]>;
+  /** Loudness of single clips (with their fades and clip gain, before track processing). */
+  measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;
 
   // VST3 plug-ins (hosted in a separate process; editors are never shown)
@@ -160,6 +165,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'chooseExportBase',
   'exportProject',
   'measureLoudness',
+  'measureClips',
   'revealFile',
   'vstStatus',
   'vstScan',

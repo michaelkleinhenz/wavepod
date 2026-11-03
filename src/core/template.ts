@@ -3,8 +3,8 @@ import type { BitDepth, EpisodeMetadata, Fx, Project, SoundboardSlot, Track } fr
 import { uid } from '../shared/time';
 import { createProject, normalizeProject } from './project';
 
-/** A track as a template keeps it: everything except its clips, mute regions and volume line. */
-export type TemplateTrack = Omit<Track, 'clips' | 'muteRegions' | 'envelope'>;
+/** A track as a template keeps it: everything except its clips (with their volume lines) and mute regions. */
+export type TemplateTrack = Omit<Track, 'clips' | 'muteRegions'>;
 
 export interface ProjectTemplate {
   version: 1;
@@ -50,7 +50,8 @@ export function projectToTemplate(project: Project, name: string, inputDevice?: 
     masterGain: p.masterGain,
     masterFx: p.masterFx ?? [],
     tracks: p.tracks.map((t) => {
-      const { clips: _c, muteRegions: _m, envelope: _e, ...rest } = t;
+      // envelope/showEnvelope: per-track volume lines of an early version, now per clip
+      const { clips: _c, muteRegions: _m, envelope: _e, showEnvelope: _s, ...rest } = t as Track & { envelope?: unknown; showEnvelope?: unknown };
       return { ...rest, solo: false };
     }),
     soundboard: p.soundboard,

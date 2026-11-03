@@ -1,10 +1,10 @@
 // Pure project-editing operations. They return a new project and never touch the input.
-import type { Clip, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
+import type { Clip, EnvelopePoint, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
 import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
 import { normalizeFx } from './fx/definitions';
-import { insertIntoEnvelope, rippleEnvelope, sortPoints } from './envelope';
+import { migrateTrackEnvelope, sortPoints } from './envelope';
 
 function normalizeFxList(list: unknown): Fx[] {
   return Array.isArray(list) ? list.map((f) => normalizeFx(f as Partial<Fx>)).filter((f): f is Fx => !!f) : [];
@@ -61,10 +61,20 @@ export function normalizeProject(raw: Partial<Project>): Project {
     pan: t.pan ?? 0,
     muteRegions: mergeRegions(t.muteRegions ?? []),
     fx: normalizeFxList(t.fx),
-    envelope: sortPoints(Array.isArray(t.envelope) ? t.envelope.filter((e) => Number.isFinite(e?.pos) && Number.isFinite(e?.db)) : []),
-    showEnvelope: !!t.showEnvelope,
-    clips: (t.clips ?? []).map((c) => ({ ...c, gain: c.gain ?? 0, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, offset: c.offset ?? 0 })),
+    clips: (t.clips ?? []).map((c) => ({
+      ...c,
+      gain: c.gain ?? 0,
+      fadeIn: c.fadeIn ?? 0,
+      fadeOut: c.fadeOut ?? 0,
+      offset: c.offset ?? 0,
+      ...(Array.isArray(c.envelope) ? { envelope: sortPoints(c.envelope.filter((e) => Number.isFinite(e?.pos) && Number.isFinite(e?.db))) } : {}),
+    })),
   }));
+  // per-track volume lines (one early version) become per-clip ones
+  (raw.tracks ?? []).forEach((t, i) => {
+    const legacy = t as { envelope?: EnvelopePoint[]; showEnvelope?: boolean };
+    if (p.tracks[i]) migrateTrackEnvelope(legacy.envelope, p.tracks[i].clips, !!legacy.showEnvelope);
+  });
   p.markers = (p.markers ?? []).map((m) => ({ ...m, id: m.id ?? uid('mrk'), kind: m.kind ?? 'chapter', title: m.title ?? '' }));
   p.soundboard = p.soundboard ?? [];
   p.masterFx = normalizeFxList(p.masterFx);
@@ -192,7 +202,6 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
       .filter((c) => !(c.start >= start && c.start + c.length <= end))
       .map((c) => (c.start >= end ? { ...c, start: c.start - len } : c));
     if (t.muteRegions?.length) t.muteRegions = rippleRegions(t.muteRegions, start, end);
-    if (t.envelope?.length) t.envelope = rippleEnvelope(t.envelope, start, end);
   }
   p.markers = p.markers
     .filter((m) => m.position < start || m.position >= end)
@@ -207,7 +216,6 @@ export function insertSilence(project: Project, position: number, length: number
   for (const t of p.tracks) {
     for (const c of t.clips) if (c.start >= position) c.start += length;
     if (t.muteRegions?.length) t.muteRegions = insertIntoRegions(t.muteRegions, position, length);
-    if (t.envelope?.length) t.envelope = insertIntoEnvelope(t.envelope, position, length);
   }
   for (const m of p.markers) if (m.position >= position) m.position += length;
   return p;

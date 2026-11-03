@@ -1,20 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  ENV_MIN_DB,
-  addPoint,
-  envelopeAmpAt,
-  envelopeDbAt,
-  fillEnvelope,
-  insertIntoEnvelope,
-  muteRange,
-  muteSelection,
-  rippleEnvelope,
-  setEnvelope,
-} from '../src/core/envelope';
+import { ENV_MIN_DB, addPoint, envelopeAmpAt, envelopeDbAt, fillEnvelope, muteRange, muteSelection, setClipEnvelope } from '../src/core/envelope';
 import { Mixer, ReaderCache } from '../src/core/mixer';
-import { addTrack, createProject, insertSilence, moveClip, normalizeProject, rippleDelete } from '../src/core/project';
+import { addTrack, createProject, moveClip, normalizeProject, rippleDelete, splitAt } from '../src/core/project';
+import type { Clip } from '../src/shared/types';
 import { snap, snapTargets } from '../src/core/snap';
 import { writeWavFile } from '../src/core/wav';
 import { tmpDir } from './helpers';
@@ -30,18 +20,19 @@ describe('volume envelope', () => {
     expect(envelopeDbAt(pts, 500)).toBeCloseTo(0, 5);
   });
 
-  it('interpolates linear gain between points, with steps at shared positions', () => {
+  it('interpolates in dB between points, with steps at shared positions', () => {
     const pts = [
       { pos: 0, db: 0 },
-      { pos: 100, db: ENV_MIN_DB },
+      { pos: 100, db: -20 },
       { pos: 100, db: 0 },
     ];
-    expect(envelopeAmpAt(pts, 50)).toBeCloseTo(0.5, 5);
-    expect(envelopeAmpAt(pts, 99)).toBeCloseTo(0.01, 5);
+    expect(envelopeDbAt(pts, 50)).toBeCloseTo(-10, 5);
+    expect(envelopeAmpAt(pts, 50)).toBeCloseTo(Math.pow(10, -0.5), 5);
     expect(envelopeAmpAt(pts, 100)).toBe(1);
-    const out = new Float32Array(4);
-    fillEnvelope(pts, 48, 4, out);
-    expect([...out].map((v) => +v.toFixed(2))).toEqual([0.52, 0.51, 0.5, 0.49]);
+    const out = new Float32Array(3);
+    fillEnvelope(pts, 49, 3, out);
+    expect(out[1]).toBeCloseTo(Math.pow(10, -0.5), 5);
+    expect(envelopeAmpAt([{ pos: 0, db: ENV_MIN_DB }], 0)).toBe(0);
   });
 
   it('adds points in order', () => {
@@ -61,34 +52,45 @@ describe('volume envelope', () => {
     ]);
     expect(envelopeAmpAt(pts, 1500)).toBe(0);
     expect(envelopeDbAt(pts, 3000)).toBeCloseTo(-3, 5);
-    // only the selected tracks change, and their lines become visible
+    // only clips on the selected tracks change, in source frames, and their lines become visible
     let p = addTrack(addTrack(createProject('E', 48000)), {});
-    p = muteSelection(p, [p.tracks[1].id], 48000, 96000);
-    expect(p.tracks[0].envelope ?? []).toEqual([]);
-    expect(p.tracks[1].showEnvelope).toBe(true);
-    expect(envelopeAmpAt(p.tracks[1].envelope, 60000)).toBe(0);
-    expect(envelopeAmpAt(p.tracks[1].envelope, 10000)).toBe(1);
+    const clip = (id: string, start: number, offset: number): Clip => ({ id, file: 'f', start, offset, length: 48000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p.tracks[0].clips.push(clip('a', 0, 0));
+    p.tracks[1].clips.push(clip('b', 40000, 1000), clip('c', 200000, 0));
+    p = muteSelection(p, [p.tracks[1].id], 48000, 60000);
+    expect(p.tracks[0].clips[0].envelope).toBeUndefined();
+    const b = p.tracks[1].clips[0];
+    expect(b.showEnvelope).toBe(true);
+    expect(envelopeAmpAt(b.envelope, 1000 + 10000)).toBe(0); // timeline 50000
+    expect(envelopeAmpAt(b.envelope, 1000 + 1000)).toBe(1);
+    expect(p.tracks[1].clips[1].envelope).toBeUndefined();
   });
 
-  it('follows ripple cuts and inserted silence', () => {
-    const pts = [
-      { pos: 0, db: 0 },
-      { pos: 1000, db: -20 },
-      { pos: 3000, db: -20 },
-    ];
-    const cut = rippleEnvelope(pts, 500, 2000);
-    expect(cut.map((p) => p.pos)).toEqual([0, 500, 500, 1500]);
-    expect(envelopeDbAt(cut, 1000)).toBeCloseTo(-20, 5);
-    const ins = insertIntoEnvelope(pts, 2000, 100);
-    expect(ins.map((p) => p.pos)).toEqual([0, 1000, 2000, 2100, 3100]);
-    let p = addTrack(createProject(), {});
-    p = setEnvelope(p, p.tracks[0].id, pts);
-    expect(rippleDelete(p, 500, 2000).tracks[0].envelope!.map((x) => x.pos)).toEqual([0, 500, 500, 1500]);
-    expect(insertSilence(p, 2000, 100).tracks[0].envelope!.length).toBe(5);
-    expect(normalizeProject(JSON.parse(JSON.stringify(p))).tracks[0].envelope).toEqual(pts);
+  it('stays with the audio through splits, trims and ripple cuts', () => {
+    let p = addTrack(createProject('E', 48000));
+    p.tracks[0].clips.push({ id: 'a', file: 'f', start: 10000, offset: 0, length: 40000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p = setClipEnvelope(p, 'a', [{ pos: 20000, db: -12 }, { pos: 20000, db: 0 }]);
+    p = rippleDelete(p, 0, 5000);
+    p = splitAt(p, 20000);
+    const [l, r] = p.tracks[0].clips;
+    // source frame 20000 is timeline 25000 now; the right half starts at source 15000
+    expect(envelopeDbAt(l.envelope, l.offset + 5000)).toBeCloseTo(-12, 5);
+    expect(envelopeDbAt(r.envelope, r.offset + 10000)).toBeCloseTo(0, 5);
+    expect(normalizeProject(JSON.parse(JSON.stringify(p))).tracks[0].clips[0].envelope).toEqual(l.envelope);
   });
 
-  it('scales the track in the mixer', () => {
+  it('turns an old per-track line into clip lines', () => {
+    const raw = JSON.parse(JSON.stringify(addTrack(createProject('E', 48000))));
+    raw.tracks[0].clips.push({ id: 'a', file: 'f', start: 1000, offset: 500, length: 2000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    raw.tracks[0].envelope = [{ pos: 2000, db: -6 }];
+    raw.tracks[0].showEnvelope = true;
+    const c = normalizeProject(raw).tracks[0].clips[0];
+    expect(c.showEnvelope).toBe(true);
+    expect(envelopeDbAt(c.envelope, 500)).toBeCloseTo(-6, 5);
+    expect('envelope' in normalizeProject(raw).tracks[0]).toBe(false);
+  });
+
+  it('scales the clip in the mixer', () => {
     const dir = tmpDir();
     fs.mkdirSync(path.join(dir, 'media'));
     writeWavFile(path.join(dir, 'media/dc.wav'), [new Float32Array(48000).fill(0.5)], 48000);
@@ -97,7 +99,7 @@ describe('volume envelope', () => {
     const readers = new ReaderCache(dir);
     const ref = new Mixer(p, readers).render(0, 48000, [new Float32Array(48000), new Float32Array(48000)])[0][1000];
     p = muteSelection(p, [p.tracks[0].id], 10000, 20000);
-    p = setEnvelope(p, p.tracks[0].id, [...p.tracks[0].envelope!, { pos: 30000, db: 0 }, { pos: 30000, db: -6 }]);
+    p = setClipEnvelope(p, 'c', [...p.tracks[0].clips[0].envelope!, { pos: 30000, db: 0 }, { pos: 30000, db: -6 }]);
     const out = new Mixer(p, readers).render(0, 48000, [new Float32Array(48000), new Float32Array(48000)]);
     readers.closeAll();
     expect(out[0][5000]).toBeCloseTo(ref, 5);

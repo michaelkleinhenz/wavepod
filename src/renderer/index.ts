@@ -26,6 +26,7 @@ import {
 } from './actions';
 import { ChaptersView } from './chaptersView';
 import { ExportDialog } from './exportDialog';
+import { LoudnessDialog, normalizeClips } from './loudnessDialog';
 import { SetupView } from './setupView';
 import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
@@ -53,10 +54,12 @@ async function main(): Promise<void> {
   const timeline = new TimelineView(soundboard.el);
   const chapters = new ChaptersView();
   const exportDialog = new ExportDialog();
+  const loudnessDialog = new LoudnessDialog();
   const fxPanel = new FxPanel();
   const templates = new TemplateDialog();
   setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
+  timeline.onOpenLoudness = () => loudnessDialog.open();
 
   // ---------------------------------------------------------------- header
   const tabs: Record<View, HTMLButtonElement> = {
@@ -203,6 +206,10 @@ async function main(): Promise<void> {
         return void (Date.now() - editKeyAt > 500 && rippleCut());
       case 'mute-selection':
         return void (!typingInField() && Date.now() - editKeyAt > 500 && muteSelection());
+      case 'normalize-clips':
+        return void (!document.querySelector('.overlay') && normalizeClips([...store.selection.clipIds]));
+      case 'loudness-analysis':
+        return void (!document.querySelector('.overlay') && loudnessDialog.open());
       case 'redo': return store.redo();
       case 'view-setup': return store.setView('setup');
       case 'view-edit': return store.setView('edit');

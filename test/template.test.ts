@@ -22,8 +22,8 @@ const vst: Fx = {
 function setup(jingle = '/abs/jingle.wav'): Project {
   let p = createProject('Episode 12', 48000);
   p = addTrack(p, { name: 'Host', inputChannels: [0], armed: true, gain: -2, fx: [{ id: 'fx-hp', type: 'highpass', enabled: true, params: { freq: 80 } }] });
-  p = addTrack(p, { name: 'Remote', inputChannels: [4, 5], solo: true, muteRegions: [[10, 20]], envelope: [{ pos: 5, db: -6 }] });
-  p = addClip(p, p.tracks[0].id, { id: 'c1', file: 'media/Host-001.wav', start: 0, offset: 0, length: 100, gain: 0, fadeIn: 0, fadeOut: 0 });
+  p = addTrack(p, { name: 'Remote', inputChannels: [4, 5], solo: true, muteRegions: [[10, 20]] });
+  p = addClip(p, p.tracks[0].id, { id: 'c1', file: 'media/Host-001.wav', start: 0, offset: 0, length: 100, gain: 0, fadeIn: 0, fadeOut: 0, envelope: [{ pos: 5, db: -6 }] });
   p = ensureSoundboardTrack({ ...p, soundboard: [{ id: 'snd1', name: 'Intro', file: jingle, gain: -3, color: '#fff', loop: true }] });
   p = addClip(p, 'soundboard', { id: 'c2', file: 'media/jingle-snd1-48000.wav', start: 0, offset: 0, length: 50, gain: 0, fadeIn: 0, fadeOut: 0 });
   p.masterFx = [vst];
@@ -52,6 +52,7 @@ describe('project templates', () => {
       expect(tr).not.toHaveProperty('clips');
       expect(tr).not.toHaveProperty('muteRegions');
       expect(tr).not.toHaveProperty('envelope');
+      expect(tr).not.toHaveProperty('showEnvelope');
     }
     expect(JSON.stringify(t)).not.toContain('media/');
   });
@@ -62,7 +63,7 @@ describe('project templates', () => {
     expect(p.name).toBe('Episode 13');
     expect(p.sampleRate).toBe(44100);
     expect(p.markers).toEqual([]);
-    expect(p.tracks.every((t) => t.clips.length === 0 && t.muteRegions?.length === 0 && t.envelope?.length === 0)).toBe(true);
+    expect(p.tracks.every((t) => t.clips.length === 0 && t.muteRegions?.length === 0)).toBe(true);
     expect(p.tracks.map((t) => t.id)).toEqual(src.tracks.map((t) => t.id));
     expect(p.tracks.find((t) => t.kind === 'soundboard')?.id).toBe('soundboard');
     expect(p.masterFx?.[0].id).not.toBe('fx-vst');
