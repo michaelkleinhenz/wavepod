@@ -83,6 +83,8 @@ export interface WavePodApi {
   stop(): Promise<RecordedTake[]>;
   record(): Promise<string[]>;
   seek(position: number): Promise<void>;
+  /** Playback speed, 1 to 2, pitch kept (recording and export always run at 1x). */
+  setPlaybackSpeed(speed: number): Promise<void>;
 
   // project
   currentProject(): Promise<OpenedProject>;
@@ -182,6 +184,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'stop',
   'record',
   'seek',
+  'setPlaybackSpeed',
   'currentProject',
   'newProject',
   'openProject',

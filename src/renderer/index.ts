@@ -33,6 +33,7 @@ import {
 } from './actions';
 import { ChaptersView } from './chaptersView';
 import { resetAllMeters } from './levelMeter';
+import { PLAYBACK_SPEEDS } from '../core/timeStretch';
 import { selectionSpan } from '../core/navigation';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
@@ -83,6 +84,35 @@ async function main(): Promise<void> {
   const stopBtn = h('button', { class: 'transport', title: 'Stop', onclick: () => void stop() }, '■');
   const homeBtn = h('button', { class: 'transport', title: 'To start (Home)', onclick: () => seek(0) }, '⏮');
   const chapterBtn = h('button', { class: 'transport chapter', title: 'Chapter marker (M)', onclick: () => dropMarker('chapter') }, '⚑');
+  // listening speed (pitch kept); playback only, remembered on this computer
+  const SPEED_KEY = 'wavepod.playbackSpeed';
+  let speed = 1;
+  try {
+    speed = Number(localStorage.getItem(SPEED_KEY)) || 1;
+  } catch {
+    /* no storage: 1x */
+  }
+  if (!PLAYBACK_SPEEDS.includes(speed as (typeof PLAYBACK_SPEEDS)[number])) speed = 1;
+  const speedSel = h(
+    'select',
+    {
+      class: 'speed-select',
+      title: 'Playback speed (pitch kept). Recording and export always run at 1×.',
+      onchange: (e: Event) => {
+        speed = Number((e.target as HTMLSelectElement).value);
+        speedSel.classList.toggle('fast', speed !== 1);
+        try {
+          localStorage.setItem(SPEED_KEY, String(speed));
+        } catch {
+          /* ignore */
+        }
+        void api().setPlaybackSpeed(speed);
+      },
+    },
+    ...PLAYBACK_SPEEDS.map((v) => h('option', { value: String(v), selected: v === speed }, `${v}×`)),
+  ) as HTMLSelectElement;
+  speedSel.classList.toggle('fast', speed !== 1);
+  void api().setPlaybackSpeed(speed);
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
@@ -92,7 +122,7 @@ async function main(): Promise<void> {
     null,
     h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
-    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl),
+    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, chapterBtn, timeEl, speedSel),
     h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
     masterFxBtn,
     h('div', { class: 'spacer' }),

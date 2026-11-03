@@ -240,6 +240,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     return engine.record();
   },
   seek: (pos: number) => engine.seek(pos),
+  setPlaybackSpeed: (speed: number) => engine.setPlaybackSpeed(speed),
 
   currentProject: () => current,
   newProject: () => {

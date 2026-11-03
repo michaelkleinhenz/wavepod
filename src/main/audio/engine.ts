@@ -10,6 +10,7 @@ import type {
   PlayingJingle,
   Project,
   RecordedTake,
+  Track,
   TransportState,
   TransportUpdate,
   WaveformPeaks,
@@ -19,6 +20,7 @@ import { interleavedPeaks } from '../../core/dsp';
 import { MipmapBuilder, PEAK_TILE, SAMPLE_TILE, TILED_MAX_SPP, encodePeaks, headerSize, mixToMono, parsePeakHeader, type PeakFileLayout } from '../../core/peaks';
 import { Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
 import { createProject } from '../../core/project';
+import { TimeStretcher } from '../../core/timeStretch';
 import {
   JINGLE_PANIC_SECONDS,
   JINGLE_STOP_SECONDS,
@@ -99,6 +101,10 @@ export class AudioEngine extends EventEmitter {
 
   private state: TransportState = 'stopped';
   private playPos = 0;
+  /** Playback speed (pitch kept); recording always runs at 1x. */
+  private speed = 1;
+  private stretcher: TimeStretcher | null = null;
+  private stretchTracks: Track[] = [];
   private recordStart = 0;
   private recordedFrames = 0;
   private recorders: Recorder[] = [];
@@ -266,8 +272,19 @@ export class AudioEngine extends EventEmitter {
     return this.state === 'recording' ? this.recordStart + this.recordedFrames : this.playPos;
   }
 
+  get playbackSpeed(): number {
+    return this.speed;
+  }
+
+  /** 1 (normal) up to 2; playback only. */
+  setPlaybackSpeed(speed: number): void {
+    this.speed = Math.max(0.5, Math.min(2, Number.isFinite(speed) ? speed : 1));
+    this.stretcher = null;
+  }
+
   seek(position: number): void {
     if (this.state === 'recording') return;
+    this.stretcher = null;
     this.playPos = Math.max(0, Math.round(position));
     this.emitTransport();
   }
@@ -275,6 +292,7 @@ export class AudioEngine extends EventEmitter {
   play(from?: number): void {
     if (this.state === 'recording') return;
     if (from !== undefined) this.playPos = Math.max(0, Math.round(from));
+    this.stretcher = null;
     this.state = 'playing';
     if (!this.output) this.startFallbackClock();
     this.emitTransport();
@@ -507,6 +525,21 @@ export class AudioEngine extends EventEmitter {
     let tracks = audibleTracks(this.project);
     // While recording, don't play back what is being recorded (avoids hearing yourself late).
     if (this.state === 'recording') tracks = tracks.filter((t) => !this.armedTrackIds.has(t.id));
+    if (this.state === 'playing' && this.speed !== 1) {
+      // faster listening: the mix is rendered contiguously and time-stretched, pitch kept
+      if (!this.stretcher) {
+        this.stretcher = new TimeStretcher(this.project.sampleRate, (pos, n, buf) => this.mixer.render(pos, n, buf, this.stretchTracks), this.speed);
+        this.stretcher.reset(this.playPos);
+      }
+      this.stretchTracks = tracks;
+      try {
+        this.stretcher.pull(frames, this.mixBuf);
+      } catch (e) {
+        this.reportError(`Playback: ${(e as Error).message}`);
+      }
+      this.playPos = this.stretcher.position;
+      return;
+    }
     try {
       this.mixer.render(this.playPos, frames, this.mixBuf, tracks);
     } catch (e) {
@@ -552,7 +585,7 @@ export class AudioEngine extends EventEmitter {
       const now = performance.now();
       const frames = Math.round(((now - last) / 1000) * this.project.sampleRate);
       last = now;
-      if (this.state === 'playing') this.playPos += frames;
+      if (this.state === 'playing') this.playPos += Math.round(frames * this.speed);
     }, 20);
   }
 
