@@ -215,3 +215,5 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 #toast.error { background: #4a1f22; border-color: #7a2c30; }
 .toggle.placeholder { visibility: hidden; }
 .th-hint { font-size: 11px; min-height: 24px; align-items: center; }
+.toggle.cough { color: #e57373; }
+.toggle.cough:active { background: #ff7043; color: #fff; border-color: #ff7043; }

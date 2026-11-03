@@ -2,6 +2,7 @@
 import type { MarkerKind } from '../shared/types';
 import { addClip, addMarker, addTrack, chaptersToMarkers, deleteClips, rippleDelete, splitAt } from '../core/project';
 import { importChapters } from '../core/chapters';
+import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { uid } from '../shared/time';
 import { baseName, decodeFile } from './audioFiles';
 import { errorMessage, toast } from './dom';
@@ -61,8 +62,46 @@ export function splitAtPlayhead(): void {
   store.edit((p) => splitAt(p, pos, trackIds));
 }
 
+/** Mute starts this much before the button press (reaction time) and ends this much after release. */
+const COUGH_PREROLL_SECONDS = 0.1;
+const COUGH_POSTROLL_SECONDS = 0.05;
+
+/** Cough button pressed: starts muting the track (recording or playback must be running). */
+export function coughDown(trackId: string): void {
+  if (store.coughs.has(trackId)) return;
+  if (store.transport.state === 'stopped') {
+    toast('Cough buttons work while recording or playing');
+    return;
+  }
+  store.coughs.set(trackId, Math.max(0, store.transport.position - Math.round(COUGH_PREROLL_SECONDS * store.sampleRate)));
+  store.notify('transport');
+}
+
+/** Cough button released: stores the mute region (undoable, editable on the timeline). */
+export function coughUp(trackId: string): void {
+  const start = store.coughs.get(trackId);
+  if (start === undefined) return;
+  store.coughs.delete(trackId);
+  const end = store.transport.position + Math.round(COUGH_POSTROLL_SECONDS * store.sampleRate);
+  store.edit((p) => addMuteRegion(p, trackId, start, end));
+}
+
+export function releaseAllCoughs(): void {
+  for (const id of [...store.coughs.keys()]) coughUp(id);
+}
+
+/** The track a cough key (Shift+1…9) belongs to: the n-th track that isn't the Soundboard. */
+export function coughTrackForKey(n: number): string | undefined {
+  return store.project.tracks.filter((t) => t.kind !== 'soundboard')[n - 1]?.id;
+}
+
 export function deleteSelection(ripple: boolean): void {
-  const { range, clipIds, markerId } = store.selection;
+  const { range, clipIds, markerId, muteRegion } = store.selection;
+  if (muteRegion) {
+    store.edit((p) => removeMuteRegion(p, muteRegion.trackId, muteRegion.index));
+    store.select({ muteRegion: null });
+    return;
+  }
   if (range && range[1] > range[0]) {
     if (ripple) {
       store.edit((p) => rippleDelete(p, range[0], range[1]));

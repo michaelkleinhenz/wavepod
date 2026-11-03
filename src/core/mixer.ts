@@ -4,6 +4,7 @@ import type { Clip, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { fadeGain, panGains } from './dsp';
 import { WavReader } from './wav';
+import { MUTE_RAMP_SECONDS, muteGainAt, regionsOverlap } from './muteRegions';
 import { audibleTracks, projectLength } from './project';
 
 export class ReaderCache {
@@ -68,6 +69,11 @@ export class Mixer {
   /** Adds one track (ignoring mute/solo) into `out`. */
   renderTrackInto(track: Track, position: number, frames: number, out: Float32Array[]): void {
     const trackGain = dbToGain(track.gain);
+    // only the mute regions touching this block, so the per-sample lookup stays short
+    const muted = regionsOverlap(track, position, position + frames)
+      ? track.muteRegions!.filter(([a, b]) => a < position + frames && b > position)
+      : null;
+    const ramp = Math.round(MUTE_RAMP_SECONDS * this.project.sampleRate);
     const [panL, panR] = panGains(track.pan);
     const end = position + frames;
     for (const clip of track.clips) {
@@ -92,7 +98,8 @@ export class Mixer {
       const balR = stereo ? Math.min(1, 1 + track.pan) : panR;
       for (let i = 0; i < n; i++) {
         const rel = from - cStart + i;
-        const env = g * clipEnvelope(clip, rel);
+        let env = g * clipEnvelope(clip, rel);
+        if (muted) env *= muteGainAt(muted, from + i, ramp);
         const l = src[0][i];
         const r = stereo ? src[1][i] : l;
         out[0][outOffset + i] += l * env * balL;

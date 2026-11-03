@@ -34,7 +34,11 @@ export interface Track {
   /** -1 (left) .. 1 (right); used for mono tracks. */
   pan: number;
   clips: Clip[];
+  /** Cough-button mutes: [start, end) in timeline frames, sorted, non-overlapping. */
+  muteRegions?: MuteRegion[];
 }
+
+export type MuteRegion = [Frames, Frames];
 
 export type MarkerKind = 'chapter' | 'edit';
 

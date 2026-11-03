@@ -111,14 +111,18 @@ cost. Each numbered item is sized to be one pull request.
 
 Things that make a live recording session complete and safe.
 
-1. **Soundboard on the timeline.** A dedicated "Soundboard" track (created on
+Status: item 1 (soundboard on the timeline) and item 2 (cough buttons) are
+done, along with a live waveform on tracks while recording (a request that
+came up during testing).
+
+1. ✅ **Soundboard on the timeline.** A dedicated "Soundboard" track (created on
    first use, not armed, no input). Every trigger during recording inserts a
    clip referencing the jingle file at the trigger position; stopping a
    jingle trims the clip. Per slot: fade-in, loop, gain; the button shows
    remaining time. The mixer already plays clips, so the edit and the export
    pick this up for free. *Files:* `engine.ts`, `soundboard.ts`,
    `core/project.ts`.
-2. **Cough buttons / mute regions.** New `Track.muteRegions: [start, end][]`.
+2. ✅ **Cough buttons / mute regions.** New `Track.muteRegions: [start, end][]`.
    Holding the track's cough key (default `Shift+1`…`Shift+8`, also a button
    in the track header) records a region; the mixer applies short ramps. The
    timeline draws regions over the waveform and lets you drag/delete them, so

@@ -4,7 +4,11 @@ import { toDb } from '../core/dsp';
 import { projectLength } from '../core/project';
 import { append, h, isTyping, toast } from './dom';
 import {
+  coughDown,
+  coughTrackForKey,
+  coughUp,
   deleteSelection,
+  releaseAllCoughs,
   dropMarker,
   importAudioFiles,
   importChapterFile,
@@ -175,6 +179,13 @@ async function main(): Promise<void> {
     if (isTyping(e) || document.querySelector('.overlay')) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod) return; // menu accelerators
+    const cough = /^Digit([1-9])$/.exec(e.code);
+    if (cough && e.shiftKey) {
+      e.preventDefault();
+      const id = coughTrackForKey(Number(cough[1]));
+      if (id && !e.repeat) coughDown(id);
+      return;
+    }
     switch (e.key) {
       case ' ':
         e.preventDefault();
@@ -232,6 +243,14 @@ async function main(): Promise<void> {
         return;
     }
   });
+
+  window.addEventListener('keyup', (e) => {
+    const cough = /^Digit([1-9])$/.exec(e.code);
+    if (!cough) return;
+    const id = coughTrackForKey(Number(cough[1]));
+    if (id) coughUp(id);
+  });
+  window.addEventListener('blur', releaseAllCoughs);
 
   // ---------------------------------------------------------------- boot
   const opened = await api().currentProject();

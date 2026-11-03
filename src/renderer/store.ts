@@ -18,6 +18,8 @@ export interface Selection {
   /** Time range in frames, for ripple delete / export range. */
   range: [number, number] | null;
   markerId: string | null;
+  /** A selected cough/mute region. */
+  muteRegion?: { trackId: string; index: number } | null;
 }
 
 type Listener = (what: Set<ChangeKind>) => void;
@@ -38,6 +40,8 @@ class Store {
   peaks = new Map<string, WaveformPeaks | 'loading' | null>();
   /** Waveform of the takes being recorded, per track id (min,max pairs). */
   livePeaks = new Map<string, { samplesPerPeak: number; data: number[] }>();
+  /** Cough buttons currently held: track id -> timeline frame where the mute starts. */
+  coughs = new Map<string, number>();
   /** Decayed meter values per input channel for display. */
   meterHold: number[] = [];
 

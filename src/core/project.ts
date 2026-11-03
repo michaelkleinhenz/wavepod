@@ -2,6 +2,7 @@
 import type { Clip, Marker, MarkerKind, Project, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
+import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
 
 export const TRACK_COLORS = ['#4fc3f7', '#ffb74d', '#81c784', '#e57373', '#ba68c8', '#fff176', '#4db6ac', '#f06292'];
 
@@ -52,6 +53,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     solo: !!t.solo,
     gain: t.gain ?? 0,
     pan: t.pan ?? 0,
+    muteRegions: mergeRegions(t.muteRegions ?? []),
     clips: (t.clips ?? []).map((c) => ({ ...c, gain: c.gain ?? 0, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, offset: c.offset ?? 0 })),
   }));
   p.markers = (p.markers ?? []).map((m) => ({ ...m, id: m.id ?? uid('mrk'), kind: m.kind ?? 'chapter', title: m.title ?? '' }));
@@ -179,6 +181,7 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
     t.clips = t.clips
       .filter((c) => !(c.start >= start && c.start + c.length <= end))
       .map((c) => (c.start >= end ? { ...c, start: c.start - len } : c));
+    if (t.muteRegions?.length) t.muteRegions = rippleRegions(t.muteRegions, start, end);
   }
   p.markers = p.markers
     .filter((m) => m.position < start || m.position >= end)
@@ -190,7 +193,10 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
 export function insertSilence(project: Project, position: number, length: number): Project {
   let p = splitAt(project, position);
   p = clone(p);
-  for (const t of p.tracks) for (const c of t.clips) if (c.start >= position) c.start += length;
+  for (const t of p.tracks) {
+    for (const c of t.clips) if (c.start >= position) c.start += length;
+    if (t.muteRegions?.length) t.muteRegions = insertIntoRegions(t.muteRegions, position, length);
+  }
   for (const m of p.markers) if (m.position >= position) m.position += length;
   return p;
 }

@@ -6,7 +6,8 @@ import { projectLength } from '../core/project';
 import { fadeGain, toDb } from '../core/dsp';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
-import { deleteSelection, dropMarker, importAudioFiles, seek, splitAtPlayhead } from './actions';
+import { coughDown, coughUp, deleteSelection, dropMarker, importAudioFiles, seek, splitAtPlayhead } from './actions';
+import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { store } from './store';
 
 const TRACK_H = 84;
@@ -14,12 +15,15 @@ const RULER_H = 26;
 const MARKER_H = 24;
 const HEADER_W = 250;
 const EDGE_PX = 6;
+/** Strip at the bottom of each track where mute (cough) regions are drawn and edited. */
+const MUTE_LANE_H = 12;
 
 type Drag =
   | { kind: 'clip'; clipId: string; trackIndex: number; startX: number; startY: number; origStart: number; dx: number; dTrack: number; moved: boolean }
   | { kind: 'trim'; clipId: string; side: 'left' | 'right'; startX: number; orig: Clip; dx: number }
   | { kind: 'range'; startFrame: number; endFrame: number; startX: number }
-  | { kind: 'marker'; markerId: string; startX: number; origPos: number; dx: number; moved: boolean };
+  | { kind: 'marker'; markerId: string; startX: number; origPos: number; dx: number; moved: boolean }
+  | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean };
 
 export class TimelineView {
   readonly el = h('div', { class: 'view edit-view' });
@@ -168,6 +172,25 @@ export class TimelineView {
               onchange: (e: Event) => store.edit((p) => updateTrack(p, t.id, { name: (e.target as HTMLInputElement).value })),
             }),
             t.kind === 'soundboard' ? h('span', { class: 'toggle placeholder' }) : toggle('armed', '●', 'Arm for recording'),
+            t.kind === 'soundboard'
+              ? h('span', { class: 'toggle placeholder' })
+              : h(
+                  'button',
+                  {
+                    class: 'toggle cough',
+                    title: `Cough button: hold to mute this speaker while recording or playing${coughKey(t.id)}`,
+                    onmousedown: (e: MouseEvent) => {
+                      e.preventDefault();
+                      coughDown(t.id);
+                      const up = () => {
+                        window.removeEventListener('mouseup', up);
+                        coughUp(t.id);
+                      };
+                      window.addEventListener('mouseup', up);
+                    },
+                  },
+                  'C',
+                ),
             toggle('mute', 'M', 'Mute'),
             toggle('solo', 'S', 'Solo'),
             h(
@@ -410,6 +433,7 @@ export class TimelineView {
       ctx.fillRect(0, y, w, TRACK_H - 1);
       for (const clip of t.clips) this.drawClip(ctx, t, i, clip);
       if (recording && t.kind === 'soundboard') this.drawLiveJingles(ctx, y);
+      this.drawMuteRegions(ctx, t, y);
       if (recording && t.armed && t.inputChannels.length) {
         const x0 = this.xOf(store.recordStart);
         const x1 = this.xOf(store.transport.position);
@@ -443,6 +467,60 @@ export class TimelineView {
       ctx.setLineDash([]);
     }
     this.drawPlayhead(ctx, height);
+  }
+
+  /** Regions as drawn, including one being dragged and a cough button being held. */
+  private displayedRegions(t: Track): Array<{ a: number; b: number; index: number | null; live: boolean }> {
+    const d = this.drag?.kind === 'mute' && this.drag.trackId === t.id ? this.drag : null;
+    const out = (t.muteRegions ?? []).map(([a, b], index): { a: number; b: number; index: number | null; live: boolean } => {
+      if (d && d.index === index && d.edge !== 'new') {
+        return d.edge === 'left' ? { a: Math.min(d.current, b - 1), b, index, live: false } : { a, b: Math.max(d.current, a + 1), index, live: false };
+      }
+      return { a, b, index, live: false };
+    });
+    if (d && d.edge === 'new') out.push({ a: Math.min(d.anchor, d.current), b: Math.max(d.anchor, d.current), index: null, live: false });
+    const held = store.coughs.get(t.id);
+    if (held !== undefined) out.push({ a: held, b: Math.max(held + 1, store.transport.position), index: null, live: true });
+    return out;
+  }
+
+  private drawMuteRegions(ctx: CanvasRenderingContext2D, t: Track, y: number): void {
+    const sel = store.selection.muteRegion;
+    const lane = y + TRACK_H - 1 - MUTE_LANE_H;
+    for (const r of this.displayedRegions(t)) {
+      const x0 = this.xOf(r.a);
+      const x1 = this.xOf(r.b);
+      if (x1 < 0 || x0 > this.width) continue;
+      const w = Math.max(2, x1 - x0);
+      ctx.fillStyle = 'rgba(10,11,14,0.6)';
+      ctx.fillRect(x0, y + 4, w, lane - y - 4);
+      const selected = sel && r.index !== null && sel.trackId === t.id && sel.index === r.index;
+      ctx.fillStyle = r.live ? '#ff7043' : selected ? '#9ab8ff' : '#e57373';
+      ctx.fillRect(x0, lane + 2, w, MUTE_LANE_H - 4);
+      if (w > 50) {
+        ctx.fillStyle = '#1b1d23';
+        ctx.font = '9px system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('muted', x0 + 4, lane + MUTE_LANE_H / 2, w - 8);
+      }
+    }
+  }
+
+  private hitMuteLane(x: number, y: number): { track: Track; index: number | null; edge: 'left' | 'right' | null } | null {
+    const ti = Math.floor(y / TRACK_H);
+    const track = store.project.tracks[ti];
+    if (!track || track.kind === 'soundboard') return null;
+    const lane = ti * TRACK_H + TRACK_H - 1 - MUTE_LANE_H;
+    if (y < lane) return null;
+    const regions = track.muteRegions ?? [];
+    for (let i = 0; i < regions.length; i++) {
+      const x0 = this.xOf(regions[i][0]);
+      const x1 = this.xOf(regions[i][1]);
+      if (Math.abs(x - x0) <= 4) return { track, index: i, edge: 'left' };
+      if (Math.abs(x - x1) <= 4) return { track, index: i, edge: 'right' };
+      if (x > x0 && x < x1) return { track, index: i, edge: null };
+    }
+    return { track, index: null, edge: null };
   }
 
   /** Jingles triggered during the current recording, until they become clips when it stops. */
@@ -648,12 +726,45 @@ export class TimelineView {
     this.canvas.addEventListener('mousemove', (e) => {
       if (this.drag) return;
       const { x, y } = local(e, this.canvas);
+      const lane = this.hitMuteLane(x, y);
+      if (lane) {
+        this.canvas.style.cursor = lane.edge ? 'ew-resize' : lane.index !== null ? 'pointer' : 'crosshair';
+        this.canvas.title = lane.index !== null ? 'Muted region: drag edges to adjust, Delete or double-click to remove' : 'Drag to mute a region of this track';
+        return;
+      }
+      this.canvas.title = '';
       const hit = this.hitClip(x, y);
       this.canvas.style.cursor = hit?.edge ? 'ew-resize' : hit ? 'grab' : 'text';
     });
 
+    this.canvas.addEventListener('dblclick', (e) => {
+      const { x, y } = local(e, this.canvas);
+      const lane = this.hitMuteLane(x, y);
+      if (lane && lane.index !== null) {
+        const index = lane.index;
+        store.edit((p) => removeMuteRegion(p, lane.track.id, index));
+        store.select({ muteRegion: null });
+      }
+    });
+
     this.canvas.addEventListener('mousedown', (e) => {
       const { x, y } = local(e, this.canvas);
+      const lane = this.hitMuteLane(x, y);
+      if (lane) {
+        const f = this.frameOf(x);
+        const regions = lane.track.muteRegions ?? [];
+        if (lane.index !== null) store.select({ muteRegion: { trackId: lane.track.id, index: lane.index }, clipIds: new Set(), range: null, markerId: null });
+        else store.select({ muteRegion: null, clipIds: new Set(), range: null, markerId: null });
+        if (lane.index === null) {
+          this.drag = { kind: 'mute', trackId: lane.track.id, index: null, edge: 'new', anchor: f, current: f, moved: false };
+        } else if (lane.edge) {
+          const r = regions[lane.index];
+          this.drag = { kind: 'mute', trackId: lane.track.id, index: lane.index, edge: lane.edge, anchor: lane.edge === 'left' ? r[1] : r[0], current: f, moved: false };
+        }
+        this.draw();
+        return;
+      }
+      if (store.selection.muteRegion) store.select({ muteRegion: null });
       const hit = this.hitClip(x, y);
       if (hit) {
         const sel = new Set(e.shiftKey ? store.selection.clipIds : []);
@@ -691,6 +802,10 @@ export class TimelineView {
         d.dx = e.clientX - d.startX;
         if (Math.abs(d.dx) > 3) d.moved = true;
         this.draw();
+      } else if (d.kind === 'mute') {
+        d.current = this.frameOf(local(e, this.canvas).x);
+        d.moved = true;
+        this.draw();
       }
     });
 
@@ -723,6 +838,16 @@ export class TimelineView {
         } else {
           store.select({ range: [a, b] });
         }
+      } else if (d.kind === 'mute' && d.moved) {
+        const a = Math.min(d.anchor, d.current);
+        const b = Math.max(d.anchor, d.current);
+        if (d.edge === 'new') {
+          if (((b - a) / this.sr) * this.pxPerSec >= 3) store.edit((p) => addMuteRegion(p, d.trackId, a, b));
+        } else if (d.index !== null) {
+          const index = d.index;
+          store.edit((p) => updateMuteRegion(p, d.trackId, index, a, b));
+        }
+        store.select({ muteRegion: null });
       } else if (d.kind === 'marker' && d.moved) {
         const pos = Math.max(0, d.origPos + Math.round((d.dx / this.pxPerSec) * this.sr));
         store.edit((p) => updateMarker(p, d.markerId, { position: pos }));
@@ -740,6 +865,11 @@ export class TimelineView {
     }
     return best ? store.project.markers.find((m) => m.id === best!.id)! : null;
   }
+}
+
+function coughKey(trackId: string): string {
+  const n = store.project.tracks.filter((t) => t.kind !== 'soundboard').findIndex((t) => t.id === trackId) + 1;
+  return n >= 1 && n <= 9 ? ` (Shift+${n})` : '';
 }
 
 function trimmed(orig: Clip, side: 'left' | 'right', delta: number): Pick<Clip, 'start' | 'length' | 'offset'> {
