@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { IPC, type InvokeMethod, type MenuCommand, type OpenedProject } from '../shared/api';
-import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
+import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip, prepareForEditing } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
@@ -20,6 +20,7 @@ import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
 import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
 import { McpController, normalizeMcpSettings } from './mcp/controller';
 import { OscServer } from './oscServer';
+import { auphonicInfo, auphonicPresets, normalizeAuphonic, sendToAuphonic, updateAuphonic, type StoredAuphonic } from './auphonic';
 import { normalizeOscSettings } from '../core/osc';
 
 // Carry settings over from the SoundPod era before anything reads userData.
@@ -40,6 +41,7 @@ interface Settings {
   mcp: McpSettings;
   /** OSC remote control; off unless switched on in Setup. */
   osc: OscSettings;
+  auphonic: StoredAuphonic;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -56,9 +58,10 @@ function loadSettings(): Settings {
       markerPing: raw.markerPing === true,
       mcp: normalizeMcpSettings(raw.mcp),
       osc: normalizeOscSettings(raw.osc),
+      auphonic: normalizeAuphonic(raw.auphonic),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null) };
   }
 }
 
@@ -203,6 +206,28 @@ const handlers: Record<InvokeMethod, Handler> = {
     return dev ? findProfile(dev.name, dev.inputChannels, dev.outputChannels) : null;
   },
 
+  getAuphonicSettings: () => auphonicInfo(settings.auphonic),
+  setAuphonicSettings: (input: AuphonicSettingsInput) => {
+    settings.auphonic = updateAuphonic(settings.auphonic, input);
+    saveSettings();
+    return auphonicInfo(settings.auphonic);
+  },
+  auphonicPresets: () => auphonicPresets(settings.auphonic),
+  sendToAuphonic: () => {
+    flushSave();
+    const send2 = (p: unknown) => send(IPC.exportProgress, p);
+    return sendToAuphonic(
+      settings.auphonic,
+      current.project,
+      current.dir,
+      (opts) => runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, send2),
+      send2,
+    );
+  },
+  openAuphonic: async (url: string) => {
+    if (!/^https:\/\/auphonic\.com\//.test(url)) throw new Error('Not an Auphonic link');
+    await shell.openExternal(url);
+  },
   getOscStatus: () => osc.status(),
   setOscSettings: async (next: OscSettings) => {
     settings.osc = normalizeOscSettings(next);
@@ -435,6 +460,7 @@ function buildMenu(): void {
         { label: 'Import Chapters…', click: menuSend('import-chapters') },
         { type: 'separator' },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: menuSend('export') },
+        { label: 'Send to Auphonic…', click: menuSend('auphonic') },
         { label: 'Show Project Folder', click: menuSend('show-project-folder') },
         { label: 'Restore Backup…', click: menuSend('restore-backup') },
         { type: 'separator' },

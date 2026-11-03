@@ -329,6 +329,8 @@ export interface ExportOptions {
   /** Ceiling for true peaks in dBTP after normalisation. */
   peakCeiling: number;
   stems: boolean;
+  /** Stem files as WAV (default) or FLAC (half the size, e.g. for uploading). */
+  stemFormat?: 'wav' | 'flac';
   chapterFiles: boolean;
   start?: Frames;
   end?: Frames;
@@ -430,6 +432,22 @@ export type SoundSlot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export interface RemoteCommand {
   action: MidiAction;
   pressed: boolean;
+}
+
+/** Auphonic settings as the renderer sees them (the key itself stays in the main process). */
+export interface AuphonicInfo {
+  hasKey: boolean;
+  /** Multitrack preset uuid, or '' for none. */
+  preset: string;
+  /** Start the production right after uploading. */
+  start: boolean;
+}
+
+export interface AuphonicSettingsInput {
+  /** New key; '' removes it; undefined keeps the stored one. */
+  apiKey?: string;
+  preset?: string;
+  start?: boolean;
 }
 
 export interface OscSettings {

@@ -155,6 +155,15 @@ is ticked. Addresses:
 A button that sends 1 on press and 0 on release fires once; a message
 without arguments counts as a press.
 
+## Auphonic
+
+**File → Send to Auphonic…** creates a multitrack production on
+[auphonic.com](https://auphonic.com) with one FLAC per track (track filters
+and volume rendered in), the chapters, the episode details and the cover.
+Paste the API key from Auphonic's Account Settings once; pick one of your
+multitrack presets and whether to start the production right away or review
+it on the website first.
+
 ## AI agents (MCP)
 
 WavePod can run a [Model Context Protocol](https://modelcontextprotocol.io)

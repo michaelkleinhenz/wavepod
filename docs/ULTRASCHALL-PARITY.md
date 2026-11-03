@@ -88,7 +88,7 @@ about it; the priority is explained in section 3.
 | Export regions (split a long recording into several files) | ✅ Regions (toolbar "Region from selection", purple bands in the marker lane, listed and renamed in the Chapters view); export "Each region as its own file" writes `<name> - 01 Title.mp3` etc., each with its own chapters and loudness | Done |
 | Export presets, file name patterns | Fixed naming | **P3** Remember last settings per project (presets only if asked for) |
 | Podcast categories in metadata | ✅ Category field (podcast directory list or free text) written as ID3 `TCON` and FLAC `GENRE`; kept in templates | Done |
-| Auphonic hand-off | Stems + chapter files only | **P3** Direct upload to Auphonic multitrack (API key in settings) — already listed under "Later" in PLAN.md |
+| Auphonic hand-off | ✅ File › Send to Auphonic…: a multitrack production with one FLAC per track, chapters, metadata and cover, optional preset, optionally started (API key kept encrypted by the OS keychain where available). Tested against a mock of the API, not yet against auphonic.com | Done (needs a check with a real account) |
 
 ### Deliberately not adopted
 
@@ -215,7 +215,7 @@ came up during testing).
 17. ✅ **Output presets.** (Per-track routing left out.) Choose per output pair what it carries (master,
     soundboard only, selected tracks); presets "Pre-show" (soundboard only)
     and "Show". No full routing matrix.
-18. **Regions and export per region; Auphonic upload; podcast category.** ✅ Regions and category done; Auphonic upload still open.
+18. ✅ **Regions and export per region; Auphonic upload; podcast category.**
 19. ✅ **Shortcut overlay, marker ping, clip colours and notes.**
 
 ## 4. Suggested order

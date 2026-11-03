@@ -17,6 +17,8 @@ import type {
   MidiSettings,
   OscSettings,
   OscStatus,
+  AuphonicInfo,
+  AuphonicSettingsInput,
   RemoteCommand,
   Project,
   RecordedTake,
@@ -60,7 +62,8 @@ export type MenuCommand =
   | 'view-chapters'
   | 'show-project-folder'
   | 'restore-backup'
-  | 'shortcuts';
+  | 'shortcuts'
+  | 'auphonic';
 
 export interface WavePodApi {
   // devices
@@ -78,6 +81,16 @@ export interface WavePodApi {
   getMcpStatus(): Promise<McpStatus>;
   /** Stores the settings and starts, restarts or stops the server. */
   setMcpSettings(settings: McpSettings): Promise<McpStatus>;
+
+  // Auphonic hand-off
+  getAuphonicSettings(): Promise<AuphonicInfo>;
+  setAuphonicSettings(input: AuphonicSettingsInput): Promise<AuphonicInfo>;
+  /** The account's multitrack presets. */
+  auphonicPresets(): Promise<Array<{ uuid: string; name: string }>>;
+  /** Renders stems, creates the production and uploads; progress comes as export progress. */
+  sendToAuphonic(): Promise<{ uuid: string; url: string; started: boolean }>;
+  /** Opens a production page on auphonic.com in the browser. */
+  openAuphonic(url: string): Promise<void>;
 
   // OSC remote control (app settings, off by default)
   getOscStatus(): Promise<OscStatus>;
@@ -197,6 +210,11 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'setMidiSettings',
   'getMcpStatus',
   'setMcpSettings',
+  'getAuphonicSettings',
+  'setAuphonicSettings',
+  'auphonicPresets',
+  'sendToAuphonic',
+  'openAuphonic',
   'getOscStatus',
   'setOscSettings',
   'soundcheckInfo',

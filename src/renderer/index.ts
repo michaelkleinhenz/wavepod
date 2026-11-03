@@ -46,6 +46,7 @@ import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
 import { showShortcuts } from './shortcuts';
 import { remoteHooks, runRemote } from './remote';
+import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
 
 const METER_DECAY = 0.85;
@@ -72,6 +73,7 @@ async function main(): Promise<void> {
   const loudnessDialog = new LoudnessDialog();
   const fxPanel = new FxPanel();
   const templates = new TemplateDialog();
+  const auphonic = new AuphonicDialog();
   setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
   timeline.onOpenLoudness = () => loudnessDialog.open();
@@ -305,6 +307,7 @@ async function main(): Promise<void> {
       case 'show-project-folder': return void api().showProjectFolder();
       case 'restore-backup': return void restoreBackup();
       case 'shortcuts': return showShortcuts();
+      case 'auphonic': return void auphonic.open();
     }
   });
 

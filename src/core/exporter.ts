@@ -119,7 +119,7 @@ function toInt16(src: Float32Array, n: number, gain: number, dst: Int16Array): I
   return dst;
 }
 
-function safeName(s: string): string {
+export function safeName(s: string): string {
   return s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'track';
 }
 
@@ -168,7 +168,11 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     // Pass 1: loudness of the mix.
     const meter = new LoudnessMeter(project.sampleRate, 2);
     const measureTap = new LiveTap(end - start, meter);
-    renderRange(mixer, start, end, null, (b, n) => measureTap.push(b, n), (f) => progress({ phase: 'Measuring loudness', fraction: f, ...measureTap.take() }));
+    // the mix is measured for normalisation and rendered for mix files; stems alone need neither
+    const mixFiles = opts.formats.length > 0;
+    if (mixFiles || opts.normalize) {
+      renderRange(mixer, start, end, null, (b, n) => measureTap.push(b, n), (f) => progress({ phase: 'Measuring loudness', fraction: f, ...measureTap.take() }));
+    }
     const loudness = meter.integrated();
     const peakDb = meter.peakDb();
     // The ceiling is in dBTP, like the loudness analysis: the peaks between samples count too.
@@ -224,7 +228,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     const scaled = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     // waveform and loudness of the audio as written (after normalisation)
     const renderTap = new LiveTap(end - start, new LoudnessMeter(project.sampleRate, 2));
-    renderRange(
+    if (mixFiles) renderRange(
       mixer,
       start,
       end,
@@ -265,8 +269,9 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     if (opts.stems) {
       const tracks = project.tracks.filter((t) => t.clips.length > 0);
       tracks.forEach((track, idx) => {
-        const stemPath = `${opts.outputBase}-${String(idx + 1).padStart(2, '0')}-${safeName(track.name)}.wav`;
-        const w = new WavWriter(stemPath, 2, project.sampleRate, 24, 1 << 20);
+        const flacStem = opts.stemFormat === 'flac';
+        const stemPath = `${opts.outputBase}-${String(idx + 1).padStart(2, '0')}-${safeName(track.name)}.${flacStem ? 'flac' : 'wav'}`;
+        const w = flacStem ? new FlacWriter(stemPath, 2, project.sampleRate, 24, { title: track.name }) : new WavWriter(stemPath, 2, project.sampleRate, 24, 1 << 20);
         renderRange(mixer, start, end, [track], (b, n) => {
           for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) scaled[c][i] = b[c][i] * gain;
           w.write(scaled, n);
