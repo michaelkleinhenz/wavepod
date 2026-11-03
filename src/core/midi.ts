@@ -13,7 +13,15 @@ export const MIDI_ACTIONS: Array<{ action: MidiAction; label: string }> = [
   { action: 'play-toggle', label: 'Play / Pause' },
   { action: 'stop', label: 'Stop' },
   { action: 'prepare-for-editing', label: 'Prepare for editing' },
+  ...([1, 2, 3, 4, 5, 6] as const).map((n) => ({ action: `cough-${n}` as MidiAction, label: `Cough button, speaker ${n} (hold)` })),
+  ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({ action: `sound-${n}` as MidiAction, label: `Soundboard ${n}` })),
+  { action: 'sounds-stop', label: 'Stop all sounds' },
 ];
+
+/** Actions that act on release too (held buttons). */
+export function isHoldAction(action: MidiAction): boolean {
+  return action.startsWith('cough-');
+}
 
 export function defaultMidiSettings(): MidiSettings {
   return { enabled: true, bindings: [] };
@@ -82,13 +90,18 @@ export class MidiPressDetector {
 
   /** The event if it is a new press, otherwise null. */
   press(ev: MidiEvent, device: string): MidiEvent | null {
+    return this.edge(ev, device) === 'press' ? ev : null;
+  }
+
+  /** 'press' or 'release' when a button goes down or up; null for repeats and program changes' "release". */
+  edge(ev: MidiEvent, device: string): 'press' | 'release' | null {
     if (ev.type === 'cc') {
       const key = `${normalizeDeviceName(device)}|${ev.channel}|${ev.number}`;
       const was = this.ccState.get(key) ?? false;
       this.ccState.set(key, ev.pressed);
-      return ev.pressed && !was ? ev : null;
+      return ev.pressed === was ? null : ev.pressed ? 'press' : 'release';
     }
-    return ev.pressed ? ev : null;
+    return ev.pressed ? 'press' : ev.type === 'note' ? 'release' : null;
   }
 }
 

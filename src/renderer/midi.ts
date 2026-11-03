@@ -8,11 +8,12 @@ import {
   bindTrigger,
   defaultMidiSettings,
   describeTrigger,
+  isHoldAction,
   parseMidiMessage,
   unbindAction,
   type MidiEvent,
 } from '../core/midi';
-import { dropMarker, prepareForEditing, stop, togglePlay, toggleRecord } from './actions';
+import { runRemote } from './remote';
 import { errorMessage, toast } from './dom';
 import { api, store } from './store';
 
@@ -34,7 +35,6 @@ class MidiController {
   private access: MIDIAccess | null = null;
   private presses = new MidiPressDetector();
   /** Transport actions run one after the other so quick presses can't overlap. */
-  private queue: Promise<void> = Promise.resolve();
 
   async init(): Promise<void> {
     try {
@@ -138,8 +138,14 @@ class MidiController {
     const ev = parseMidiMessage(data);
     if (!ev) return;
     this.onActivity?.(`${device}: ${describeEvent(ev)}`);
-    const press = this.presses.press(ev, device);
-    if (!press) return;
+    const edge = this.presses.edge(ev, device);
+    if (!edge) return;
+    if (edge === 'release') {
+      // only held buttons (cough) act on release
+      if (!this.learning) for (const action of actionsFor(this.settings, ev, device)) if (isHoldAction(action)) this.run(action, false);
+      return;
+    }
+    const press = ev;
 
     if (this.learning) {
       const action = this.learning;
@@ -154,30 +160,8 @@ class MidiController {
   }
 
   /** Runs a mapped function, the same way the keyboard shortcut does. */
-  run(action: MidiAction): void {
-    switch (action) {
-      case 'chapter-marker':
-        return dropMarker('chapter');
-      case 'edit-marker':
-        return dropMarker('edit');
-      case 'prepare-for-editing':
-        return prepareForEditing();
-    }
-    this.queue = this.queue.then(() => {
-      const state = store.transport.state;
-      switch (action) {
-        case 'record-start':
-          return state === 'recording' ? undefined : toggleRecord();
-        case 'record-stop':
-          return state === 'recording' ? stop() : undefined;
-        case 'record-toggle':
-          return toggleRecord();
-        case 'play-toggle':
-          return togglePlay();
-        case 'stop':
-          return state === 'stopped' ? undefined : stop();
-      }
-    });
+  run(action: MidiAction, pressed = true): void {
+    runRemote({ action, pressed });
   }
 
   private changed(): void {

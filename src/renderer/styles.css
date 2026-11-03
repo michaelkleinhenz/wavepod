@@ -407,3 +407,6 @@ kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var
 .clip-label .swatch.none { background: transparent; border: 2px dashed var(--muted); }
 .clip-label .swatch.none.active { border-style: solid; border-color: #fff; }
 .clip-label textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
+.osc-map { border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.osc-map th { text-align: left; color: var(--muted); font-weight: 600; padding: 2px 16px 4px 0; }
+.osc-map td { padding: 2px 16px 2px 0; }

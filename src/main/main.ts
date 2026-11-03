@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { IPC, type InvokeMethod, type MenuCommand, type OpenedProject } from '../shared/api';
-import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, McpSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
+import type { DeviceConfig, ExportOptions, ExportResult, Fx, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip, prepareForEditing } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
@@ -19,6 +19,8 @@ import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
 import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
 import { McpController, normalizeMcpSettings } from './mcp/controller';
+import { OscServer } from './oscServer';
+import { normalizeOscSettings } from '../core/osc';
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
@@ -36,6 +38,8 @@ interface Settings {
   markerPing: boolean;
   /** Local MCP server for AI agents; off unless the user switches it on in Setup. */
   mcp: McpSettings;
+  /** OSC remote control; off unless switched on in Setup. */
+  osc: OscSettings;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -51,9 +55,10 @@ function loadSettings(): Settings {
       confirmStopRecording: raw.confirmStopRecording !== false,
       markerPing: raw.markerPing === true,
       mcp: normalizeMcpSettings(raw.mcp),
+      osc: normalizeOscSettings(raw.osc),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null) };
   }
 }
 
@@ -86,6 +91,7 @@ let win: BrowserWindow | null = null;
 let current: OpenedProject;
 let saveTimer: NodeJS.Timeout | null = null;
 let mcp: McpController;
+let osc: OscServer;
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -197,6 +203,12 @@ const handlers: Record<InvokeMethod, Handler> = {
     return dev ? findProfile(dev.name, dev.inputChannels, dev.outputChannels) : null;
   },
 
+  getOscStatus: () => osc.status(),
+  setOscSettings: async (next: OscSettings) => {
+    settings.osc = normalizeOscSettings(next);
+    saveSettings();
+    return osc.apply(settings.osc);
+  },
   getMcpStatus: () => mcp.status(),
   setMcpSettings: async (next: McpSettings) => {
     settings.mcp = normalizeMcpSettings(next);
@@ -556,6 +568,8 @@ app.whenReady().then(() => {
   settings.device = engine.config;
   saveSettings();
 
+  osc = new OscServer((cmd) => send(IPC.remote, cmd));
+  void osc.apply(settings.osc);
   mcp = new McpController(createWavePodServer(mcpHost, app.getVersion()));
   void mcp.apply(settings.mcp).then((s) => {
     if (s.error) console.error('MCP server:', s.error);
@@ -572,6 +586,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   void mcp?.dispose();
+  void osc?.close();
   if (engine) {
     engine.stop();
     flushSave();

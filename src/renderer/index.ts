@@ -45,6 +45,7 @@ import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
 import { showShortcuts } from './shortcuts';
+import { remoteHooks, runRemote } from './remote';
 import { TimelineView } from './timelineView';
 
 const METER_DECAY = 0.85;
@@ -194,7 +195,7 @@ async function main(): Promise<void> {
       soundboard.render();
       void soundboard.ensureLoaded();
     }
-    if (kinds.has('devices') || kinds.has('status') || kinds.has('midi') || kinds.has('mcp')) {
+    if (kinds.has('devices') || kinds.has('status') || kinds.has('midi') || kinds.has('mcp') || kinds.has('osc')) {
       if (store.view === 'setup') setup.render();
       if (store.view === 'edit') timeline.renderHeaders();
     }
@@ -251,6 +252,9 @@ async function main(): Promise<void> {
     store.applyExternal(project);
     toast(`AI agent: ${summary}`);
   });
+  remoteHooks.playSound = (i) => void soundboard.trigger(i);
+  api().onRemote(runRemote);
+
   api().onMenu((cmd) => {
     switch (cmd) {
       case 'new-project': return void newProject();

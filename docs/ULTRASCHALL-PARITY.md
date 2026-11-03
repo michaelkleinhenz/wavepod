@@ -53,7 +53,7 @@ about it; the priority is explained in section 3.
 | Jump back to the recording position (`Y`) | ✅ `Y`: to where the last take stopped, or to the take being recorded | Done |
 | Named chapter marker while recording (`Shift+M`) | ✅ `Shift+M` drops a chapter and opens a title field that doesn't interrupt the recording | Done |
 | Soundboard ducking / ducking track (jingles duck under speech) | ✅ Any track (Soundboard, music bed) can duck under the other tracks: its FX panel has "Duck under the other tracks" and a depth (−6…−24 dB). Playback and export; jingles played live while recording are not ducked (the interface can do that) | Done |
-| Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | Missing | **P3** MIDI (Web MIDI) and OSC (UDP in main) mapping to WavePod actions |
+| Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | ✅ MIDI learn (transport, markers, cough buttons 1–6 held, soundboard 1–9) and an OSC server (UDP, off by default, localhost unless allowed) with fixed `/wavepod/…` addresses | Done |
 | FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
 | StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | Out of scope per PLAN.md | **P3, small**: simple output routing presets (which tracks and the soundboard go to which output pair). Mix-minus stays in the hardware (RØDECaster USB Chat) |
 | StudioLink OnAir live streaming | Missing | Not planned |
@@ -209,7 +209,7 @@ came up during testing).
 
 ### Phase 8 — Studio comfort (P3)
 
-16. **Remote control.** MIDI learn via Web MIDI and an OSC server (UDP, off by
+16. ✅ **Remote control.** MIDI learn via Web MIDI and an OSC server (UDP, off by
     default) for transport, markers, cough buttons and soundboard slots, so
     Stream Deck / Bitfocus Companion and MIDI controllers work.
 17. **Output presets.** Choose per output pair what it carries (master,

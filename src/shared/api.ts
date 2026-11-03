@@ -15,6 +15,9 @@ import type {
   McpSettings,
   McpStatus,
   MidiSettings,
+  OscSettings,
+  OscStatus,
+  RemoteCommand,
   Project,
   RecordedTake,
   TransportUpdate,
@@ -75,6 +78,11 @@ export interface WavePodApi {
   getMcpStatus(): Promise<McpStatus>;
   /** Stores the settings and starts, restarts or stops the server. */
   setMcpSettings(settings: McpSettings): Promise<McpStatus>;
+
+  // OSC remote control (app settings, off by default)
+  getOscStatus(): Promise<OscStatus>;
+  /** Stores the settings and starts, restarts or stops the OSC server. */
+  setOscSettings(settings: OscSettings): Promise<OscStatus>;
 
   /** What the soundcheck needs from the main process: input device name and free disk space. */
   soundcheckInfo(): Promise<{ inputDeviceName?: string; freeBytes: number | null }>;
@@ -153,6 +161,8 @@ export interface WavePodApi {
   onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean }) => void): () => void;
   onExportProgress(cb: (p: ExportProgress) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
+  /** OSC remote-control commands. */
+  onRemote(cb: (cmd: RemoteCommand) => void): () => void;
   /** An AI agent changed the project over MCP; it is already applied in the main process. */
   onProjectEdited(cb: (e: { project: Project; summary: string }) => void): () => void;
 
@@ -166,13 +176,14 @@ export const IPC = {
   recordingFinished: 'wavepod:recordingFinished',
   exportProgress: 'wavepod:exportProgress',
   menu: 'wavepod:menu',
+  remote: 'wavepod:remote',
   projectEdited: 'wavepod:projectEdited',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onProjectEdited' | 'platform'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'platform'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
@@ -184,6 +195,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'setMidiSettings',
   'getMcpStatus',
   'setMcpSettings',
+  'getOscStatus',
+  'setOscSettings',
   'soundcheckInfo',
   'confirmStopRecording',
   'restoreBackup',

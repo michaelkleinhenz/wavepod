@@ -6,6 +6,7 @@ import { LevelMeter } from './levelMeter';
 import { append, clear, errorMessage, h, toast } from './dom';
 import { renderMcpCard } from './mcpCard';
 import { renderMidiCard } from './midiCard';
+import { renderOscCard } from './oscCard';
 import { api, store } from './store';
 
 const SAMPLE_RATES = [44100, 48000, 96000];
@@ -145,7 +146,7 @@ export class SetupView {
       ),
     );
 
-    this.el.append(deviceCard, this.renderChannels(store.profile, s.inputChannelCount), renderMidiCard(), this.renderTemplates(), renderMcpCard());
+    this.el.append(deviceCard, this.renderChannels(store.profile, s.inputChannelCount), renderMidiCard(), renderOscCard(), this.renderTemplates(), renderMcpCard());
   }
 
   private renderChannels(profile: DeviceProfile | null, channelCount: number): HTMLElement {

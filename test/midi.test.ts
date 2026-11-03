@@ -123,3 +123,19 @@ describe('describeTrigger', () => {
     expect(describeTrigger({ type: 'program', channel: 0, number: 0, device: '' })).toBe('Program 1 · ch 1');
   });
 });
+
+describe('held MIDI buttons', () => {
+  it('reports presses and releases for notes and controllers', async () => {
+    const { MidiPressDetector, isHoldAction, MIDI_ACTIONS } = await import('../src/core/midi');
+    const d = new MidiPressDetector();
+    const ev = (type: 'note' | 'cc', pressed: boolean) => ({ type, channel: 0, number: 10, value: pressed ? 127 : 0, pressed });
+    expect(d.edge(ev('note', true), 'X')).toBe('press');
+    expect(d.edge(ev('note', false), 'X')).toBe('release');
+    expect(d.edge(ev('cc', true), 'X')).toBe('press');
+    expect(d.edge(ev('cc', true), 'X')).toBeNull();
+    expect(d.edge(ev('cc', false), 'X')).toBe('release');
+    expect(isHoldAction('cough-2')).toBe(true);
+    expect(isHoldAction('sound-2')).toBe(false);
+    expect(MIDI_ACTIONS.map((a) => a.action)).toEqual(expect.arrayContaining(['cough-1', 'cough-6', 'sound-9', 'sounds-stop']));
+  });
+});

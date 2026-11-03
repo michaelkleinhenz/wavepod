@@ -395,7 +395,7 @@ export interface LoudnessReport {
 
 // ---------------------------------------------------------------- MIDI controller
 
-/** Functions a MIDI button can trigger. */
+/** Functions a MIDI button (or an OSC message) can trigger. */
 export type MidiAction =
   | 'record-start'
   | 'record-stop'
@@ -404,7 +404,35 @@ export type MidiAction =
   | 'stop'
   | 'chapter-marker'
   | 'edit-marker'
-  | 'prepare-for-editing';
+  | 'prepare-for-editing'
+  | 'sounds-stop'
+  /** Cough button of speaker track n: mutes while held. */
+  | `cough-${CoughSlot}`
+  /** Soundboard slot n. */
+  | `sound-${SoundSlot}`;
+
+export type CoughSlot = 1 | 2 | 3 | 4 | 5 | 6;
+export type SoundSlot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/** A remote-control command (MIDI or OSC): an action, pressed or released (only cough buttons use release). */
+export interface RemoteCommand {
+  action: MidiAction;
+  pressed: boolean;
+}
+
+export interface OscSettings {
+  enabled: boolean;
+  port: number;
+  /** Accept messages from other computers (Companion on another machine); otherwise only this computer. */
+  allowNetwork: boolean;
+}
+
+export interface OscStatus extends OscSettings {
+  running: boolean;
+  error: string | null;
+  /** Messages received since start (for a "it works" hint in Setup). */
+  received: number;
+}
 
 export type MidiMessageType = 'note' | 'cc' | 'program';
 
