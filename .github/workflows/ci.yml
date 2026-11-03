@@ -22,9 +22,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # npm ci compiles the patched audify (scripts/build-audify.mjs), which needs the ALSA/PulseAudio headers.
       - name: Install system libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2t64 libpulse0
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libpulse-dev pkg-config pulseaudio xvfb
       - run: npm ci
       - run: npm run typecheck
       # The VST3 host helper plus the SDK's sample plug-ins, so the host tests run for real.
@@ -38,6 +39,14 @@ jobs:
       # Runners have no audio devices, so only check that the prebuilt binary loads.
       - name: Check native audio module loads
         run: node -e "const a = require('audify'); if (typeof a.RtAudio !== 'function') process.exit(1); console.log('audify ok')"
+      # Opens real streams on a PulseAudio null sink inside Electron's main process, where
+      # Electron's allocator catches native memory bugs that plain Node does not.
+      - name: Audio streams in Electron (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=ci
+          xvfb-run -a npx electron --no-sandbox test/electron/audio-smoke.cjs
 
   package:
     name: Package smoke test (Linux)
@@ -49,6 +58,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libpulse-dev pkg-config
       - run: npm ci
       - run: make dist-linux
       - uses: actions/upload-artifact@v4
