@@ -415,7 +415,7 @@ const GAIN_RANGE = 24;
 const PEAK_DECAY = 0.8;
 const toDb = (v: number) => (v > 1e-6 ? Math.max(METER_FLOOR, 20 * Math.log10(v)) : METER_FLOOR);
 /** Filters that change gain dynamically show a gain meter; the others show in/out levels only. */
-const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamics']);
+const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamics', 'denoise']);
 
 /**
  * Live meters of one filter card: input and output level, and for dynamic filters the gain they

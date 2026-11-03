@@ -61,7 +61,7 @@ export interface EnvelopePoint {
   db: number;
 }
 
-export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'vst3';
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'vst3';
 
 /** One filter in a track's or the master's filter stack. */
 export interface Fx {
