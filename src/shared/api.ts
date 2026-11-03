@@ -17,6 +17,7 @@ import type {
   TransportUpdate,
   WaveformPeaks,
 } from './types';
+import type { TemplateSummary } from '../core/template';
 
 export interface OpenedProject {
   project: Project;
@@ -31,6 +32,9 @@ export interface ImportedAudio {
 export type MenuCommand =
   | 'new-project'
   | 'open-project'
+  | 'new-from-template'
+  | 'save-template'
+  | 'show-templates-folder'
   | 'import-audio'
   | 'import-chapters'
   | 'export'
@@ -62,6 +66,14 @@ export interface SoundPodApi {
   openProject(): Promise<OpenedProject | null>;
   updateProject(project: Project): Promise<void>;
   getPeaks(file: string): Promise<WaveformPeaks | null>;
+
+  // templates (tracks, input channels, filters and soundboard, without recorded audio)
+  listTemplates(): Promise<TemplateSummary[]>;
+  /** Saves the open project's setup as a template; one with the same name is replaced. */
+  saveTemplate(name: string): Promise<TemplateSummary>;
+  deleteTemplate(id: string): Promise<void>;
+  newProjectFromTemplate(id: string): Promise<OpenedProject>;
+  showTemplatesFolder(): Promise<void>;
   showProjectFolder(): Promise<void>;
 
   // files
@@ -131,6 +143,11 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'openProject',
   'updateProject',
   'getPeaks',
+  'listTemplates',
+  'saveTemplate',
+  'deleteTemplate',
+  'newProjectFromTemplate',
+  'showTemplatesFolder',
   'showProjectFolder',
   'pickAudioFiles',
   'readFile',

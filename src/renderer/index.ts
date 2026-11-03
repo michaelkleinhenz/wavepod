@@ -27,6 +27,7 @@ import {
 import { ChaptersView } from './chaptersView';
 import { ExportDialog } from './exportDialog';
 import { SetupView } from './setupView';
+import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
 import { TimelineView } from './timelineView';
@@ -53,6 +54,8 @@ async function main(): Promise<void> {
   const chapters = new ChaptersView();
   const exportDialog = new ExportDialog();
   const fxPanel = new FxPanel();
+  const templates = new TemplateDialog();
+  setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
 
   // ---------------------------------------------------------------- header
@@ -188,6 +191,9 @@ async function main(): Promise<void> {
     switch (cmd) {
       case 'new-project': return void newProject();
       case 'open-project': return void openProject();
+      case 'new-from-template': return void templates.openNew();
+      case 'save-template': return void templates.openSave();
+      case 'show-templates-folder': return void api().showTemplatesFolder();
       case 'import-audio': return void importAudioFiles();
       case 'import-chapters': return void importChapterFile();
       case 'export': return exportDialog.open();

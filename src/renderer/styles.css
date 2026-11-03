@@ -269,3 +269,13 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .fxm-gain-fill { position: absolute; top: 0; bottom: 0; width: 0; background: #ffb74d; transition: width 60ms linear, left 60ms linear; }
 .fxm-gain-fill.boost { background: #81c784; }
 .fxm-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* templates */
+.template-dialog { width: min(560px, 92vw); }
+.template-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.template-item { display: flex; align-items: center; gap: 6px; }
+.template-use { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 8px 10px; text-align: left; }
+.template-title { font-weight: 600; }
+.template-use .muted { font-size: 11px; }
+.template-name { width: 100%; }
+.template-hint { min-height: 1em; margin: 0 0 6px; font-size: 12px; }

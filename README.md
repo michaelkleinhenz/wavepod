@@ -35,6 +35,11 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   **VST3 plug-ins** work in the same stack, with plain sliders instead of
   the plug-in's own window; they run in a separate process, so a crashing
   plug-in can't take a recording down.
+- **Templates**: save an episode's setup (tracks and their input channels,
+  filter stacks including Master FX and VST3 settings, soundboard jingles)
+  with File › Save as Template…, and start the next episode from it with
+  File › New Episode from Template… (`Shift+Ctrl+N`) or the Setup view.
+  No recordings, markers or volume lines are stored in a template.
 - **Loudness**: EBU R128 analysis per track and mix, normalisation to −16 /
   −19 / −23 LUFS with a peak ceiling.
 - **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter
@@ -101,6 +106,13 @@ its edges to adjust it, double-click or `Delete` to remove it.
 Each episode is a folder (default `~/Documents/SoundPod/Episode …`) with
 `project.json` and a `media/` folder of WAV files. Changes are saved
 automatically.
+
+Templates live in `~/Documents/SoundPod/Templates/<name>/`: a
+`template.json` plus a `sounds/` folder with copies of the jingles, so a
+template keeps working when the original jingle files move. A new episode
+gets its own copies in its `sounds/` folder. Copy a template folder to share
+it with another machine; input channels are matched by number, so it fits
+best on the same audio interface.
 
 ## Releases
 
