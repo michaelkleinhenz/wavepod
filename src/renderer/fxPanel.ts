@@ -9,6 +9,7 @@ import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
 import { findClip, updateTrack } from '../core/project';
 import { DUCK_DEFAULT_DEPTH } from '../core/ducking';
+import { AUTOMIX_DEFAULT_DEPTH, AUTOMIX_DEPTHS } from '../core/automix';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
 import { clipboardLabel, copyFilter, copyStack, pasteFilters, pasteSettings, settingsSource, type FxClipboard } from '../core/fx/fxClipboard';
@@ -203,7 +204,7 @@ export class FxPanel {
         this.pasteMenu(target, list.length),
       ),
     );
-    if (target !== MASTER && targetClipId(target) === null) this.el.append(this.renderDuck(target));
+    if (target !== MASTER && targetClipId(target) === null) this.el.append(this.renderDuck(target), this.renderAutomix(target));
     if (this.picker) this.el.append(this.renderPicker(target));
     const cards = h('div', { class: 'fx-list' });
     if (!list.length) {
@@ -236,6 +237,35 @@ export class FxPanel {
         { disabled: !duck.enabled, title: 'How much quieter', onchange: (e: Event) => set({ depth: Number((e.target as HTMLSelectElement).value) }) },
         ...[6, 9, 12, 18, 24].map((d) => h('option', { value: String(d), selected: d === duck.depth }, `−${d} dB`)),
       ),
+    );
+  }
+
+  /** Automix for this track: turned down while another automixed track is louder (crosstalk removal). */
+  private renderAutomix(trackId: string): HTMLElement {
+    const track = store.project.tracks.find((t) => t.id === trackId);
+    const am = track?.automix ?? { enabled: false, depth: AUTOMIX_DEFAULT_DEPTH };
+    const set = (patch: Partial<typeof am>) => this.edit((p) => updateTrack(p, trackId, { automix: { ...am, ...patch } }));
+    const others = store.project.tracks.filter((t) => t.id !== trackId && t.automix?.enabled && !t.duck?.enabled).length;
+    return h(
+      'div',
+      { class: 'fx-duck fx-automix' },
+      h(
+        'label',
+        {
+          class: 'check',
+          title:
+            'Removes crosstalk: when several people share a room, every mic also picks up the others. Tick this on each speaker track; ' +
+            'whoever is loudest stays up and the other automixed tracks are turned down. Two people talking at once both stay up. Playback and export.',
+        },
+        h('input', { type: 'checkbox', checked: am.enabled, disabled: !!track?.duck?.enabled, onchange: (e: Event) => set({ enabled: (e.target as HTMLInputElement).checked }) }),
+        'Automix (remove crosstalk)',
+      ),
+      h(
+        'select',
+        { disabled: !am.enabled, title: 'How far this track is turned down at most while someone else speaks', onchange: (e: Event) => set({ depth: Number((e.target as HTMLSelectElement).value) }) },
+        ...AUTOMIX_DEPTHS.map((d) => h('option', { value: String(d), selected: d === am.depth }, `−${d} dB`)),
+      ),
+      am.enabled && others === 0 ? h('span', { class: 'muted fx-automix-hint' }, 'Tick it on another speaker track too') : null,
     );
   }
 

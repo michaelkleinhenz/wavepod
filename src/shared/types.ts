@@ -54,6 +54,8 @@ export interface Track {
   fx?: Fx[];
   /** Gets quieter by `depth` dB while the other tracks play (soundboard, music beds). */
   duck?: { enabled: boolean; depth: number };
+  /** Crosstalk removal: automixed tracks are turned down by up to `depth` dB while another automixed track is louder. */
+  automix?: { enabled: boolean; depth: number };
 }
 
 /** One point of a clip's volume line. */
@@ -188,6 +190,99 @@ export interface Project {
   metadata: EpisodeMetadata;
   /** Soundcheck warnings the user chose not to see again for this episode. */
   soundcheckIgnored?: string[];
+}
+
+// ---------------------------------------------------------------- transcripts
+
+/** One transcribed word; times are frames of the file it was heard in. */
+export interface TranscriptWord {
+  text: string;
+  start: Frames;
+  end: Frames;
+}
+
+/** The transcript of one recorded or imported file (stored in the project's transcripts/ folder). */
+export interface FileTranscript {
+  version: 1;
+  /** The media file, as clips name it. */
+  file: string;
+  /** Sample rate of the file, which the word times count in. */
+  sampleRate: number;
+  /** Language code used or detected, e.g. "de" or "deu". */
+  language: string;
+  /** Speech model it was made with. */
+  model: string;
+  created: string;
+  words: TranscriptWord[];
+}
+
+/** A word where it plays on the timeline. */
+export interface TimelineWord {
+  text: string;
+  start: Frames;
+  end: Frames;
+  trackId: string;
+  clipId: string;
+  /** A hesitation sound (äh, ähm, uh, um…). */
+  filler: boolean;
+  /** Inside a cough-button mute region. */
+  muted?: boolean;
+}
+
+export interface TranscriptionSettings {
+  /** ElevenLabs speech-to-text model, e.g. "scribe_v2". */
+  model: string;
+  /** Language code, or "auto" to let the model detect it per file. */
+  language: string;
+  /** Names and terms the model should get right (guests, products, places), comma separated. */
+  keyterms: string;
+}
+
+/** Transcription settings as the renderer sees them (the API key itself stays in the main process). */
+export interface TranscriptionInfo {
+  hasKey: boolean;
+  settings: TranscriptionSettings;
+  models: Array<{ id: string; name: string; description: string }>;
+  languages: Array<{ code: string; name: string }>;
+}
+
+export interface TranscriptionSettingsInput extends Partial<TranscriptionSettings> {
+  /** New ElevenLabs API key; "" removes it, undefined keeps it. */
+  apiKey?: string;
+}
+
+export interface TranscribeProgress {
+  phase: 'preparing' | 'uploading' | 'transcribing' | 'done';
+  /** 1-based number of the file being worked on, and how many there are. */
+  file: number;
+  files: number;
+  /** Track name of the current file. */
+  name?: string;
+}
+
+/** One suggested edit of the cleanup: a pause to shorten or a hesitation to take out. */
+export interface CleanupItem {
+  id: string;
+  kind: 'pause' | 'filler';
+  /** Timeline range to cut (pause: the part taken out; filler: the sound itself). */
+  start: Frames;
+  end: Frames;
+  /** Filler: the track it was said on, and the word. */
+  trackId?: string;
+  text?: string;
+  /** Pause: its full length before shortening. */
+  pauseLength?: Frames;
+  /** cut = ripple cut on all tracks; mute = silenced on its own track (someone else talks at the same time). */
+  action: 'cut' | 'mute';
+}
+
+export interface CleanupOptions {
+  pauses: boolean;
+  /** Pauses longer than this (seconds)… */
+  maxPause: number;
+  /** …are shortened to this (seconds). */
+  keepPause: number;
+  fillers: boolean;
 }
 
 // ---------------------------------------------------------------- devices

@@ -24,6 +24,12 @@ import type {
   RecordedTake,
   TransportUpdate,
   WaveformPeaks,
+  CleanupItem,
+  CleanupOptions,
+  FileTranscript,
+  TranscribeProgress,
+  TranscriptionInfo,
+  TranscriptionSettingsInput,
 } from './types';
 import type { TemplateSummary } from '../core/template';
 import type { FxPresetEntry } from '../core/fx/presets';
@@ -96,7 +102,11 @@ export type MenuCommand =
   | 'speed-up'
   | 'speed-down'
   | 'speed-normal'
-  | 'auphonic';
+  | 'auphonic'
+  | 'settings'
+  | 'transcript'
+  | 'transcribe'
+  | 'cleanup';
 
 /** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
 export interface MenuModelItem {
@@ -235,6 +245,19 @@ export interface WavePodApi {
   /** Where a clip should start to line up with a reference track (double-ender alignment). */
   alignClip(clipId: string, refTrackId: string): Promise<AlignResult>;
 
+  // transcripts (ElevenLabs speech-to-text) and cleanup
+  getTranscriptionInfo(): Promise<TranscriptionInfo>;
+  setTranscriptionSettings(input: TranscriptionSettingsInput): Promise<TranscriptionInfo>;
+  /** The episode's transcripts, by media file. */
+  loadTranscripts(): Promise<Record<string, FileTranscript>>;
+  /** Transcribes the files of these tracks (all speech tracks if none) that have no transcript yet (all with redo). */
+  transcribe(opts?: { trackIds?: string[]; redo?: boolean }): Promise<{ transcribed: number; stopped: boolean }>;
+  stopTranscribing(): Promise<void>;
+  /** Removes the transcripts of these tracks (all if none); returns how many files had one. */
+  deleteTranscripts(trackIds?: string[]): Promise<number>;
+  /** Finds long pauses and hesitations to take out (pauses from the audio, hesitations from the transcript). */
+  findCleanup(opts: CleanupOptions): Promise<CleanupItem[]>;
+
   // VST3 plug-ins (hosted in a separate process; editors are never shown)
   vstStatus(): Promise<{ available: boolean; dirs: string[] }>;
   vstScan(force?: boolean): Promise<VstPluginInfo[]>;
@@ -268,6 +291,9 @@ export interface WavePodApi {
   /** An AI agent changed the project over MCP; it is already applied in the main process. */
   onProjectEdited(cb: (e: { project: Project; summary: string }) => void): () => void;
   onSaveState(cb: (s: SaveState) => void): () => void;
+  onTranscribeProgress(cb: (p: TranscribeProgress) => void): () => void;
+  /** A file's transcript was made (or removed: null). */
+  onTranscript(cb: (u: { file: string; transcript: FileTranscript | null }) => void): () => void;
 
   platform: string;
 }
@@ -282,12 +308,14 @@ export const IPC = {
   remote: 'wavepod:remote',
   projectEdited: 'wavepod:projectEdited',
   saveState: 'wavepod:saveState',
+  transcribeProgress: 'wavepod:transcribeProgress',
+  transcript: 'wavepod:transcript',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'platform'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'onTranscribeProgress' | 'onTranscript' | 'platform'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
@@ -355,6 +383,13 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'measureClips',
   'revealFile',
   'alignClip',
+  'getTranscriptionInfo',
+  'setTranscriptionSettings',
+  'loadTranscripts',
+  'transcribe',
+  'stopTranscribing',
+  'deleteTranscripts',
+  'findCleanup',
   'vstStatus',
   'vstScan',
   'vstDescribe',

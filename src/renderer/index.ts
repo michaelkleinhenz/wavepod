@@ -58,6 +58,10 @@ import { showShortcuts } from './shortcuts';
 import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
+import { SettingsDialog } from './settingsDialog';
+import { TranscriptPanel } from './transcriptPanel';
+import { CleanupDialog } from './cleanupDialog';
+import { transcripts } from './transcripts';
 
 function formatDuration(seconds: number): string {
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
@@ -89,6 +93,18 @@ async function main(): Promise<void> {
   const fxPanel = new FxPanel();
   const templates = new TemplateDialog();
   const auphonic = new AuphonicDialog();
+  const settingsDialog = new SettingsDialog();
+  const transcriptPanel = new TranscriptPanel();
+  const cleanupDialog = new CleanupDialog();
+  transcriptPanel.onCleanup = () => cleanupDialog.open();
+  window.addEventListener('wavepod:open-settings', () => void settingsDialog.open());
+  // the transcript panel only shows in the edit view; from another view its button takes the user there
+  const openTranscript = () => {
+    if (store.view !== 'edit') {
+      if (!transcriptPanel.isOpen) transcriptPanel.toggle();
+      store.setView('edit');
+    } else transcriptPanel.toggle();
+  };
   setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
   // An empty episode needs its speakers set up next; an opened one or a template is ready to record.
   setup.onEpisodeChosen = (how) => (how === 'blank' ? setup.showTab('inputs') : store.setView('edit'));
@@ -152,6 +168,7 @@ async function main(): Promise<void> {
     },
     'Master FX',
   );
+  const transcriptBtn = h('button', { class: 'fx-btn transcript-btn', title: 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)', onclick: () => openTranscript() }, 'Transcript');
   const preShowBtn = h(
     'button',
     {
@@ -184,6 +201,7 @@ async function main(): Promise<void> {
       speedSel,
     ),
     masterFxBtn,
+    transcriptBtn,
     preShowBtn,
     h('div', { class: 'spacer' }),
     projectName,
@@ -218,6 +236,7 @@ async function main(): Promise<void> {
     if (store.view === 'chapters') chapters.render();
     if (store.view === 'edit') timeline.renderHeaders();
     fxPanel.setHidden(store.view !== 'edit');
+    transcriptPanel.setHidden(store.view !== 'edit');
   };
 
   const renderStatus = () => {
@@ -269,7 +288,9 @@ async function main(): Promise<void> {
     if (kinds.has('view')) renderView();
     if (kinds.has('save') || kinds.has('project')) renderSaveDot();
     if (kinds.has('save') && store.view === 'setup') setup.render();
+    if (kinds.has('project') || kinds.has('selection')) transcriptPanel.refresh();
     if (kinds.has('project')) {
+      void transcripts().ensureLoaded();
       fxPanel.refresh();
       const n = (store.project.masterFx ?? []).filter((f) => f.enabled).length;
       masterFxBtn.textContent = n ? `Master FX ${n}` : 'Master FX';
@@ -294,6 +315,7 @@ async function main(): Promise<void> {
       if (store.view === 'edit') timeline.updateMeters();
       soundboard.updatePlaying(store.transport.jingles);
       fxPanel.updateMeters(store.transport.fxMeters);
+      transcriptPanel.updatePosition();
       if (store.view === 'setup') setup.updateMeters();
     }
     if (store.view === 'edit') timeline.draw();
@@ -401,6 +423,12 @@ async function main(): Promise<void> {
       case 'speed-down': return stepPlaybackSpeed(-1);
       case 'speed-normal': return setSpeed(1, true);
       case 'auphonic': return void auphonic.open();
+      case 'settings': return void settingsDialog.open();
+      case 'transcript': return openTranscript();
+      case 'transcribe':
+        if (!transcriptPanel.isOpen) openTranscript();
+        return void transcripts().transcribe();
+      case 'cleanup': return void (!document.querySelector('.overlay') && cleanupDialog.open());
     }
   });
 
