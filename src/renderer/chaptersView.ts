@@ -116,7 +116,7 @@ export class ChaptersView {
         h(
           'div',
           { class: 'row' },
-          h('button', { class: 'small', onclick: () => store.edit((p) => addMarker(p, store.transport.position, 'chapter').project) }, '+ at playhead'),
+          h('button', { class: 'small', onclick: () => store.edit((p) => addMarker(p, store.transport.position, 'chapter').project) }, '+ At Playhead'),
           h('button', { class: 'small', onclick: () => void importChapterFile() }, 'Import…'),
           ...CHAPTER_FORMATS.map((f) =>
             h(
