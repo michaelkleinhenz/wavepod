@@ -40,6 +40,8 @@ const configs = [
 function copyStatic() {
   cpSync('src/renderer/index.html', 'dist/renderer/index.html');
   cpSync('src/renderer/styles.css', 'dist/renderer/styles.css');
+  // Window and taskbar icon on Linux and Windows (macOS takes it from the bundle).
+  cpSync('build/icons/512x512.png', 'dist/icon.png');
 }
 
 if (watch) {

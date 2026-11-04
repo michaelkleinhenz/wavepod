@@ -762,6 +762,8 @@ function createWindow(): void {
     minHeight: 600,
     backgroundColor: '#15171c',
     title: 'WavePod',
+    // macOS uses the bundle icon; elsewhere the window and taskbar need one explicitly.
+    ...(process.platform === 'darwin' ? {} : { icon: path.join(__dirname, '..', 'icon.png') }),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,

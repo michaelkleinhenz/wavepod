@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=WavePod
+GenericName=Podcast Recorder
+Comment=Record, edit and export podcasts
+Exec=wavepod %U
+Icon=wavepod
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;
+Keywords=podcast;record;audio;multitrack;daw;
+StartupNotify=true
+StartupWMClass=wavepod

@@ -140,6 +140,30 @@ prints the options instead of crashing:
   ```
 - Development only, without the sandbox: `WAVEPOD_NO_SANDBOX=1 make start`.
 
+#### Linux: GNOME launcher
+
+The AppImage does not add itself to the app grid. To get WavePod (with its
+icon) into GNOME's Activities and dock:
+
+```sh
+make desktop-install WAVEPOD_EXEC=$HOME/Applications/WavePod.AppImage
+make desktop-uninstall   # to remove it again
+```
+
+This copies `build/linux/wavepod.desktop` and the icons into
+`~/.local/share`. The entry's `StartupWMClass` and `Icon` are `wavepod`,
+matching `desktopName` in `package.json`, so running windows group under the
+launcher.
+
+### App icon
+
+`build/icon.svg` is the one source for the app, installer and web page icon.
+After editing it, `make icons` re-renders `build/icons/*.png`,
+`build/icon.png`, `build/icon.ico`, the favicons in `site/` and copies the SVG
+to `site/img/icon.svg` (needs Playwright's Chromium and ImageMagick). A test
+checks the web copy matches. The icon has no lettering, so renaming the app
+only touches `productName`, `desktopName` and the `.desktop` file.
+
 ### Using a RØDECaster Pro II
 
 1. Enable multitrack mode in the RØDECaster's USB audio settings

@@ -62,13 +62,19 @@
       ],
       "category": "AudioVideo",
       "syncDesktopName": true,
-      "icon": "build/icon.png"
+      "icon": "build/icons",
+      "desktop": {
+        "entry": {
+          "GenericName": "Podcast Recorder",
+          "Keywords": "podcast;record;audio;multitrack;daw;"
+        }
+      }
     },
     "win": {
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
