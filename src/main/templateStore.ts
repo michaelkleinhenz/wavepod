@@ -121,10 +121,12 @@ export function createProjectFromTemplate(
   id: string,
   sampleRate: number,
   date = new Date(),
+  name?: string,
 ): { dir: string; project: Project } {
   const template = loadTemplate(templatesRoot, id);
-  const { dir } = createProjectDir(projectsRoot, sampleRate, date);
-  const project = projectFromTemplate(template, path.basename(dir), sampleRate);
+  const created = createProjectDir(projectsRoot, sampleRate, date, name);
+  const dir = created.dir;
+  const project = projectFromTemplate(template, created.project.name, sampleRate);
   project.soundboard = copySounds(project.soundboard, templateDir(templatesRoot, id), dir);
   project.metadata = withArtwork(project.metadata, copyArtwork(project.metadata.artwork, templateDir(templatesRoot, id), dir));
   saveProject(dir, project);

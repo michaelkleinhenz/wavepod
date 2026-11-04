@@ -2,7 +2,7 @@ import { BrowserWindow, Menu, MenuItem, app, dialog, ipcMain, shell, type MenuIt
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { IPC, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject } from '../shared/api';
+import { IPC, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject, type SaveState } from '../shared/api';
 import { acceleratorLabel, menuLabel } from '../core/menuText';
 import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip, prepareForEditing } from '../core/project';
@@ -18,7 +18,20 @@ import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
 import { decodeState, loadVstProgram, setVstHost, type VstInstance } from '../core/fx/vst';
 import { leadingNumber, searchNormalized } from '../core/numberInput';
-import { BACKUP_DIR, backupProject, createProjectDir, importImage, isProjectDir, loadBackup, loadProject, saveProject } from './projectStore';
+import {
+  BACKUP_DIR,
+  backupProject,
+  copyProjectDir,
+  createProjectDir,
+  defaultEpisodeName,
+  importImage,
+  isProjectDir,
+  isUntouchedProject,
+  listProjects,
+  loadBackup,
+  loadProject,
+  saveProject,
+} from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { deleteUserPreset, listUserPresets, loadUserPreset, renameUserPreset, saveUserPreset } from './presetStore';
 import { createPresetLibrary } from '../core/fx/presetLibrary';
@@ -128,8 +141,31 @@ function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+/**
+ * The episode WavePod made by itself on a first start (there was no last episode to open). If the
+ * user opens or creates another one before putting anything into it, its empty folder is removed.
+ */
+let autoCreatedDir: string | null = null;
+
+function discardAutoCreated(next: string): void {
+  const dir = autoCreatedDir;
+  autoCreatedDir = null;
+  if (!dir || !current || current.dir !== dir || path.resolve(next) === path.resolve(dir)) return;
+  if (!isUntouchedProject(current.project)) return;
+  try {
+    const media = path.join(dir, 'media');
+    if (fs.existsSync(media) && fs.readdirSync(media).length) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = null;
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (e) {
+    console.error('could not remove the unused episode folder', e);
+  }
+}
+
 function openProjectDir(dir: string): OpenedProject {
   let project = loadProject(dir);
+  discardAutoCreated(dir);
   // A take a crash interrupted: repair its files and put them back on their tracks.
   let recovery: Recovery | null = null;
   try {
@@ -162,6 +198,7 @@ function openProjectDir(dir: string): OpenedProject {
     }
   }
   current = { project, dir };
+  setSaveState({ state: 'saved' });
   // the project as opened is what a backup would hold; nothing to back up until it changes
   lastBackup = JSON.stringify(project);
   engine.setProject(project, dir);
@@ -171,19 +208,37 @@ function openProjectDir(dir: string): OpenedProject {
   return current;
 }
 
-function createNewProject(): OpenedProject {
-  const { dir } = createProjectDir(projectsRoot(), engine.config.sampleRate);
+function createNewProject(name?: string): OpenedProject {
+  const { dir } = createProjectDir(projectsRoot(), engine.config.sampleRate, new Date(), name);
   return openProjectDir(dir);
 }
 
+/** Whether project.json holds the latest changes; shown as the dot at the top right of the window. */
+let saveState: SaveState = { state: 'saved' };
+/** A failed save is tried again after this long, so a full disk that frees up doesn't lose edits. */
+const SAVE_RETRY_MS = 5000;
+
+function setSaveState(s: SaveState): void {
+  if (s.state === saveState.state && s.error === saveState.error) return;
+  saveState = s;
+  send(IPC.saveState, s);
+}
+
+/**
+ * Writes project.json now. Every change is saved this way shortly after it is made (autosave), so
+ * File › Save only makes it happen at once. Returns false (and tries again later) when it fails.
+ */
 function flushSave(): boolean {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = null;
   try {
     saveProject(current.dir, current.project);
+    setSaveState({ state: 'saved' });
     return true;
   } catch (e) {
     console.error('save failed', e);
+    setSaveState({ state: 'error', error: e instanceof Error ? e.message : String(e) });
+    saveTimer = setTimeout(flushSave, SAVE_RETRY_MS);
     return false;
   }
 }
@@ -233,6 +288,8 @@ function setCurrentProject(project: Project): void {
   current.project = project;
   engine.setProject(project);
   win?.setTitle(`${project.name} — WavePod`);
+  // a failed save stays red until a save works
+  if (saveState.state !== 'error') setSaveState({ state: 'unsaved' });
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSave, 400);
 }
@@ -374,11 +431,33 @@ const handlers: Record<InvokeMethod, Handler> = {
   setLoop: (range: [number, number] | null) => engine.setLoop(range),
 
   currentProject: () => current,
-  newProject: () => {
+  newProject: (name?: string) => {
     if (engine.transportState !== 'stopped') engine.stop();
     flushSave();
-    return createNewProject();
+    return createNewProject(name);
   },
+  saveProject: () => {
+    if (!flushSave()) throw new Error(`Could not save the episode: ${saveState.error ?? 'unknown error'}`);
+  },
+  saveProjectAs: async (name: string) => {
+    if (!name.trim()) throw new Error('Please enter a name.');
+    // the take's files are still being written into the current folder
+    if (engine.transportState === 'recording') throw new Error('Stop recording before saving a copy.');
+    if (engine.transportState !== 'stopped') engine.stop();
+    if (!flushSave()) throw new Error(`Could not save the episode: ${saveState.error ?? 'unknown error'}`);
+    const copy = await copyProjectDir(current.dir, current.project, name);
+    return openProjectDir(copy.dir);
+  },
+  getSaveState: () => saveState,
+  openProjectAt: (dir: string) => {
+    if (!isProjectDir(dir)) throw new Error('That folder does not contain a WavePod project (project.json).');
+    if (path.resolve(dir) === path.resolve(current.dir)) return current;
+    if (engine.transportState !== 'stopped') engine.stop();
+    flushSave();
+    return openProjectDir(dir);
+  },
+  listRecentProjects: () => listProjects(projectsRoot()),
+  defaultEpisodeName: () => defaultEpisodeName(),
   openProject: async () => {
     const res = await dialog.showOpenDialog(win!, {
       title: 'Open WavePod project folder',
@@ -399,10 +478,10 @@ const handlers: Record<InvokeMethod, Handler> = {
     return saveTemplate(templatesRoot(), current.project, current.dir, name, inputDeviceName());
   },
   deleteTemplate: (id: string) => deleteTemplate(templatesRoot(), id),
-  newProjectFromTemplate: (id: string) => {
+  newProjectFromTemplate: (id: string, name?: string) => {
     if (engine.transportState !== 'stopped') engine.stop();
     flushSave();
-    const { dir } = createProjectFromTemplate(projectsRoot(), templatesRoot(), id, engine.config.sampleRate);
+    const { dir } = createProjectFromTemplate(projectsRoot(), templatesRoot(), id, engine.config.sampleRate, new Date(), name);
     return openProjectDir(dir);
   },
   importZencastr: async () => {
@@ -419,7 +498,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     zencastrTmp = unpacked.dir;
     if (engine.transportState !== 'stopped') engine.stop();
     flushSave();
-    return { opened: createNewProject(), title: unpacked.title, tracks: unpacked.tracks, skipped: unpacked.skipped };
+    return { opened: createNewProject(unpacked.title || undefined), title: unpacked.title, tracks: unpacked.tracks, skipped: unpacked.skipped };
   },
   finishZencastrImport: () => {
     if (zencastrTmp) fs.rmSync(zencastrTmp, { recursive: true, force: true });
@@ -661,6 +740,8 @@ function buildMenu(): void {
         { label: 'New Episode from Template…', accelerator: 'Shift+CmdOrCtrl+N', click: menuSend('new-from-template') },
         { label: 'New Episode from Zencastr ZIP…', click: menuSend('import-zencastr') },
         { label: 'Open Episode…', accelerator: 'CmdOrCtrl+O', click: menuSend('open-project') },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: menuSend('save') },
+        { label: 'Save As…', accelerator: 'Shift+CmdOrCtrl+S', click: menuSend('save-as') },
         { type: 'separator' },
         { label: 'Save as Template…', click: menuSend('save-template') },
         { label: 'Show Templates Folder', click: menuSend('show-templates-folder') },
@@ -864,10 +945,10 @@ app.whenReady().then(() => {
 
   try {
     if (settings.lastProject && isProjectDir(settings.lastProject)) openProjectDir(settings.lastProject);
-    else createNewProject();
+    else autoCreatedDir = createNewProject().dir;
   } catch (e) {
     console.error('could not open last project', e);
-    createNewProject();
+    autoCreatedDir = createNewProject().dir;
   }
   engine.applyConfig(settings.device);
   settings.device = engine.config;
