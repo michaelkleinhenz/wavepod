@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clipEdges, markerPositions, selectionSpan, stepTo } from '../src/core/navigation';
+import { allClipIds, clipEdges, clipsInRect, markerPositions, selectionSpan, stepTo } from '../src/core/navigation';
 import { addMarker, addTrack, createProject } from '../src/core/project';
 
 function project() {
@@ -38,5 +38,27 @@ describe('navigation', () => {
     expect(selectionSpan(p, [100, 400], new Set())).toEqual([100, 400]);
     expect(selectionSpan(p, null, new Set(['a2', 'b1']))).toEqual([1000, 3000]);
     expect(selectionSpan(p, [5, 5], new Set())).toBeNull();
+  });
+});
+
+describe('clipsInRect', () => {
+  it('selects every clip the rectangle touches, across tracks', () => {
+    const p = project();
+    expect([...clipsInRect(p, 0, 1, 900, 1100)].sort()).toEqual(['a1', 'b1']);
+    expect([...clipsInRect(p, 1, 0, 1600, 1200)].sort()).toEqual(['a2', 'b1']);
+  });
+  it('only looks at the tracks dragged across', () => {
+    const p = project();
+    expect([...clipsInRect(p, 1, 1, 0, 5000)]).toEqual(['b1']);
+    expect([...clipsInRect(p, 0, 0, 1100, 1400)]).toEqual([]);
+  });
+  it('clamps rows outside the track list', () => {
+    expect(clipsInRect(project(), -3, 9, 0, 5000).size).toBe(3);
+  });
+});
+
+describe('allClipIds', () => {
+  it('lists every clip', () => {
+    expect([...allClipIds(project())].sort()).toEqual(['a1', 'a2', 'b1']);
   });
 });

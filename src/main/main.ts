@@ -620,7 +620,7 @@ function buildMenu(): void {
           },
         },
         { type: 'separator' },
-        { role: 'selectAll' },
+        { label: 'Select All Clips', accelerator: 'CmdOrCtrl+A', click: menuSend('select-all') },
       ],
     },
     {
