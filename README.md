@@ -60,6 +60,13 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   (🗑) the one that's loaded. The menu shows "(edited)" once you change a value
   after loading. Your presets are JSON files in `Documents/WavePod/Presets/`,
   one folder per filter or plug-in, so they can be copied to another machine.
+- **Copy and paste filters**: *Copy all* in a track's filter panel copies its
+  whole stack; the copy button on a filter card copies just that filter. Open
+  another track (or Master FX) and use *Paste…* to add the filters at the end
+  or top, or to replace the stack. When the copied filter is the same kind as
+  a card (same built-in filter or the same VST3 plug-in), that card offers
+  *Paste settings*, which keeps its place and bypass. Copies include VST3
+  state and the preset label, work across episodes, and are one undo step.
 - **Templates**: save an episode's setup (tracks and their input channels,
   filter stacks including Master FX and VST3 settings, soundboard jingles)
   with File › Save as Template…, and start the next episode from it with
