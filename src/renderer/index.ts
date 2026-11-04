@@ -132,7 +132,20 @@ async function main(): Promise<void> {
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
-  const masterFxBtn = h('button', { class: 'fx-btn', title: 'Filters on the master bus', onclick: () => fxPanel.toggle(MASTER) }, 'Master FX');
+  const masterFxBtn = h(
+    'button',
+    {
+      class: 'fx-btn',
+      title: 'Filters on the master bus',
+      onclick: () => {
+        // The panel only shows in the edit view; from another view the button takes the user there.
+        if (store.view === 'edit') return fxPanel.toggle(MASTER);
+        fxPanel.open(MASTER);
+        store.setView('edit');
+      },
+    },
+    'Master FX',
+  );
   const preShowBtn = h(
     'button',
     {
@@ -179,6 +192,7 @@ async function main(): Promise<void> {
     if (store.view === 'setup') setup.render();
     if (store.view === 'chapters') chapters.render();
     if (store.view === 'edit') timeline.renderHeaders();
+    fxPanel.setHidden(store.view !== 'edit');
   };
 
   const renderStatus = () => {

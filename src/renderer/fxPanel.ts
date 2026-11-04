@@ -47,6 +47,8 @@ export class FxPanel {
   private presets = new Map<string, FxPresetEntry[] | Promise<FxPresetEntry[]>>();
   /** The card whose preset row is a name field: saving a new preset or renaming the current one. */
   private naming: { fxId: string; mode: 'save' | 'rename' } | null = null;
+  /** True outside the edit view: the panel keeps its target but stays off screen until the user is back. */
+  private hidden = false;
 
   open(target: FxTarget): void {
     this.target = target;
@@ -63,7 +65,18 @@ export class FxPanel {
         .catch(() => {});
     }
     this.render();
-    document.getElementById('app')!.append(this.el);
+    if (!this.hidden) document.getElementById('app')!.append(this.el);
+  }
+
+  /** Hides the panel while another view is shown, and brings it back (if it was open) on return. */
+  setHidden(hidden: boolean): void {
+    if (hidden === this.hidden) return;
+    this.hidden = hidden;
+    if (hidden) this.el.remove();
+    else if (this.target) {
+      this.render();
+      document.getElementById('app')!.append(this.el);
+    }
   }
 
   close(): void {
@@ -382,7 +395,7 @@ export class FxPanel {
 
   /** Feeds live filter activity from a transport update into the cards' meters. */
   updateMeters(meters: Record<string, FxMeter> | undefined): void {
-    if (!this.target) return;
+    if (!this.target || this.hidden) return;
     for (const [id, m] of this.meters) m.update(meters?.[id]);
   }
 
