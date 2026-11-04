@@ -81,6 +81,39 @@ describe('filters', () => {
     expect(rms(run('gate', { threshold: -40, range: -30 }, sine(300, 1, SR, 0.3)), SR / 2)).toBeCloseTo(rms(sine(300, 1, SR, 0.3)), 2);
   });
 
+  it('gate pre-open delays the audio and opens before the first sample of a word', () => {
+    // silence, then a burst at full scale starting at 0.5 s
+    const input = new Float32Array(SR);
+    for (let i = SR / 2; i < SR; i++) input[i] = 0.5;
+    const params = { threshold: -30, range: -80, attack: 10, hold: 250, release: 150, preopen: 3 };
+    const proc = createProcessor('gate', SR);
+    proc.setParams({ ...createFx('gate').params, ...params });
+    const lat = Math.round(0.003 * SR);
+    expect(proc.latency).toBe(lat);
+    const withLook = run('gate', params, input);
+    const without = run('gate', { ...params, preopen: 0 }, input);
+    // the word starts `lat` frames later in the output, and by then the gate is already partly open
+    expect(withLook[SR / 2 + lat - 1]).toBe(0);
+    expect(withLook[SR / 2 + lat]).toBeGreaterThan(without[SR / 2] * 2);
+  });
+
+  it('gate hysteresis keeps it open until the level falls below threshold minus hysteresis', () => {
+    // loud, then a level 2 dB under the threshold for a second
+    const input = new Float32Array(2 * SR);
+    const under = Math.pow(10, -32 / 20);
+    for (let i = 0; i < 2 * SR; i++) input[i] = (i < SR / 2 ? 0.5 : under) * Math.sin((2 * Math.PI * 300 * i) / SR);
+    const base = { threshold: -30, range: -60, attack: 1, hold: 50, release: 50 };
+    const tail = (h: number) => rms(run('gate', { ...base, hysteresis: h }, input), SR + SR / 2, 2 * SR);
+    expect(db(tail(4) / (under * Math.SQRT1_2))).toBeCloseTo(0, 0); // within the 4 dB window: stays open
+    expect(db(tail(0) / (under * Math.SQRT1_2))).toBeLessThan(-50); // no hysteresis: closes
+  });
+
+  it('gate settings saved before pre-open and hysteresis existed sound the same', () => {
+    const fx = normalizeFx({ type: 'gate', params: { threshold: -45, range: -30, attack: 2, hold: 80, release: 200 } })!;
+    expect(fx.params.preopen).toBe(0);
+    expect(fx.params.hysteresis).toBe(4);
+  });
+
   it('compressor reduces signal above the threshold by the ratio', () => {
     const out = run('compressor', { threshold: -20, ratio: 4, knee: 0, attack: 1, release: 50, makeup: 0 }, sine(300, 1, SR, 1));
     // 0 dBFS peak, 20 dB over → 15 dB reduction

@@ -157,6 +157,7 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Medium', 'A clear drop between phrases.', { threshold: -48, range: -25, attack: 2, hold: 100, release: 200 }],
     ['Tight', 'Noisy room: closes fast and far.', { threshold: -40, range: -40, attack: 1, hold: 60, release: 120 }],
     ['Several mics in one room', 'Holds back the other speakers bleeding into this mic.', { threshold: -42, range: -20, attack: 1, hold: 200, release: 350 }],
+    ['Full mute', 'Silence between phrases: opens just before each word, mutes completely when closed.', { threshold: -30, range: -80, attack: 10, hold: 250, release: 150, preopen: 3, hysteresis: 0 }],
   ],
   compressor: [
     ['Gentle voice', 'Light levelling that keeps the voice natural.', { threshold: -18, ratio: 2, attack: 15, release: 150, knee: 6, makeup: 2 }],
