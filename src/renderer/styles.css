@@ -79,6 +79,12 @@ button.icon-btn.transport { width: 36px; height: 32px; }
 /* Output level: two thin bars along the bottom edge of the time display. */
 .master-meter { position: absolute; left: 8px; right: 8px; bottom: 3px; display: flex; flex-direction: column; gap: 1px; }
 .master-meter .meter { height: 2px; flex: none; background: #22252c; }
+/* Saved status at the top right: green = everything is in project.json, amber = a change is about to be saved, red = saving failed. */
+.save-dot { width: 18px; height: 18px; min-width: 0; padding: 0; margin-left: 2px; border: none; background: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.save-dot::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px color-mix(in srgb, var(--ok) 60%, transparent); transition: background 0.2s, box-shadow 0.2s; }
+.save-dot.unsaved::before { background: var(--warn); box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent); }
+.save-dot.error::before { background: var(--rec); box-shadow: 0 0 8px var(--rec); animation: pulse 1s infinite; }
+.save-dot:hover { background: transparent; }
 .project-name { color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
 
@@ -537,3 +543,10 @@ input.value-edit {
 .rec-health.show { display: flex; }
 .rec-health.critical { background: #4a1414; border-bottom-color: #8a2a2a; }
 .rec-warning.critical { color: #ff8a80; font-weight: 600; }
+
+/* Setup › Project */
+.project-path { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 0 6px; }
+.recent-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0; max-height: 360px; overflow: auto; }
+.recent-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; height: auto; padding: 8px 10px; text-align: left; }
+.recent-item .muted { font-size: 11px; white-space: nowrap; }
+.project-new .row .muted { font-size: 12px; }

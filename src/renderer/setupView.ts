@@ -1,4 +1,4 @@
-// Setup: tabs for the audio interface, microphones (meters and track creation), controllers (MIDI, OSC)
+// Setup: tabs for the episode (open, new, save), the audio interface, microphones (meters and track creation), controllers (MIDI, OSC)
 // and AI agents (MCP). Technical settings sit in collapsed "Advanced" sections.
 import type { BitDepth, DeviceConfig, DeviceProfile, EngineStatus, OutputSource } from '../shared/types';
 import { addTrack } from '../core/project';
@@ -10,12 +10,17 @@ import { midi } from './midi';
 import { renderMidiCard } from './midiCard';
 import { isOscOn, renderOscCard } from './oscCard';
 import { api, store } from './store';
+import type { RecentProject } from '../shared/api';
+import type { TemplateSummary } from '../core/template';
+import { newProject, openProject, openProjectAt, saveEpisode, saveEpisodeAs } from './actions';
+import { newFromTemplate } from './templateDialog';
 
 const SAMPLE_RATES = [44100, 48000, 96000];
 const BUFFER_SIZES = [128, 256, 512, 1024, 2048];
 
-export type SetupTab = 'audio' | 'inputs' | 'controllers' | 'agents';
+export type SetupTab = 'project' | 'audio' | 'inputs' | 'controllers' | 'agents';
 const TABS: Array<{ id: SetupTab; label: string; blurb: string }> = [
+  { id: 'project', label: 'Project', blurb: 'Continue an episode, open another one or start a new one, empty or from a template.' },
   { id: 'audio', label: 'Audio', blurb: 'Choose the device you record from and the one you listen on.' },
   { id: 'inputs', label: 'Microphones', blurb: 'Check your levels and create a track for every speaker.' },
   { id: 'controllers', label: 'Controllers', blurb: 'Start recording, drop markers and fire jingles from a MIDI controller or Stream Deck.' },
@@ -39,6 +44,14 @@ export class SetupView {
   private tab: SetupTab = savedTab();
   /** Opens the template dialogs (set by the app shell). */
   onTemplates?: { start: () => void; save: () => void };
+  /** Called after the Project tab opened or created an episode, with what happened. */
+  onEpisodeChosen?: (how: 'opened' | 'blank' | 'template') => void;
+  /** Project tab: the name typed for a new episode, the templates and the recent episodes. */
+  private newName = '';
+  private newNameDefault = '';
+  private templates: TemplateSummary[] = [];
+  private recent: RecentProject[] = [];
+  private busy = false;
 
   async refreshDevices(): Promise<void> {
     try {
@@ -78,11 +91,52 @@ export class SetupView {
     // A new tab starts at its top; keepScroll would carry over the old tab's position.
     this.build();
     this.el.scrollTop = 0;
+    if (tab === 'project') void this.refreshProjects();
   }
 
   render(): void {
+    // A status update must not take the cursor out of the name field while typing.
+    const focused = document.activeElement as HTMLInputElement | null;
+    const keepFocus = focused?.classList.contains('new-episode-name') ? [focused.selectionStart, focused.selectionEnd] : null;
     // Rebuilding empties the view, which would jump it back to the top (e.g. on Learn).
     keepScroll(this.el, () => this.build());
+    if (keepFocus) {
+      const input = this.el.querySelector<HTMLInputElement>('input.new-episode-name');
+      input?.focus();
+      input?.setSelectionRange(keepFocus[0], keepFocus[1]);
+    }
+  }
+
+  /** Reloads what the Project tab lists: templates, recent episodes and the default name for a new one. */
+  async refreshProjects(): Promise<void> {
+    try {
+      const [templates, recent, name] = await Promise.all([api().listTemplates(), api().listRecentProjects(), api().defaultEpisodeName()]);
+      this.templates = templates;
+      this.recent = recent;
+      // keep what the user typed; only follow the clock while the field still shows the default
+      if (!this.newName || this.newName === this.newNameDefault) this.newName = name;
+      this.newNameDefault = name;
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
+    if (this.tab === 'project') this.render();
+  }
+
+  private async choose(how: 'opened' | 'blank' | 'template', fn: () => Promise<boolean>): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    this.render();
+    let ok = false;
+    try {
+      ok = await fn();
+    } finally {
+      this.busy = false;
+    }
+    if (ok) {
+      this.newName = '';
+      this.onEpisodeChosen?.(how);
+    }
+    void this.refreshProjects();
   }
 
   private build(): void {
@@ -94,6 +148,7 @@ export class SetupView {
     }
     const audioProblem = !!(s.error || s.backendError || !store.devices.length || !s.inputOpen || !s.outputOpen);
     const badge: Record<SetupTab, 'warn' | 'on' | null> = {
+      project: store.saveState.state === 'error' ? 'warn' : null,
       audio: audioProblem ? 'warn' : null,
       inputs: null,
       controllers: midi.settings.enabled || isOscOn() ? 'on' : null,
@@ -120,6 +175,9 @@ export class SetupView {
     const blurb = TABS.find((t) => t.id === this.tab)!.blurb;
     const page = h('div', { class: 'setup-page', role: 'tabpanel' }, h('p', { class: 'setup-blurb muted' }, blurb));
     switch (this.tab) {
+      case 'project':
+        append(page, [this.renderCurrentEpisode(), this.renderNewEpisode(), this.renderOpenEpisode()]);
+        break;
       case 'audio':
         append(page, [this.renderAudio(s), this.renderSecondOutput(s)]);
         break;
@@ -394,6 +452,115 @@ export class SetupView {
     }
     card.append(list);
     return card;
+  }
+
+  private renderCurrentEpisode(): HTMLElement {
+    const p = store.project;
+    const clips = p.tracks.reduce((n, t) => n + t.clips.length, 0);
+    const save = store.saveState;
+    const status =
+      save.state === 'error'
+        ? h('p', { class: 'error-text' }, `Could not save: ${save.error ?? 'unknown error'}. WavePod keeps trying; File › Save tries again now.`)
+        : h('p', { class: 'muted' }, save.state === 'saved' ? 'All changes are saved. WavePod saves every change by itself.' : 'Saving…');
+    return h(
+      'section',
+      { class: 'card project-current' },
+      h('div', { class: 'card-head' }, h('h2', null, p.name), h('span', { class: 'muted' }, `${p.tracks.length} track${p.tracks.length === 1 ? '' : 's'} · ${clips} clip${clips === 1 ? '' : 's'}`)),
+      h('p', { class: 'muted project-path', title: store.dir }, store.dir),
+      status,
+      h(
+        'div',
+        { class: 'row' },
+        h('button', { title: 'Save (Ctrl+S)', onclick: () => void saveEpisode() }, 'Save'),
+        h('button', { title: 'Save a copy under a new name (Shift+Ctrl+S)', disabled: this.busy, onclick: () => void saveEpisodeAs().then(() => this.refreshProjects()) }, 'Save As…'),
+        h('button', { onclick: () => void api().showProjectFolder() }, 'Show folder'),
+        h('div', { class: 'spacer' }),
+        h('button', { class: 'primary', onclick: () => store.setView('edit') }, 'Continue with this episode'),
+      ),
+    );
+  }
+
+  private renderNewEpisode(): HTMLElement {
+    const name = () => this.newName.trim();
+    const blank = h(
+      'button',
+      { class: 'primary', disabled: this.busy || !name(), onclick: () => void this.choose('blank', () => newProject(name())) },
+      'Create empty episode',
+    ) as HTMLButtonElement;
+    const templateBtns: HTMLButtonElement[] = [];
+    const input = h('input', {
+      class: 'new-episode-name',
+      type: 'text',
+      value: this.newName,
+      spellcheck: false,
+      placeholder: 'e.g. Episode 42 – Interview with Anna',
+      oninput: (e: Event) => {
+        this.newName = (e.target as HTMLInputElement).value;
+        blank.disabled = this.busy || !name();
+        for (const b of templateBtns) b.disabled = this.busy || !name();
+      },
+      onkeydown: (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && name()) void this.choose('blank', () => newProject(name()));
+      },
+    });
+    const list = this.templates.length
+      ? h(
+          'div',
+          { class: 'template-list' },
+          ...this.templates.map((t) => {
+            const b = h(
+              'button',
+              {
+                class: 'template-use',
+                disabled: this.busy || !name(),
+                title: 'New episode with this setup',
+                onclick: () => void this.choose('template', () => newFromTemplate(t, name())),
+              },
+              h('span', { class: 'template-title' }, t.name),
+              h('span', { class: 'muted' }, `${t.trackCount} track${t.trackCount === 1 ? '' : 's'} · ${t.filterCount} filter${t.filterCount === 1 ? '' : 's'}${t.inputDevice ? ` · ${t.inputDevice}` : ''}`),
+            ) as HTMLButtonElement;
+            templateBtns.push(b);
+            return h('div', { class: 'template-item' }, b);
+          }),
+        )
+      : h('p', { class: 'muted' }, 'No templates yet. Set up an episode the way you like it, then use File › Save as Template….');
+    return h(
+      'section',
+      { class: 'card project-new' },
+      h('h2', null, 'Start a new episode'),
+      h('label', { class: 'field' }, h('span', null, 'Name (also the name of the episode’s folder)'), input),
+      h('div', { class: 'row' }, blank, h('span', { class: 'muted' }, 'or start from a template:')),
+      list,
+    );
+  }
+
+  private renderOpenEpisode(): HTMLElement {
+    const others = this.recent.filter((r) => r.dir !== store.dir);
+    const fmt = (ms: number) => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return h(
+      'section',
+      { class: 'card project-open' },
+      h(
+        'div',
+        { class: 'card-head' },
+        h('h2', null, 'Open an episode'),
+        h('button', { disabled: this.busy, onclick: () => void this.choose('opened', () => openProject()) }, 'Open folder…'),
+      ),
+      others.length
+        ? h(
+            'div',
+            { class: 'recent-list' },
+            ...others.map((r) =>
+              h(
+                'button',
+                { class: 'recent-item', disabled: this.busy, title: r.dir, onclick: () => void this.choose('opened', () => openProjectAt(r.dir)) },
+                h('span', { class: 'template-title' }, r.name),
+                h('span', { class: 'muted' }, `Saved ${fmt(r.modified)}`),
+              ),
+            ),
+          )
+        : h('p', { class: 'muted' }, 'No other episodes in the WavePod folder yet.'),
+    );
   }
 
   private renderTemplates(): HTMLElement {

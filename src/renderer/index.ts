@@ -18,6 +18,8 @@ import {
   muteSelection,
   rippleCut,
   newProject,
+  saveEpisode,
+  saveEpisodeAs,
   openProject,
   prepareForEditing,
   seek,
@@ -88,6 +90,8 @@ async function main(): Promise<void> {
   const templates = new TemplateDialog();
   const auphonic = new AuphonicDialog();
   setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
+  // An empty episode needs its speakers set up next; an opened one or a template is ready to record.
+  setup.onEpisodeChosen = (how) => (how === 'blank' ? setup.showTab('inputs') : store.setView('edit'));
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
   timeline.onOpenLoudness = () => loudnessDialog.open();
 
@@ -118,6 +122,20 @@ async function main(): Promise<void> {
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
+  // Saved status: green when project.json holds every change, amber while a change waits for the autosave, red if saving failed.
+  const saveDot = h('button', { class: 'save-dot saved', 'aria-label': 'All changes saved', onclick: () => void saveEpisode() });
+  const renderSaveDot = () => {
+    const s = store.saveState;
+    saveDot.className = `save-dot ${s.state}`;
+    const text =
+      s.state === 'saved'
+        ? 'All changes saved'
+        : s.state === 'unsaved'
+          ? 'Saving…'
+          : `Could not save: ${s.error ?? 'unknown error'}. Click to try again.`;
+    saveDot.title = `${text}\n${store.dir}`;
+    saveDot.setAttribute('aria-label', text);
+  };
   const masterFxBtn = h(
     'button',
     {
@@ -168,6 +186,7 @@ async function main(): Promise<void> {
     h('div', { class: 'spacer' }),
     projectName,
     h('button', { class: 'primary', title: 'Export (Ctrl+E)', onclick: () => exportDialog.open() }, 'Export…'),
+    saveDot,
   );
   const statusBar = h('footer', { class: 'statusbar' });
   // Live problems of the running take (dropouts, crackle, clipping, silent inputs, disk).
@@ -190,7 +209,10 @@ async function main(): Promise<void> {
   const renderView = () => {
     for (const [k, b] of Object.entries(tabs)) b.classList.toggle('active', k === store.view);
     main.replaceChildren(store.view === 'setup' ? setup.el : store.view === 'chapters' ? chapters.el : timeline.el);
-    if (store.view === 'setup') setup.render();
+    if (store.view === 'setup') {
+      setup.render();
+      void setup.refreshProjects();
+    }
     if (store.view === 'chapters') chapters.render();
     if (store.view === 'edit') timeline.renderHeaders();
     fxPanel.setHidden(store.view !== 'edit');
@@ -243,6 +265,8 @@ async function main(): Promise<void> {
 
   store.subscribe((kinds) => {
     if (kinds.has('view')) renderView();
+    if (kinds.has('save') || kinds.has('project')) renderSaveDot();
+    if (kinds.has('save') && store.view === 'setup') setup.render();
     if (kinds.has('project')) {
       fxPanel.refresh();
       const n = (store.project.masterFx ?? []).filter((f) => f.enabled).length;
@@ -319,6 +343,10 @@ async function main(): Promise<void> {
     else if (project.tracks.some((t) => t.armed)) toast(`${recorded} · tracks are still armed, use Prepare for editing before you cut`);
     else toast(recorded);
   });
+  api().onSaveState((s) => {
+    store.saveState = s;
+    store.notify('save');
+  });
   api().onProjectEdited(({ project, summary }) => {
     store.applyExternal(project);
     toast(`AI agent: ${summary}`);
@@ -329,7 +357,9 @@ async function main(): Promise<void> {
   api().onMenu((cmd) => {
     switch (cmd) {
       case 'new-project': return void newProject();
-      case 'open-project': return void openProject();
+      case 'open-project': return void openProject().then((ok) => ok && store.setView('edit'));
+      case 'save': return void saveEpisode();
+      case 'save-as': return void saveEpisodeAs();
       case 'new-from-template': return void templates.openNew();
       case 'save-template': return void templates.openSave();
       case 'show-templates-folder': return void api().showTemplatesFolder();
@@ -516,10 +546,15 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------- boot
   const opened = await api().currentProject();
   store.setProject(opened.project, opened.dir);
+  store.saveState = await api().getSaveState();
   store.status = await api().getStatus();
   await setup.refreshDevices();
-  if (!store.project.tracks.length) store.view = 'setup';
+  // The app starts on Setup › Project: continue the last episode, open another or start a new one.
+  store.view = 'setup';
+  setup.showTab('project');
+  void setup.refreshProjects();
   renderView();
+  renderSaveDot();
   renderTransport();
   soundboard.render();
   void soundboard.ensureLoaded();

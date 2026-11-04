@@ -16,6 +16,7 @@ import { addRegion } from '../core/regions';
 import { ensureSoundboardTrack, soundboardTrack } from '../core/soundboard';
 import { selectionSpan } from '../core/navigation';
 import { confirmStop, showSoundcheck } from './recordDialogs';
+import { askName } from './nameDialog';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
 let confirming = false;
@@ -482,12 +483,81 @@ export async function importChapterContentFile(): Promise<void> {
   }
 }
 
-export async function newProject(): Promise<void> {
+/** Asks for the name of a new episode (it names the folder too); null if cancelled. */
+export async function askEpisodeName(title = 'New episode'): Promise<string | null> {
+  let value = '';
   try {
-    const res = await api().newProject();
+    value = await api().defaultEpisodeName();
+  } catch {
+    /* an empty field works too */
+  }
+  return askName({ title, value, ok: 'Create', hint: 'The episode’s folder in the WavePod folder gets this name too.' });
+}
+
+/** File › New Episode: asks for a name, then opens a new, empty episode. */
+export async function newProject(name?: string): Promise<boolean> {
+  if (store.transport.state === 'recording') {
+    toast('Stop recording before starting a new episode');
+    return false;
+  }
+  const chosen = name ?? (await askEpisodeName());
+  if (!chosen) return false;
+  try {
+    const res = await api().newProject(chosen);
     if (res) store.setProject(res.project, res.dir);
+    toast(`New episode “${chosen}”`);
+    return true;
   } catch (e) {
     toast(errorMessage(e), 'error');
+    return false;
+  }
+}
+
+/** File › Save: writes the episode now (it is saved automatically shortly after every change, too). */
+export async function saveEpisode(): Promise<void> {
+  if (store.liveEditing) store.commitLive();
+  try {
+    await api().saveProject();
+    toast('Saved');
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
+/** File › Save As: copies the episode folder under a new name and continues working in the copy. */
+export async function saveEpisodeAs(): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before saving a copy');
+  const name = await askName({
+    title: 'Save episode as',
+    value: `${store.project.name} copy`,
+    ok: 'Save copy',
+    hint: 'Copies the episode folder with all its recordings next to the current one and continues in the copy. The current episode stays as it is.',
+  });
+  if (!name) return;
+  if (store.liveEditing) store.commitLive();
+  try {
+    toast('Saving a copy…');
+    const res = await api().saveProjectAs(name);
+    store.setProject(res.project, res.dir);
+    toast(`Saved as “${res.project.name}”`);
+  } catch (e) {
+    toast(`Could not save a copy: ${errorMessage(e)}`, 'error');
+  }
+}
+
+/** Opens an episode from the Project tab's list. */
+export async function openProjectAt(dir: string): Promise<boolean> {
+  if (store.transport.state === 'recording') {
+    toast('Stop recording before opening another episode');
+    return false;
+  }
+  try {
+    const res = await api().openProjectAt(dir);
+    store.setProject(res.project, res.dir);
+    return true;
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+    return false;
   }
 }
 
@@ -554,12 +624,14 @@ export async function importZencastrSession(): Promise<void> {
   }
 }
 
-export async function openProject(): Promise<void> {
+export async function openProject(): Promise<boolean> {
   try {
     const res = await api().openProject();
     if (res) store.setProject(res.project, res.dir);
+    return !!res;
   } catch (e) {
     toast(errorMessage(e), 'error');
+    return false;
   }
 }
 

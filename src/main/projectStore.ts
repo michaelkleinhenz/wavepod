@@ -24,15 +24,64 @@ export function isProjectDir(dir: string): boolean {
   return fs.existsSync(path.join(dir, PROJECT_FILE));
 }
 
-/** Creates a fresh, uniquely named project folder under `root`. */
-export function createProjectDir(root: string, sampleRate: number, date = new Date()): { dir: string; project: Project } {
+/** The name a new episode gets unless the user types another one, e.g. "Episode 2026-11-04 1715". */
+export function defaultEpisodeName(date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
-  const base = `Episode ${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}${p(date.getMinutes())}`;
+  return `Episode ${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}${p(date.getMinutes())}`;
+}
+
+/** A folder name for an episode name: drops characters that aren't allowed in file names on Windows, macOS or Linux. */
+export function episodeFolderName(name: string): string {
+  return (
+    name
+      .trim()
+      .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '_')
+      .replace(/^[ .]+|[ .]+$/g, '')
+      .slice(0, 120) || 'Episode'
+  );
+}
+
+/** A folder under `root` for `name` that doesn't exist yet: "Name", "Name (2)", "Name (3)", … */
+export function freeProjectDir(root: string, name: string): string {
+  const base = episodeFolderName(name);
   let dir = path.join(root, base);
   for (let i = 2; fs.existsSync(dir); i++) dir = path.join(root, `${base} (${i})`);
-  const project = createProject(path.basename(dir), sampleRate);
+  return dir;
+}
+
+/** Creates a fresh, uniquely named project folder under `root`, named after the episode. */
+export function createProjectDir(root: string, sampleRate: number, date = new Date(), name?: string): { dir: string; project: Project } {
+  const wanted = name?.trim() || defaultEpisodeName(date);
+  const dir = freeProjectDir(root, wanted);
+  // the episode keeps the name as typed; only the folder needs a suffix when the name is taken
+  const project = createProject(name?.trim() ? wanted : path.basename(dir), sampleRate);
   saveProject(dir, project);
   return { dir, project };
+}
+
+/** Files of a project folder that a copy leaves out: the recording journal belongs to the original. */
+function copyFilter(src: string): boolean {
+  const base = path.basename(src);
+  return base !== 'recording-in-progress.json' && !base.endsWith('.tmp');
+}
+
+/**
+ * Save As: copies the project folder (media, images, backups) to a new folder named `name` next to
+ * it, then saves `project` there under the new name. Files are cloned where the file system can
+ * (copy-on-write), otherwise copied. The original folder is left as it is.
+ */
+export async function copyProjectDir(dir: string, project: Project, name: string): Promise<{ dir: string; project: Project }> {
+  const target = freeProjectDir(path.dirname(dir), name);
+  try {
+    await fs.promises.cp(dir, target, { recursive: true, filter: copyFilter, mode: fs.constants.COPYFILE_FICLONE, errorOnExist: true, force: false });
+    const copy: Project = { ...project, name: name.trim() };
+    saveProject(target, copy);
+    return { dir: target, project: copy };
+  } catch (e) {
+    // don't leave half a copy behind
+    await fs.promises.rm(target, { recursive: true, force: true }).catch(() => undefined);
+    throw e;
+  }
 }
 
 /**
@@ -91,4 +140,37 @@ export function backupProject(dir: string, project: Project, reason = '', date =
 /** Reads a backup file as a project (with defaults filled in). */
 export function loadBackup(file: string): Project {
   return normalizeProject(JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<Project>);
+}
+
+/** Episode folders directly inside `root` (the WavePod folder), most recently saved first. */
+export function listProjects(root: string, limit = 30): Array<{ name: string; dir: string; modified: number }> {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: Array<{ name: string; dir: string; modified: number }> = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const dir = path.join(root, e.name);
+    const file = path.join(dir, PROJECT_FILE);
+    try {
+      const modified = fs.statSync(file).mtimeMs;
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { name?: unknown };
+      out.push({ name: typeof raw.name === 'string' && raw.name.trim() ? raw.name : e.name, dir, modified });
+    } catch {
+      /* not an episode folder (Templates, Presets, …) or unreadable */
+    }
+  }
+  return out.sort((a, b) => b.modified - a.modified).slice(0, limit);
+}
+
+/** True if the project has nothing in it yet worth keeping: no recorded or imported audio, chapters or jingles. */
+export function isUntouchedProject(project: Project): boolean {
+  return (
+    project.tracks.every((t) => !t.clips.length) &&
+    !project.markers.length &&
+    !project.soundboard.length
+  );
 }

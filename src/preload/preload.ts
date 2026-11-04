@@ -19,6 +19,7 @@ const api: Record<string, unknown> = {
   onMenu: subscribe(IPC.menu),
   onRemote: subscribe(IPC.remote),
   onProjectEdited: subscribe(IPC.projectEdited),
+  onSaveState: subscribe(IPC.saveState),
   platform: process.platform,
 };
 for (const method of INVOKE_METHODS) {

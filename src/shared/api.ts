@@ -34,6 +34,21 @@ export interface OpenedProject {
   dir: string;
 }
 
+/** Whether project.json holds the latest changes (autosave runs shortly after every change). */
+export interface SaveState {
+  state: 'saved' | 'unsaved' | 'error';
+  /** Why the last save failed. */
+  error?: string;
+}
+
+/** An episode folder in the WavePod folder, for the Project tab. */
+export interface RecentProject {
+  name: string;
+  dir: string;
+  /** When project.json was last written (ms since epoch). */
+  modified: number;
+}
+
 /** A Zencastr session ZIP unpacked into a temporary folder, with the new episode it goes into. */
 export interface ZencastrImport {
   opened: OpenedProject;
@@ -52,6 +67,8 @@ export interface ImportedAudio {
 export type MenuCommand =
   | 'new-project'
   | 'open-project'
+  | 'save'
+  | 'save-as'
   | 'new-from-template'
   | 'save-template'
   | 'show-templates-folder'
@@ -152,8 +169,20 @@ export interface WavePodApi {
 
   // project
   currentProject(): Promise<OpenedProject>;
-  newProject(): Promise<OpenedProject | null>;
+  /** A new, empty episode; `name` names the episode and its folder (default "Episode <date> <time>"). */
+  newProject(name?: string): Promise<OpenedProject | null>;
   openProject(): Promise<OpenedProject | null>;
+  /** Opens an episode folder from the recent list. */
+  openProjectAt(dir: string): Promise<OpenedProject>;
+  /** Episodes in the WavePod folder, newest first. */
+  listRecentProjects(): Promise<RecentProject[]>;
+  /** The name a new episode gets by default. */
+  defaultEpisodeName(): Promise<string>;
+  /** File › Save: writes project.json now (it is also saved automatically after every change). */
+  saveProject(): Promise<void>;
+  /** File › Save As: copies the episode folder under a new name next to it and continues in the copy. */
+  saveProjectAs(name: string): Promise<OpenedProject>;
+  getSaveState(): Promise<SaveState>;
   updateProject(project: Project): Promise<void>;
   /** Coarse waveform levels of a media file (computed and cached next to it on first use). */
   getPeaks(file: string): Promise<WaveformPeaks | null>;
@@ -167,7 +196,7 @@ export interface WavePodApi {
   /** Saves the open project's setup as a template; one with the same name is replaced. */
   saveTemplate(name: string): Promise<TemplateSummary>;
   deleteTemplate(id: string): Promise<void>;
-  newProjectFromTemplate(id: string): Promise<OpenedProject>;
+  newProjectFromTemplate(id: string, name?: string): Promise<OpenedProject>;
   /** Lets the user pick a Zencastr session ZIP, unpacks its tracks and opens a new episode for them (null if cancelled). */
   importZencastr(): Promise<ZencastrImport | null>;
   /** Removes the temporary folder of the last Zencastr import. */
@@ -238,6 +267,7 @@ export interface WavePodApi {
   onRemote(cb: (cmd: RemoteCommand) => void): () => void;
   /** An AI agent changed the project over MCP; it is already applied in the main process. */
   onProjectEdited(cb: (e: { project: Project; summary: string }) => void): () => void;
+  onSaveState(cb: (s: SaveState) => void): () => void;
 
   platform: string;
 }
@@ -251,12 +281,13 @@ export const IPC = {
   menu: 'wavepod:menu',
   remote: 'wavepod:remote',
   projectEdited: 'wavepod:projectEdited',
+  saveState: 'wavepod:saveState',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'platform'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'platform'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
@@ -289,6 +320,12 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'currentProject',
   'newProject',
   'openProject',
+  'openProjectAt',
+  'listRecentProjects',
+  'defaultEpisodeName',
+  'saveProject',
+  'saveProjectAs',
+  'getSaveState',
   'updateProject',
   'getPeaks',
   'getPeakTile',

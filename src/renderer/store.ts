@@ -1,6 +1,6 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
 import type { ClipboardData } from '../core/clipboard';
-import type { WavePodApi } from '../shared/api';
+import type { SaveState, WavePodApi } from '../shared/api';
 import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
 import { PeakPyramid } from '../core/peaks';
 import { WaveCache } from './waveCache';
@@ -29,11 +29,13 @@ export interface Selection {
 }
 
 type Listener = (what: Set<ChangeKind>) => void;
-export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices' | 'midi' | 'mcp' | 'osc';
+export type ChangeKind = 'project' | 'transport' | 'status' | 'selection' | 'view' | 'peaks' | 'devices' | 'midi' | 'mcp' | 'osc' | 'save';
 
 class Store {
   project!: Project;
   dir = '';
+  /** Whether the latest change is in project.json (the dot at the top right). */
+  saveState: SaveState = { state: 'saved' };
   history = new History();
   status: EngineStatus | null = null;
   devices: AudioDevice[] = [];

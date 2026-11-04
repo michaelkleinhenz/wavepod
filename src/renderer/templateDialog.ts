@@ -3,6 +3,7 @@ import type { TemplateSummary } from '../core/template';
 import { templateFolderName } from '../core/template';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
+import { askEpisodeName, newProject } from './actions';
 
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -156,21 +157,12 @@ export class TemplateDialog {
     }
   }
 
-  private use(t: TemplateSummary): Promise<void> {
-    return this.run(async () => {
-      const res = await api().newProjectFromTemplate(t.id);
-      store.setProject(res.project, res.dir);
-      this.close();
-      toast(`New episode from "${t.name}"`);
-    });
+  private async use(t: TemplateSummary): Promise<void> {
+    if (await newFromTemplate(t)) this.close();
   }
 
-  private blank(): Promise<void> {
-    return this.run(async () => {
-      const res = await api().newProject();
-      if (res) store.setProject(res.project, res.dir);
-      this.close();
-    });
+  private async blank(): Promise<void> {
+    if (await newProject()) this.close();
   }
 
   private remove(t: TemplateSummary): Promise<void> {
@@ -188,5 +180,24 @@ export class TemplateDialog {
       this.close();
       toast(`Saved template "${t.name}"`);
     });
+  }
+}
+
+/** Asks for a name, then starts a new episode set up like the template. Returns false if cancelled or failed. */
+export async function newFromTemplate(t: TemplateSummary, typedName?: string): Promise<boolean> {
+  if (store.transport.state === 'recording') {
+    toast('Stop recording before starting a new episode');
+    return false;
+  }
+  const name = typedName ?? (await askEpisodeName(`New episode from “${t.name}”`));
+  if (!name) return false;
+  try {
+    const res = await api().newProjectFromTemplate(t.id, name);
+    store.setProject(res.project, res.dir);
+    toast(`New episode “${name}” from “${t.name}”`);
+    return true;
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+    return false;
   }
 }
