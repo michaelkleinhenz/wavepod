@@ -80,9 +80,7 @@ function renderRange(
   for (let pos = start; pos < end; pos += BLOCK) {
     const n = Math.min(BLOCK, end - pos);
     if (tracks) {
-      out[0].fill(0);
-      out[1].fill(0);
-      for (const t of tracks) mixer.renderTrackInto(t, pos, n, out);
+      mixer.renderStems(tracks, pos, n, out);
     } else {
       mixer.render(pos, n, out);
     }

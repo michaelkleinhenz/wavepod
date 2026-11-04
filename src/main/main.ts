@@ -44,6 +44,11 @@ import { OscServer } from './oscServer';
 import { auphonicInfo, auphonicPresets, normalizeAuphonic, sendToAuphonic, updateAuphonic, type StoredAuphonic } from './auphonic';
 import { normalizeOscSettings } from '../core/osc';
 import { unpackZencastrZip } from './zencastr';
+import { TranscriptionService } from './transcribe/service';
+import { normalizeTranscriptionSettings } from '../core/elevenlabs';
+import { timelineWords } from '../core/transcript';
+import { decodeKey, encodeKey } from './auphonic';
+import type { CleanupItem, CleanupOptions, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
@@ -64,6 +69,9 @@ interface Settings {
   /** OSC remote control; off unless switched on in Setup. */
   osc: OscSettings;
   auphonic: StoredAuphonic;
+  transcription: TranscriptionSettings;
+  /** ElevenLabs API key, stored like the Auphonic one ("enc:…" where the OS can encrypt). */
+  elevenLabsKey: string;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -81,9 +89,11 @@ function loadSettings(): Settings {
       mcp: normalizeMcpSettings(raw.mcp),
       osc: normalizeOscSettings(raw.osc),
       auphonic: normalizeAuphonic(raw.auphonic),
+      transcription: normalizeTranscriptionSettings(raw.transcription),
+      elevenLabsKey: typeof raw.elevenLabsKey === 'string' ? raw.elevenLabsKey : '',
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '' };
   }
 }
 
@@ -304,6 +314,7 @@ const mcpHost: WavePodHost = {
     send(IPC.projectEdited, { project, summary });
   },
   measureLoudness: () => handlers.measureLoudness() as Promise<LoudnessReport[]>,
+  transcripts: () => transcription.load(),
   get presets() {
     return presetLibrary;
   },
@@ -317,6 +328,21 @@ const mcpHost: WavePodHost = {
     };
   },
 };
+
+const transcription = new TranscriptionService({
+  project: () => current.project,
+  dir: () => current.dir,
+  settings: () => settings.transcription,
+  apiKey: () => decodeKey(settings.elevenLabsKey),
+  saveSettings: (s, apiKey) => {
+    settings.transcription = s;
+    if (apiKey !== undefined) settings.elevenLabsKey = encodeKey(apiKey);
+    saveSettings();
+  },
+  workerPath: path.join(__dirname, 'transcribeWorker.js'),
+  progress: (p) => send(IPC.transcribeProgress, p),
+  updated: (file, transcript) => send(IPC.transcript, { file, transcript }),
+});
 
 function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -584,6 +610,20 @@ const handlers: Record<InvokeMethod, Handler> = {
   alignClip: (clipId: string, refTrackId: string) =>
     runWorker({ kind: 'align', project: current.project, dir: current.dir, clipIds: [clipId], refTrackId }),
 
+  getTranscriptionInfo: () => transcription.info(),
+  setTranscriptionSettings: (input: TranscriptionSettingsInput) => transcription.setSettings(input),
+  loadTranscripts: () => transcription.load(),
+  transcribe: (opts?: { trackIds?: string[]; redo?: boolean }) => {
+    flushSave();
+    return transcription.transcribe(opts ?? {});
+  },
+  stopTranscribing: () => transcription.stop(),
+  deleteTranscripts: (trackIds?: string[]) => transcription.remove(trackIds),
+  findCleanup: (opts: CleanupOptions) => {
+    const words = timelineWords(current.project, transcription.load());
+    return runWorker<CleanupItem[]>({ kind: 'cleanup', project: current.project, dir: current.dir, words, cleanup: opts });
+  },
+
   vstStatus: () => ({ available: !!vstExe, dirs: defaultVstDirs() }),
   vstScan: (force?: boolean) => {
     if (!vstExe) throw new Error('VST3 support is not included in this build.');
@@ -772,6 +812,9 @@ function buildMenu(): void {
         { label: 'Normalize Clip Loudness', accelerator: 'Alt+Shift+N', click: menuSend('normalize-clips') },
         { label: 'Loudness Analysis…', accelerator: 'Shift+CmdOrCtrl+L', click: menuSend('loudness-analysis') },
         { type: 'separator' },
+        { label: 'Transcribe Episode', click: menuSend('transcribe') },
+        { label: 'Clean Up Pauses and Hesitations…', accelerator: 'Shift+CmdOrCtrl+K', click: menuSend('cleanup') },
+        { type: 'separator' },
         { label: 'Prepare All Tracks for Editing', click: menuSend('prepare-for-editing') },
         {
           label: 'Prepare for Editing When Recording Stops',
@@ -793,6 +836,8 @@ function buildMenu(): void {
         },
         { type: 'separator' },
         { label: 'Select All Clips', accelerator: 'CmdOrCtrl+A', click: menuSend('select-all') },
+        { type: 'separator' },
+        { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: menuSend('settings') },
       ],
     },
     {
@@ -801,6 +846,7 @@ function buildMenu(): void {
         { label: 'Setup', accelerator: 'CmdOrCtrl+1', click: menuSend('view-setup') },
         { label: 'Record && Edit', accelerator: 'CmdOrCtrl+2', click: menuSend('view-edit') },
         { label: 'Chapters', accelerator: 'CmdOrCtrl+3', click: menuSend('view-chapters') },
+        { label: 'Transcript', accelerator: 'Shift+CmdOrCtrl+T', click: menuSend('transcript') },
         { type: 'separator' },
         // The keys > and < are handled in the window (they sit on different keys per layout); the
         // in-app menu bar only shows them, see MENU_KEY_HINTS.

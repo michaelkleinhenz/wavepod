@@ -5,6 +5,7 @@ import { dbToGain } from '../shared/time';
 import { panGains } from './dsp';
 import { fadesAt, trackFades } from './crossfade';
 import { Ducker, isDucked } from './ducking';
+import { Automix, AUTOMIX_DEFAULT_DEPTH, isAutomixed } from './automix';
 import { WavReader } from './wav';
 import { MUTE_RAMP_SECONDS, muteGainAt, regionsOverlap } from './muteRegions';
 import { FxChain } from './fx/chain';
@@ -74,6 +75,9 @@ export class Mixer {
   private duckAcc: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private duckGains = new Float32Array(0);
   private masterChain: ChainState | null = null;
+  private automix: Automix | null = null;
+  private amBufs: Float32Array[][] = [];
+  private amGains: Float32Array[] = [];
 
   private _project: Project;
 
@@ -146,12 +150,9 @@ export class Mixer {
     out[0].fill(0, 0, frames);
     out[1].fill(0, 0, frames);
     const ducked = tracks.filter(isDucked);
-    if (!ducked.length) {
-      for (const track of tracks) this.renderTrackInto(track, position, frames, out);
-      return;
-    }
     // the other tracks first: their sum is what the ducked tracks duck under
-    for (const track of tracks) if (!isDucked(track)) this.renderTrackInto(track, position, frames, out);
+    this.renderAutomixed(tracks.filter((t) => !isDucked(t)), position, frames, out);
+    if (!ducked.length) return;
     if (this.duckBuf[0].length < frames) {
       this.duckBuf = [new Float32Array(frames), new Float32Array(frames)];
       this.duckAcc = [new Float32Array(frames), new Float32Array(frames)];
@@ -184,6 +185,71 @@ export class Mixer {
       out[0][i] += al[i];
       out[1][i] += ar[i];
     }
+  }
+
+  /**
+   * Renders only `stems` (overwriting `out`), as they sound in the mix: automixed tracks
+   * still follow the other audible automixed tracks. Used for stem and single-track export.
+   */
+  renderStems(stems: Track[], position: number, frames: number, out: Float32Array[]): Float32Array[] {
+    out[0].fill(0, 0, frames);
+    out[1].fill(0, 0, frames);
+    const ids = new Set(stems.map((t) => t.id));
+    const audible = audibleTracks(this.project).filter((t) => !isDucked(t));
+    const automixed = audible.filter((t) => isAutomixed(t) && ids.has(t.id));
+    if (!automixed.length) {
+      for (const t of stems) this.renderTrackInto(t, position, frames, out);
+      return out;
+    }
+    const others = stems.filter((t) => !automixed.includes(t));
+    for (const t of others) this.renderTrackInto(t, position, frames, out);
+    this.renderAutomixed(audible.filter(isAutomixed), position, frames, out, ids);
+    return out;
+  }
+
+  /** Adds `tracks` into `out`; the automixed ones among them first share their gain (crosstalk removal). */
+  private renderAutomixed(tracks: Track[], position: number, frames: number, out: Float32Array[], only?: Set<string>): void {
+    const mixed = tracks.filter(isAutomixed);
+    const wanted = (t: Track) => !only || only.has(t.id);
+    for (const track of tracks) if ((mixed.length < 2 || !isAutomixed(track)) && wanted(track)) this.renderTrackInto(track, position, frames, out);
+    if (mixed.length < 2) {
+      this.automix = null;
+      return;
+    }
+    if (!this.automix) this.automix = new Automix(this.project.sampleRate);
+    const am = this.automix;
+    if (am.next !== position) am.reset();
+    while (this.amBufs.length < mixed.length) this.amBufs.push([new Float32Array(0), new Float32Array(0)]);
+    while (this.amGains.length < mixed.length) this.amGains.push(new Float32Array(0));
+    const bufs = this.amBufs.slice(0, mixed.length);
+    const prevPeaks = mixed.map((t) => this.trackPeaks.get(t.id) ?? 0);
+    mixed.forEach((track, t) => {
+      if (bufs[t][0].length < frames) {
+        bufs[t] = this.amBufs[t] = [new Float32Array(frames), new Float32Array(frames)];
+        this.amGains[t] = new Float32Array(frames);
+      }
+      bufs[t][0].fill(0, 0, frames);
+      bufs[t][1].fill(0, 0, frames);
+      this.renderTrackInto(track, position, frames, bufs[t]);
+    });
+    const depths = mixed.map((t) => t.automix?.depth ?? AUTOMIX_DEFAULT_DEPTH);
+    am.process(mixed.map((t) => t.id), bufs, depths, frames, this.amGains);
+    am.next = position + frames;
+    mixed.forEach((track, t) => {
+      const [bl, br] = bufs[t];
+      const g = this.amGains[t];
+      if (!wanted(track)) return;
+      let peak = 0;
+      for (let i = 0; i < frames; i++) {
+        const l = bl[i] * g[i];
+        const r = br[i] * g[i];
+        out[0][i] += l;
+        out[1][i] += r;
+        if (this.metering) peak = Math.max(peak, Math.abs(l), Math.abs(r));
+      }
+      // the meter shows what's left after the automix, not what the track brought in
+      if (this.metering) this.trackPeaks.set(track.id, Math.max(prevPeaks[t], peak));
+    });
   }
 
   /** What every metered filter did since the previous call, by filter id. */

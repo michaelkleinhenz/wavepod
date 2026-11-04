@@ -13,7 +13,7 @@ const common = { bundle: true, sourcemap: !prod, minify: prod, logLevel: 'info',
 const configs = [
   {
     ...common,
-    entryPoints: { main: 'src/main/main.ts', exportWorker: 'src/main/exportWorker.ts', vstBridge: 'src/main/vst/bridgeWorker.ts', recordWorker: 'src/main/recordWorker.ts' },
+    entryPoints: { main: 'src/main/main.ts', exportWorker: 'src/main/exportWorker.ts', vstBridge: 'src/main/vst/bridgeWorker.ts', recordWorker: 'src/main/recordWorker.ts', transcribeWorker: 'src/main/transcribe/worker.ts' },
     outdir: 'dist/main',
     platform: 'node',
     format: 'cjs',

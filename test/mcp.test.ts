@@ -227,3 +227,38 @@ describe('MCP over HTTP', () => {
     await expect(startMcpHttpServer(new McpServer({ name: 'b', version: '1' }), http.port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
   });
 });
+
+describe('MCP automix', () => {
+  it('turns crosstalk removal on for several tracks in one step', async () => {
+    const fake = fakeHost();
+    const server = createWavePodServer(fake.host, '1');
+    let r = await call(server, 'set_automix', { tracks: ['Host'], enabled: true });
+    expect(r.isError).toBe(false);
+    expect(r.data.note).toMatch(/Only one track/);
+    r = await call(server, 'set_automix', { tracks: ['Host', 'Guest'], enabled: true, depthDb: 24 });
+    expect(r.data.automixed.map((t: { name: string }) => t.name)).toEqual(['Host', 'Guest']);
+    expect(fake.project.tracks.map((t) => t.automix)).toEqual([{ enabled: true, depth: 24 }, { enabled: true, depth: 24 }]);
+    expect(fake.summaries.at(-1)).toBe('Automix on for Host, Guest');
+    r = await call(server, 'list_tracks');
+    expect(r.data.tracks[0].automix).toEqual({ depthDb: 24 });
+    r = await call(server, 'set_automix', { tracks: ['master'], enabled: true });
+    expect(r.isError).toBe(true);
+  });
+});
+
+describe('MCP transcript', () => {
+  it('returns speaker paragraphs at timeline times, or says there is none', async () => {
+    const fake = fakeHost();
+    const server = createWavePodServer(fake.host, '1');
+    let r = await call(server, 'get_transcript');
+    expect(r.data.transcribed).toBe(false);
+    const p = fake.project;
+    const sr = p.sampleRate;
+    p.tracks[0].clips.push({ id: 'c1', file: 'media/host.wav', start: 2 * sr, offset: 0, length: 10 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    fake.host.transcripts = () => ({
+      'media/host.wav': { version: 1, file: 'media/host.wav', sampleRate: sr, language: 'deu', model: 'scribe_v2', created: '', words: [{ text: 'Hallo', start: 0, end: sr / 2 }, { text: 'ähm', start: sr, end: 1.2 * sr }, { text: 'Welt.', start: 1.5 * sr, end: 2 * sr }] },
+    });
+    r = await call(server, 'get_transcript');
+    expect(r.data).toEqual({ transcribed: true, paragraphs: [{ speaker: 'Host', start: 2, text: 'Hallo ähm Welt.' }], fillers: 1 });
+  });
+});

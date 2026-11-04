@@ -1,13 +1,15 @@
 // The tools WavePod offers to AI agents over MCP: reading the project and editing filter stacks.
 // Every edit goes through the app (one undo step each), so it shows up in the FX panel at once.
-import type { Fx, FxType, LoudnessReport, LoudnessStats, Project, TransportState, VstParamInfo, VstPluginInfo, VstPluginRef } from '../../shared/types';
+import type { FileTranscript, Fx, FxType, LoudnessReport, LoudnessStats, Project, TransportState, VstParamInfo, VstPluginInfo, VstPluginRef } from '../../shared/types';
 import { FX_DEFINITIONS, createFx, fxDefinition, normalizeFx, type FxParamSpec } from '../fx/definitions';
 import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect } from '../fx/voiceEffects';
 import { MASTER, VOICE_CHAIN, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, updateFx, type FxTarget } from '../fx/stack';
 import { findPresetEntry, presetEdited } from '../fx/presets';
 import type { FxPresetLibrary } from '../fx/presetLibrary';
 import { createVstFx, visibleVstParams, vstFailures } from '../fx/vst';
-import { projectLength } from '../project';
+import { projectLength, updateTrack } from '../project';
+import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
+import { paragraphs, timelineWords } from '../transcript';
 import { formatTimestamp, uid } from '../../shared/time';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
 
@@ -20,6 +22,8 @@ export interface WavePodHost {
   /** Applies an edit as one undo step and shows `summary` to the user. */
   apply(next: Project, summary: string): void;
   measureLoudness(): Promise<LoudnessReport[]>;
+  /** The episode's transcripts by media file (made with Transcribe in WavePod). */
+  transcripts?(): Record<string, FileTranscript>;
   /** Filter presets (factory, plug-in programs and the user's own), or null if not available. */
   presets?: FxPresetLibrary | null;
   /** VST3 support, or null when this build has no plug-in host. */
@@ -44,7 +48,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, a voice behind a wall, outdoors, in a church and more.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, a voice behind a wall, outdoors, in a church and more.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -317,8 +321,78 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             clips: t.clips.length,
             audioSeconds: round(t.clips.reduce((s, c) => s + c.length, 0) / p.sampleRate, 1),
             filters: (t.fx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`),
+            ...(t.automix?.enabled ? { automix: { depthDb: t.automix.depth } } : {}),
+            ...(t.duck?.enabled ? { duck: { depthDb: t.duck.depth } } : {}),
           })),
           master: { id: MASTER, name: 'Master', gainDb: p.masterGain, filters: (p.masterFx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`) },
+        };
+      },
+    },
+    {
+      name: 'set_automix',
+      description:
+        'Turns crosstalk removal (automix) on or off for speech tracks. For people recorded in one room, where every mic also picks up the others: ' +
+        'among the automixed tracks, whoever is loudest stays up and the others are turned down by up to depthDb. It needs at least two automixed tracks and works in playback and export.',
+      inputSchema: obj(
+        {
+          tracks: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Track ids or names.' },
+          enabled: { type: 'boolean', description: 'true = take part in the automix.' },
+          depthDb: { type: 'number', minimum: 1, maximum: 60, description: 'How far a track is turned down at most while someone else speaks. Default 18.' },
+        },
+        ['tracks', 'enabled'],
+      ),
+      annotations: { title: 'Set automix', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const refs = args.tracks;
+        if (!Array.isArray(refs) || !refs.length) throw new ToolError('"tracks" must list at least one track.');
+        const enabled = bool(args, 'enabled')!;
+        const depthArg = args.depthDb === undefined ? undefined : Number(args.depthDb);
+        if (depthArg !== undefined && !(depthArg >= 1 && depthArg <= 60)) throw new ToolError('"depthDb" must be between 1 and 60.');
+        const names: string[] = [];
+        for (const ref of refs) {
+          const { target, name } = resolveTarget(project, String(ref));
+          if (target === MASTER) throw new ToolError('The master bus can\'t be automixed.');
+          const track = project.tracks.find((t) => t.id === target)!;
+          const automix = { enabled, depth: depthArg ?? track.automix?.depth ?? AUTOMIX_DEFAULT_DEPTH };
+          project = updateTrack(project, target, { automix });
+          names.push(name);
+        }
+        host.apply(project, `${enabled ? 'Automix on' : 'Automix off'} for ${names.join(', ')}`);
+        const on = host.project().tracks.filter((t) => t.automix?.enabled && !t.duck?.enabled);
+        return {
+          automixed: on.map((t) => ({ id: t.id, name: t.name, depthDb: t.automix!.depth })),
+          ...(on.length === 1 ? { note: 'Only one track is automixed; it has no effect until a second track takes part.' } : {}),
+        };
+      },
+    },
+    {
+      name: 'get_transcript',
+      description:
+        'The episode transcript as speaker paragraphs with start times (seconds, timeline positions after all edits), if the user has transcribed it in WavePod. ' +
+        'Useful for show notes, chapter titles and summaries. Hesitations are marked with "filler" counts.',
+      inputSchema: obj({
+        from: { type: 'number', minimum: 0, description: 'Start (seconds); default the beginning.' },
+        to: { type: 'number', minimum: 0, description: 'End (seconds); default the end.' },
+      }),
+      annotations: { title: 'Get transcript', ...READ },
+      run: (args) => {
+        const p = host.project();
+        const sr = p.sampleRate;
+        const words = timelineWords(p, host.transcripts?.() ?? {});
+        if (!words.length) return { transcribed: false, note: 'No transcript yet. The user can make one in WavePod: View › Transcript › Transcribe.' };
+        const from = Number(args.from ?? 0) * sr;
+        const to = args.to === undefined ? Infinity : Number(args.to) * sr;
+        const inRange = words.filter((w) => w.start >= from && w.start < to);
+        const names = new Map(p.tracks.map((t) => [t.id, t.name]));
+        return {
+          transcribed: true,
+          paragraphs: paragraphs(inRange, sr).map((para) => ({
+            speaker: names.get(para.trackId) ?? '',
+            start: round(para.start / sr, 2),
+            text: para.words.map((i) => inRange[i].text).join(' '),
+          })),
+          fillers: inRange.filter((w) => w.filler).length,
         };
       },
     },
