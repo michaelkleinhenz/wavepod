@@ -129,3 +129,9 @@ Podlove, Zoom PodTrak, Focusrite, Bitfocus Companion, Stream Deck, Claude and
 other product names are trademarks of their respective owners. They are used
 only to describe compatibility; WavePod is not affiliated with or endorsed by
 any of them.
+
+## Web page
+
+The project web page in `site/` uses the Inter, Space Grotesk and JetBrains
+Mono fonts, served from the site itself and licensed under the SIL Open Font
+License 1.1 (see `site/fonts/LICENSE-*.txt`).
