@@ -345,7 +345,7 @@ export class RecordingMonitor {
       warnings.push({
         key: 'dropout',
         level: 'warning',
-        text: `Audio dropped out at ${fmtTime(this.lastDropout / sr)} (${Math.round((this.droppedTotal / sr) * 1000)} ms lost so far). A larger buffer size in Setup can help.`,
+        text: `Audio dropped out at ${fmtTime(this.lastDropout / sr)} (${Math.round((this.droppedTotal / sr) * 1000)} ms lost so far). A higher latency (Setup › Audio › Advanced audio settings) can help.`,
       });
     }
     for (const t of this.tracks) {

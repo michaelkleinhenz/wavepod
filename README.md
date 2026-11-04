@@ -133,10 +133,11 @@ prints the options instead of crashing:
 
 1. Enable multitrack mode in the RØDECaster's USB audio settings
    and connect it over USB.
-2. In WavePod's **Setup** view pick the RØDECaster as input device. The
-   16 channels appear with their names and live meters.
-3. Click **Create speaker tracks**. Each mic and remote source gets its own
-   armed track.
+2. In WavePod's **Setup** view, on the **Audio** tab, pick the RØDECaster
+   under **Record from**.
+3. On the **Microphones** tab the 16 channels appear with their names and
+   live meters. Click **Create speaker tracks**: each mic and remote source
+   gets its own armed track.
 4. Switch to **Record & Edit** and press `R`.
 5. When the recording is done, run **Edit › Prepare All Tracks for Editing**
    (or the toolbar button) to unarm all tracks, so `R` can't start a new take
@@ -144,7 +145,8 @@ prints the options instead of crashing:
    same menu to have this happen automatically.
 
 On Windows the multitrack channels are only exposed through RØDE's ASIO
-driver; pick **ASIO** as audio system if it is offered.
+driver; pick **ASIO** as **Audio driver** (Setup › Audio › Advanced audio
+settings) if it is offered.
 
 ## Keyboard
 
@@ -177,19 +179,20 @@ Any class-compliant USB MIDI controller (pad controller, keyboard, foot
 switch, a mixer's MIDI out) can start and stop recording and drop chapter
 and edit markers; play/pause, stop, record on/off, the cough buttons of
 speakers 1–6 (muted while held) and soundboard slots 1–9 can be mapped too.
-In **Setup → MIDI controller**, click *Learn* next to a function and press
+In **Setup → Controllers → MIDI controller**, click *Learn* next to a function and press
 the pad, key or button. Notes fire on note-on, controllers when they go
 to 64 or above (once per press, so a fader doesn't repeat), program
 changes always. A mapping listens to the device it was learned from;
-switch it to *Any device* if you use more than one. Mappings are stored in
+switch it to *Any device* (tick *Show device and button type*) if you use
+more than one. Mappings are stored in
 the app settings, not in the episode, so they work in every project.
 
 ## Remote control (OSC)
 
 For a Stream Deck through [Bitfocus Companion](https://bitfocus.io/companion)
 (a *Generic OSC* connection), TouchOSC or anything else that sends OSC over
-UDP, switch on **Setup → Remote control (OSC)**. WavePod listens on port 9000
-(changeable), only for this computer unless *Accept from other computers*
+UDP, switch on **Setup → Controllers → Stream Deck and OSC remotes**. WavePod
+listens on port 9000 (changeable under *Connection details and addresses*), only for this computer unless *Accept from other computers*
 is ticked. Addresses:
 
 | Address | Does |
@@ -221,9 +224,9 @@ stacks: "give every speaker the voice chain, put a gentle compressor after
 the de-esser on the guest and a limiter at −1 dB on the master, then check
 the loudness".
 
-It is off by default. Switch it on in **Setup → AI agents (MCP)**. The
+It is off by default. Switch it on in **Setup → AI agents**. The
 server listens on `http://127.0.0.1:47474/mcp` (the port can be changed
-there) and only accepts connections from this computer; requests from web
+under *Connection details*) and only accepts connections from this computer; requests from web
 pages are refused. Any program on your computer can connect while it is on,
 so switch it off when you don't use it.
 

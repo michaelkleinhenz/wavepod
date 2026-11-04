@@ -98,3 +98,25 @@ export function errorMessage(e: unknown): string {
   // Strip Electron's IPC prefix.
   return msg.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 }
+
+// Which disclosures are open, kept across re-renders (views rebuild their DOM on every change).
+const openDisclosures = new Set<string>();
+
+/**
+ * A collapsible "Advanced" section for technical settings. `key` identifies it across re-renders so it
+ * stays open or closed as the user left it; `forceOpen` opens it regardless (e.g. when it holds the fix
+ * for a visible problem).
+ */
+export function disclosure(key: string, summary: string, children: Child[], forceOpen = false): HTMLDetailsElement {
+  const el = h('details', { class: 'disclosure', open: forceOpen || openDisclosures.has(key) });
+  // Recorded on the user's click (not on 'toggle', which also fires for the initial or forced state).
+  const head = h('summary', {
+    onclick: () => {
+      if (el.open) openDisclosures.delete(key);
+      else openDisclosures.add(key);
+    },
+  }, summary);
+  el.append(head);
+  append(el, children);
+  return el;
+}
