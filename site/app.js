@@ -295,7 +295,7 @@
       const v = release.tag_name.replace(/^v/, '');
       const date = new Date(release.published_at).toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric' });
       $('#release-line').textContent = `Latest version ${v}, released ${date}.`;
-      $('#pill-text').textContent = `Version ${v} is out · Free & open source`;
+      $('#pill-text').textContent = `Version ${v} is out · Free & Open Source`;
     })
     .catch(() => {});
 
