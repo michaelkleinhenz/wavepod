@@ -264,6 +264,37 @@ export interface TransportUpdate {
   fxMeters?: Record<string, FxMeter>;
   /** While playing: peak (linear) each track played since the previous update, by track id. Meters unarmed tracks. */
   trackPeaks?: Record<string, number>;
+  /** While recording: problems to show now, and how much disk is left. */
+  health?: RecordingHealth;
+}
+
+export type RecordingProblem = 'dropout' | 'crackle' | 'clipping' | 'stall' | 'disk';
+
+/** A problem found in a take, at a frame counted from the start of the take. Becomes an edit marker. */
+export interface RecordingEvent {
+  frame: Frames;
+  /** Last occurrence merged into this one. */
+  lastFrame?: Frames;
+  count?: number;
+  kind: RecordingProblem;
+  trackId?: string;
+  text: string;
+}
+
+export interface RecordingWarning {
+  /** Stable while the same problem lasts. */
+  key: string;
+  level: 'warning' | 'critical';
+  trackId?: string;
+  text: string;
+}
+
+export interface RecordingHealth {
+  warnings: RecordingWarning[];
+  /** Seconds of recording the disk still has room for, if known. */
+  diskSecondsLeft: number | null;
+  /** Problems found in this take so far. */
+  problems: number;
 }
 
 /** Live activity of one filter, for its meters. */
