@@ -3,6 +3,7 @@ import type { MidiButtonMode } from '../shared/types';
 import { MIDI_ACTIONS, describeTrigger, normalizeDeviceName } from '../core/midi';
 import { h } from './dom';
 import { midi } from './midi';
+import { store } from './store';
 
 // Kept across re-renders so the last message stays visible.
 const activity = h('span', { class: 'midi-activity' }, 'No MIDI messages yet');
@@ -16,7 +17,7 @@ midi.onActivity = (text) => {
 function statusText(): string {
   switch (midi.state) {
     case 'off':
-      return 'MIDI input is switched off.';
+      return 'Switched off.';
     case 'starting':
       return 'Looking for MIDI devices…';
     case 'unsupported':
@@ -27,6 +28,9 @@ function statusText(): string {
       return midi.inputs.length ? `Connected: ${midi.inputs.join(', ')}` : 'No MIDI device connected. Plug in a USB MIDI controller; it shows up here.';
   }
 }
+
+// Whether the Device and Button columns are shown (most people never need them).
+let showDetails = false;
 
 export function renderMidiCard(): HTMLElement {
   const on = midi.settings.enabled;
@@ -41,7 +45,7 @@ export function renderMidiCard(): HTMLElement {
         'label',
         { class: 'row' },
         h('input', { type: 'checkbox', checked: on, onchange: (e: Event) => void midi.setEnabled((e.target as HTMLInputElement).checked) }),
-        'Use MIDI input',
+        'Use a MIDI controller',
       ),
     ),
     h('p', { class: midi.state === 'denied' ? 'warning' : 'muted' }, statusText()),
@@ -49,11 +53,33 @@ export function renderMidiCard(): HTMLElement {
   if (!on) return card;
 
   card.append(
-    h('p', { class: 'muted' }, 'Click Learn, then press and release the button, pad or key on your controller once. Learn tells momentary buttons from toggle (latching) buttons, which send on and off on alternate presses. Mappings are saved with the app and work in every episode.'),
-    h('div', { class: 'row' }, h('span', { class: 'muted' }, 'Last message:'), activity),
+    h('p', { class: 'muted' }, 'To assign a button: click Learn next to a function, then press and release the button, pad or key on your controller once. Assignments are saved with the app and work in every episode.'),
+    h(
+      'div',
+      { class: 'row' },
+      h('span', { class: 'muted' }, 'Last message:'),
+      activity,
+      h(
+        'label',
+        { class: 'row midi-details-toggle', title: 'Limit an assignment to one device, or fix a button that Learn took for the wrong type' },
+        h('input', {
+          type: 'checkbox',
+          checked: showDetails,
+          onchange: (e: Event) => {
+            showDetails = (e.target as HTMLInputElement).checked;
+            store.notify('midi');
+          },
+        }),
+        'Show device and button type',
+      ),
+    ),
   );
 
-  const table = h('table', { class: 'midi-map' }, h('tr', null, h('th', null, 'Function'), h('th', null, 'MIDI'), h('th', null, 'Device'), h('th', null, 'Button'), h('th', null, '')));
+  const table = h(
+    'table',
+    { class: 'midi-map' },
+    h('tr', null, h('th', null, 'Function'), h('th', null, 'Assigned to'), showDetails ? h('th', null, 'Device') : null, showDetails ? h('th', null, 'Button type') : null, h('th', null, '')),
+  );
   for (const { action, label } of MIDI_ACTIONS) {
     const trigger = midi.triggerFor(action);
     const learning = midi.learning === action;
@@ -88,9 +114,9 @@ export function renderMidiCard(): HTMLElement {
         'tr',
         { class: learning ? 'learning' : '' },
         h('td', null, label),
-        h('td', null, learning ? h('span', { class: 'warning' }, 'Press a control on your MIDI device… (Esc cancels)') : trigger ? describeTrigger(trigger) : h('span', { class: 'muted' }, 'Not mapped')),
-        h('td', null, deviceCell),
-        h('td', null, modeCell),
+        h('td', null, learning ? h('span', { class: 'warning' }, 'Press a control on your MIDI device… (Esc cancels)') : trigger ? describeTrigger(trigger) : h('span', { class: 'muted' }, 'Not assigned')),
+        showDetails ? h('td', null, deviceCell) : null,
+        showDetails ? h('td', null, modeCell) : null,
         h(
           'td',
           { class: 'midi-buttons' },

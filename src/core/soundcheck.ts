@@ -55,7 +55,7 @@ export function runSoundcheck(ctx: SoundcheckContext): SoundcheckIssue[] {
   const out: SoundcheckIssue[] = [];
   const armed = project.tracks.filter((t) => t.armed && t.inputChannels.length > 0);
 
-  if (!ctx.inputOpen) out.push({ id: 'no-input', level: 'error', message: 'No input device is open. Pick your interface in Setup.' });
+  if (!ctx.inputOpen) out.push({ id: 'no-input', level: 'error', message: 'No input device is open. Pick your interface on the Audio tab in Setup.' });
   if (!armed.length) out.push({ id: 'no-armed', level: 'error', message: 'No track is armed. Arm the tracks you want to record (the R button on each track).' });
 
   if (ctx.deviceSampleRate !== 48000) {

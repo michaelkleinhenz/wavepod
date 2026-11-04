@@ -1,7 +1,7 @@
 // Setup card for the OSC server (Stream Deck via Bitfocus Companion, TouchOSC, …).
 import type { OscSettings, OscStatus } from '../shared/types';
 import { OSC_ADDRESSES } from '../core/osc';
-import { errorMessage, h, toast } from './dom';
+import { disclosure, errorMessage, h, toast } from './dom';
 import { api, store } from './store';
 
 let status: OscStatus | null = null;
@@ -30,6 +30,11 @@ async function apply(patch: Partial<OscSettings>): Promise<void> {
   store.notify('osc');
 }
 
+/** True while OSC remote control is switched on (for the Setup tab's indicator). */
+export function isOscOn(): boolean {
+  return !!status?.enabled;
+}
+
 export function renderOscCard(): HTMLElement {
   if (!status) load();
   const on = !!status?.enabled;
@@ -39,18 +44,29 @@ export function renderOscCard(): HTMLElement {
     h(
       'div',
       { class: 'card-head' },
-      h('h2', null, 'Remote control (OSC)'),
+      h('h2', null, 'Stream Deck and OSC remotes'),
       h(
         'label',
         { class: 'row' },
         h('input', { type: 'checkbox', checked: on, disabled: !status, onchange: (e: Event) => void apply({ enabled: (e.target as HTMLInputElement).checked }) }),
-        'Listen for OSC',
+        'Use remote control',
       ),
     ),
-    h('p', { class: 'muted' }, 'For a Stream Deck through Bitfocus Companion (“Generic OSC” connection), TouchOSC or any app that sends OSC over UDP: record, markers, cough buttons and soundboard.'),
+    h('p', { class: 'muted' }, 'Control recording, markers, cough buttons and the soundboard from a Stream Deck (through Bitfocus Companion, as a “Generic OSC” connection), TouchOSC or any other OSC app.'),
   );
   if (!status || !on) return card;
   card.append(
+    h(
+      'p',
+      null,
+      status.running
+        ? h('span', { class: 'mcp-state ok' }, `Listening on port ${status.port}${status.allowNetwork ? ', also from other computers' : ''}${status.received ? ` · ${status.received} messages received` : ''}`)
+        : h('span', { class: 'warning' }, status.error ?? 'Not running'),
+    ),
+    h('p', { class: 'hint' }, `In Companion, add a “Generic OSC” connection to 127.0.0.1 port ${status.port} and send the addresses listed under “Connection details and addresses”.`),
+  );
+  card.append(
+    disclosure('osc-advanced', 'Connection details and addresses', [
     h(
       'div',
       { class: 'row' },
@@ -77,9 +93,6 @@ export function renderOscCard(): HTMLElement {
         h('input', { type: 'checkbox', checked: status.allowNetwork, onchange: (e: Event) => void apply({ allowNetwork: (e.target as HTMLInputElement).checked }) }),
         'Accept from other computers',
       ),
-      status.running
-        ? h('span', { class: 'mcp-state ok' }, `Listening${status.received ? ` · ${status.received} messages` : ''}`)
-        : h('span', { class: 'warning' }, status.error ?? 'Not running'),
     ),
     h(
       'table',
@@ -87,7 +100,8 @@ export function renderOscCard(): HTMLElement {
       h('tr', null, h('th', null, 'Address'), h('th', null, 'Does')),
       ...OSC_ADDRESSES.map((a) => h('tr', null, h('td', null, h('code', null, a.address)), h('td', null, a.what))),
     ),
-    h('p', { class: 'hint' }, 'Buttons that send 1 on press and 0 on release work as they are. Without an argument a message counts as a press.'),
+    h('p', { class: 'muted' }, 'Buttons that send 1 on press and 0 on release work as they are. Without an argument a message counts as a press.'),
+    ]),
   );
   return card;
 }
