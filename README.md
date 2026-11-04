@@ -227,6 +227,16 @@ Paste the API key from Auphonic's Account Settings once; pick one of your
 multitrack presets and whether to start the production right away or review
 it on the website first.
 
+## Zencastr
+
+**File → New Episode from Zencastr ZIP…** turns a session downloaded from
+Zencastr (Library → Recordings → Download) into a new episode: one track per
+participant (the WAV when the ZIP has both WAV and MP3), the soundboard
+recording on the Soundboard track, all starting at 0 as in the session. When
+someone left and rejoined, their parts go one after the other on their track,
+placed by the time in the file names. Transcripts, video and post-production
+mixes are left out.
+
 ## AI agents (MCP)
 
 WavePod can run a [Model Context Protocol](https://modelcontextprotocol.io)
@@ -356,6 +366,6 @@ WavePod is open source under the [MIT License](LICENSE), except for the
 third-party parts listed above, which keep their own licenses.
 
 VST is a registered trademark of Steinberg Media Technologies GmbH. RØDECaster,
-Auphonic, Ultraschall and the other product names mentioned here are
+Auphonic, Zencastr, Ultraschall and the other product names mentioned here are
 trademarks of their respective owners, used only to describe compatibility.
 WavePod is not affiliated with or endorsed by any of them.

@@ -13,6 +13,7 @@ import { runSoundcheck } from '../core/soundcheck';
 import { allClipIds, clipEdges, markerPositions, stepTo } from '../core/navigation';
 import { copyClips, copyRange, pasteClipboard as pasteInto } from '../core/clipboard';
 import { addRegion } from '../core/regions';
+import { ensureSoundboardTrack, soundboardTrack } from '../core/soundboard';
 import { selectionSpan } from '../core/navigation';
 import { confirmStop, showSoundcheck } from './recordDialogs';
 
@@ -487,6 +488,69 @@ export async function newProject(): Promise<void> {
     if (res) store.setProject(res.project, res.dir);
   } catch (e) {
     toast(errorMessage(e), 'error');
+  }
+}
+
+/**
+ * File › New Episode from Zencastr ZIP: a new episode with one track per participant (rejoin
+ * parts one after the other on the same track) and the soundboard recording on the Soundboard
+ * track, all starting at 0 like in the Zencastr session.
+ */
+export async function importZencastrSession(): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before importing');
+  let res;
+  try {
+    toast('Unpacking the Zencastr session…');
+    res = await api().importZencastr();
+  } catch (e) {
+    return toast(`Could not import the Zencastr session: ${errorMessage(e)}`, 'error');
+  }
+  if (!res) return;
+  store.setProject(res.opened.project, res.opened.dir);
+  store.setView('edit');
+  const sr = store.sampleRate;
+  const failed: string[] = [];
+  try {
+    const imported: Array<{ name: string; soundboard?: boolean; clips: Array<{ file: string; start: number; length: number }> }> = [];
+    for (const t of res.tracks) {
+      toast(`Importing ${t.name}…`);
+      const clips: Array<{ file: string; start: number; length: number }> = [];
+      let end = 0;
+      for (const part of t.parts) {
+        try {
+          const channels = await decodeFile(part.path, sr);
+          const a = await api().importAudio(t.name, channels, sr);
+          // parts never overlap: a rejoin starts where the file name says, or after the last part
+          const start = Math.max(Math.round(part.start * sr), end);
+          clips.push({ file: a.file, start, length: a.length });
+          end = start + a.length;
+        } catch (e) {
+          failed.push(`${t.name}: ${errorMessage(e)}`);
+        }
+      }
+      if (clips.length) imported.push({ name: t.name, soundboard: t.soundboard, clips });
+    }
+    store.edit((p) => {
+      let q = { ...p, metadata: { ...p.metadata, title: res.title } };
+      for (const t of imported) {
+        let id: string;
+        if (t.soundboard) {
+          q = ensureSoundboardTrack(q);
+          id = soundboardTrack(q)!.id;
+        } else {
+          q = addTrack(q, { name: t.name });
+          id = q.tracks[q.tracks.length - 1].id;
+        }
+        for (const c of t.clips) q = addClip(q, id, { id: uid('clp'), file: c.file, start: c.start, offset: 0, length: c.length, gain: 0, fadeIn: 0, fadeOut: 0 });
+      }
+      return q;
+    });
+    const people = imported.filter((t) => !t.soundboard).length;
+    const sb = imported.some((t) => t.soundboard) ? ' and the soundboard' : '';
+    if (failed.length) toast(`Imported ${people} participant track(s)${sb}. Could not import ${failed.join('; ')}`, 'error');
+    else toast(`Imported “${res.title}”: ${people} participant track${people === 1 ? '' : 's'}${sb}`);
+  } finally {
+    void api().finishZencastrImport();
   }
 }
 

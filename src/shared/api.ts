@@ -34,6 +34,16 @@ export interface OpenedProject {
   dir: string;
 }
 
+/** A Zencastr session ZIP unpacked into a temporary folder, with the new episode it goes into. */
+export interface ZencastrImport {
+  opened: OpenedProject;
+  /** Session name from the ZIP's file name. */
+  title: string;
+  /** Absolute paths of the extracted files; `start` in seconds. */
+  tracks: Array<{ name: string; soundboard?: boolean; parts: Array<{ path: string; start: number }> }>;
+  skipped: string[];
+}
+
 export interface ImportedAudio {
   file: string;
   length: number;
@@ -47,6 +57,7 @@ export type MenuCommand =
   | 'show-templates-folder'
   | 'import-audio'
   | 'import-chapters'
+  | 'import-zencastr'
   | 'export'
   | 'undo'
   | 'ripple-cut'
@@ -157,6 +168,10 @@ export interface WavePodApi {
   saveTemplate(name: string): Promise<TemplateSummary>;
   deleteTemplate(id: string): Promise<void>;
   newProjectFromTemplate(id: string): Promise<OpenedProject>;
+  /** Lets the user pick a Zencastr session ZIP, unpacks its tracks and opens a new episode for them (null if cancelled). */
+  importZencastr(): Promise<ZencastrImport | null>;
+  /** Removes the temporary folder of the last Zencastr import. */
+  finishZencastrImport(): Promise<void>;
   showTemplatesFolder(): Promise<void>;
   showProjectFolder(): Promise<void>;
 
@@ -282,6 +297,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'saveTemplate',
   'deleteTemplate',
   'newProjectFromTemplate',
+  'importZencastr',
+  'finishZencastrImport',
   'showTemplatesFolder',
   'showProjectFolder',
   'getMenu',

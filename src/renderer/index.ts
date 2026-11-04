@@ -13,6 +13,7 @@ import {
   releaseAllCoughs,
   dropMarker,
   importAudioFiles,
+  importZencastrSession,
   importChapterFile,
   muteSelection,
   rippleCut,
@@ -334,6 +335,7 @@ async function main(): Promise<void> {
       case 'show-templates-folder': return void api().showTemplatesFolder();
       case 'import-audio': return void importAudioFiles();
       case 'import-chapters': return void importChapterFile();
+      case 'import-zencastr': return void importZencastrSession();
       case 'export': return exportDialog.open();
       case 'undo': return store.undo();
       case 'ripple-cut':
