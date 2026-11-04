@@ -1,0 +1,2 @@
+# The desktop entry must keep LF endings on every platform (freedesktop spec).
+*.desktop text eol=lf
