@@ -30,6 +30,7 @@ import { McpController, normalizeMcpSettings } from './mcp/controller';
 import { OscServer } from './oscServer';
 import { auphonicInfo, auphonicPresets, normalizeAuphonic, sendToAuphonic, updateAuphonic, type StoredAuphonic } from './auphonic';
 import { normalizeOscSettings } from '../core/osc';
+import { unpackZencastrZip } from './zencastr';
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
@@ -120,6 +121,8 @@ let osc: OscServer;
 let recordWorker: RecordWorker | null = null;
 /** A recovery to tell the user about once the window is there. */
 let recoveryNotice: string | null = null;
+/** Temporary folder of the Zencastr import in progress. */
+let zencastrTmp: string | null = null;
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -402,6 +405,26 @@ const handlers: Record<InvokeMethod, Handler> = {
     const { dir } = createProjectFromTemplate(projectsRoot(), templatesRoot(), id, engine.config.sampleRate);
     return openProjectDir(dir);
   },
+  importZencastr: async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Import Zencastr session',
+      properties: ['openFile'],
+      filters: [{ name: 'Zencastr session (ZIP)', extensions: ['zip'] }],
+    });
+    const file = res.filePaths[0];
+    if (res.canceled || !file) return null;
+    // unpack first, so that a wrong file doesn't leave an empty episode behind
+    const unpacked = await unpackZencastrZip(file);
+    if (zencastrTmp) fs.rmSync(zencastrTmp, { recursive: true, force: true });
+    zencastrTmp = unpacked.dir;
+    if (engine.transportState !== 'stopped') engine.stop();
+    flushSave();
+    return { opened: createNewProject(), title: unpacked.title, tracks: unpacked.tracks, skipped: unpacked.skipped };
+  },
+  finishZencastrImport: () => {
+    if (zencastrTmp) fs.rmSync(zencastrTmp, { recursive: true, force: true });
+    zencastrTmp = null;
+  },
   showTemplatesFolder: () => {
     fs.mkdirSync(templatesRoot(), { recursive: true });
     return shell.openPath(templatesRoot()).then(() => undefined);
@@ -636,6 +659,7 @@ function buildMenu(): void {
       submenu: [
         { label: 'New Episode', accelerator: 'CmdOrCtrl+N', click: menuSend('new-project') },
         { label: 'New Episode from Template…', accelerator: 'Shift+CmdOrCtrl+N', click: menuSend('new-from-template') },
+        { label: 'New Episode from Zencastr ZIP…', click: menuSend('import-zencastr') },
         { label: 'Open Episode…', accelerator: 'CmdOrCtrl+O', click: menuSend('open-project') },
         { type: 'separator' },
         { label: 'Save as Template…', click: menuSend('save-template') },
@@ -871,6 +895,7 @@ app.on('before-quit', () => {
     engine.dispose();
   }
   recordWorker?.dispose();
+  if (zencastrTmp) fs.rmSync(zencastrTmp, { recursive: true, force: true });
 });
 
 // Ctrl+C in the terminal, a logout or a kill: finish the take and save before going.
