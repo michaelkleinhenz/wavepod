@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "A simple multitrack DAW for podcasting",
   "author": "Michael Kleinhenz <michael@kleinhenz.net>",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "main": "dist/main/main.js",
   "homepage": "https://github.com/michaelkleinhenz/wavepod",
   "repository": "github:michaelkleinhenz/wavepod",
