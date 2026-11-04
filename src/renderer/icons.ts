@@ -1,4 +1,6 @@
 // Toolbar icons and their tooltips. Icons are 24×24 stroke drawings that take the button's text colour.
+// Several paths (scissors, volume-x, gauge, magnet, flag, pencil, zoom, repeat, copy, clipboard) come
+// from Lucide (https://lucide.dev, ISC License; see THIRD_PARTY_NOTICES.md).
 import { h } from './dom';
 
 const PATHS = {
