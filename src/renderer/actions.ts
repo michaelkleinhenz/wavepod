@@ -1,7 +1,7 @@
 // Commands shared by keyboard shortcuts, menus and buttons.
 import type { MarkerKind } from '../shared/types';
-import { addClip, addMarker, addTrack, chaptersToMarkers, clipsEnd, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt, updateClip, updateMarker } from '../core/project';
-import { importChapters } from '../core/chapters';
+import { addClip, addMarker, addTrack, applyChapterContent, chaptersToMarkers, clipsEnd, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt, updateClip, updateMarker } from '../core/project';
+import { importChapters, parseChapterContent } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
 import { uid } from '../shared/time';
@@ -449,6 +449,35 @@ export async function importChapterFile(): Promise<void> {
     toast(`Imported ${chapters.length} chapters`);
   } catch (e) {
     toast(`Could not import chapters: ${errorMessage(e)}`, 'error');
+  }
+}
+
+/**
+ * Imports chapter titles and links without times ("title;link" per line) into the existing
+ * chapters, in order. The start times stay.
+ */
+export async function importChapterContentFile(): Promise<void> {
+  try {
+    const chapters = store.project.markers.filter((m) => m.kind === 'chapter').length;
+    if (!chapters) {
+      toast('Add chapter markers first: the titles and links are filled into the existing chapters in order.', 'error');
+      return;
+    }
+    const res = await api().openTextFile('Chapter titles and links (title;link per line)', ['txt', 'csv']);
+    if (!res) return;
+    const content = parseChapterContent(res.text);
+    if (!content.length) {
+      toast('No chapter lines found. Use one "title;link" per line.', 'error');
+      return;
+    }
+    store.edit((p) => applyChapterContent(p, content));
+    const used = Math.min(content.length, chapters);
+    const notes: string[] = [];
+    if (content.length > chapters) notes.push(`${content.length - chapters} line(s) left over: there are only ${chapters} chapters`);
+    if (content.length < chapters) notes.push(`${chapters - content.length} chapter(s) at the end kept their text`);
+    toast(`Filled ${used} chapter(s) with titles and links${notes.length ? ` (${notes.join('; ')})` : ''}`, content.length > chapters ? 'error' : 'info');
+  } catch (e) {
+    toast(`Could not import chapter titles: ${errorMessage(e)}`, 'error');
   }
 }
 

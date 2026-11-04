@@ -159,3 +159,33 @@ function parseAttrs(s: string): Record<string, string> {
   while ((m = re.exec(s))) out[m[1]] = xmlUnescape(m[2]);
   return out;
 }
+
+/** Title and optional link for one chapter, without a start time. */
+export interface ChapterContent {
+  title: string;
+  url?: string;
+}
+
+/**
+ * Parses chapter content without times, one chapter per line as "title;link" (the link is
+ * optional). The split is at the first ";" followed by something that looks like a link (no
+ * spaces, with "://" or a dot) or by nothing, so titles with a ";" and links with a ";" both
+ * work. Blank lines are skipped.
+ */
+export function parseChapterContent(text: string): ChapterContent[] {
+  const out: ChapterContent[] = [];
+  for (const raw of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    let entry: ChapterContent = { title: line };
+    for (let i = line.indexOf(';'); i >= 0; i = line.indexOf(';', i + 1)) {
+      const rest = line.slice(i + 1).trim();
+      if (rest === '' || (!/\s/.test(rest) && /:\/\/|\./.test(rest))) {
+        entry = { title: line.slice(0, i).trim(), ...(rest ? { url: rest } : {}) };
+        break;
+      }
+    }
+    out.push(entry);
+  }
+  return out;
+}
