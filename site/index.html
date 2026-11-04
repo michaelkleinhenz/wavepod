@@ -5,145 +5,250 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WavePod</title>
   <meta name="description" content="WavePod is a free, open-source multitrack recorder and editor for podcasts, for Linux, Windows and macOS.">
+  <meta name="theme-color" content="#07080c">
   <meta property="og:title" content="WavePod">
   <meta property="og:description" content="A free, open-source multitrack recorder and editor for podcasts, for Linux, Windows and macOS.">
   <meta property="og:image" content="img/timeline.png">
   <link rel="icon" href="img/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="cursor-glow" aria-hidden="true"></div>
+
   <header class="top">
-    <a class="brand" href="./"><img src="img/icon.svg" alt="" width="28" height="28"> WavePod</a>
+    <a class="brand" href="./"><img src="img/icon.svg" alt="" width="30" height="30"> WavePod</a>
     <nav>
       <a href="#features">Features</a>
-      <a href="#download">Download</a>
-      <a href="https://github.com/michaelkleinhenz/wavepod">GitHub</a>
+      <a href="#tour">Tour</a>
+      <a href="#open-source">Open source</a>
+      <a class="nav-cta" href="#download">Download</a>
     </nav>
   </header>
 
   <main>
+    <!-- ============================================================ HERO -->
     <section class="hero">
-      <p class="tags"><span>Open source</span><span>Linux</span><span>Windows</span><span>macOS</span></p>
-      <h1>Record and edit your podcast. One track per voice.</h1>
-      <p class="lead">
-        WavePod is a simple multitrack recorder and editor made for podcasts.
-        Plug in your RØDECaster or USB interface, get a track for every
-        speaker in one click, and go from recording to a finished MP3 with
-        chapters, without a full studio DAW. Free and fully open source,
-        on Linux, Windows and macOS.
+      <a class="pill reveal" href="#download">
+        <span class="pill-dot"></span>
+        <span id="pill-text">Free &amp; open source</span>
+        <span class="pill-arrow">→</span>
+      </a>
+      <h1 class="reveal">
+        <span class="line">Record your podcast.</span>
+        <span class="line shine">One track per voice.</span>
+      </h1>
+      <p class="lead reveal">
+        WavePod is the multitrack studio made for talking. Plug in your
+        RØDECaster or USB interface, get a track for every speaker in one
+        click, and go from first word to finished MP3 with chapters.
+        Free, fully open source, on Linux, Windows and macOS.
       </p>
-      <div class="cta">
-        <a class="button primary" href="#download">Download</a>
-        <a class="button" href="https://github.com/michaelkleinhenz/wavepod">Source on GitHub</a>
+      <div class="cta reveal">
+        <a class="button primary magnetic" href="#download"><span>Download for free</span></a>
+        <a class="button ghost magnetic" href="https://github.com/michaelkleinhenz/wavepod"><span>★ Star on GitHub</span></a>
       </div>
-      <figure class="shot hero-shot">
-        <img src="img/timeline.png" width="1400" height="640"
-             alt="WavePod timeline with Host, Guest and Co-host tracks, chapter markers and a soundboard jingle">
-      </figure>
+
+      <div class="studio-wrap reveal" id="studio-wrap">
+        <div class="studio-frame">
+          <div class="studio-bar">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="studio-title">WavePod · Episode 42</span>
+            <span class="rec-badge"><i></i>REC</span>
+          </div>
+          <canvas id="studio" aria-label="Animated demo: four tracks recording live, with level meters and chapter markers" role="img"></canvas>
+        </div>
+        <p class="studio-hint">
+          This is a live demo. Press <kbd>M</kbd> or click to drop a chapter marker,
+          hold <kbd>1</kbd>–<kbd>3</kbd> for a cough button, and move over the tracks to scrub.
+        </p>
+      </div>
     </section>
 
+    <!-- ============================================================ MARQUEE -->
+    <section class="marquee-sec" aria-label="Works with">
+      <p class="eyebrow center">Works with the gear podcasters actually use</p>
+      <div class="marquee">
+        <div class="marquee-track">
+          <span>RØDECaster Pro II</span><span>RØDECaster Duo</span><span>Zoom PodTrak</span>
+          <span>Focusrite Scarlett</span><span>Class-compliant USB</span><span>VST3 plug-ins</span>
+          <span>MIDI controllers</span><span>OSC remotes</span><span>Auphonic</span>
+          <span>Core Audio</span><span>WASAPI · ASIO</span><span>ALSA · PulseAudio · JACK</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ STATS -->
+    <section class="stats">
+      <div class="stat reveal"><b data-count="16">16</b><span>input channels at once</span></div>
+      <div class="stat reveal"><b data-count="3">3</b><span>platforms, one app</span></div>
+      <div class="stat reveal"><b data-count="-16" data-suffix=" LUFS">−16 LUFS</b><span>loudness, on target</span></div>
+      <div class="stat reveal"><b data-count="0" data-prefix="€">€0</b><span>forever, MIT licensed</span></div>
+    </section>
+
+    <!-- ============================================================ FEATURES -->
     <section id="features" class="features">
-      <h2>Made for talking, not for music</h2>
-      <div class="grid">
-        <article>
+      <p class="eyebrow center reveal">Made for talking, not for music</p>
+      <h2 class="reveal">Everything a podcast needs.<br><span class="dim">Nothing it doesn't.</span></h2>
+
+      <div class="bento">
+        <article class="card span-2 reveal">
+          <div class="viz viz-meters" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
           <h3>Every microphone on its own track</h3>
-          <p>Records all 16 multitrack channels of a RØDECaster Pro II, and
-          works with RØDECaster Duo, Zoom PodTrak, Focusrite and other
-          class-compliant interfaces. Known devices are recognised and their
-          inputs named for you.</p>
+          <p>Records all 16 multitrack channels of a RØDECaster Pro II, and works with
+          RØDECaster Duo, Zoom PodTrak, Focusrite and other class-compliant interfaces.
+          Known devices are recognised and their inputs named for you, so
+          <em>Create 8 speaker tracks</em> is one click.</p>
         </article>
-        <article>
+
+        <article class="card reveal">
+          <div class="viz viz-shield" aria-hidden="true">
+            <svg viewBox="0 0 200 80"><path class="pulse" d="M0 40 H60 L70 20 L82 62 L94 12 L106 52 L114 40 H200"/></svg>
+          </div>
           <h3>Recording you can trust</h3>
-          <p>Crash-safe 16, 24 or 32-bit WAV, one file per track, with the
-          waveform drawn live. If the app or the computer goes down mid-show,
-          the take is recovered when you reopen the episode.</p>
+          <p>Crash-safe WAV, one file per track, written on its own thread. If the
+          computer goes down mid-show, the take is recovered when you reopen it.</p>
         </article>
-        <article>
+
+        <article class="card reveal">
+          <div class="viz viz-split" aria-hidden="true">
+            <span class="clip a"></span><span class="clip b"></span><span class="blade"></span>
+          </div>
           <h3>Editing for podcasters</h3>
-          <p>Split, trim, fade, ripple cut across all tracks, crossfades,
-          volume lines and cough buttons. Tape-style scrubbing and zoom down
-          to single samples when you need it.</p>
+          <p>Split, trim, fade, ripple cut across all tracks, crossfades, volume lines,
+          cough buttons and tape-style scrubbing.</p>
         </article>
-        <article>
+
+        <article class="card reveal">
+          <div class="viz viz-eq" aria-hidden="true">
+            <svg viewBox="0 0 200 80" preserveAspectRatio="none"><path id="eq-fill" class="fill"/><path id="eq-line" class="line"/></svg>
+          </div>
           <h3>Filters that sound like radio</h3>
-          <p>High-pass, EQ, gate, compressor, de-esser, limiter, noise
-          reduction and Dynamics on every track and the master, with presets
-          tuned for speech. Your VST3 plug-ins work in the same stack.</p>
+          <p>EQ, gate, compressor, de-esser, limiter, noise reduction and Dynamics,
+          with speech presets. Your VST3 plug-ins run in the same stack, safely in
+          their own process.</p>
         </article>
-        <article>
-          <h3>Chapters and loudness built in</h3>
-          <p>Set chapter markers while recording (<kbd>M</kbd>), add titles,
-          links and images later. EBU R128 analysis and loudness
-          normalisation to −16 LUFS or your own target.</p>
+
+        <article class="card reveal">
+          <div class="viz viz-lufs" aria-hidden="true">
+            <svg viewBox="0 0 120 70">
+              <path class="track" d="M10 62 A50 50 0 0 1 110 62"/>
+              <path class="arc" id="lufs-arc" d="M10 62 A50 50 0 0 1 110 62"/>
+            </svg>
+            <b id="lufs-num">−16.0</b><small>LUFS</small>
+          </div>
+          <h3>Loudness, handled</h3>
+          <p>EBU R128 analysis and normalisation to −16 LUFS or your own target,
+          without the true peak going over.</p>
         </article>
-        <article>
-          <h3>Ready to publish</h3>
-          <p>Export MP3 with ID3 chapters, WAV, Opus, stems and chapter files
-          for Podlove, Podcasting 2.0, mp4chaps and Audacity, or send the mix
-          to Auphonic.</p>
+
+        <article class="card span-2 reveal">
+          <div class="viz viz-chips" aria-hidden="true">
+            <span>MP3 + ID3 chapters</span><span>WAV</span><span>Opus</span><span>FLAC</span>
+            <span>Stems</span><span>Podlove PSC</span><span>Podcasting 2.0 JSON</span>
+            <span>mp4chaps</span><span>Audacity labels</span><span>Auphonic</span>
+          </div>
+          <h3>Chapters in, show notes out</h3>
+          <p>Set chapter markers while recording with <kbd>M</kbd>, add titles, links
+          and images later, and export everything your podcast host wants in one go.</p>
+        </article>
+
+
+        <article class="card reveal">
+          <div class="viz viz-pads" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <h3>Soundboard &amp; controllers</h3>
+          <p>Jingles on keys <kbd>1</kbd>–<kbd>9</kbd>, MIDI pads on your RØDECaster,
+          and OSC remotes for the whole transport.</p>
+        </article>
+        <article class="card span-3 wide reveal">
+          <div class="viz viz-term" aria-hidden="true">
+            <pre><span class="p">you ›</span> <span class="typed" data-text="Make the guest sound warmer and less boomy."></span><span class="caret"></span>
+<span class="ai">claude ›</span> <span class="ai-out">Added High-pass 90 Hz and EQ −3 dB @ 250 Hz on Guest.</span></pre>
+          </div>
+          <h3>AI agents, if you want them</h3>
+          <p>An opt-in local MCP server lets Claude and other AI agents build filter
+          stacks, apply a voice chain and read tracks, markers and loudness. Off by
+          default, and it only listens on your own machine.</p>
         </article>
       </div>
     </section>
 
-    <section class="open">
-      <h2>Open source, on every platform</h2>
-      <div class="grid two">
-        <article>
-          <h3>Fully open source</h3>
-          <p>All of WavePod's code is on GitHub under the MIT License. Use it
-          for free, look at how it works, change it, and share your
-          changes. Bug reports and pull requests are welcome.</p>
-        </article>
-        <article>
-          <h3>Linux, Windows and macOS</h3>
-          <p>The same app and the same episode folders on all three systems,
-          recording through ALSA, PulseAudio or JACK, WASAPI or ASIO, and
-          Core Audio. Record on one machine and edit on another.</p>
-        </article>
+    <!-- ============================================================ TOUR -->
+    <section id="tour" class="tour">
+      <p class="eyebrow center reveal">Take the tour</p>
+      <h2 class="reveal">From soundcheck to export</h2>
+      <div class="tabs reveal" role="tablist" aria-label="Screenshots">
+        <button role="tab" aria-selected="true" data-shot="0">Timeline</button>
+        <button role="tab" aria-selected="false" data-shot="1">Setup</button>
+        <button role="tab" aria-selected="false" data-shot="2">Filters</button>
+        <button role="tab" aria-selected="false" data-shot="3">Export</button>
+        <button role="tab" aria-selected="false" data-shot="4">Chapters</button>
+        <span class="tab-ink" aria-hidden="true"></span>
+      </div>
+      <div class="tilt reveal" id="tilt">
+        <div class="tilt-inner">
+          <figure class="shot active"><img src="img/timeline.png" width="1400" height="640" alt="WavePod timeline with Host, Guest and Co-host tracks, chapter markers and a soundboard jingle"></figure>
+          <figure class="shot"><img src="img/setup.png" width="1280" height="820" loading="lazy" alt="Setup view with level meters for all 16 RØDECaster inputs and a Create 8 speaker tracks button"></figure>
+          <figure class="shot"><img src="img/filters.png" width="1400" height="850" loading="lazy" alt="Filter panel with high-pass, de-esser and Dynamics filters on a track"></figure>
+          <figure class="shot"><img src="img/export.png" width="1280" height="833" loading="lazy" alt="Export dialog with MP3 and WAV formats, loudness target and the measured loudness of the mix"></figure>
+          <figure class="shot"><img src="img/chapters.png" width="1644" height="638" loading="lazy" alt="Chapter list with start times, titles, links and image buttons"></figure>
+          <span class="glare" aria-hidden="true"></span>
+        </div>
+      </div>
+      <p class="tour-caption" id="tour-caption" aria-live="polite">Every speaker on a track of their own, with chapters, edit marks and the soundboard.</p>
+    </section>
+
+    <!-- ============================================================ OPEN SOURCE -->
+    <section id="open-source" class="oss">
+      <div class="oss-text reveal">
+        <p class="eyebrow">Fully open source</p>
+        <h2>Yours to use, read,<br>change and share.</h2>
+        <p>All of WavePod's code is on GitHub under the MIT License. No account,
+        no subscription, no telemetry. Bug reports and pull requests are welcome.</p>
+        <ul class="platform-list">
+          <li><b>Linux</b> ALSA, PulseAudio, JACK</li>
+          <li><b>Windows</b> WASAPI, ASIO</li>
+          <li><b>macOS</b> Core Audio</li>
+        </ul>
+        <a class="button ghost magnetic" href="https://github.com/michaelkleinhenz/wavepod"><span>View the source</span></a>
+      </div>
+      <div class="terminal reveal" aria-label="Terminal: clone the repository and run the demo">
+        <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span>~/code</span></div>
+<pre id="term"><span class="p">$</span> git clone https://github.com/michaelkleinhenz/wavepod
+<span class="p">$</span> cd wavepod &amp;&amp; make install
+<span class="p">$</span> make demo
+<span class="ok">✓ WavePod running with virtual devices</span></pre>
       </div>
     </section>
 
-    <section class="gallery">
-      <figure class="shot">
-        <img src="img/setup.png" width="1280" height="820" loading="lazy"
-             alt="Setup view with level meters for all 16 RØDECaster inputs and a Create 8 speaker tracks button">
-        <figcaption>Check levels and create a track for every speaker.</figcaption>
-      </figure>
-      <figure class="shot">
-        <img src="img/filters.png" width="1400" height="850" loading="lazy"
-             alt="Filter panel with high-pass, de-esser and Dynamics filters on a track">
-        <figcaption>Filter stacks per track, with live meters and presets.</figcaption>
-      </figure>
-      <figure class="shot">
-        <img src="img/export.png" width="1280" height="833" loading="lazy"
-             alt="Export dialog with MP3 and WAV formats, loudness target and the measured loudness of the mix">
-        <figcaption>Export with loudness normalisation and a live analysis.</figcaption>
-      </figure>
-      <figure class="shot">
-        <img src="img/chapters.png" width="1644" height="638" loading="lazy"
-             alt="Chapter list with start times, titles, links and image buttons">
-        <figcaption>Chapters with titles, links and images.</figcaption>
-      </figure>
-    </section>
-
+    <!-- ============================================================ DOWNLOAD -->
     <section id="download" class="download">
-      <h2>Download</h2>
-      <p class="muted" id="release-line">Free builds of every release are on GitHub.</p>
+      <p class="eyebrow center reveal">Download</p>
+      <h2 class="reveal">Start your next episode today</h2>
+      <p class="muted reveal" id="release-line">Free builds of every release are on GitHub.</p>
       <div class="platforms">
-        <a class="platform" data-ext=".AppImage" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
-          <strong>Linux</strong>
-          <span>AppImage, x86-64</span>
+        <a class="platform reveal" data-os="linux" data-ext=".AppImage" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c-2 0-3.2 1.7-3.2 4.2 0 1.6-.6 2.6-1.6 4C6 12 5 13.7 5 15.8c0 .8.2 1.4.5 2-.9.4-1.5 1-1.5 1.8 0 1.3 1.6 1.6 3 2 1.2.3 2.4.4 3.2-.4h3.6c.8.8 2 .7 3.2.4 1.4-.4 3-.7 3-2 0-.8-.6-1.4-1.5-1.8.3-.6.5-1.2.5-2 0-2.1-1-3.8-2.2-5.6-1-1.4-1.6-2.4-1.6-4C15.2 3.7 14 2 12 2z"/></svg>
+          <strong>Linux</strong><span>AppImage · x86-64</span><em class="yours">Your system</em>
         </a>
-        <a class="platform" data-ext=".exe" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
-          <strong>Windows</strong>
-          <span>Installer, x64</span>
+        <a class="platform reveal" data-os="windows" data-ext=".exe" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10.5 4.5v7H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
+          <strong>Windows</strong><span>Installer · x64</span><em class="yours">Your system</em>
         </a>
-        <a class="platform" data-ext=".dmg" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
-          <strong>macOS</strong>
-          <span>DMG, Apple silicon</span>
+        <a class="platform reveal" data-os="mac" data-ext=".dmg" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4.1zM13.9 5c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.3 2-1.1 3.1 1.2.1 2.3-.6 3.1-1.5z"/></svg>
+          <strong>macOS</strong><span>DMG · Apple silicon</span><em class="yours">Your system</em>
         </a>
       </div>
-      <p class="note">
+      <p class="note reveal">
         The builds are not code-signed yet. On macOS, right-click the app and
         choose <em>Open</em> the first time; on Windows, choose
         <em>More info › Run anyway</em> if SmartScreen asks. On Linux, make
@@ -155,26 +260,16 @@
   </main>
 
   <footer>
-    <p>WavePod is open source under the <a href="https://github.com/michaelkleinhenz/wavepod/blob/main/LICENSE">MIT License</a>.</p>
+    <div class="foot-brand"><img src="img/icon.svg" alt="" width="24" height="24"> WavePod</div>
+    <p>Open source under the <a href="https://github.com/michaelkleinhenz/wavepod/blob/main/LICENSE">MIT License</a>;
+    third-party parts keep their own licenses (<a href="https://github.com/michaelkleinhenz/wavepod/blob/main/THIRD_PARTY_NOTICES.md">notices</a>).</p>
     <p><a href="https://github.com/michaelkleinhenz/wavepod">Source on GitHub</a> · <a href="imprint.html">Imprint &amp; privacy</a></p>
+    <p class="fine">RØDECaster, Zoom PodTrak, Focusrite, Auphonic and the other product names are trademarks of their
+    respective owners, used only to describe compatibility. VST is a registered trademark of Steinberg Media
+    Technologies GmbH. WavePod is not affiliated with or endorsed by any of them.</p>
   </footer>
 
-  <script>
-    // Point the download buttons straight at the files of the latest release.
-    // Without JavaScript or when the API is unreachable they open the release page.
-    fetch('https://api.github.com/repos/michaelkleinhenz/wavepod/releases/latest')
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((release) => {
-        const assets = release.assets || [];
-        document.querySelectorAll('.platform[data-ext]').forEach((link) => {
-          const asset = assets.find((a) => a.name.endsWith(link.dataset.ext));
-          if (asset) link.href = asset.browser_download_url;
-        });
-        const line = document.getElementById('release-line');
-        const date = new Date(release.published_at).toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric' });
-        line.textContent = `Latest version ${release.tag_name.replace(/^v/, '')}, released ${date}.`;
-      })
-      .catch(() => {});
-  </script>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+  <script src="app.js" defer></script>
 </body>
 </html>

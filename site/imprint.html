@@ -10,12 +10,14 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="grain" aria-hidden="true"></div>
   <header class="top">
     <a class="brand" href="./"><img src="img/icon.svg" alt="" width="28" height="28"> WavePod</a>
     <nav>
       <a href="./#features">Features</a>
-      <a href="./#download">Download</a>
       <a href="https://github.com/michaelkleinhenz/wavepod">GitHub</a>
+      <a class="nav-cta" href="./#download">Download</a>
     </nav>
   </header>
 
@@ -48,10 +50,11 @@
     <p>This page links to external sites, mainly GitHub. Their operators alone
     are responsible for their content.</p>
 
-    <h1 id="privacy" style="margin-top: 64px">Privacy (Datenschutz)</h1>
+    <h1 id="privacy" style="margin-top: 72px">Privacy (Datenschutz)</h1>
 
     <p>This web page does not use cookies, analytics or tracking, and it does
-    not ask you for any personal data.</p>
+    not ask you for any personal data. Its fonts are served from this site
+    itself, not from a font service.</p>
 
     <h2>Hosting</h2>
     <p>The page is hosted on GitHub Pages by GitHub, Inc., 88 Colin P. Kelly Jr.
@@ -77,7 +80,9 @@
   </main>
 
   <footer>
-    <p>WavePod is open source under the <a href="https://github.com/michaelkleinhenz/wavepod/blob/main/LICENSE">MIT License</a>.</p>
+    <div class="foot-brand"><img src="img/icon.svg" alt="" width="24" height="24"> WavePod</div>
+    <p>Open source under the <a href="https://github.com/michaelkleinhenz/wavepod/blob/main/LICENSE">MIT License</a>;
+    third-party parts keep their own licenses (<a href="https://github.com/michaelkleinhenz/wavepod/blob/main/THIRD_PARTY_NOTICES.md">notices</a>).</p>
     <p><a href="https://github.com/michaelkleinhenz/wavepod">Source on GitHub</a> · <a href="imprint.html">Imprint &amp; privacy</a></p>
   </footer>
 </body>
