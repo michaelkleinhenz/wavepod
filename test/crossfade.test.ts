@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fadesAt, trackFades } from '../src/core/crossfade';
+import { fadesAt, overlapSpans, trackFades } from '../src/core/crossfade';
 import { fadeCurve, fadeGain } from '../src/core/dsp';
 import { Mixer, ReaderCache } from '../src/core/mixer';
 import { addTrack, createProject } from '../src/core/project';
@@ -78,5 +78,21 @@ describe('automatic crossfades', () => {
     mixer.dispose();
     readers.closeAll();
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('overlap spans', () => {
+  it('finds where clips play at once, for drawing them see-through', () => {
+    const spans = overlapSpans([clip('a', 0, 1000), clip('b', 800, 1000), clip('c', 3000, 100)]);
+    expect(spans).toEqual([{ from: 800, to: 1000, clips: [0, 1] }]);
+  });
+
+  it('splits spans where the set of clips changes and ignores clips that only touch', () => {
+    const spans = overlapSpans([clip('a', 0, 1000), clip('b', 500, 1000), clip('c', 700, 100), clip('d', 1500, 200)]);
+    expect(spans).toEqual([
+      { from: 500, to: 700, clips: [0, 1] },
+      { from: 700, to: 800, clips: [0, 1, 2] },
+      { from: 800, to: 1000, clips: [0, 1] },
+    ]);
   });
 });
