@@ -251,6 +251,47 @@ Paste the API key from Auphonic's Account Settings once; pick one of your
 multitrack presets and whether to start the production right away or review
 it on the website first.
 
+## Crosstalk removal (automix)
+
+When several people share a room, every mic also picks up the others. Tick
+**Automix (remove crosstalk)** in the FX panel of each speaker track: whoever is
+loudest stays at full level and the other automixed tracks are turned down by up
+to the chosen depth (−6 to −40 dB). Two people talking at once both stay up,
+and short pauses inside a sentence don't close a track. It runs in playback,
+the mix export and stem exports, after each track's filters. AI agents can set
+it with the MCP tool `set_automix`.
+
+## Transcript
+
+**View → Transcript** (Shift+Ctrl+T) shows the episode as text, one paragraph
+per speaker turn. **Transcribe** sends each speaker track to
+[ElevenLabs speech-to-text](https://elevenlabs.io/speech-to-text) (Scribe) as a
+16 kHz mono WAV and brings back every word with its time; only files without a
+transcript are sent. Put your ElevenLabs API key into **Edit → Settings…**
+(Ctrl+,), together with the model, the language and names the model should get
+right. The key is kept encrypted with the system keychain where there is one.
+
+Transcripts are stored per recorded file in the episode's `transcripts/`
+folder, in that file's own time, so they stay right through every cut, move
+and trim. In the panel, click a word to jump there, drag across words to select
+their time, and press Delete to cut the selection out of all tracks.
+Hesitations are underlined. **Save as…** writes the text with speakers and
+times, or WebVTT subtitles. The MCP tool `get_transcript` gives AI agents the
+text (for show notes or chapter titles).
+
+## Cleanup
+
+**Edit → Clean Up Pauses and Hesitations…** (Shift+Ctrl+K) lists:
+
+- pauses in the mix longer than a set length (1.5 s by default), shortened to a
+  set length (0.7 s) by cutting out their middle, so breaths at both ends stay;
+- hesitations from the transcript (äh, ähm, öhm, hm; uh, um, erm in English),
+  each cut moved onto the quiet points around the sound. If someone else talks at
+  that moment, the hesitation is muted on its own track instead of cut.
+
+Listen to each with ▶, untick what should stay, then **Apply** (one undo step)
+or **Mark only** (edit markers to decide by hand).
+
 ## Zencastr
 
 **File → New Episode from Zencastr ZIP…** turns a session downloaded from

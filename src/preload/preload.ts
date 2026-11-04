@@ -20,6 +20,8 @@ const api: Record<string, unknown> = {
   onRemote: subscribe(IPC.remote),
   onProjectEdited: subscribe(IPC.projectEdited),
   onSaveState: subscribe(IPC.saveState),
+  onTranscribeProgress: subscribe(IPC.transcribeProgress),
+  onTranscript: subscribe(IPC.transcript),
   platform: process.platform,
 };
 for (const method of INVOKE_METHODS) {

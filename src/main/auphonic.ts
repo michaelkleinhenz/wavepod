@@ -20,7 +20,7 @@ export function normalizeAuphonic(raw: unknown): StoredAuphonic {
   return { key: typeof r.key === 'string' ? r.key : '', preset: typeof r.preset === 'string' ? r.preset : '', start: r.start === true };
 }
 
-function decodeKey(stored: string): string {
+export function decodeKey(stored: string): string {
   if (!stored.startsWith('enc:')) return stored;
   try {
     return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'));
@@ -29,7 +29,7 @@ function decodeKey(stored: string): string {
   }
 }
 
-function encodeKey(key: string): string {
+export function encodeKey(key: string): string {
   if (!key) return '';
   return safeStorage.isEncryptionAvailable() ? `enc:${safeStorage.encryptString(key).toString('base64')}` : key;
 }
