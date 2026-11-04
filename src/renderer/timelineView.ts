@@ -70,7 +70,7 @@ const TICK_STEPS = [
 const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
 
 type Drag =
-  | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean; ripple?: RippleSet }
+  | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean; ripple?: RippleSet; clickFrame: number }
   | { kind: 'trim'; clipId: string; side: 'left' | 'right'; startX: number; orig: Clip; delta: number }
   | { kind: 'fade'; clipId: string; side: 'in' | 'out'; startX: number; orig: Clip; moved: boolean }
   | { kind: 'range'; startFrame: number; endFrame: number; startTrack: number | null; endTrack: number | null }
@@ -1709,7 +1709,7 @@ export class TimelineView {
         const ids = store.selection.clipIds.has(hit.clip.id) ? new Set(store.selection.clipIds) : new Set([hit.clip.id]);
         store.select({ clipIds: ids, range: null, rangeTracks: null, markerId: null });
         const ripple = rippleSet(store.project, ids, e.shiftKey ? 'all' : 'track');
-        this.drag = { kind: 'clip', clipId: hit.clip.id, ids: ripple.clipIds, startX: e.clientX, startY: e.clientY, delta: 0, dTrack: 0, minDTrack: 0, maxDTrack: 0, moved: false, ripple };
+        this.drag = { kind: 'clip', clipId: hit.clip.id, ids: ripple.clipIds, startX: e.clientX, startY: e.clientY, delta: 0, dTrack: 0, minDTrack: 0, maxDTrack: 0, moved: false, ripple, clickFrame: this.snappedFrame(x, e) };
       } else if (hit) {
         const sel = new Set(e.shiftKey ? store.selection.clipIds : []);
         if (e.shiftKey && sel.has(hit.clip.id)) sel.delete(hit.clip.id);
@@ -1733,6 +1733,7 @@ export class TimelineView {
             minDTrack: -Math.min(...rows),
             maxDTrack: store.project.tracks.length - 1 - Math.max(...rows),
             moved: false,
+            clickFrame: this.snappedFrame(x, e),
           };
         }
       } else {
@@ -1873,6 +1874,9 @@ export class TimelineView {
           }
           return q;
         });
+      } else if (d.kind === 'clip') {
+        // a click on a clip without dragging it also puts the playhead there, as in Reaper
+        seek(d.clickFrame);
       } else if (d.kind === 'trim' && d.delta !== 0) {
         store.edit((p) => updateClip(p, d.clipId, trimmed(d.orig, d.side, d.delta)));
       } else if (d.kind === 'fade' || d.kind === 'envPoint' || d.kind === 'envLine') {
