@@ -17,6 +17,26 @@ const SAVE_PRESET = '__save';
 const PRESETS_FOLDER = '__folder';
 /** Plug-ins with many parameters show this many sliders until "Show all" is clicked. */
 const VST_COLLAPSED_PARAMS = 12;
+/** Filters whose settings are folded away, by filter id, kept across restarts. */
+const COLLAPSED_KEY = 'wavepod.fxCollapsed';
+const COLLAPSED_MAX = 500;
+
+function loadCollapsed(): Set<string> {
+  try {
+    const ids = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as unknown;
+    return new Set(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsed(ids: Set<string>): void {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...ids].slice(-COLLAPSED_MAX)));
+  } catch {
+    // storage unavailable: the state just isn't remembered
+  }
+}
 
 function formatValue(spec: FxParamSpec, v: number): string {
   if (spec.options) return spec.options.find((o) => o.value === v)?.label ?? String(v);
@@ -42,6 +62,7 @@ export class FxPanel {
   private vstAvailable: boolean | null = null;
   private picker: { plugins: VstPluginInfo[] | null; query: string; busy: string | null } | null = null;
   private expanded = new Set<string>();
+  private collapsed = loadCollapsed();
   private meters = new Map<string, LiveMeter>();
   /** Preset lists by preset key (filter type or plug-in), loaded when a card first shows them. */
   private presets = new Map<string, FxPresetEntry[] | Promise<FxPresetEntry[]>>();
@@ -171,32 +192,54 @@ export class FxPanel {
     const def = vst ? null : fxDefinition(fx.type);
     const name = vst ? (fx.plugin?.name ?? 'VST3 plug-in') : def!.name;
     const description = vst ? `VST3 · ${fx.plugin?.vendor ?? ''}`.trim() : def!.description;
-    const curve = fx.type === 'dynamics' ? h('canvas', { class: 'fx-curve', width: 240, height: 160 }) : null;
-    const meter = fx.enabled ? new LiveMeter(fx, curve) : null;
+    const folded = this.collapsed.has(fx.id);
+    const toggleFold = () => {
+      if (folded) this.collapsed.delete(fx.id);
+      else this.collapsed.add(fx.id);
+      saveCollapsed(this.collapsed);
+      this.render();
+    };
+    const curve = !folded && fx.type === 'dynamics' ? h('canvas', { class: 'fx-curve', width: 240, height: 160 }) : null;
+    const meter = fx.enabled && !folded ? new LiveMeter(fx, curve) : null;
     if (meter) this.meters.set(fx.id, meter);
     const drawCurve = () => (meter ? meter.drawCurve() : curve && drawDynamicsCurve(curve, fx.params));
     const card = h(
       'section',
-      { class: `fx-card${fx.enabled ? '' : ' bypassed'}`, draggable: 'true' },
+      { class: `fx-card${fx.enabled ? '' : ' bypassed'}${folded ? ' collapsed' : ''}`, draggable: 'true' },
       h(
         'div',
         { class: 'fx-card-head' },
         h('span', { class: 'fx-grip', title: 'Drag to reorder' }, '⋮⋮'),
+        h(
+          'button',
+          { class: 'fx-fold', title: folded ? 'Show settings' : 'Hide settings', 'aria-expanded': String(!folded), onclick: toggleFold },
+          folded ? '▸' : '▾',
+        ),
         h('input', {
           type: 'checkbox',
           checked: fx.enabled,
           title: fx.enabled ? 'On (uncheck to bypass)' : 'Bypassed',
           onchange: (e: Event) => this.edit((p) => updateFx(p, target, fx.id, { enabled: (e.target as HTMLInputElement).checked })),
         }),
-        h('span', { class: 'fx-name', title: description }, name, vst ? h('span', { class: 'fx-tag' }, 'VST3') : null),
+        h(
+          'span',
+          { class: 'fx-name', title: `${description}\nDouble-click to ${folded ? 'show' : 'hide'} the settings`, ondblclick: toggleFold },
+          name,
+          vst ? h('span', { class: 'fx-tag' }, 'VST3') : null,
+          folded && fx.preset ? h('span', { class: 'fx-folded-preset' }, `${fx.preset.name}${presetEdited(fx) ? ' (edited)' : ''}`) : null,
+        ),
         h('button', { class: 'toggle', title: 'Move up', disabled: index === 0, onclick: () => this.edit((p) => moveFx(p, target, fx.id, index - 1)) }, '↑'),
         h('button', { class: 'toggle', title: 'Move down', disabled: index === count - 1, onclick: () => this.edit((p) => moveFx(p, target, fx.id, index + 1)) }, '↓'),
         h('button', { class: 'toggle remove', title: 'Remove filter', onclick: () => this.edit((p) => removeFx(p, target, fx.id)) }, '×'),
       ),
-      this.presetRow(target, fx),
-      meter?.el ?? null,
-      curve,
-      ...(vst ? this.vstParamRows(target, fx) : def!.params.map((spec) => this.paramRow(target, fx, spec, drawCurve))),
+      ...(folded
+        ? []
+        : [
+            this.presetRow(target, fx),
+            meter?.el ?? null,
+            curve,
+            ...(vst ? this.vstParamRows(target, fx) : def!.params.map((spec) => this.paramRow(target, fx, spec, drawCurve))),
+          ]),
     );
     drawCurve();
     card.addEventListener('dragstart', (e) => {
