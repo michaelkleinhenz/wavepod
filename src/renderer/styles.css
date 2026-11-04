@@ -59,10 +59,10 @@ nav { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radiu
 .tab { background: transparent; border: none; padding: 5px 12px; color: var(--muted); }
 .tab.active { background: var(--panel-2); color: var(--text); }
 .transport-group { display: flex; align-items: center; gap: 4px; }
-.transport { width: 36px; height: 32px; padding: 0; font-size: 14px; }
-.transport.rec { color: var(--rec); font-size: 18px; }
-.transport.rec.on { background: var(--rec); color: #fff; animation: pulse 1s infinite; }
-.transport.play.on { background: var(--ok); border-color: var(--ok); }
+.transport { width: 36px; height: 32px; padding: 0; }
+.transport.rec { color: var(--rec); }
+.transport.rec.on { background: var(--rec); border-color: var(--rec); color: #fff; animation: pulse 1s infinite; }
+.transport.play.on { background: var(--ok); border-color: var(--ok); color: #fff; }
 button.icon-btn.transport { width: 36px; height: 32px; }
 .transport.repeat.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 @keyframes pulse { 50% { opacity: 0.65; } }
