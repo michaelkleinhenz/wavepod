@@ -425,11 +425,11 @@ button.primary.danger { background: #c62828; border-color: #c62828; }
 .shortcut-groups dd { margin: 0; }
 kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg, #15171c); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; color: var(--text, #e6e6e6); }
 .clip-label { position: fixed; z-index: 20; width: 280px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; gap: 8px; }
-.clip-label .swatches { display: flex; gap: 6px; }
-.clip-label .swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
-.clip-label .swatch.active { border-color: #fff; }
-.clip-label .swatch.none { background: transparent; border: 2px dashed var(--muted); }
-.clip-label .swatch.none.active { border-style: solid; border-color: #fff; }
+.clip-label .swatches, .context-menu-swatches { display: flex; gap: 6px; }
+.clip-label .swatch, .context-menu .swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
+.clip-label .swatch.active, .context-menu .swatch.active { border-color: #fff; }
+.clip-label .swatch.none, .context-menu .swatch.none { background: transparent; border: 2px dashed var(--muted); }
+.clip-label .swatch.none.active, .context-menu .swatch.none.active { border-style: solid; border-color: #fff; }
 .clip-label textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
 .osc-map { border-collapse: collapse; margin: 8px 0; font-size: 12px; }
 .osc-map th { text-align: left; color: var(--muted); font-weight: 600; padding: 2px 16px 4px 0; }
@@ -503,6 +503,11 @@ input.value-edit {
 .menubar-accel { margin-left: 28px; color: var(--muted); font-size: 12px; }
 .menubar-item.hover:not(.disabled) .menubar-accel { color: rgba(255, 255, 255, 0.8); }
 .menubar-separator { height: 1px; margin: 4px 6px; background: var(--border); }
+/* right-click menus reuse the dropdown look */
+.context-menu { font-size: 13px; max-height: calc(100vh - 8px); overflow-y: auto; }
+.context-menu-header { padding: 4px 10px 6px 22px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+.context-menu-swatches { padding: 4px 10px 4px 22px; }
+.context-menu .swatch { width: 18px; height: 18px; }
 
 /* live problems of the running take */
 .rec-health { display: none; flex-direction: column; gap: 2px; padding: 6px 14px; background: #3a2c10; border-bottom: 1px solid #6b5023; color: var(--warn); font-size: 13px; }
