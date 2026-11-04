@@ -211,7 +211,7 @@ export interface WavePodApi {
   onTransport(cb: (u: TransportUpdate) => void): () => void;
   onStatus(cb: (s: EngineStatus) => void): () => void;
   /** Takes are already merged into `project` (and saved) by the main process; `preparedForEditing` = tracks were unarmed afterwards. */
-  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean }) => void): () => void;
+  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean; problems: number }) => void): () => void;
   onExportProgress(cb: (p: ExportProgress) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   /** OSC remote-control commands. */

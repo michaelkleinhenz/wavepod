@@ -484,3 +484,9 @@ input.value-edit {
 .menubar-accel { margin-left: 28px; color: var(--muted); font-size: 12px; }
 .menubar-item.hover:not(.disabled) .menubar-accel { color: rgba(255, 255, 255, 0.8); }
 .menubar-separator { height: 1px; margin: 4px 6px; background: var(--border); }
+
+/* live problems of the running take */
+.rec-health { display: none; flex-direction: column; gap: 2px; padding: 6px 14px; background: #3a2c10; border-bottom: 1px solid #6b5023; color: var(--warn); font-size: 13px; }
+.rec-health.show { display: flex; }
+.rec-health.critical { background: #4a1414; border-bottom-color: #8a2a2a; }
+.rec-warning.critical { color: #ff8a80; font-weight: 600; }

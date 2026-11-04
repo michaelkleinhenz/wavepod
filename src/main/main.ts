@@ -9,7 +9,10 @@ import { addClip, prepareForEditing } from '../core/project';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
 import { findProfile } from '../core/deviceProfiles';
 import { writeWavFile } from '../core/wav';
-import { AudioEngine, defaultConfig } from './audio/engine';
+import { AudioEngine, defaultConfig, type TakeReport } from './audio/engine';
+import { RecordWorker } from './audio/takeSink';
+import { addProblemMarkers, clearJournal, recoverRecording, type Recovery } from '../core/recordingJournal';
+import { formatMinutes } from '../core/recordingMonitor';
 import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
@@ -114,13 +117,47 @@ let current: OpenedProject;
 let saveTimer: NodeJS.Timeout | null = null;
 let mcp: McpController;
 let osc: OscServer;
+let recordWorker: RecordWorker | null = null;
+/** A recovery to tell the user about once the window is there. */
+let recoveryNotice: string | null = null;
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
 function openProjectDir(dir: string): OpenedProject {
-  const project = loadProject(dir);
+  let project = loadProject(dir);
+  // A take a crash interrupted: repair its files and put them back on their tracks.
+  let recovery: Recovery | null = null;
+  try {
+    recovery = recoverRecording(dir, project);
+  } catch (e) {
+    console.error('[recording] recovery failed', e);
+  }
+  if (recovery) {
+    try {
+      backupProject(dir, project, 'before-recovery');
+    } catch {
+      /* the recovery matters more than the backup */
+    }
+    project = recovery.project;
+    try {
+      saveProject(dir, project);
+      clearJournal(dir);
+    } catch (e) {
+      console.error('[recording] could not save the recovered project', e);
+    }
+    if (recovery.takes > 0 || recovery.missing.length) {
+      const when = new Date(recovery.startedAt);
+      const parts = [
+        recovery.takes > 0
+          ? `WavePod recovered a recording that was interrupted (started ${when.toLocaleString()}): ${recovery.takes} track${recovery.takes === 1 ? '' : 's'}, ${formatMinutes(recovery.seconds)}. The audio is back on the timeline where the take started.`
+          : 'WavePod found an interrupted recording, but none of its audio could be read.',
+        recovery.missing.length ? `Missing or unreadable: ${recovery.missing.join(', ')}` : '',
+      ];
+      showRecoveryNotice(parts.filter(Boolean).join('\n\n'));
+    }
+  }
   current = { project, dir };
   // the project as opened is what a backup would hold; nothing to back up until it changes
   lastBackup = JSON.stringify(project);
@@ -136,14 +173,40 @@ function createNewProject(): OpenedProject {
   return openProjectDir(dir);
 }
 
-function flushSave(): void {
+function flushSave(): boolean {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = null;
   try {
     saveProject(current.dir, current.project);
+    return true;
   } catch (e) {
     console.error('save failed', e);
+    return false;
   }
+}
+
+function showRecoveryNotice(text: string): void {
+  recoveryNotice = text;
+  console.error(`[recording] ${text}`);
+  if (win && !win.isDestroyed() && !win.webContents.isLoading()) flushRecoveryNotice();
+}
+
+function flushRecoveryNotice(): void {
+  const text = recoveryNotice;
+  if (!text || !win || win.isDestroyed()) return;
+  recoveryNotice = null;
+  void dialog.showMessageBox(win, { type: 'info', title: 'Recording recovered', message: 'Recording recovered', detail: text, buttons: ['OK'] });
+}
+
+/** Stops a running take and saves, before the app goes away. */
+function stopAndSave(): void {
+  if (!engine) return;
+  try {
+    if (engine.transportState !== 'stopped') engine.stop();
+  } catch (e) {
+    console.error('[recording] stop failed', e);
+  }
+  flushSave();
 }
 
 /** JSON of the project as last backed up, so unchanged projects aren't backed up again. */
@@ -681,6 +744,30 @@ function createWindow(): void {
     }
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  win.webContents.on('did-finish-load', () => flushRecoveryNotice());
+  // The window crashing must not end a recording: the engine keeps recording, the window comes back.
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error(`[renderer] gone: ${details.reason}`);
+    if (details.reason === 'clean-exit' || !win || win.isDestroyed()) return;
+    setTimeout(() => {
+      if (win && !win.isDestroyed()) win.webContents.reload();
+    }, 500);
+  });
+  // Closing the window mid-take asks first.
+  win.on('close', (e) => {
+    if (engine?.transportState !== 'recording' || !win) return;
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      title: 'Recording',
+      message: 'A recording is running.',
+      detail: 'Stop the recording, save it and quit?',
+      buttons: ['Keep recording', 'Stop and quit'],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    if (choice === 0) e.preventDefault();
+    else stopAndSave();
+  });
   win.on('closed', () => {
     win = null;
   });
@@ -691,6 +778,18 @@ app.whenReady().then(() => {
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
   engine.setMarkerPing(settings.markerPing);
+  // Recordings are written by a worker thread, so a slow or full disk never stalls the audio.
+  try {
+    recordWorker = new RecordWorker(path.join(__dirname, 'recordWorker.js'));
+    recordWorker.onDied = (why) => {
+      console.error(`[recording] ${why}`);
+      engine.writerFailed(why);
+    };
+    recordWorker.warm();
+    engine.takeSinks = recordWorker.sink;
+  } catch (e) {
+    console.error('[recording] no writer thread, writing on the main thread', e);
+  }
   vstExe = vstHostExecutable(app.getAppPath(), process.resourcesPath);
   if (vstExe) {
     vstHost = new VstHostProcess(vstExe, path.join(__dirname, 'vstBridge.js'));
@@ -704,18 +803,27 @@ app.whenReady().then(() => {
     loggedEngineError = s.error;
     send(IPC.status, s);
   });
-  engine.on('recordingFinished', (takes: RecordedTake[]) => {
+  engine.on('recordingFinished', (takes: RecordedTake[], report: TakeReport | null) => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
     let project = current.project;
     if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) project = ensureSoundboardTrack(project);
     for (const t of takes) project = addClip(project, t.trackId, t.clip);
+    // Problems found while recording become edit markers, so they are easy to find and check.
+    if (report?.events.length) project = addProblemMarkers(project, report.recordStart, report.events);
     const prepared = settings.prepareForEditingAfterRecording ? prepareForEditing(project) : project;
     const preparedForEditing = prepared !== project;
     project = prepared;
     current.project = project;
     engine.setProject(project);
-    flushSave();
-    send(IPC.recordingFinished, { takes, project, preparedForEditing });
+    // The journal goes only once the takes are safely in project.json.
+    if (flushSave() && !report?.writeError) {
+      try {
+        clearJournal(current.dir);
+      } catch {
+        /* recovery would find the clips already there */
+      }
+    }
+    send(IPC.recordingFinished, { takes, project, preparedForEditing, problems: report?.events.length ?? 0 });
   });
 
   try {
@@ -749,10 +857,29 @@ app.on('before-quit', () => {
   void mcp?.dispose();
   void osc?.close();
   if (engine) {
-    engine.stop();
-    flushSave();
+    stopAndSave();
     engine.dispose();
   }
+  recordWorker?.dispose();
+});
+
+// Ctrl+C in the terminal, a logout or a kill: finish the take and save before going.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+  process.on(sig, () => {
+    console.error(`[app] ${sig}: stopping and saving`);
+    stopAndSave();
+    app.quit();
+    setTimeout(() => app.exit(0), 3000).unref();
+  });
+}
+
+// A bug in the main process must not take a running recording down with it.
+process.on('uncaughtException', (e) => {
+  console.error('[app] uncaught exception', e);
+  engine?.reportError(`Internal error: ${e.message}`);
+});
+process.on('unhandledRejection', (e) => {
+  console.error('[app] unhandled rejection', e);
 });
 
 app.on('window-all-closed', () => {

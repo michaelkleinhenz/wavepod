@@ -281,6 +281,18 @@ ranges the sliders allow; VST3 parameters are normalized 0–1 and addressed
 by id or title, as with the generated sliders (plug-in editors are never
 opened).
 
+## Recording safety
+
+Recordings are built to survive crashes, power cuts and full disks:
+
+- A worker thread writes every input buffer to the WAV files as it arrives, so a crash of the app (even `kill -9`) loses at most a few milliseconds. Headers are updated every second and everything is forced to the disk every 2 seconds, so a power cut loses at most about 2 seconds.
+- Files over 4 GB become RF64 automatically.
+- While a take runs, `recording-in-progress.json` in the project folder lists its files. If WavePod finds it when a project opens, the take was interrupted: the files are repaired and put back on their tracks, and a dialog says so. A backup of the project from before the recovery is kept in `backup/`.
+- If the disk fills up, audio is held in memory (up to 1 GB) and written as soon as there is space again. WavePod won't start a take with less than a minute of space left.
+- Closing the window mid-take asks first; Ctrl+C, SIGTERM and logout stop the take and save; a crashed window reloads while recording continues.
+
+While recording, a bar under the toolbar warns about dropouts (audio the device never delivered), crackle, clipping, inputs that get no signal, a stalled input device, a slow or nearly full disk and write errors. The status bar shows how much recording time the disk has left. When the take stops, every problem spot gets a ⚠ edit marker so you can listen to it.
+
 ## Projects
 
 Each episode is a folder (default `~/Documents/WavePod/Episode …`) with

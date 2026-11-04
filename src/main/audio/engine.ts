@@ -8,7 +8,9 @@ import type {
   EngineStatus,
   LivePeaks,
   PlayingJingle,
+  RecordingHealth,
   Project,
+  RecordingEvent,
   RecordedTake,
   Track,
   TransportState,
@@ -30,18 +32,44 @@ import {
   jingleMediaFile,
   soundboardTrack,
 } from '../../core/soundboard';
-import { WavReader, WavWriter, writeWavFile } from '../../core/wav';
+import { WavReader, writeWavFile } from '../../core/wav';
+import type { TakeFileSpec, TakeFilesOptions } from '../../core/takeFiles';
+import { RecordingMonitor } from '../../core/recordingMonitor';
+import { clearJournal, writeJournal, type RecordingJournal } from '../../core/recordingJournal';
+import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
 import { markersCrossed, pingTone } from '../../core/markerPing';
 import { SimulatedBackend } from './simulatedBackend';
 
 export const VIRTUAL_API = 'virtual';
 const METER_HZ = 30;
+/** Recording refuses to start with less free disk space than this many seconds of audio. */
+const MIN_DISK_SECONDS = 60;
+const DISK_CHECK_MS = 5000;
+const JOURNAL_SAVE_MS = 2000;
+
+/** What the engine hands over with the takes when a recording stops. */
+export interface TakeReport {
+  /** Timeline position where the take started. */
+  recordStart: number;
+  /** Problems found while recording (frames counted from recordStart). */
+  events: RecordingEvent[];
+  /** Set if the files could not be finished cleanly; the journal is then kept for recovery. */
+  writeError: string | null;
+}
+
+function freeBytesAt(dir: string): number | null {
+  try {
+    const st = fs.statfsSync(dir);
+    return Number(st.bavail) * Number(st.bsize);
+  } catch {
+    return null;
+  }
+}
 
 interface Recorder {
   trackId: string;
   channels: number[];
-  writer: WavWriter;
   peaks: MipmapBuilder;
   file: string;
   scratch: Float32Array[];
@@ -111,6 +139,17 @@ export class AudioEngine extends EventEmitter {
   private recordStart = 0;
   private recordedFrames = 0;
   private recorders: Recorder[] = [];
+  /** Where the take's audio goes; set while recording. */
+  private sink: TakeSink | null = null;
+  private sinkArgs: { specs: TakeFileSpec[]; opts: TakeFilesOptions } | null = null;
+  /** Makes the sink for a take: the recording worker in the app, the engine's own thread otherwise. */
+  takeSinks: TakeSinkFactory = inProcessSink;
+  /** Free bytes on the disk of a folder (null if unknown); replaceable for tests. */
+  freeSpace: (dir: string) => number | null = freeBytesAt;
+  private monitor: RecordingMonitor | null = null;
+  private journal: RecordingJournal | null = null;
+  private journalSaved = { rev: 0, at: 0 };
+  private freeBytes: { value: number | null; at: number } = { value: null, at: 0 };
   private armedTrackIds = new Set<string>();
 
   private inputPeaks: number[] = [];
@@ -386,23 +425,63 @@ export class AudioEngine extends EventEmitter {
 
     const mediaDir = path.join(this.projectDir, 'media');
     fs.mkdirSync(mediaDir, { recursive: true });
+    const bitDepth = this.project.bitDepth;
+    const bytesPerSecond = armed.reduce((n, t) => n + t.inputChannels.length, 0) * sr * (bitDepth / 8);
+    const free = this.freeSpace(mediaDir);
+    if (free !== null && free < bytesPerSecond * MIN_DISK_SECONDS) {
+      throw new Error(`The disk is full: there is not even room for a minute of recording (${Math.round(free / 1e6)} MB free).`);
+    }
     const stamp = timestamp();
-    this.recorders = armed.map((t) => {
+    const recorders: Recorder[] = armed.map((t) => {
       let rel = path.join('media', `${safeFileName(t.name)}-${stamp}.wav`);
       for (let i = 2; fs.existsSync(path.join(this.projectDir, rel)); i++) {
         rel = path.join('media', `${safeFileName(t.name)}-${stamp}-${i}.wav`);
       }
-      const abs = path.join(this.projectDir, rel);
       return {
         trackId: t.id,
         channels: [...t.inputChannels],
-        writer: new WavWriter(abs, t.inputChannels.length, sr, this.project.bitDepth),
         peaks: new MipmapBuilder(),
         file: rel.split(path.sep).join('/'),
         scratch: t.inputChannels.map(() => new Float32Array(0)),
         sentBuckets: 0,
       };
     });
+    const specs: TakeFileSpec[] = recorders.map((r) => ({ path: path.join(this.projectDir, r.file), channels: r.channels }));
+    const opts: TakeFilesOptions = { sampleRate: sr, bitDepth, deviceChannels: this.input.channels };
+    // The journal comes first: if anything goes down from here on, the next start finds the files.
+    this.journal = {
+      version: 1,
+      startedAt: new Date().toISOString(),
+      sampleRate: sr,
+      bitDepth,
+      recordStart: this.playPos,
+      takes: recorders.map((r) => ({
+        trackId: r.trackId,
+        trackName: armed.find((t) => t.id === r.trackId)?.name ?? 'Track',
+        file: r.file,
+        channels: r.channels,
+      })),
+      jingles: [],
+      events: [],
+    };
+    writeJournal(this.projectDir, this.journal);
+    try {
+      this.sink = this.openSink(specs, opts);
+    } catch (e) {
+      clearJournal(this.projectDir);
+      this.journal = null;
+      throw e;
+    }
+    this.sinkArgs = { specs, opts };
+    this.recorders = recorders;
+    this.monitor = new RecordingMonitor({
+      sampleRate: sr,
+      bufferSize: this.input.frameSize,
+      bytesPerSecond,
+      tracks: armed.map((t) => ({ trackId: t.id, name: t.name, channels: [...t.inputChannels] })),
+    });
+    this.journalSaved = { rev: 0, at: performance.now() };
+    this.freeBytes = { value: free, at: performance.now() };
     this.recordStart = this.playPos;
     this.recordedFrames = 0;
     this.jingleTakes = [];
@@ -411,31 +490,67 @@ export class AudioEngine extends EventEmitter {
     return this.recorders.map((r) => r.file);
   }
 
+  /** Opens the take's files through the configured sink, falling back to this thread. */
+  private openSink(specs: TakeFileSpec[], opts: TakeFilesOptions): TakeSink {
+    if (this.takeSinks === inProcessSink) return inProcessSink(specs, opts);
+    try {
+      return this.takeSinks(specs, opts);
+    } catch (e) {
+      // A file that can't be created fails the same way here; anything else was the worker.
+      const sink = inProcessSink(specs, opts);
+      console.error(`[recording] writer thread unavailable, writing on the main thread: ${(e as Error).message}`);
+      return sink;
+    }
+  }
+
+  /**
+   * The recording worker died mid-take: carry on writing the same files from this thread.
+   * Only the buffers that were on their way to the worker are lost; the gap is marked.
+   */
+  writerFailed(reason: string): void {
+    if (this.state !== 'recording' || !this.sinkArgs) return;
+    const { specs, opts } = this.sinkArgs;
+    try {
+      this.sink = inProcessSink(specs, { ...opts, append: true });
+      this.monitor?.note({ frame: this.recordedFrames, kind: 'disk', text: `${reason}; recording continues, a few milliseconds may be missing here` });
+    } catch (e) {
+      this.sink = null;
+      this.reportError(`Recording failed: ${reason}, and the files could not be reopened: ${(e as Error).message}`);
+    }
+  }
+
   stop(): RecordedTake[] {
     const wasRecording = this.state === 'recording';
     this.stopFallbackClock();
     let takes: RecordedTake[] = [];
+    let report: TakeReport | null = null;
     if (wasRecording) {
-      takes = this.finishRecording();
+      ({ takes, report } = this.finishRecording());
       this.playPos = this.recordStart + this.recordedFrames;
     }
     this.state = 'stopped';
     this.emitTransport();
-    if (takes.length) this.emit('recordingFinished', takes);
+    if (takes.length) this.emit('recordingFinished', takes, report);
+    else if (wasRecording && this.projectDir && !report?.writeError) clearJournal(this.projectDir);
     return takes;
   }
 
-  private finishRecording(): RecordedTake[] {
+  private finishRecording(): { takes: RecordedTake[]; report: TakeReport } {
     const takes: RecordedTake[] = [];
-    for (const r of this.recorders) {
-      r.writer.close();
+    const done = this.sink?.finish() ?? { error: 'The recording files were lost', framesOnDisk: null };
+    this.sink = null;
+    this.sinkArgs = null;
+    if (done.error) this.reportError(`Recording: ${done.error}. The files keep what reached the disk; the take is recovered when the project is opened again.`);
+    for (const [i, r] of this.recorders.entries()) {
+      // Normally every frame reached the file; if not, the clip must not claim more than is there.
+      const length = Math.min(this.recordedFrames, done.framesOnDisk?.[i] ?? this.recordedFrames);
       const peaks = r.peaks.finish();
       try {
         fs.writeFileSync(path.join(this.projectDir, `${r.file}.peaks`), encodePeaks(peaks));
       } catch {
         /* peaks are a cache; ignore */
       }
-      if (r.writer.framesWritten === 0) continue;
+      if (length <= 0) continue;
       takes.push({
         trackId: r.trackId,
         clip: {
@@ -443,7 +558,7 @@ export class AudioEngine extends EventEmitter {
           file: r.file,
           start: this.recordStart,
           offset: 0,
-          length: r.writer.framesWritten,
+          length,
           gain: 0,
           fadeIn: 0,
           fadeOut: 0,
@@ -455,7 +570,10 @@ export class AudioEngine extends EventEmitter {
     for (const v of this.voices) this.finishJingle(v);
     takes.push(...this.jingleTakes.map(({ trackId, clip }) => ({ trackId, clip })));
     this.jingleTakes = [];
-    return takes;
+    const report: TakeReport = { recordStart: this.recordStart, events: this.monitor?.events ?? [], writeError: done.error };
+    this.monitor = null;
+    this.journal = null;
+    return { takes, report };
   }
 
   // ------------------------------------------------------------ soundboard
@@ -541,6 +659,7 @@ export class AudioEngine extends EventEmitter {
       this.jingleTakes.push({ trackId, clip, slotId: v.slotId });
     }
     v.recordStart = undefined;
+    if (this.journal) this.journalSaved.rev = -1; // save the journal with this jingle soon
   }
 
   // ------------------------------------------------------------ audio callbacks
@@ -550,17 +669,19 @@ export class AudioEngine extends EventEmitter {
     const frames = Math.floor(interleaved.length / nch);
     interleavedPeaks(interleaved, nch, this.inputPeaks);
     if (this.state !== 'recording' || this.recorders.length === 0) return;
+    // Audio first: hand it to the writer before anything else can go wrong.
+    try {
+      this.sink?.write(interleaved, frames);
+    } catch (e) {
+      this.reportError(`Recording failed: ${(e as Error).message}`);
+    }
+    this.monitor?.input(interleaved, nch, performance.now());
     for (const r of this.recorders) {
       if (r.scratch[0].length !== frames) r.scratch = r.channels.map(() => new Float32Array(frames));
       for (let k = 0; k < r.channels.length; k++) {
         const src = r.channels[k];
         const dst = r.scratch[k];
         for (let i = 0; i < frames; i++) dst[i] = interleaved[i * nch + src];
-      }
-      try {
-        r.writer.write(r.scratch, frames);
-      } catch (e) {
-        this.reportError(`Recording failed: ${(e as Error).message}`);
       }
       r.peaks.push(r.scratch, frames);
     }
@@ -762,6 +883,7 @@ export class AudioEngine extends EventEmitter {
     };
     if (this.state === 'recording') {
       update.recordingPeaks = this.takeLivePeaks();
+      update.health = this.checkHealth();
       if (this.jingleTakes.length) {
         update.recordedJingles = this.jingleTakes.map((t) => ({ slotId: t.slotId, start: t.clip.start, length: t.clip.length }));
       }
@@ -781,6 +903,33 @@ export class AudioEngine extends EventEmitter {
     this.inputPeaks.fill(0);
     this.outputPeaks = [0, 0];
     this.emit('transport', update);
+  }
+
+  /** Feeds the monitor with the writer's and the disk's state, and keeps the journal current. */
+  private checkHealth(): RecordingHealth | undefined {
+    const m = this.monitor;
+    if (!m) return undefined;
+    const now = performance.now();
+    if (now - this.freeBytes.at > DISK_CHECK_MS) this.freeBytes = { value: this.freeSpace(this.projectDir), at: now };
+    const ws = this.sink?.status();
+    m.tick(now, {
+      queuedBytes: ws?.queuedBytes ?? 0,
+      error: ws ? ws.error : 'Nothing is being written',
+      droppedFrames: ws?.droppedFrames ?? 0,
+      freeBytes: this.freeBytes.value,
+    });
+    const j = this.journal;
+    if (j && (m.revision !== this.journalSaved.rev) && now - this.journalSaved.at > JOURNAL_SAVE_MS) {
+      j.events = m.events;
+      j.jingles = this.jingleTakes.map(({ trackId, clip }) => ({ trackId, clip }));
+      try {
+        writeJournal(this.projectDir, j);
+      } catch {
+        /* the disk is in trouble; the monitor already says so */
+      }
+      this.journalSaved = { rev: m.revision, at: now };
+    }
+    return m.health(now);
   }
 
   private takeLivePeaks(): LivePeaks[] {

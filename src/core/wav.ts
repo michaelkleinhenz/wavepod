@@ -46,16 +46,49 @@ export function encodeInterleaved(
   return buf;
 }
 
-function buildHeader(fmt: WavFormat, dataBytes: number): Buffer {
+const JUNK_SIZE = 28; // room for a ds64 chunk, so a file can turn into RF64 in place
+const U32_MAX = 0xffffffff;
+
+export interface WavWriterOptions {
+  /**
+   * Reserve room for RF64, so recordings can grow past 4 GB: a JUNK chunk that
+   * becomes the ds64 chunk once the data no longer fits a 32-bit size.
+   */
+  rf64?: boolean;
+  /**
+   * Continue an existing file of the same format instead of starting a new one
+   * (a partly written last frame is dropped).
+   */
+  append?: boolean;
+  /** For tests: replaces fs.writeSync. */
+  writeSync?: (fd: number, buf: Buffer, offset: number, length: number, position: number) => number;
+}
+
+function buildHeader(fmt: WavFormat, dataBytes: number, rf64 = false): Buffer {
   const blockAlign = fmt.channels * (fmt.bitDepth / 8);
   const fmtSize = fmt.float ? 18 : 16;
   const factSize = fmt.float ? 12 : 0;
-  const headerSize = 12 + 8 + fmtSize + factSize + 8;
+  const junkSize = rf64 ? 8 + JUNK_SIZE : 0;
+  const headerSize = 12 + junkSize + 8 + fmtSize + factSize + 8;
+  const riffBytes = headerSize - 8 + dataBytes;
+  const big = rf64 && riffBytes > U32_MAX;
+  const frames = Math.floor(dataBytes / blockAlign);
   const h = Buffer.alloc(headerSize);
   let o = 0;
-  h.write('RIFF', o); o += 4;
-  h.writeUInt32LE(Math.min(0xffffffff, headerSize - 8 + dataBytes), o); o += 4;
+  h.write(big ? 'RF64' : 'RIFF', o); o += 4;
+  h.writeUInt32LE(big ? U32_MAX : Math.min(U32_MAX, riffBytes), o); o += 4;
   h.write('WAVE', o); o += 4;
+  if (rf64) {
+    h.write(big ? 'ds64' : 'JUNK', o); o += 4;
+    h.writeUInt32LE(JUNK_SIZE, o); o += 4;
+    if (big) {
+      h.writeBigUInt64LE(BigInt(riffBytes), o);
+      h.writeBigUInt64LE(BigInt(dataBytes), o + 8);
+      h.writeBigUInt64LE(BigInt(frames), o + 16);
+      h.writeUInt32LE(0, o + 24); // no table
+    }
+    o += JUNK_SIZE;
+  }
   h.write('fmt ', o); o += 4;
   h.writeUInt32LE(fmtSize, o); o += 4;
   h.writeUInt16LE(fmt.float ? FORMAT_FLOAT : FORMAT_PCM, o); o += 2;
@@ -68,16 +101,45 @@ function buildHeader(fmt: WavFormat, dataBytes: number): Buffer {
     h.writeUInt16LE(0, o); o += 2; // cbSize
     h.write('fact', o); o += 4;
     h.writeUInt32LE(4, o); o += 4;
-    h.writeUInt32LE(Math.floor(dataBytes / blockAlign), o); o += 4;
+    h.writeUInt32LE(big ? U32_MAX : Math.min(U32_MAX, frames), o); o += 4;
   }
   h.write('data', o); o += 4;
-  h.writeUInt32LE(Math.min(0xffffffff, dataBytes), o);
+  h.writeUInt32LE(big ? U32_MAX : Math.min(U32_MAX, dataBytes), o);
   return h;
+}
+
+/** Flushes a file's data (not necessarily its metadata) to the disk; ignored where unsupported. */
+export function syncFd(fd: number): void {
+  try {
+    fs.fdatasyncSync(fd);
+  } catch {
+    try {
+      fs.fsyncSync(fd);
+    } catch {
+      /* not supported here */
+    }
+  }
+}
+
+/** Makes a newly created or renamed file's directory entry durable (no-op where directories can't be opened). */
+export function syncDir(dir: string): void {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(dir, 'r');
+    fs.fsyncSync(fd);
+  } catch {
+    /* Windows can't open directories; NTFS journals the entry anyway */
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
 }
 
 /**
  * Streams audio to disk. The header is rewritten periodically so that a file
  * from a crashed session is still playable up to the last patch.
+ *
+ * Audio that can't be written (disk full) stays queued: write() and flush()
+ * throw, and the next flush() tries again, so nothing is lost while space is freed.
  */
 export class WavWriter {
   readonly format: WavFormat;
@@ -88,6 +150,9 @@ export class WavWriter {
   private pendingBytes = 0;
   private lastPatchBytes = 0;
   private closed = false;
+  private rf64: boolean;
+  private writeFn: NonNullable<WavWriterOptions['writeSync']>;
+  /** Frames handed to write(), on disk or still queued. */
   framesWritten = 0;
 
   constructor(
@@ -97,17 +162,46 @@ export class WavWriter {
     bitDepth: BitDepth = 24,
     private flushBytes = 64 * 1024,
     private patchIntervalBytes = 0,
+    opts: WavWriterOptions = {},
   ) {
     const float = bitDepth === 32;
     this.format = { channels, sampleRate, bitDepth, float };
-    this.fd = fs.openSync(path, 'w');
-    const header = buildHeader(this.format, 0);
-    this.headerSize = header.length;
-    fs.writeSync(this.fd, header, 0, header.length, 0);
+    this.rf64 = !!opts.rf64;
+    this.writeFn = opts.writeSync ?? ((fd, buf, off, len, pos) => fs.writeSync(fd, buf, off, len, pos));
+    if (opts.append && fs.existsSync(path)) {
+      const info = repairWav(path);
+      if (info.channels !== channels || info.sampleRate !== sampleRate || info.bitDepth !== bitDepth) {
+        throw new Error(`${path} has a different format; can't continue it`);
+      }
+      this.fd = fs.openSync(path, 'r+');
+      this.headerSize = info.dataOffset;
+      this.dataBytes = info.frames * channels * (bitDepth / 8);
+      this.lastPatchBytes = this.dataBytes;
+      this.framesWritten = info.frames;
+    } else {
+      this.fd = fs.openSync(path, 'w');
+      const header = buildHeader(this.format, 0, this.rf64);
+      this.headerSize = header.length;
+      fs.writeSync(this.fd, header, 0, header.length, 0);
+    }
     if (!this.patchIntervalBytes) {
       // roughly once per second of audio
       this.patchIntervalBytes = sampleRate * channels * (bitDepth / 8);
     }
+  }
+
+  private get blockAlign(): number {
+    return this.format.channels * (this.format.bitDepth / 8);
+  }
+
+  /** Frames that reached the file (the operating system's cache, at least). */
+  get framesOnDisk(): number {
+    return Math.floor(this.dataBytes / this.blockAlign);
+  }
+
+  /** Bytes accepted but not yet written. */
+  get queuedBytes(): number {
+    return this.pendingBytes;
   }
 
   /** Appends `frames` frames from planar channel data. */
@@ -126,26 +220,100 @@ export class WavWriter {
 
   flush(): void {
     if (this.pendingBytes === 0) return;
-    const all = Buffer.concat(this.pending, this.pendingBytes);
-    fs.writeSync(this.fd, all, 0, all.length, this.headerSize + this.dataBytes);
-    this.dataBytes += all.length;
-    this.pending = [];
-    this.pendingBytes = 0;
+    const all = this.pending.length === 1 ? this.pending[0] : Buffer.concat(this.pending, this.pendingBytes);
+    let done = 0;
+    try {
+      while (done < all.length) {
+        const n = this.writeFn(this.fd, all, done, all.length - done, this.headerSize + this.dataBytes);
+        if (n <= 0) throw new Error('could not write to the recording file');
+        done += n;
+        this.dataBytes += n;
+      }
+    } finally {
+      // keep whatever didn't make it, to try again
+      const rest = done < all.length ? all.subarray(done) : null;
+      this.pending = rest ? [rest] : [];
+      this.pendingBytes = rest ? rest.length : 0;
+    }
     if (this.dataBytes - this.lastPatchBytes >= this.patchIntervalBytes) this.patchHeader();
   }
 
   private patchHeader(): void {
-    const header = buildHeader(this.format, this.dataBytes);
+    // only whole frames count, should a write have stopped in the middle of one
+    const bytes = this.framesOnDisk * this.blockAlign;
+    const header = buildHeader(this.format, bytes, this.rf64);
     fs.writeSync(this.fd, header, 0, header.length, 0);
     this.lastPatchBytes = this.dataBytes;
   }
 
+  /** Writes what is queued, updates the header and forces both to the disk (survives power loss). */
+  sync(): void {
+    if (this.closed) return;
+    try {
+      this.flush();
+    } finally {
+      this.patchHeader();
+      syncFd(this.fd);
+    }
+  }
+
+  /** Finishes the file. Throws (and keeps the file open for another try) if queued audio can't be written. */
   close(): void {
     if (this.closed) return;
     this.flush();
     this.patchHeader();
+    syncFd(this.fd);
     fs.closeSync(this.fd);
     this.closed = true;
+  }
+
+  /** Gives up on queued audio and closes the file with what is on disk. */
+  abandon(): void {
+    if (this.closed) return;
+    this.pending = [];
+    this.pendingBytes = 0;
+    try {
+      this.patchHeader();
+      syncFd(this.fd);
+    } catch {
+      /* best effort */
+    }
+    fs.closeSync(this.fd);
+    this.closed = true;
+  }
+}
+
+/**
+ * Repairs a WAV file a crash left behind: drops a partly written last frame and
+ * writes a header that matches the audio on disk. Returns the file's format and length.
+ */
+export function repairWav(file: string): WavInfo {
+  const fd = fs.openSync(file, 'r+');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const head = Buffer.alloc(Math.min(size, 64 * 1024));
+    fs.readSync(fd, head, 0, head.length, 0);
+    const info = parseWavHeader(head, size, true);
+    const blockAlign = info.channels * (info.bitDepth / 8);
+    const dataBytes = info.frames * blockAlign;
+    if (info.dataOffset + dataBytes < size) fs.ftruncateSync(fd, info.dataOffset + dataBytes);
+    const fmt: WavFormat = { channels: info.channels, sampleRate: info.sampleRate, bitDepth: info.bitDepth, float: info.float };
+    const hasRoom = head.toString('ascii', 12, 16) === 'JUNK' || head.toString('ascii', 12, 16) === 'ds64';
+    const header = buildHeader(fmt, dataBytes, hasRoom);
+    if (header.length === info.dataOffset) {
+      fs.writeSync(fd, header, 0, header.length, 0);
+    } else if (info.dataOffset + dataBytes - 8 <= U32_MAX) {
+      // someone else's layout: patch just the two sizes
+      const b = Buffer.alloc(4);
+      b.writeUInt32LE(info.dataOffset + dataBytes - 8);
+      fs.writeSync(fd, b, 0, 4, 4);
+      b.writeUInt32LE(dataBytes);
+      fs.writeSync(fd, b, 0, 4, info.dataOffset - 4);
+    }
+    syncFd(fd);
+    return info;
+  } finally {
+    fs.closeSync(fd);
   }
 }
 
@@ -161,17 +329,25 @@ export interface WavInfo extends WavFormat {
   frames: number;
 }
 
-export function parseWavHeader(head: Buffer, fileSize: number): WavInfo {
-  if (head.toString('ascii', 0, 4) !== 'RIFF' || head.toString('ascii', 8, 12) !== 'WAVE') {
+/**
+ * Reads a WAV header (RIFF, or RF64/BW64 for files over 4 GB). With `trustFileSize`
+ * the data runs to the end of the file whatever the header says, for files a crash left behind.
+ */
+export function parseWavHeader(head: Buffer, fileSize: number, trustFileSize = false): WavInfo {
+  const riff = head.toString('ascii', 0, 4);
+  if ((riff !== 'RIFF' && riff !== 'RF64' && riff !== 'BW64') || head.toString('ascii', 8, 12) !== 'WAVE') {
     throw new Error('not a RIFF/WAVE file');
   }
+  let ds64Data: number | null = null;
   let o = 12;
   let fmt: Omit<WavFormat, 'bitDepth'> & { bitDepth: number } | null = null;
   while (o + 8 <= head.length) {
     const id = head.toString('ascii', o, o + 4);
     const size = head.readUInt32LE(o + 4);
     const body = o + 8;
-    if (id === 'fmt ') {
+    if (id === 'ds64' && size >= 24) {
+      ds64Data = Number(head.readBigUInt64LE(body + 8));
+    } else if (id === 'fmt ') {
       let tag = head.readUInt16LE(body);
       const channels = head.readUInt16LE(body + 2);
       const sampleRate = head.readUInt32LE(body + 4);
@@ -186,7 +362,8 @@ export function parseWavHeader(head: Buffer, fileSize: number): WavInfo {
       const blockAlign = fmt.channels * (fmt.bitDepth / 8);
       // Trust the actual file size over the header (crash recovery, >4 GB files).
       let dataBytes = fileSize - body;
-      if (size > 0 && size !== 0xffffffff && size < dataBytes) dataBytes = size;
+      const declared = size === U32_MAX && ds64Data !== null ? ds64Data : size;
+      if (!trustFileSize && declared > 0 && declared !== U32_MAX && declared < dataBytes) dataBytes = declared;
       return {
         ...fmt,
         bitDepth: fmt.bitDepth as BitDepth,

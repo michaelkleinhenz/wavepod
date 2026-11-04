@@ -54,6 +54,11 @@ import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
 
+function formatDuration(seconds: number): string {
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
+  return `${Math.max(0, Math.floor(seconds / 60))} min`;
+}
+
 const METER_DECAY = 0.85;
 
 /** When Ctrl+X/Y was last handled by the keydown handler, so the menu accelerator doesn't repeat it. */
@@ -151,8 +156,21 @@ async function main(): Promise<void> {
     h('button', { class: 'primary', title: 'Export (Ctrl+E)', onclick: () => exportDialog.open() }, 'Export…'),
   );
   const statusBar = h('footer', { class: 'statusbar' });
+  // Live problems of the running take (dropouts, crackle, clipping, silent inputs, disk).
+  const healthBar = h('div', { class: 'rec-health', role: 'status', 'aria-live': 'polite' });
   const main = h('main');
-  root.append(new MenuBar().el, header, main, statusBar);
+  root.append(new MenuBar().el, header, healthBar, main, statusBar);
+  let healthShown = '';
+  const renderHealth = () => {
+    const t = store.transport;
+    const warnings = t.state === 'recording' ? t.health?.warnings ?? [] : [];
+    const key = warnings.map((w) => `${w.level}:${w.text}`).join('|');
+    if (key === healthShown) return;
+    healthShown = key;
+    healthBar.classList.toggle('show', warnings.length > 0);
+    healthBar.classList.toggle('critical', warnings.some((w) => w.level === 'critical'));
+    healthBar.replaceChildren(...warnings.map((w) => h('div', { class: `rec-warning ${w.level}` }, h('span', { class: 'rec-warning-icon' }, w.level === 'critical' ? '⛔' : '⚠'), ` ${w.text}`)));
+  };
 
   // ---------------------------------------------------------------- render
   const renderView = () => {
@@ -175,6 +193,12 @@ async function main(): Promise<void> {
       h('span', null, `${store.project.tracks.filter((x) => x.armed).length} armed`),
       h('span', null, `Length ${formatTimestamp(len, false)}`),
       t.state === 'recording' ? h('span', { class: 'rec-indicator' }, `● REC ${formatTimestamp(t.recordedFrames / store.sampleRate, false)}`) : null,
+      t.state === 'recording' && t.health?.diskSecondsLeft != null
+        ? h('span', { class: t.health.diskSecondsLeft < 1800 ? 'warning' : '', title: 'Recording time the disk still has room for' }, `Disk: ${formatDuration(t.health.diskSecondsLeft)} left`)
+        : null,
+      t.state === 'recording' && t.health?.problems
+        ? h('span', { class: 'warning', title: 'Marked with edit markers when the take stops' }, `${t.health.problems} problem${t.health.problems === 1 ? '' : 's'} found`)
+        : null,
       s?.error ? h('span', { class: 'error-text' }, s.error.split('\n')[0]) : null,
     ]);
     projectName.textContent = store.project.name;
@@ -222,6 +246,7 @@ async function main(): Promise<void> {
     if (kinds.has('selection') && store.view === 'chapters') chapters.render();
     if (kinds.has('transport')) {
       renderTransport();
+      renderHealth();
       timeline.follow();
       if (store.view === 'edit') timeline.updateMeters();
       soundboard.updatePlaying(store.transport.jingles);
@@ -264,9 +289,13 @@ async function main(): Promise<void> {
   store.subscribe((kinds) => {
     if (kinds.has('status')) preShowBtn.classList.toggle('on', !!store.status?.preShow);
   });
-  api().onRecordingFinished(({ takes, project, preparedForEditing }) => {
+  api().onRecordingFinished(({ takes, project, preparedForEditing, problems }) => {
     store.history.push(store.project);
     store.setProject(project);
+    if (problems) {
+      toast(`Recorded ${takes.length} take${takes.length === 1 ? '' : 's'} · ${problems} recording problem${problems === 1 ? '' : 's'} marked with ⚠ edit markers: listen to those spots`, 'error');
+      return;
+    }
     const recorded = `Recorded ${takes.length} take${takes.length === 1 ? '' : 's'}`;
     if (preparedForEditing) toast(`${recorded} · tracks unarmed for editing`);
     // Ultraschall's soundcheck reminds you of this too: armed tracks make R start a new take mid-edit.
