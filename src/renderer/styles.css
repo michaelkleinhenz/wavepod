@@ -68,14 +68,17 @@ button.icon-btn.transport { width: 36px; height: 32px; }
 @keyframes pulse { 50% { opacity: 0.65; } }
 .time-display {
   font: 600 20px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  padding: 5px 12px;
+  padding: 4px 12px 9px;
   margin-left: 6px;
   background: #0d0e11;
   border-radius: 6px;
   min-width: 150px;
   text-align: center;
+  position: relative;
 }
-.master-meter { display: flex; flex-direction: column; gap: 2px; width: 120px; }
+/* Output level: two thin bars along the bottom edge of the time display. */
+.master-meter { position: absolute; left: 8px; right: 8px; bottom: 3px; display: flex; flex-direction: column; gap: 1px; }
+.master-meter .meter { height: 2px; flex: none; background: #22252c; }
 .project-name { color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
 
@@ -282,6 +285,7 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .fx-btn { height: 22px; padding: 0 6px; font-size: 10px; font-weight: 700; color: var(--muted); }
 .fx-btn.active { color: #81c784; border-color: #3d5a3f; }
 .fx-btn.open { background: var(--panel-2); }
+header .fx-btn { white-space: nowrap; flex: none; }
 .fx-panel { position: fixed; top: 52px; right: 0; bottom: 28px; width: 340px; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,0.35); display: flex; flex-direction: column; z-index: 5; }
 .fx-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 14px 6px; }
 .fx-head h2 { margin: 0; font-size: 16px; }

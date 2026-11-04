@@ -96,7 +96,7 @@ async function main(): Promise<void> {
     edit: h('button', { class: 'tab', onclick: () => store.setView('edit') }, 'Record & Edit'),
     chapters: h('button', { class: 'tab', onclick: () => store.setView('chapters') }, 'Chapters'),
   };
-  const timeEl = h('div', { class: 'time-display' }, '00:00:00.000');
+  const timeEl = h('span', null, '00:00:00.000');
   const recBtn = iconButton('record', { label: 'Record', shortcut: 'R' }, () => void toggleRecord(), 'transport rec');
   const playBtn = iconButton('play', { label: 'Play / Pause', shortcut: 'Space' }, () => void togglePlay(), 'transport play');
   const stopBtn = iconButton('stop', { label: 'Stop' }, () => void stop(), 'transport');
@@ -145,8 +145,23 @@ async function main(): Promise<void> {
     null,
     h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
-    h('div', { class: 'transport-group' }, homeBtn, stopBtn, playBtn, recBtn, repeatBtn, timeEl, speedSel),
-    h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
+    h(
+      'div',
+      { class: 'transport-group' },
+      homeBtn,
+      stopBtn,
+      playBtn,
+      recBtn,
+      repeatBtn,
+      // The output meter sits inside the time display, so the header has no empty strip while it is silent.
+      h(
+        'div',
+        { class: 'time-display' },
+        timeEl,
+        h('div', { class: 'master-meter', title: 'Output level' }, h('div', { class: 'meter' }, masterL), h('div', { class: 'meter' }, masterR)),
+      ),
+      speedSel,
+    ),
     masterFxBtn,
     preShowBtn,
     h('div', { class: 'spacer' }),
