@@ -1,7 +1,7 @@
 # WavePod build entry points. Run `make help` for a list.
 NPM ?= npm
 
-.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac clean distclean
+.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac icons desktop-install desktop-uninstall clean distclean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -57,6 +57,29 @@ dist-win: build vsthost ## Package a Windows NSIS installer
 
 dist-mac: build vsthost ## Package a macOS DMG
 	npx electron-builder --mac dmg --publish never
+
+icons: ## Re-render the PNG/ICO icons from build/icon.svg (needs Playwright, ImageMagick)
+	node scripts/render-icons.mjs
+
+# GNOME/freedesktop launcher for the current user. Point WAVEPOD_EXEC at the AppImage, e.g.
+#   make desktop-install WAVEPOD_EXEC=$$HOME/Applications/WavePod.AppImage
+WAVEPOD_EXEC ?= wavepod
+XDG_DATA_HOME ?= $(HOME)/.local/share
+ICON_SIZES := 16 24 32 48 64 128 256 512
+
+desktop-install: ## Add WavePod to the GNOME app grid (WAVEPOD_EXEC=/path/to/WavePod.AppImage)
+	install -d "$(XDG_DATA_HOME)/applications"
+	sed 's|^Exec=wavepod|Exec="$(WAVEPOD_EXEC)"|' build/linux/wavepod.desktop > "$(XDG_DATA_HOME)/applications/wavepod.desktop"
+	for s in $(ICON_SIZES); do \
+	  install -Dm644 build/icons/$${s}x$${s}.png "$(XDG_DATA_HOME)/icons/hicolor/$${s}x$${s}/apps/wavepod.png"; \
+	done
+	install -Dm644 build/icon.svg "$(XDG_DATA_HOME)/icons/hicolor/scalable/apps/wavepod.svg"
+	-update-desktop-database "$(XDG_DATA_HOME)/applications" 2>/dev/null
+	-gtk-update-icon-cache -q -t "$(XDG_DATA_HOME)/icons/hicolor" 2>/dev/null
+
+desktop-uninstall: ## Remove the launcher added by desktop-install
+	rm -f "$(XDG_DATA_HOME)/applications/wavepod.desktop" "$(XDG_DATA_HOME)/icons/hicolor/scalable/apps/wavepod.svg"
+	for s in $(ICON_SIZES); do rm -f "$(XDG_DATA_HOME)/icons/hicolor/$${s}x$${s}/apps/wavepod.png"; done
 
 clean: ## Remove build output
 	rm -rf dist release native/vsthost/build native/vsthost/bin
