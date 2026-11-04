@@ -77,6 +77,18 @@ describe('WavePod MCP tools', () => {
     expect(r.data.master.id).toBe('master');
   });
 
+  it('applies an audio drama voice effect from factory presets', async () => {
+    const h = fakeHost();
+    const server = createWavePodServer(h.host, '1');
+    let r = await call(server, 'apply_voice_effect', { target: 'Guest', effect: 'walkie-talkie' });
+    expect(r.isError).toBe(false);
+    expect(r.data.filters.map((f: { type: string }) => f.type)).toEqual(['bandpass', 'distortion', 'compressor']);
+    expect(h.summaries).toEqual(['Applied Walkie-talkie to Guest']);
+    expect(h.project.tracks[1].fx!.map((f) => f.preset?.name)).toEqual(['Walkie-talkie', 'Walkie-talkie', 'Broadcast']);
+    r = await call(server, 'apply_voice_effect', { target: 'Guest', effect: 'robot' });
+    expect(r.isError).toBe(true);
+  });
+
   it('applies the voice chain, then edits, moves and removes filters by type or id', async () => {
     const h = fakeHost();
     const server = createWavePodServer(h.host, '1');
