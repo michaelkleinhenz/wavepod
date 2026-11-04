@@ -137,6 +137,36 @@
     }
   }
 
+  // ---------------------------------------------------------- before/after enhancement
+  const eb = $('#enhance-bars');
+  if (eb) {
+    const box = eb.parentElement;
+    const N = eb.clientWidth < 500 ? 40 : 72, raw = [], clean = [];
+    for (let i = 0; i < N; i++) {
+      // Two speakers: one loud, one quiet, plus a noise floor in the pauses.
+      const talk = Math.sin(i * 0.9) * 0.5 + 0.5;
+      const seg = Math.round(N / 4), loudSpeaker = Math.floor(i / seg) % 2 === 0;
+      const pause = (i % seg) > seg * 0.8;
+      const level = pause ? 0.1 + Math.random() * 0.05 : (loudSpeaker ? 0.7 + talk * 0.3 : 0.22 + talk * 0.12);
+      raw.push(Math.min(1, level * (0.75 + Math.random() * 0.25)));
+      clean.push(pause ? 0.02 : 0.5 + talk * 0.22 + Math.random() * 0.06);
+    }
+    const bars = raw.map(() => { const b = document.createElement('i'); eb.appendChild(b); return b; });
+    const set = (isRaw) => {
+      box.classList.toggle('raw', isRaw);
+      bars.forEach((b, i) => b.style.setProperty('--h', ((isRaw ? raw : clean)[i] * 100).toFixed(1) + '%'));
+    };
+    set(true);
+    if (reduce) set(false);
+    else {
+      let isRaw = true, timer = null;
+      visible(box, (v) => {
+        clearInterval(timer);
+        if (v) timer = setInterval(() => { isRaw = !isRaw; set(isRaw); }, 2600);
+      });
+    }
+  }
+
   // ---------------------------------------------------------- typing terminals
   const type = (el, text, speed, done) => {
     let i = 0;
