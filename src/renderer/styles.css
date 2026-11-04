@@ -411,7 +411,7 @@ button.primary.danger { background: #c62828; border-color: #c62828; }
 .meter-peak.over { color: var(--warn); }
 .clip-led { width: 9px; height: 9px; border-radius: 50%; background: #3a1d1d; border: 1px solid #5a2a2a; cursor: pointer; flex: none; }
 .clip-led.on { background: #e53935; border-color: #ff6f60; box-shadow: 0 0 6px #e53935; }
-.speed-select { width: 64px; padding: 4px 6px; font-variant-numeric: tabular-nums; }
+.speed-select { width: 76px; padding: 4px 6px; font-variant-numeric: tabular-nums; }
 .speed-select.fast { border-color: var(--accent); color: var(--accent); }
 .fx-duck { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 6px 8px; background: #121419; border-radius: 6px; }
 .fx-duck select { width: 90px; }

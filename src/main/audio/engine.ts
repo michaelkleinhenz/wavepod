@@ -22,7 +22,7 @@ import { interleavedPeaks } from '../../core/dsp';
 import { MipmapBuilder, PEAK_TILE, SAMPLE_TILE, TILED_MAX_SPP, encodePeaks, headerSize, mixToMono, parsePeakHeader, type PeakFileLayout } from '../../core/peaks';
 import { FX_WARMUP_SECONDS, Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
 import { clipsEnd, createProject } from '../../core/project';
-import { TimeStretcher } from '../../core/timeStretch';
+import { MAX_PLAYBACK_SPEED, TimeStretcher } from '../../core/timeStretch';
 import { SCRUB_WARMUP_SECONDS, Scrubber } from '../../core/scrub';
 import {
   JINGLE_PANIC_SECONDS,
@@ -341,7 +341,6 @@ export class AudioEngine extends EventEmitter {
     return this.speed;
   }
 
-  /** 1 (normal) up to 2; playback only. */
   /** Output preset "Pre-show" (only jingles are heard) or "Show" (everything). Doesn't interrupt the transport. */
   setPreShow(on: boolean): void {
     if (this.preShow === on) return;
@@ -354,8 +353,9 @@ export class AudioEngine extends EventEmitter {
     if (!on) this.pings = [];
   }
 
+  /** 1 (normal) up to 3; playback only. */
   setPlaybackSpeed(speed: number): void {
-    this.speed = Math.max(0.5, Math.min(2, Number.isFinite(speed) ? speed : 1));
+    this.speed = Math.max(0.5, Math.min(MAX_PLAYBACK_SPEED, Number.isFinite(speed) ? speed : 1));
     this.stretcher = null;
   }
 

@@ -65,6 +65,9 @@ export type MenuCommand =
   | 'show-project-folder'
   | 'restore-backup'
   | 'shortcuts'
+  | 'speed-up'
+  | 'speed-down'
+  | 'speed-normal'
   | 'auphonic';
 
 /** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
@@ -129,7 +132,7 @@ export interface WavePodApi {
   seek(position: number): Promise<void>;
   /** Tape-style scrub to `position` while the playhead is dragged (also while stopped); null ends it. */
   scrub(position: number | null): Promise<void>;
-  /** Playback speed, 1 to 2, pitch kept (recording and export always run at 1x). */
+  /** Playback speed, 1 to 3, pitch kept (recording and export always run at 1x). */
   setPlaybackSpeed(speed: number): Promise<void>;
   /** Output preset: Pre-show (only the soundboard is heard) or Show. */
   setPreShow(on: boolean): Promise<void>;
