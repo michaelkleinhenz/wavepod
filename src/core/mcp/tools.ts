@@ -7,7 +7,8 @@ import { MASTER, VOICE_CHAIN, addVoiceChain, fxList, insertFx, moveFx, removeFx,
 import { findPresetEntry, presetEdited } from '../fx/presets';
 import type { FxPresetLibrary } from '../fx/presetLibrary';
 import { createVstFx, visibleVstParams, vstFailures } from '../fx/vst';
-import { projectLength } from '../project';
+import { projectLength, updateTrack } from '../project';
+import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
 import { formatTimestamp, uid } from '../../shared/time';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
 
@@ -317,8 +318,48 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             clips: t.clips.length,
             audioSeconds: round(t.clips.reduce((s, c) => s + c.length, 0) / p.sampleRate, 1),
             filters: (t.fx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`),
+            ...(t.automix?.enabled ? { automix: { depthDb: t.automix.depth } } : {}),
+            ...(t.duck?.enabled ? { duck: { depthDb: t.duck.depth } } : {}),
           })),
           master: { id: MASTER, name: 'Master', gainDb: p.masterGain, filters: (p.masterFx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`) },
+        };
+      },
+    },
+    {
+      name: 'set_automix',
+      description:
+        'Turns crosstalk removal (automix) on or off for speech tracks. For people recorded in one room, where every mic also picks up the others: ' +
+        'among the automixed tracks, whoever is loudest stays up and the others are turned down by up to depthDb. It needs at least two automixed tracks and works in playback and export.',
+      inputSchema: obj(
+        {
+          tracks: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Track ids or names.' },
+          enabled: { type: 'boolean', description: 'true = take part in the automix.' },
+          depthDb: { type: 'number', minimum: 1, maximum: 60, description: 'How far a track is turned down at most while someone else speaks. Default 18.' },
+        },
+        ['tracks', 'enabled'],
+      ),
+      annotations: { title: 'Set automix', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const refs = args.tracks;
+        if (!Array.isArray(refs) || !refs.length) throw new ToolError('"tracks" must list at least one track.');
+        const enabled = bool(args, 'enabled')!;
+        const depthArg = args.depthDb === undefined ? undefined : Number(args.depthDb);
+        if (depthArg !== undefined && !(depthArg >= 1 && depthArg <= 60)) throw new ToolError('"depthDb" must be between 1 and 60.');
+        const names: string[] = [];
+        for (const ref of refs) {
+          const { target, name } = resolveTarget(project, String(ref));
+          if (target === MASTER) throw new ToolError('The master bus can\'t be automixed.');
+          const track = project.tracks.find((t) => t.id === target)!;
+          const automix = { enabled, depth: depthArg ?? track.automix?.depth ?? AUTOMIX_DEFAULT_DEPTH };
+          project = updateTrack(project, target, { automix });
+          names.push(name);
+        }
+        host.apply(project, `${enabled ? 'Automix on' : 'Automix off'} for ${names.join(', ')}`);
+        const on = host.project().tracks.filter((t) => t.automix?.enabled && !t.duck?.enabled);
+        return {
+          automixed: on.map((t) => ({ id: t.id, name: t.name, depthDb: t.automix!.depth })),
+          ...(on.length === 1 ? { note: 'Only one track is automixed; it has no effect until a second track takes part.' } : {}),
         };
       },
     },

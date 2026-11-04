@@ -227,3 +227,21 @@ describe('MCP over HTTP', () => {
     await expect(startMcpHttpServer(new McpServer({ name: 'b', version: '1' }), http.port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
   });
 });
+
+describe('MCP automix', () => {
+  it('turns crosstalk removal on for several tracks in one step', async () => {
+    const fake = fakeHost();
+    const server = createWavePodServer(fake.host, '1');
+    let r = await call(server, 'set_automix', { tracks: ['Host'], enabled: true });
+    expect(r.isError).toBe(false);
+    expect(r.data.note).toMatch(/Only one track/);
+    r = await call(server, 'set_automix', { tracks: ['Host', 'Guest'], enabled: true, depthDb: 24 });
+    expect(r.data.automixed.map((t: { name: string }) => t.name)).toEqual(['Host', 'Guest']);
+    expect(fake.project.tracks.map((t) => t.automix)).toEqual([{ enabled: true, depth: 24 }, { enabled: true, depth: 24 }]);
+    expect(fake.summaries.at(-1)).toBe('Automix on for Host, Guest');
+    r = await call(server, 'list_tracks');
+    expect(r.data.tracks[0].automix).toEqual({ depthDb: 24 });
+    r = await call(server, 'set_automix', { tracks: ['master'], enabled: true });
+    expect(r.isError).toBe(true);
+  });
+});

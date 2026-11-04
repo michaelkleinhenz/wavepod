@@ -70,6 +70,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     muteRegions: mergeRegions(t.muteRegions ?? []),
     fx: normalizeFxList(t.fx),
     ...(t.duck ? { duck: { enabled: !!t.duck.enabled, depth: Number.isFinite(t.duck.depth) ? Math.min(40, Math.max(1, Math.abs(t.duck.depth))) : 12 } } : {}),
+    ...(t.automix ? { automix: { enabled: !!t.automix.enabled, depth: Number.isFinite(t.automix.depth) ? Math.min(60, Math.max(1, Math.abs(t.automix.depth))) : 18 } } : {}),
     clips: (t.clips ?? []).map((c) => ({
       ...c,
       gain: c.gain ?? 0,

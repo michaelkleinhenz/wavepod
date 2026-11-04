@@ -444,6 +444,8 @@ button.primary.danger { background: #c62828; border-color: #c62828; }
 .speed-select.fast { border-color: var(--accent); color: var(--accent); }
 .fx-duck { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 6px 8px; background: #121419; border-radius: 6px; }
 .fx-duck select { width: 90px; }
+.fx-automix { flex-wrap: wrap; }
+.fx-automix-hint { flex-basis: 100%; font-size: 11px; }
 .track-pick { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
 .track-pick button { text-align: left; padding: 8px 12px; }
 .drop-target { outline: 2px dashed var(--accent); outline-offset: -4px; }

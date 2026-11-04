@@ -52,6 +52,8 @@ export interface Track {
   fx?: Fx[];
   /** Gets quieter by `depth` dB while the other tracks play (soundboard, music beds). */
   duck?: { enabled: boolean; depth: number };
+  /** Crosstalk removal: automixed tracks are turned down by up to `depth` dB while another automixed track is louder. */
+  automix?: { enabled: boolean; depth: number };
 }
 
 /** One point of a clip's volume line. */
