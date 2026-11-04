@@ -592,6 +592,9 @@ let appMenu: Menu | null = null;
 /** Menu items by the ids handed to the renderer. */
 const menuItems = new Map<string, MenuItem>();
 
+/** Shortcuts shown next to menu items whose keys the window handles itself. */
+const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<' };
+
 function menuModel(): MenuModelTop[] {
   menuItems.clear();
   if (!inAppMenuBar || !appMenu) return [];
@@ -613,7 +616,7 @@ function menuModel(): MenuModelTop[] {
         id,
         type: item.type === 'checkbox' ? 'checkbox' : 'normal',
         label: menuLabel(item.label),
-        accelerator: acceleratorLabel(item.accelerator as string | undefined),
+        accelerator: acceleratorLabel(item.accelerator as string | undefined) ?? MENU_KEY_HINTS[item.id],
         checked: item.type === 'checkbox' ? item.checked : undefined,
         enabled: item.enabled,
       });
@@ -693,6 +696,12 @@ function buildMenu(): void {
         { label: 'Setup', accelerator: 'CmdOrCtrl+1', click: menuSend('view-setup') },
         { label: 'Record && Edit', accelerator: 'CmdOrCtrl+2', click: menuSend('view-edit') },
         { label: 'Chapters', accelerator: 'CmdOrCtrl+3', click: menuSend('view-chapters') },
+        { type: 'separator' },
+        // The keys > and < are handled in the window (they sit on different keys per layout); the
+        // in-app menu bar only shows them, see MENU_KEY_HINTS.
+        { id: 'speed-up', label: 'Play Faster', click: menuSend('speed-up') },
+        { id: 'speed-down', label: 'Play Slower', click: menuSend('speed-down') },
+        { id: 'speed-normal', label: 'Normal Playback Speed', click: menuSend('speed-normal') },
         { type: 'separator' },
         {
           label: 'Ping at Markers During Playback',

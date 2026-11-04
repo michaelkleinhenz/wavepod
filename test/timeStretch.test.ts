@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TimeStretcher, type StretchSource } from '../src/core/timeStretch';
+import { PLAYBACK_SPEEDS, stepSpeed, TimeStretcher, type StretchSource } from '../src/core/timeStretch';
 
 const SR = 48000;
 
@@ -58,6 +58,34 @@ describe('time stretch', () => {
     let maxJump = 0;
     for (let i = 1; i < out.length; i++) maxJump = Math.max(maxJump, Math.abs(out[i] - out[i - 1]));
     expect(maxJump).toBeLessThan(0.1);
+  });
+
+  it('keeps the pitch and stays smooth at 3x, the fastest speed', () => {
+    const calls: Array<[number, number]> = [];
+    const st = new TimeStretcher(SR, sineSource(300, calls), 3);
+    st.reset(0);
+    const out = render(st, SR);
+    const zc = zeroCrossings(out.subarray(SR / 10)) / 0.9;
+    expect(zc).toBeGreaterThan(0.9 * 600);
+    expect(zc).toBeLessThan(1.1 * 600);
+    expect(st.position).toBeGreaterThan(2.95 * SR);
+    expect(st.position).toBeLessThan(3.05 * SR);
+    for (let i = 1; i < calls.length; i++) expect(calls[i][0]).toBe(calls[i - 1][0] + calls[i - 1][1]);
+    let maxJump = 0;
+    for (let i = 1; i < out.length; i++) maxJump = Math.max(maxJump, Math.abs(out[i] - out[i - 1]));
+    expect(maxJump).toBeLessThan(0.1);
+  });
+
+  it('steps through the listening speeds and stops at the ends', () => {
+    expect(PLAYBACK_SPEEDS[0]).toBe(1);
+    expect(stepSpeed(1, 1)).toBe(1.25);
+    expect(stepSpeed(2, 1)).toBe(2.5);
+    expect(stepSpeed(3, 1)).toBe(3);
+    expect(stepSpeed(1.5, -1)).toBe(1.25);
+    expect(stepSpeed(1, -1)).toBe(1);
+    // an odd value goes to the nearest listed speed in that direction
+    expect(stepSpeed(1.6, 1)).toBe(1.75);
+    expect(stepSpeed(1.6, -1)).toBe(1.5);
   });
 
   it('restarts cleanly after a reset', () => {

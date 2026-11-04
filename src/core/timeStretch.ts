@@ -4,7 +4,19 @@
 /** Renders `n` frames of the timeline from `pos` into `buf` (two channels, overwritten). Called with contiguous ranges. */
 export type StretchSource = (pos: number, n: number, buf: Float32Array[]) => void;
 
-export const PLAYBACK_SPEEDS = [1, 1.25, 1.5, 1.75, 2] as const;
+export const PLAYBACK_SPEEDS = [1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
+export const MAX_PLAYBACK_SPEED = PLAYBACK_SPEEDS[PLAYBACK_SPEEDS.length - 1];
+
+/** The next listening speed up (`dir` 1) or down (-1) from `speed`; stays at the ends. */
+export function stepSpeed(speed: number, dir: 1 | -1): number {
+  if (dir > 0) return PLAYBACK_SPEEDS.find((v) => v > speed + 1e-9) ?? MAX_PLAYBACK_SPEED;
+  return [...PLAYBACK_SPEEDS].reverse().find((v) => v < speed - 1e-9) ?? PLAYBACK_SPEEDS[0];
+}
+
+/** "1.5×" */
+export function speedLabel(speed: number): string {
+  return `${speed}×`;
+}
 
 export class TimeStretcher {
   /** Overlap length (= output hop) in frames. */

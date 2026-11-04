@@ -7,7 +7,8 @@ import { muteSelection as muteEnvelopeRange } from '../core/envelope';
 import { uid } from '../shared/time';
 import { baseName, decodeBytes, decodeFile } from './audioFiles';
 import { errorMessage, h, toast } from './dom';
-import { api, saveRepeatSetting, store } from './store';
+import { api, saveRepeatSetting, saveSpeedSetting, store } from './store';
+import { speedLabel, stepSpeed } from '../core/timeStretch';
 import { runSoundcheck } from '../core/soundcheck';
 import { allClipIds, clipEdges, markerPositions, stepTo } from '../core/navigation';
 import { copyClips, copyRange, pasteClipboard as pasteInto } from '../core/clipboard';
@@ -61,6 +62,22 @@ export function toggleRepeat(): void {
   syncLoop();
   store.notify('transport');
   if (store.repeat && !store.selection.range) toast('Repeat on: select a time range to loop it');
+}
+
+/** Sets the listening speed (pitch kept); recording and export always run at 1x. */
+export function setSpeed(speed: number, announce = false): void {
+  store.speed = speed;
+  saveSpeedSetting(speed);
+  void api().setPlaybackSpeed(speed);
+  store.notify('transport');
+  if (announce) toast(speed === 1 ? 'Normal speed' : `Playback speed ${speedLabel(speed)}`);
+}
+
+/** One step faster (1) or slower (-1), e.g. from the keyboard or the View menu. */
+export function stepPlaybackSpeed(dir: 1 | -1): void {
+  const next = stepSpeed(store.speed, dir);
+  if (next === store.speed) return void toast(dir > 0 ? `Already at the fastest speed (${speedLabel(next)})` : 'Already at normal speed');
+  setSpeed(next, true);
 }
 
 export async function stop(): Promise<void> {

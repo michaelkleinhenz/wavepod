@@ -25,6 +25,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       ['Alt+← / →', 'Previous / next clip edge'],
       ['Shift+Alt+← / →', 'Previous / next marker'],
       ['Home / End', 'Start / end of the episode'],
+      ['> / <', 'Play faster / slower (pitch kept, up to 3×)'],
       ['+ / −', 'Zoom in / out'],
       ['Shift+Z', 'Zoom to the selection and back'],
       ['Middle drag', 'Pan the view'],
@@ -51,7 +52,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       [`${mod}+drag clip`, 'Move it with everything after it on the track'],
       [`${mod}+Shift+drag clip`, 'Move it with everything after it on all tracks'],
       ['Double-click fade', 'Change the fade shape'],
-      ['Right-click clip', 'Colour and note'],
+      ['Right-click clip', 'Clip menu: split, copy, duplicate, fades, gain, colour, note…'],
     ],
   ],
   [

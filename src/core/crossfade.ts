@@ -59,3 +59,32 @@ export function fadesAt(f: EffectiveFades, length: number, rel: number): number 
   if (f.fadeIn === 0 && f.fadeOut === 0) return 1;
   return fadeGain(rel, length, f.fadeIn, f.fadeOut, f.inShape, f.outShape);
 }
+
+export interface OverlapSpan {
+  from: number;
+  to: number;
+  /** Indices (into the clips passed in) of every clip that plays in this span, in order. */
+  clips: number[];
+}
+
+/**
+ * The stretches of a track where two or more clips play at once, split wherever a clip starts
+ * or ends, so each span has one fixed set of clips. The timeline draws these see-through.
+ */
+export function overlapSpans(clips: ReadonlyArray<Pick<Clip, 'start' | 'length'>>): OverlapSpan[] {
+  const edges = [...new Set(clips.flatMap((c) => [c.start, c.start + c.length]))].sort((a, b) => a - b);
+  const out: OverlapSpan[] = [];
+  for (let k = 1; k < edges.length; k++) {
+    const from = edges[k - 1];
+    const to = edges[k];
+    const inside: number[] = [];
+    clips.forEach((c, i) => {
+      if (c.length > 0 && c.start <= from && c.start + c.length >= to) inside.push(i);
+    });
+    if (inside.length < 2) continue;
+    const last = out[out.length - 1];
+    if (last && last.to === from && last.clips.join() === inside.join()) last.to = to;
+    else out.push({ from, to, clips: inside });
+  }
+  return out;
+}

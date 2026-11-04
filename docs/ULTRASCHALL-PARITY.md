@@ -75,7 +75,7 @@ about it; the priority is explained in section 3.
 | Marker ping when the playhead passes a marker | ✅ View › Ping at Markers During Playback (off by default; higher beep for chapters, lower for edit markers, not in the export) | Done |
 | Project backups every 10 minutes | ✅ `backup/` in the project folder: every 10 minutes when something changed and before each recording, newest 20 kept, File › Restore Backup… (undoable) | Done |
 | Distraction-free editing mode, customisable shortcuts, shortcut list | ✅ Shortcut overlay (`?`, Help › Keyboard Shortcuts) | **P3** Customisable keymap later |
-| Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | ✅ Clip colours and notes (right-click a clip), overview strip under the timeline (whole episode, clips in their colours, markers, the visible part framed; click or drag to navigate) | Done (tag search across projects is not planned) |
+| Storyboard: keyword tags on clip sections, colours, comments, regions, free text notes, navigator | ✅ Clip colours and notes (right-click a clip for the clip menu), overview strip under the timeline (whole episode, clips in their colours, markers, the visible part framed; click or drag to navigate) | Done (tag search across projects is not planned) |
 | Double-ender: guest's local backup recording replaces the remote track | ✅ "Align to track…" toolbar button: FFT cross-correlation (±60 s search over 90 s at ~2 kHz) moves the guest's clip onto the call recording, one undo step, warns on a weak match | Done |
 
 ### Export

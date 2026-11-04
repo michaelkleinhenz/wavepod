@@ -7,7 +7,7 @@ import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/r
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
 import { FADE_SHAPES, fadeCurve, type FadeShape } from '../core/dsp';
-import { fadesAt, trackFades, type EffectiveFades } from '../core/crossfade';
+import { fadesAt, overlapSpans, trackFades, type EffectiveFades } from '../core/crossfade';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
@@ -17,9 +17,20 @@ import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, set
 import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
-import { showClipLabel } from './clipLabel';
+import { openClipMenu } from './clipMenu';
 import { editableNumber, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
+
+/** Where a clip is drawn: its (possibly dragged or trimmed) place on the timeline. */
+interface ClipGeo {
+  x: number;
+  y: number;
+  w: number;
+  start: number;
+  length: number;
+  offset: number;
+  trackIndex: number;
+}
 
 const TRACK_H = 84;
 const OVERVIEW_H = 30;
@@ -762,7 +773,7 @@ export class TimelineView {
       const y = i * TRACK_H;
       ctx.fillStyle = i % 2 ? '#191b21' : '#1b1d23';
       ctx.fillRect(0, y, w, TRACK_H - 1);
-      for (const clip of t.clips) if (!this.isDragged(clip.id)) this.drawClip(ctx, t, i, clip);
+      this.drawRowClips(ctx, i);
       if (recording && t.kind === 'soundboard') this.drawLiveJingles(ctx, y);
       this.drawMuteRegions(ctx, t, y);
       if (recording && t.armed && t.inputChannels.length) {
@@ -779,14 +790,6 @@ export class TimelineView {
       }
       ctx.fillStyle = '#0f1014';
       ctx.fillRect(0, y + TRACK_H - 1, w, 1);
-    });
-    // clips being dragged float above all tracks (drawn last so lower tracks can't hide them)
-    tracks.forEach((t, i) => {
-      for (const clip of t.clips) {
-        if (!this.isDragged(clip.id)) continue;
-        const dest = tracks[this.clipGeometry(i, clip).trackIndex] ?? t;
-        this.drawClip(ctx, dest, i, clip);
-      }
     });
     const range = this.liveRange();
     if (range) {
@@ -1055,7 +1058,7 @@ export class TimelineView {
     });
   }
 
-  private clipGeometry(trackIndex: number, clip: Clip): { x: number; y: number; w: number; start: number; length: number; offset: number; trackIndex: number } {
+  private clipGeometry(trackIndex: number, clip: Clip): ClipGeo {
     let start = clip.start;
     let length = clip.length;
     let offset = clip.offset;
@@ -1070,40 +1073,112 @@ export class TimelineView {
     return { x: this.xOf(start), y: ti * TRACK_H + 4, w: (length / this.sr) * this.pxPerSec, start, length, offset, trackIndex: ti };
   }
 
-  private drawClip(ctx: CanvasRenderingContext2D, track: Track, trackIndex: number, clip: Clip): void {
-    const g = this.clipGeometry(trackIndex, clip);
-    const hgt = TRACK_H - 9;
-    if (g.x > this.width || g.x + g.w < 0) return;
+  /**
+   * The clips drawn in row `i`, at their (possibly dragged or trimmed) geometry, with clips being
+   * dragged last so they sit on top. `track` is the row's track as it would be after the drop, so
+   * crossfades over overlaps show while dragging.
+   */
+  private rowClips(i: number): { track: Track; items: Array<{ clip: Clip; g: ClipGeo }> } {
+    const tracks = store.project.tracks;
+    const base = tracks[i];
     const d = this.drag;
-    const selected = d?.kind === 'marquee' && d.moved ? d.ids.has(clip.id) : store.selection.clipIds.has(clip.id);
-    const muted = track.mute || (store.project.tracks.some((t) => t.solo) && !track.solo);
-    ctx.globalAlpha = muted ? 0.4 : 1;
+    if (!((d?.kind === 'clip' && d.moved) || d?.kind === 'trim')) {
+      return { track: base, items: base.clips.map((clip) => ({ clip, g: this.clipGeometry(i, clip) })) };
+    }
+    const still: Array<{ clip: Clip; g: ClipGeo }> = [];
+    const moving: Array<{ clip: Clip; g: ClipGeo }> = [];
+    tracks.forEach((t, ti) => {
+      for (const clip of t.clips) {
+        const g = this.clipGeometry(ti, clip);
+        if (g.trackIndex === i) (this.isDragged(clip.id) ? moving : still).push({ clip, g });
+      }
+    });
+    const items = [...still, ...moving];
+    const view: Track = { ...base, clips: items.map(({ clip, g }) => ({ ...clip, start: g.start, length: g.length, offset: g.offset })) };
+    return { track: view, items };
+  }
+
+  /**
+   * Draws one track row's clips. Where clips overlap, the overlap is drawn again with both clips
+   * see-through, their waveforms over each other and the crossfade curves crossing (like Reaper).
+   */
+  private drawRowClips(ctx: CanvasRenderingContext2D, i: number): void {
+    const { track, items } = this.rowClips(i);
+    const vis = items.filter(({ g }) => g.x <= this.width && g.x + g.w >= 0);
+    if (!vis.length) return;
+    for (const it of vis) {
+      this.drawClipBody(ctx, track, it.clip, it.g, 1);
+      this.drawClipWave(ctx, track, it.clip, it.g, 1);
+      this.drawClipFades(ctx, track, it.clip, it.g, true);
+    }
+    const hgt = TRACK_H - 9;
+    const y = i * TRACK_H + 4;
+    for (const span of overlapSpans(vis.map(({ g }) => g))) {
+      const sx0 = this.cx(this.xOf(span.from));
+      const sx1 = this.cx(this.xOf(span.to));
+      if (sx1 - sx0 < 0.5) continue;
+      const lim: [number, number] = [sx0, sx1];
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(sx0, y, sx1 - sx0, hgt);
+      ctx.clip();
+      ctx.fillStyle = i % 2 ? '#191b21' : '#1b1d23';
+      ctx.fillRect(sx0, y, sx1 - sx0, hgt);
+      const over = span.clips.map((k) => vis[k]);
+      for (const it of over) this.drawClipBody(ctx, track, it.clip, it.g, 0.55);
+      for (const it of over) this.drawClipWave(ctx, track, it.clip, it.g, 0.7, lim);
+      for (const it of over) this.drawClipFades(ctx, track, it.clip, it.g, false);
+      ctx.restore();
+    }
+    for (const it of vis) this.drawClipChrome(ctx, track, it.clip, it.g);
+  }
+
+  private clipMuted(track: Track): boolean {
+    return track.mute || (store.project.tracks.some((t) => t.solo) && !track.solo);
+  }
+
+  private clipSelected(clip: Clip): boolean {
+    const d = this.drag;
+    return d?.kind === 'marquee' && d.moved ? d.ids.has(clip.id) : store.selection.clipIds.has(clip.id);
+  }
+
+  /** The clip's background, colour tint and top bar, at `alpha` (see-through in overlaps). */
+  private drawClipBody(ctx: CanvasRenderingContext2D, track: Track, clip: Clip, g: ClipGeo, alpha: number): void {
+    const hgt = TRACK_H - 9;
+    const a = (this.clipMuted(track) ? 0.4 : 1) * alpha;
     // visible part of the clip: at deep zoom a clip can be millions of pixels wide
     const vx0 = this.cx(g.x);
     const vx1 = this.cx(g.x + g.w);
-    ctx.fillStyle = selected ? '#2f3b52' : '#262b36';
+    ctx.globalAlpha = a;
+    ctx.fillStyle = this.clipSelected(clip) ? '#2f3b52' : '#262b36';
     ctx.fillRect(vx0, g.y, vx1 - vx0, hgt);
     if (clip.color) {
       // a coloured clip gets a tinted body and its colour as the top bar
-      ctx.globalAlpha = (muted ? 0.4 : 1) * 0.22;
+      ctx.globalAlpha = a * 0.22;
       ctx.fillStyle = clip.color;
       ctx.fillRect(vx0, g.y, vx1 - vx0, hgt);
-      ctx.globalAlpha = muted ? 0.4 : 1;
+      ctx.globalAlpha = a;
     }
     ctx.fillStyle = clip.color ?? track.color;
     ctx.fillRect(vx0, g.y, vx1 - vx0, clip.color ? 5 : 3);
-    // waveform
+    ctx.globalAlpha = 1;
+  }
+
+  /** The clip's waveform as it sounds; `lim` narrows the drawn columns (an overlap span). */
+  private drawClipWave(ctx: CanvasRenderingContext2D, track: Track, clip: Clip, g: ClipGeo, alpha: number, lim?: [number, number]): void {
+    const hgt = TRACK_H - 9;
+    ctx.globalAlpha = (this.clipMuted(track) ? 0.4 : 1) * alpha;
     const peaks = store.requestPeaks(clip.file);
     if (peaks && peaks.levels.length) {
-      // the waveform shows the clip as it sounds: clip gain (normalisation), fades and
-      // volume line applied
+      // the waveform shows the clip as it sounds: clip gain (normalisation), fades (including
+      // crossfades) and volume line applied
       const env = clip.envelope?.length ? clip.envelope : undefined;
       const fx = fadesOf(track, clip);
       const fades = fx.fadeIn > 0 || fx.fadeOut > 0;
       const cg = clip.gain ? dbToGain(clip.gain) : 1;
       drawFileWaveform(ctx, store.waves, clip.file, peaks, {
-        x0: Math.max(0, Math.floor(g.x)),
-        x1: Math.min(this.width, Math.ceil(g.x + g.w)),
+        x0: Math.max(lim ? Math.floor(lim[0]) : 0, Math.floor(g.x)),
+        x1: Math.min(lim ? Math.ceil(lim[1]) : this.width, Math.ceil(g.x + g.w)),
         originX: g.x,
         srcStart: g.offset,
         srcEnd: g.offset + g.length,
@@ -1115,25 +1190,42 @@ export class TimelineView {
         color: track.color,
         gain:
           env || fades || cg !== 1
-            ? (src) => cg * (fades ? fadesAt(fx, clip.length, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
+            ? (src) => cg * (fades ? fadesAt(fx, g.length, src - g.offset) : 1) * (env ? envelopeAmpAt(env, src) : 1)
             : undefined,
       });
     } else if (!peaks) {
       ctx.fillStyle = '#3a404d';
-      ctx.fillRect(vx0, g.y + hgt / 2, vx1 - vx0, 1);
+      const vx0 = this.cx(g.x);
+      ctx.fillRect(vx0, g.y + hgt / 2, this.cx(g.x + g.w) - vx0, 1);
     }
-    // fades: the faded-out part is shaded, the curve drawn on top
+    ctx.globalAlpha = 1;
+  }
+
+  /** Fade curves; with `shade` the faded-out part above them is darkened too. */
+  private drawClipFades(ctx: CanvasRenderingContext2D, track: Track, clip: Clip, g: ClipGeo, shade: boolean): void {
+    const hgt = TRACK_H - 9;
+    ctx.globalAlpha = this.clipMuted(track) ? 0.4 : 1;
     const eff = fadesOf(track, clip);
-    const fi = (clip.fadeIn / this.sr) * this.pxPerSec;
-    const fo = (clip.fadeOut / this.sr) * this.pxPerSec;
     const efi = (eff.fadeIn / this.sr) * this.pxPerSec;
     const efo = (eff.fadeOut / this.sr) * this.pxPerSec;
     ctx.fillStyle = 'rgba(8,9,12,0.45)';
     // crossfades over an overlap are drawn in the accent colour
     ctx.strokeStyle = eff.autoIn ? 'rgba(255,202,40,0.9)' : 'rgba(255,255,255,0.7)';
-    if (efi > 0) this.drawFade(ctx, g.x, g.x + efi, g.y + 3, g.y + hgt, 'in', eff.inShape);
+    if (efi > 0) this.drawFade(ctx, g.x, g.x + efi, g.y + 3, g.y + hgt, 'in', eff.inShape, shade);
     ctx.strokeStyle = eff.autoOut ? 'rgba(255,202,40,0.9)' : 'rgba(255,255,255,0.7)';
-    if (efo > 0) this.drawFade(ctx, g.x + g.w - efo, g.x + g.w, g.y + 3, g.y + hgt, 'out', eff.outShape);
+    if (efo > 0) this.drawFade(ctx, g.x + g.w - efo, g.x + g.w, g.y + 3, g.y + hgt, 'out', eff.outShape, shade);
+    ctx.globalAlpha = 1;
+  }
+
+  /** Everything drawn over the clip: fade handles, volume line, outline and labels. */
+  private drawClipChrome(ctx: CanvasRenderingContext2D, track: Track, clip: Clip, g: ClipGeo): void {
+    const hgt = TRACK_H - 9;
+    const selected = this.clipSelected(clip);
+    ctx.globalAlpha = this.clipMuted(track) ? 0.4 : 1;
+    const vx0 = this.cx(g.x);
+    const vx1 = this.cx(g.x + g.w);
+    const fi = (clip.fadeIn / this.sr) * this.pxPerSec;
+    const fo = (clip.fadeOut / this.sr) * this.pxPerSec;
     // fade handles at the top corners of the hovered or dragged clip
     const fadeDrag = this.drag?.kind === 'fade' && this.drag.clipId === clip.id ? this.drag : null;
     if ((this.hoverClipId === clip.id || fadeDrag) && g.w > 2 * FADE_HANDLE_PX) {
@@ -1191,7 +1283,7 @@ export class TimelineView {
    * A fade's gain line from (xa, ya) to (xb, yb), with the part above it shaded, cut to the
    * visible columns so it stays exact however far the view is zoomed in.
    */
-  private drawFade(ctx: CanvasRenderingContext2D, xa: number, xb: number, top: number, bottom: number, dir: 'in' | 'out', shape: FadeShape): void {
+  private drawFade(ctx: CanvasRenderingContext2D, xa: number, xb: number, top: number, bottom: number, dir: 'in' | 'out', shape: FadeShape, shade = true): void {
     const l = this.cx(xa);
     const r = this.cx(xb);
     if (r <= l) return;
@@ -1206,12 +1298,14 @@ export class TimelineView {
       const x = l + ((r - l) * k) / steps;
       pts.push([x, yAt(x)]);
     }
-    ctx.beginPath();
-    ctx.moveTo(l, top);
-    ctx.lineTo(r, top);
-    for (let k = pts.length - 1; k >= 0; k--) ctx.lineTo(pts[k][0], pts[k][1]);
-    ctx.closePath();
-    ctx.fill();
+    if (shade) {
+      ctx.beginPath();
+      ctx.moveTo(l, top);
+      ctx.lineTo(r, top);
+      for (let k = pts.length - 1; k >= 0; k--) ctx.lineTo(pts[k][0], pts[k][1]);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.beginPath();
     pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.stroke();
@@ -1477,7 +1571,7 @@ export class TimelineView {
         this.canvas.title = env.point !== null ? 'Volume point: drag to move, double-click to remove' : 'Volume line: drag up or down, double-click to add a point';
         return;
       }
-      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click to edit the note` : hit ? 'Right-click for colour and note' : '';
+      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click for clip options` : hit ? 'Right-click for clip options' : '';
       this.canvas.style.cursor = hit?.edge ? 'ew-resize' : hit ? 'grab' : 'text';
     });
 
@@ -1521,12 +1615,19 @@ export class TimelineView {
       const { x, y } = local(e, this.canvas);
       const hit = this.hitClip(x, y);
       if (!hit) return;
-      if (!store.selection.clipIds.has(hit.clip.id)) store.select({ clipIds: new Set([hit.clip.id]), range: null, rangeTracks: null, markerId: null });
-      showClipLabel(hit.clip, e.clientX, e.clientY);
+      this.drag = null;
+      openClipMenu({
+        clipId: hit.clip.id,
+        at: this.frameOf(x),
+        pageX: e.clientX,
+        pageY: e.clientY,
+        zoomTo: (span) => this.toggleZoomToSelection(span),
+        openLoudness: () => this.onOpenLoudness(),
+      });
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2) return; // right-click opens the clip's colour and note
+      if (e.button === 2) return; // right-click opens the clip menu
       const { x, y } = local(e, this.canvas);
       this.snapLine = null;
       // 0. Shift+drag draws a rubber band that selects every clip it touches (Shift+click still toggles a clip)
