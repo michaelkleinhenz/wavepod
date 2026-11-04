@@ -26,6 +26,7 @@ import type {
   WaveformPeaks,
 } from './types';
 import type { TemplateSummary } from '../core/template';
+import type { FxPresetEntry } from '../core/fx/presets';
 import type { AlignResult } from '../core/align';
 
 export interface OpenedProject {
@@ -194,6 +195,17 @@ export interface WavePodApi {
   /** The normalized value (0..1) for typed text such as "-12 dB", or null if it can't be read. */
   vstParse(fx: Fx, paramId: number, text: string): Promise<number | null>;
 
+  // filter presets (user presets are app-wide, in the Presets folder next to Templates)
+  /** Factory presets or the plug-in's own programs, then the user's presets for this kind of filter. */
+  listFxPresets(fx: Fx): Promise<FxPresetEntry[]>;
+  /** The filter set to a preset (not applied to the project; the caller makes it an undo step). */
+  applyFxPreset(fx: Fx, id: string): Promise<Fx>;
+  /** Saves the filter's settings as a user preset (same name for the same filter = replaced). */
+  saveFxPreset(fx: Fx, name: string): Promise<{ entry: FxPresetEntry; replaced: boolean; fx: Fx }>;
+  renameFxPreset(id: string, name: string): Promise<FxPresetEntry>;
+  deleteFxPreset(id: string): Promise<void>;
+  showPresetsFolder(): Promise<void>;
+
   // events (return an unsubscribe function)
   onTransport(cb: (u: TransportUpdate) => void): () => void;
   onStatus(cb: (s: EngineStatus) => void): () => void;
@@ -287,4 +299,10 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'vstDescribe',
   'vstFormat',
   'vstParse',
+  'listFxPresets',
+  'applyFxPreset',
+  'saveFxPreset',
+  'renameFxPreset',
+  'deleteFxPreset',
+  'showPresetsFolder',
 ];

@@ -8,7 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as esbuild from 'esbuild';
 import { VstHostProcess, vstHostExecutable } from '../src/main/vst/host';
 import { scanVstPlugins } from '../src/main/vst/scan';
-import { VstProcessor, setVstHost, vstFailures } from '../src/core/fx/vst';
+import { VstProcessor, createVstFx, loadVstProgram, setVstHost, visibleVstParams, vstFailures, vstProgramParam } from '../src/core/fx/vst';
+import { createPresetLibrary } from '../src/core/fx/presetLibrary';
 import type { Fx } from '../src/shared/types';
 
 const root = resolve(__dirname, '..');
@@ -101,6 +102,37 @@ describe.skipIf(!ready)('VST3 host helper', () => {
     const X = new Float32Array(64).fill(0.25);
     broken.process(X, X.slice(), 64);
     expect(X[10]).toBeCloseTo(0.25);
+  });
+
+  it("offers a plug-in's programs as presets and loads one", async () => {
+    const [plugin] = (await scanVstPlugins(exe!, [plugins], join(dir, 'c4.json'), true)).filter((p) => p.name === 'Test Program Change');
+    expect(plugin).toBeTruthy();
+    const probe = host.create({ plugin }, 48000, 1024);
+    const state = Buffer.from(probe.getState()).toString('base64');
+    const desc = { params: probe.params, state };
+    const program = vstProgramParam(probe.params)!;
+    expect(program).toBeTruthy();
+    const fx = createVstFx(plugin, desc);
+    // the program selector gets no slider
+    expect(visibleVstParams(fx.paramInfo!).some((p) => p.id === program.id)).toBe(false);
+
+    const library = createPresetLibrary(
+      { list: () => [], load: () => Promise.reject(new Error('none')), save: () => Promise.reject(new Error('none')) },
+      {
+        names: (_fx, id, steps) => Array.from({ length: steps + 1 }, (_, i) => probe.format(id, steps ? i / steps : 0)),
+        load: (f, id, value) => loadVstProgram(host, f, 48000, id, value),
+      },
+    );
+    const list = await library.list(fx);
+    expect(list.length).toBe(program.steps + 1);
+    expect(list[1].name).toBe('Prog 2');
+    // the sample uses the program number as its gain
+    const next = await library.apply(fx, list[program.steps].id);
+    const gain = visibleVstParams(fx.paramInfo!).find((p) => /gain/i.test(p.title))!;
+    expect(next.params[String(gain.id)]).toBeCloseTo(1, 3);
+    expect(next.state).not.toBe(fx.state);
+    expect(next.preset?.name).toBe(list[program.steps].name);
+    probe.destroy();
   });
 
   it('describes the helper on the command line', () => {

@@ -13,10 +13,12 @@ import { AudioEngine, defaultConfig } from './audio/engine';
 import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
 import { defaultVstDirs, scanVstPlugins } from './vst/scan';
-import { decodeState, setVstHost, type VstInstance } from '../core/fx/vst';
+import { decodeState, loadVstProgram, setVstHost, type VstInstance } from '../core/fx/vst';
 import { leadingNumber, searchNormalized } from '../core/numberInput';
 import { BACKUP_DIR, backupProject, createProjectDir, importImage, isProjectDir, loadBackup, loadProject, saveProject } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
+import { deleteUserPreset, listUserPresets, loadUserPreset, renameUserPreset, saveUserPreset } from './presetStore';
+import { createPresetLibrary } from '../core/fx/presetLibrary';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
 import { exportDialogDir } from './exportPaths';
@@ -92,6 +94,11 @@ function safeGetPath(name: 'music' | 'documents'): string {
 
 function templatesRoot(): string {
   return path.join(projectsRoot(), 'Templates');
+}
+
+/** The user's filter presets, shared by all episodes. */
+function presetsRoot(): string {
+  return path.join(projectsRoot(), 'Presets');
 }
 
 /** Name of the open input device, stored with a template as a hint for its channel mapping. */
@@ -174,6 +181,9 @@ const mcpHost: WavePodHost = {
     send(IPC.projectEdited, { project, summary });
   },
   measureLoudness: () => handlers.measureLoudness() as Promise<LoudnessReport[]>,
+  get presets() {
+    return presetLibrary;
+  },
   get vst() {
     const exe = vstExe;
     if (!exe || !vstHost) return null;
@@ -416,7 +426,36 @@ const handlers: Record<InvokeMethod, Handler> = {
   vstDescribe: (plugin: VstPluginRef) => describeVst(plugin),
   vstFormat: (fx: Fx, paramId: number, value: number) => formatVst(fx, paramId, value),
   vstParse: (fx: Fx, paramId: number, text: string) => parseVst(fx, paramId, text),
+
+  listFxPresets: (fx: Fx) => presetLibrary.list(fx),
+  applyFxPreset: (fx: Fx, id: string) => presetLibrary.apply(fx, id),
+  saveFxPreset: (fx: Fx, name: string) => presetLibrary.save(fx, name),
+  renameFxPreset: (id: string, name: string) => renameUserPreset(presetsRoot(), id, name),
+  deleteFxPreset: (id: string) => deleteUserPreset(presetsRoot(), id),
+  showPresetsFolder: () => {
+    fs.mkdirSync(presetsRoot(), { recursive: true });
+    return shell.openPath(presetsRoot()).then(() => undefined);
+  },
 };
+
+const presetLibrary = createPresetLibrary(
+  {
+    list: (fx) => listUserPresets(presetsRoot(), fx),
+    load: (id) => loadUserPreset(presetsRoot(), id),
+    save: (preset) => saveUserPreset(presetsRoot(), preset),
+  },
+  {
+    names: (fx, paramId, steps) => {
+      const inst = vstShadow(fx);
+      if (!inst) return [];
+      return Array.from({ length: steps + 1 }, (_, i) => inst.format(paramId, steps ? i / steps : 0));
+    },
+    load: (fx, paramId, value) => {
+      if (!vstHost) throw new Error('VST3 support is not included in this build.');
+      return loadVstProgram(vstHost, fx, current.project.sampleRate, paramId, value);
+    },
+  },
+);
 
 function describeVst(plugin: VstPluginRef) {
   if (!vstHost) throw new Error('VST3 support is not included in this build.');

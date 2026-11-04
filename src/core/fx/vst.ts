@@ -1,6 +1,6 @@
 // VST3 plug-ins in a filter stack. The actual hosting happens in a separate process
 // (native/vsthost); this module only defines what the mixer needs from it.
-import { VST_PARAM_BYPASS, VST_PARAM_HIDDEN, VST_PARAM_READONLY, type Fx, type VstParamInfo, type VstPluginRef } from '../../shared/types';
+import { VST_PARAM_BYPASS, VST_PARAM_HIDDEN, VST_PARAM_PROGRAM_CHANGE, VST_PARAM_READONLY, type Fx, type VstParamInfo, type VstPluginRef } from '../../shared/types';
 import { uid } from '../../shared/time';
 import type { FxProcessor } from './processors';
 
@@ -12,6 +12,8 @@ export interface VstInstance {
   reset(): void;
   setState(state: Uint8Array): Array<{ id: number; value: number }>;
   getState(): Uint8Array;
+  /** The controller's current parameter values (hosts without this op answer null). */
+  values?(): Array<{ id: number; value: number }> | null;
   format(paramId: number, value: number): string;
   /** The normalized value for the plug-in's own text, or null if it can't read it. */
   parse?(paramId: number, text: string): number | null;
@@ -25,26 +27,57 @@ export interface VstHost {
   create(fx: Pick<Fx, 'plugin'>, sampleRate: number, maxBlock: number): VstInstance;
 }
 
-const VST_SKIP_FLAGS = VST_PARAM_HIDDEN | VST_PARAM_READONLY | VST_PARAM_BYPASS;
+const VST_SKIP_FLAGS = VST_PARAM_HIDDEN | VST_PARAM_READONLY | VST_PARAM_BYPASS | VST_PARAM_PROGRAM_CHANGE;
 
 /** Parameters WavePod shows as sliders (and lets agents change). Plug-in editors are never opened. */
 export function visibleVstParams<T extends VstParamInfo>(params: T[]): T[] {
   return params.filter((p) => (p.flags & VST_SKIP_FLAGS) === 0);
 }
 
+/** The plug-in's program selector (a list parameter flagged as program change), if it has one. */
+export function vstProgramParam<T extends VstParamInfo>(params: T[]): T | null {
+  return params.find((p) => (p.flags & VST_PARAM_PROGRAM_CHANGE) !== 0 && p.steps > 0) ?? null;
+}
+
 /** A new VST3 filter from a plug-in's description (parameters with their current values, and its state). */
 export function createVstFx(plugin: VstPluginRef, desc: { params: Array<VstParamInfo & { value: number }>; state: string }): Fx {
   const ref = { path: plugin.path, cid: plugin.cid, name: plugin.name, vendor: plugin.vendor };
   const shown = visibleVstParams(desc.params);
+  // the program selector is kept in paramInfo (for the preset menu) but gets no slider and no stored value
+  const program = vstProgramParam(desc.params);
+  const info = program ? [...shown, program] : shown;
   return {
     id: uid('fx'),
     type: 'vst3',
     enabled: true,
     plugin: ref,
-    paramInfo: shown.map(({ id, title, units, steps, default: d, flags }) => ({ id, title, units, steps, default: d, flags })),
+    paramInfo: info.map(({ id, title, units, steps, default: d, flags }) => ({ id, title, units, steps, default: d, flags })),
     params: Object.fromEntries(shown.map((p) => [String(p.id), p.value])),
     state: desc.state,
   };
+}
+
+/**
+ * Selects one of a plug-in's programs on a scratch instance (starting from the filter's state) and
+ * reads back the resulting state and parameter values, for storing in the filter.
+ */
+export function loadVstProgram(h: VstHost, fx: Fx, sampleRate: number, paramId: number, value: number): { state: string; values: Array<{ id: number; value: number }> } {
+  if (!fx.plugin) throw new Error('No plug-in');
+  const inst = h.create(fx, sampleRate, MAX_BLOCK);
+  try {
+    const state = decodeState(fx.state);
+    if (state?.length) inst.setState(state);
+    inst.setParams([[paramId, value]]);
+    // the processor picks the change up while processing
+    const n = 64;
+    for (let i = 0; i < 2; i++) inst.process(new Float32Array(n), new Float32Array(n), n);
+    const values = inst.values?.() ?? null;
+    const bytes = inst.getState();
+    // a host without VALUES: load the state back to have the controller report its values
+    return { state: encodeState(bytes), values: values ?? inst.setState(bytes) };
+  } finally {
+    inst.destroy();
+  }
 }
 
 let host: VstHost | null = null;
@@ -62,12 +95,19 @@ export function vstFailures(): ReadonlyMap<string, string> {
   return failures;
 }
 
+const MAX_BLOCK = 4096;
+
+export function encodeState(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 export function decodeState(b64: string | undefined): Uint8Array | null {
   if (!b64) return null;
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-const MAX_BLOCK = 4096;
 
 /** A VST3 filter. Passes audio through unchanged when no host is available or the plug-in failed. */
 export class VstProcessor implements FxProcessor {

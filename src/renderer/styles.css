@@ -273,6 +273,9 @@ kbd { font: 10px ui-monospace, monospace; background: #0d0e11; padding: 1px 4px;
 .fx-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .fx-grip { cursor: grab; color: var(--muted); letter-spacing: -2px; padding: 0 2px; }
 .fx-name { flex: 1; font-weight: 600; }
+.fx-presets { display: flex; gap: 4px; align-items: center; margin: 0 0 8px; }
+.fx-preset-select { flex: 1; min-width: 0; font-size: 11px; }
+.fx-preset-name { flex: 1; min-width: 0; font-size: 11px; }
 .fx-param { display: grid; grid-template-columns: 92px 1fr 64px; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 2px 0; }
 .fx-param input[type=range] { width: 100%; }
 .fx-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }

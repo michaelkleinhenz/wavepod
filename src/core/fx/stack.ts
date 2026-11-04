@@ -39,6 +39,11 @@ export function updateFx(project: Project, target: FxTarget, id: string, patch: 
   return withList(project, target, (l) => l.map((f) => (f.id === id ? { ...f, ...patch, params: { ...f.params, ...(patch.params ?? {}) } } : f)));
 }
 
+/** Replaces a filter with a new version of itself (same id), e.g. after loading a preset. */
+export function replaceFx(project: Project, target: FxTarget, fx: Fx): Project {
+  return withList(project, target, (l) => l.map((f) => (f.id === fx.id ? fx : f)));
+}
+
 export function removeFx(project: Project, target: FxTarget, id: string): Project {
   return withList(project, target, (l) => l.filter((f) => f.id !== id));
 }

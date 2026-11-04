@@ -77,6 +77,16 @@ export interface Fx {
   paramInfo?: VstParamInfo[];
   /** VST3 only: the plug-in's own state (base64), restored before the parameters. */
   state?: string;
+  /** The preset last loaded or saved for this filter, so the FX panel can show it (and whether it was changed since). */
+  preset?: FxPresetRef;
+}
+
+/** Which preset a filter was set from. */
+export interface FxPresetRef {
+  id: string;
+  name: string;
+  /** Signature of the parameter values right after loading, to tell whether they were changed since. */
+  sig: string;
 }
 
 export interface VstPluginRef {
@@ -107,6 +117,8 @@ export interface VstParamInfo {
 export const VST_PARAM_READONLY = 1 << 1;
 export const VST_PARAM_HIDDEN = 1 << 4;
 export const VST_PARAM_BYPASS = 1 << 16;
+/** The plug-in's program (factory preset) selector, offered as presets instead of a slider. */
+export const VST_PARAM_PROGRAM_CHANGE = 1 << 15;
 
 export type MuteRegion = [Frames, Frames];
 

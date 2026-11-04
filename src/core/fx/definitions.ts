@@ -163,6 +163,7 @@ export function normalizeFx(fx: Partial<Fx>): Fx | null {
       plugin: { path: fx.plugin.path, cid: fx.plugin.cid, name: fx.plugin.name ?? 'VST3', vendor: fx.plugin.vendor ?? '' },
       paramInfo: Array.isArray(fx.paramInfo) ? fx.paramInfo : [],
       ...(fx.state ? { state: fx.state } : {}),
+      ...presetRef(fx),
     };
   }
   if (!fx.type || !FX_DEFINITIONS.some((d) => d.type === fx.type)) return null;
@@ -172,5 +173,10 @@ export function normalizeFx(fx: Partial<Fx>): Fx | null {
     const v = Number(fx.params?.[p.key]);
     params[p.key] = Number.isFinite(v) ? Math.min(p.max, Math.max(p.min, v)) : p.default;
   }
-  return { id: fx.id ?? uid('fx'), type: fx.type, enabled: fx.enabled !== false, params };
+  return { id: fx.id ?? uid('fx'), type: fx.type, enabled: fx.enabled !== false, params, ...presetRef(fx) };
+}
+
+function presetRef(fx: Partial<Fx>): Pick<Fx, 'preset'> {
+  const r = fx.preset;
+  return r && typeof r.id === 'string' && typeof r.name === 'string' && typeof r.sig === 'string' ? { preset: { id: r.id, name: r.name, sig: r.sig } } : {};
 }
