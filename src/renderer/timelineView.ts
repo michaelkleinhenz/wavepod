@@ -11,7 +11,7 @@ import { fadesAt, trackFades, type EffectiveFades } from '../core/crossfade';
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
-import { regionFromSelection, alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, seek, splitAtPlayhead } from './actions';
+import { regionFromSelection, alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, scrub, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
@@ -44,8 +44,6 @@ const PLAYHEAD_HANDLE_PX = 6;
 /** Size of the playhead handle at the top of the ruler. */
 const PLAYHEAD_HANDLE_W = 6;
 const PLAYHEAD_HANDLE_H = 7;
-/** While playing, scrubbing the playhead seeks the engine at most this often. */
-const SCRUB_SEEK_MS = 40;
 // Falls back to the key used while the app was called SoundPod.
 const SNAP_KEY = 'wavepod.timeline.snap';
 /** While a clip is dragged to another track, horizontal movement below this keeps its position (sync). */
@@ -70,7 +68,7 @@ type Drag =
   | { kind: 'envLine'; clipId: string; ti: number; indices: number[]; orig: EnvelopePoint[]; startY: number; moved: boolean }
   | { kind: 'marker'; markerId: string; startX: number; origPos: number; dx: number; moved: boolean }
   | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean }
-  | { kind: 'playhead'; startX: number; grabOffset: number; current: number; moved: boolean; lastSeek: number }
+  | { kind: 'playhead'; startX: number; grabOffset: number; current: number; moved: boolean }
   // Shift+drag: a rubber band across tracks and time that selects every clip it touches
   | { kind: 'marquee'; startX: number; startY: number; a: number; b: number; y0: number; y1: number; clipId: string | null; ids: Set<string>; moved: boolean };
 
@@ -708,7 +706,7 @@ export class TimelineView {
 
   private startPlayheadDrag(e: MouseEvent, x: number): void {
     const pos = store.transport.position;
-    this.drag = { kind: 'playhead', startX: e.clientX, grabOffset: x - this.xOf(pos), current: pos, moved: false, lastSeek: 0 };
+    this.drag = { kind: 'playhead', startX: e.clientX, grabOffset: x - this.xOf(pos), current: pos, moved: false };
     document.body.classList.add('scrubbing');
     this.draw();
   }
@@ -1350,6 +1348,7 @@ export class TimelineView {
       if (e.button !== 1) return;
       e.preventDefault(); // no autoscroll cursor or middle-click paste
       e.stopImmediatePropagation();
+      if (this.drag?.kind === 'playhead' && this.drag.moved) scrub(null);
       this.drag = null;
       this.snapLine = null;
       document.body.classList.remove('scrubbing');
@@ -1722,12 +1721,8 @@ export class TimelineView {
         if (!d.moved && Math.abs(e.clientX - d.startX) < 2) return;
         d.moved = true;
         d.current = this.playheadFrameAt(pos.x, d, e);
-        // scrub: while playing, keep the engine following the mouse (throttled; the last move seeks on release)
-        const now = performance.now();
-        if (store.transport.state === 'playing' && now - d.lastSeek >= SCRUB_SEEK_MS) {
-          d.lastSeek = now;
-          seek(d.current);
-        }
+        // tape-style scrub: the engine plays the timeline at the speed and direction of the mouse
+        scrub(d.current);
         this.draw();
       }
     });
@@ -1738,7 +1733,10 @@ export class TimelineView {
       this.snapLine = null;
       document.body.classList.remove('scrubbing');
       if (!d) return;
-      if (d.kind === 'playhead' && d.moved) seek(d.current);
+      if (d.kind === 'playhead' && d.moved) {
+        scrub(null);
+        seek(d.current);
+      }
       if (d.kind === 'marquee') {
         if (d.moved) {
           store.select({ clipIds: d.ids, range: null, rangeTracks: null, markerId: null, muteRegion: null });

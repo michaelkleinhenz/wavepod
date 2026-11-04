@@ -214,6 +214,50 @@ describe('AudioEngine with virtual devices', () => {
     expect(await peakWhilePlaying(true)).toBeGreaterThan(0.1);
   });
 
+  it('scrubs the timeline when stopped and holds playback still while scrubbing', () => {
+    engine = new AudioEngine(null);
+    engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480 });
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    writeWavFile(path.join(dir, 'media/ep.wav'), [sine(200, 4, 48000, 0.5)], 48000);
+    const p = addTrack(createProject('Scrub', 48000), { name: 'Host' });
+    p.tracks[0].clips.push({ id: 'c', file: 'media/ep.wav', start: 0, offset: 0, length: 4 * 48000, gain: 0, fadeIn: 0, fadeOut: 0 });
+    engine.setProject(p, dir);
+    const peak = () => {
+      const out = (engine as unknown as { onOutput(n: number, nch: number): Float32Array }).onOutput(480, 4);
+      return Math.max(...Array.from({ length: 480 }, (_, i) => Math.abs(out[i * 4])));
+    };
+    engine.seek(48000);
+    expect(peak()).toBe(0); // stopped: silent
+    // drag the playhead forward at about normal speed
+    let loud = 0;
+    for (let b = 1; b <= 30; b++) {
+      engine.scrub(48000 + b * 480);
+      loud = Math.max(loud, peak());
+    }
+    expect(loud).toBeGreaterThan(0.2);
+    expect(engine.transportState).toBe('stopped');
+    expect(engine.position).toBeGreaterThan(48000 + 20 * 480);
+    // let go: silent again, and the playhead stays where the caller seeks it
+    engine.scrub(null);
+    engine.seek(60000);
+    expect(peak()).toBe(0);
+    expect(engine.position).toBe(60000);
+
+    // while playing, the transport doesn't run on during a scrub held still
+    engine.play(96000);
+    peak();
+    engine.scrub(96000);
+    for (let b = 0; b < 20; b++) peak();
+    expect(Math.abs(engine.position - 96000)).toBeLessThan(480);
+    expect(engine.transportState).toBe('playing');
+    engine.scrub(null);
+    engine.play(100000);
+    peak();
+    expect(engine.position).toBe(100480);
+    engine.stop();
+  });
+
   it('routes a second output pair and mutes the episode in pre-show', () => {
     engine = new AudioEngine(null);
     engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480, outputFirstChannel: 0, output2FirstChannel: 2, output2Source: 'soundboard' });

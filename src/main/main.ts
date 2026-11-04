@@ -365,6 +365,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     return engine.record();
   },
   seek: (pos: number) => engine.seek(pos),
+  scrub: (pos: number | null) => engine.scrub(pos),
   setPlaybackSpeed: (speed: number) => engine.setPlaybackSpeed(speed),
   setPreShow: (on: boolean) => engine.setPreShow(on),
   setLoop: (range: [number, number] | null) => engine.setLoop(range),
