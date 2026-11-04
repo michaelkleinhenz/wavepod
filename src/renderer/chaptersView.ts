@@ -5,7 +5,7 @@ import { CHAPTER_FORMATS, exportChapters } from '../core/chapters';
 import { addMarker, chapterWarnings, markersToChapters, moveChapterContent, removeMarker, updateMarker } from '../core/project';
 import { projectLength } from '../core/project';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
-import { importChapterFile, seek } from './actions';
+import { importChapterContentFile, importChapterFile, seek } from './actions';
 import { api, store } from './store';
 
 /** Top-level podcast directory categories (Apple Podcasts / Podcasting 2.0 list). */
@@ -133,6 +133,16 @@ export class ChaptersView {
           { class: 'row' },
           h('button', { class: 'small', onclick: () => store.edit((p) => addMarker(p, store.transport.position, 'chapter').project) }, '+ at playhead'),
           h('button', { class: 'small', onclick: () => void importChapterFile() }, 'Import…'),
+          h(
+            'button',
+            {
+              class: 'small',
+              title: 'Fill the existing chapters, in order, from a text file with one "title;link" per line (link optional). Start times stay.',
+              disabled: chapters.length === 0,
+              onclick: () => void importChapterContentFile(),
+            },
+            'Import titles…',
+          ),
           ...CHAPTER_FORMATS.map((f) =>
             h(
               'button',

@@ -291,6 +291,24 @@ export function moveChapterContent(project: Project, fromId: string, toId: strin
   return p;
 }
 
+/**
+ * Fills the existing chapters, in time order, with titles and links (e.g. from a "title;link"
+ * list). Start times and images stay; a line without a link clears the chapter's link. Chapters
+ * beyond the list are left alone, lines beyond the chapters are not used.
+ */
+export function applyChapterContent(project: Project, content: Array<{ title: string; url?: string }>): Project {
+  const p = clone(project);
+  const chapters = p.markers.filter((m) => m.kind === 'chapter').sort((a, b) => a.position - b.position);
+  chapters.forEach((m, i) => {
+    const c = content[i];
+    if (!c) return;
+    m.title = c.title;
+    if (c.url) m.url = c.url;
+    else delete m.url;
+  });
+  return p;
+}
+
 export function removeMarker(project: Project, markerId: string): Project {
   const p = clone(project);
   p.markers = p.markers.filter((m) => m.id !== markerId);
