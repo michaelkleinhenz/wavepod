@@ -25,6 +25,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       ['Alt+← / →', 'Previous / next clip edge'],
       ['Shift+Alt+← / →', 'Previous / next marker'],
       ['Home / End', 'Start / end of the episode'],
+      ['> / <', 'Play faster / slower (pitch kept, up to 3×)'],
       ['+ / −', 'Zoom in / out'],
       ['Shift+Z', 'Zoom to the selection and back'],
       ['Middle drag', 'Pan the view'],

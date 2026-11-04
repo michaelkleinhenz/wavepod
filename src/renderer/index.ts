@@ -35,10 +35,12 @@ import {
   selectAllClips,
   pasteClipboard,
   toggleRepeat,
+  setSpeed,
+  stepPlaybackSpeed,
 } from './actions';
 import { ChaptersView } from './chaptersView';
 import { resetAllMeters } from './levelMeter';
-import { PLAYBACK_SPEEDS } from '../core/timeStretch';
+import { PLAYBACK_SPEEDS, speedLabel } from '../core/timeStretch';
 import { selectionSpan } from '../core/navigation';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
@@ -101,34 +103,17 @@ async function main(): Promise<void> {
   const repeatBtn = iconButton('repeat', { label: 'Repeat', shortcut: 'L', detail: 'Loop playback of the selected time range' }, toggleRepeat, 'transport repeat');
   const homeBtn = iconButton('toStart', { label: 'To start', shortcut: 'Home' }, () => seek(0), 'transport');
   // listening speed (pitch kept); playback only, remembered on this computer
-  const SPEED_KEY = 'wavepod.playbackSpeed';
-  let speed = 1;
-  try {
-    speed = Number(localStorage.getItem(SPEED_KEY)) || 1;
-  } catch {
-    /* no storage: 1x */
-  }
-  if (!PLAYBACK_SPEEDS.includes(speed as (typeof PLAYBACK_SPEEDS)[number])) speed = 1;
   const speedSel = h(
     'select',
     {
       class: 'speed-select',
-      title: 'Playback speed (pitch kept). Recording and export always run at 1×.',
-      onchange: (e: Event) => {
-        speed = Number((e.target as HTMLSelectElement).value);
-        speedSel.classList.toggle('fast', speed !== 1);
-        try {
-          localStorage.setItem(SPEED_KEY, String(speed));
-        } catch {
-          /* ignore */
-        }
-        void api().setPlaybackSpeed(speed);
-      },
+      title: 'Playback speed, to check a recording faster (pitch kept). Faster / slower: > and <. Recording and export always run at 1×.',
+      'aria-label': 'Playback speed',
+      onchange: (e: Event) => setSpeed(Number((e.target as HTMLSelectElement).value)),
     },
-    ...PLAYBACK_SPEEDS.map((v) => h('option', { value: String(v), selected: v === speed }, `${v}×`)),
+    ...PLAYBACK_SPEEDS.map((v) => h('option', { value: String(v), selected: v === store.speed }, speedLabel(v))),
   ) as HTMLSelectElement;
-  speedSel.classList.toggle('fast', speed !== 1);
-  void api().setPlaybackSpeed(speed);
+  void api().setPlaybackSpeed(store.speed);
   const masterL = h('div', { class: 'meter-fill' });
   const masterR = h('div', { class: 'meter-fill' });
   const projectName = h('div', { class: 'project-name', title: 'Project folder' });
@@ -213,6 +198,8 @@ async function main(): Promise<void> {
     setIcon(playBtn, t.state === 'playing' ? 'pause' : 'play');
     repeatBtn.classList.toggle('on', store.repeat);
     repeatBtn.setAttribute('aria-pressed', String(store.repeat));
+    if (speedSel.value !== String(store.speed)) speedSel.value = String(store.speed);
+    speedSel.classList.toggle('fast', store.speed !== 1);
     for (const [el, v] of [
       [masterL, t.outputPeaks[0] ?? 0],
       [masterR, t.outputPeaks[1] ?? 0],
@@ -347,6 +334,9 @@ async function main(): Promise<void> {
       case 'show-project-folder': return void api().showProjectFolder();
       case 'restore-backup': return void restoreBackup();
       case 'shortcuts': return showShortcuts();
+      case 'speed-up': return stepPlaybackSpeed(1);
+      case 'speed-down': return stepPlaybackSpeed(-1);
+      case 'speed-normal': return setSpeed(1, true);
       case 'auphonic': return void auphonic.open();
     }
   });
@@ -450,6 +440,12 @@ async function main(): Promise<void> {
         } else seek(store.transport.position + dir * store.sampleRate * (e.shiftKey ? 10 : 1));
         break;
       }
+      case '>':
+        stepPlaybackSpeed(1);
+        break;
+      case '<':
+        stepPlaybackSpeed(-1);
+        break;
       case 'p':
       case 'P':
         void previewCut();

@@ -5,6 +5,7 @@ import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, Tran
 import { PeakPyramid } from '../core/peaks';
 import { WaveCache } from './waveCache';
 import { History } from '../core/project';
+import { PLAYBACK_SPEEDS } from '../core/timeStretch';
 
 declare global {
   interface Window {
@@ -49,6 +50,8 @@ class Store {
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
   /** Repeat: playback loops the selected time range. Remembered across launches. */
   repeat = readRepeatSetting();
+  /** Listening speed (pitch kept, playback only). Remembered on this computer. */
+  speed = readSpeedSetting();
   view: View = 'edit';
   /** Waveform data of media files: coarse peak levels, plus fine levels and samples in tiles. */
   waves = new WaveCache(api, () => this.notify('peaks'));
@@ -205,6 +208,25 @@ function readRepeatSetting(): boolean {
 export function saveRepeatSetting(on: boolean): void {
   try {
     localStorage.setItem(REPEAT_KEY, on ? '1' : '0');
+  } catch {
+    // not remembered, still works for this session
+  }
+}
+
+const SPEED_KEY = 'wavepod.playbackSpeed';
+
+function readSpeedSetting(): number {
+  try {
+    const v = Number(localStorage.getItem(SPEED_KEY));
+    return (PLAYBACK_SPEEDS as readonly number[]).includes(v) ? v : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export function saveSpeedSetting(speed: number): void {
+  try {
+    localStorage.setItem(SPEED_KEY, String(speed));
   } catch {
     // not remembered, still works for this session
   }
