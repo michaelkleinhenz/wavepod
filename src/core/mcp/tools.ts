@@ -2,6 +2,7 @@
 // Every edit goes through the app (one undo step each), so it shows up in the FX panel at once.
 import type { Fx, FxType, LoudnessReport, LoudnessStats, Project, TransportState, VstParamInfo, VstPluginInfo, VstPluginRef } from '../../shared/types';
 import { FX_DEFINITIONS, createFx, fxDefinition, normalizeFx, type FxParamSpec } from '../fx/definitions';
+import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect } from '../fx/voiceEffects';
 import { MASTER, VOICE_CHAIN, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, updateFx, type FxTarget } from '../fx/stack';
 import { findPresetEntry, presetEdited } from '../fx/presets';
 import type { FxPresetLibrary } from '../fx/presetLibrary';
@@ -43,7 +44,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, a voice behind a wall, outdoors, in a church and more.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -456,6 +457,29 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         const { target, name } = resolveTarget(project, str(args, 'target', true));
         const base = bool(args, 'replace') ? fxList(project, target).reduce((p, f) => removeFx(p, target, f.id), project) : project;
         host.apply(addVoiceChain(base, target), `Applied the voice chain to ${name}`);
+        return stackResult(target, name);
+      },
+    },
+    {
+      name: 'apply_voice_effect',
+      description: `Adds a ready-made audio drama voice effect to a track: a few filters set from factory presets, appended to the stack (replace=true replaces the stack). Effects: ${VOICE_EFFECTS.map((e) => `${e.id} (${e.description})`).join('; ')}`,
+      inputSchema: obj(
+        {
+          target: TARGET,
+          effect: { type: 'string', enum: VOICE_EFFECTS.map((e) => e.id), description: 'The effect.' },
+          replace: { type: 'boolean', description: 'Remove the existing filters first. Default false.' },
+        },
+        ['target', 'effect'],
+      ),
+      annotations: { title: 'Apply voice effect', ...EDIT },
+      run: (args) => {
+        const project = host.project();
+        const { target, name } = resolveTarget(project, str(args, 'target', true));
+        const ref = str(args, 'effect', true);
+        const effect = findVoiceEffect(ref);
+        if (!effect) throw new ToolError(`Unknown voice effect "${ref}". Effects: ${VOICE_EFFECTS.map((e) => e.id).join(', ')}.`);
+        const base = bool(args, 'replace') ? fxList(project, target).reduce((p, f) => removeFx(p, target, f.id), project) : project;
+        host.apply(addVoiceEffect(base, target, effect).project, `Applied ${effect.name} to ${name}`);
         return stackResult(target, name);
       },
     },

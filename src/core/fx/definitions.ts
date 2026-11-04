@@ -136,6 +136,49 @@ export const FX_DEFINITIONS: FxDefinition[] = [
       { key: 'width', label: 'Width', min: 0, max: 100, step: 1, default: 100, unit: '%' },
     ],
   },
+  {
+    type: 'bandpass',
+    name: 'Band-pass',
+    aliases: ['Low-pass', 'Lowpass', 'Telephone filter'],
+    description:
+      'Keeps only the frequencies between the low cut and the high cut. The basis of telephone, radio and walkie-talkie voices; with a low high cut it muffles a voice, as if behind a wall or under water.',
+    params: [
+      hz('lowCut', 'Low cut', 300, 20, 2000),
+      hz('highCut', 'High cut', 3400, 200, 20000),
+      { key: 'slope', label: 'Slope', min: 12, max: 24, step: 12, default: 24, unit: 'dB/oct', options: [{ value: 12, label: '12 dB/oct' }, { value: 24, label: '24 dB/oct' }] },
+      db('gain', 'Output gain', 0, -12, 18),
+    ],
+  },
+  {
+    type: 'distortion',
+    name: 'Distortion',
+    aliases: ['Saturation', 'Bit crusher', 'Lo-fi'],
+    description:
+      'Adds grit: saturation, clipping or fuzz, optionally with fewer bits and a lower sample rate for a cheap digital sound. For phones, old radios, walkie-talkies, megaphones and broken speakers. The level is matched roughly to the input, so Drive changes the sound more than the loudness.',
+    params: [
+      db('drive', 'Drive', 12, 0, 40),
+      { key: 'mode', label: 'Character', min: 0, max: 2, step: 1, default: 0, options: [{ value: 0, label: 'Soft (saturation)' }, { value: 1, label: 'Hard (clipping)' }, { value: 2, label: 'Fuzz (broken speaker)' }] },
+      { key: 'bits', label: 'Bit depth', min: 2, max: 16, step: 1, default: 16, unit: 'bit' },
+      hz('rate', 'Sample rate', 48000, 2000, 48000),
+      hz('tone', 'Tone (high cut)', 12000, 1000, 20000),
+      { key: 'mix', label: 'Mix', min: 0, max: 100, step: 1, default: 100, unit: '%' },
+      db('output', 'Output gain', 0, -18, 12),
+    ],
+  },
+  {
+    type: 'echo',
+    name: 'Echo',
+    aliases: ['Delay'],
+    description:
+      'Repeats the sound after a delay, each repeat a little duller. A single short reflection makes a voice sound outdoors; long repeats give mountains, stadiums and dream sequences.',
+    params: [
+      ms('time', 'Delay', 300, 10, 2000),
+      { key: 'feedback', label: 'Repeats', min: 0, max: 90, step: 1, default: 30, unit: '%' },
+      { key: 'mix', label: 'Mix', min: 0, max: 100, step: 1, default: 25, unit: '%' },
+      hz('highCut', 'Repeat tone', 5000, 500, 20000),
+      { key: 'spread', label: 'Ping-pong', min: 0, max: 100, step: 1, default: 0, unit: '%' },
+    ],
+  },
 ];
 
 export function fxDefinition(type: FxType): FxDefinition {

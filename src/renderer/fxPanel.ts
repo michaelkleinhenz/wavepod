@@ -13,6 +13,9 @@ import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
 import { clipboardLabel, copyFilter, copyStack, pasteFilters, pasteSettings, settingsSource, type FxClipboard } from '../core/fx/fxClipboard';
 import { iconButton } from './icons';
+import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect } from '../core/fx/voiceEffects';
+
+const EFFECT_PREFIX = 'effect:';
 
 const VST_OPTION = '__vst3';
 const SAVE_PRESET = '__save';
@@ -161,12 +164,22 @@ export class FxPanel {
         onchange: (e: Event) => {
           const type = (e.target as HTMLSelectElement).value;
           if (type === VST_OPTION) return this.openPicker();
+          if (type.startsWith(EFFECT_PREFIX)) return this.addEffect(target, type.slice(EFFECT_PREFIX.length));
           if (type) this.edit((p) => addFx(p, target, type as FxType).project);
         },
       },
       h('option', { value: '' }, '+ Add filter…'),
-      ...FX_DEFINITIONS.map((d) => h('option', { value: d.type, title: d.description }, d.name)),
-      this.vstAvailable ? h('option', { value: VST_OPTION, title: 'Add an installed VST3 effect' }, 'VST3 plug-in…') : null,
+      h(
+        'optgroup',
+        { label: 'Filters' },
+        ...FX_DEFINITIONS.map((d) => h('option', { value: d.type, title: d.description }, d.name)),
+        this.vstAvailable ? h('option', { value: VST_OPTION, title: 'Add an installed VST3 effect' }, 'VST3 plug-in…') : null,
+      ),
+      h(
+        'optgroup',
+        { label: 'Voice effects (audio drama)' },
+        ...VOICE_EFFECTS.map((e) => h('option', { value: EFFECT_PREFIX + e.id, title: `${e.description}\n${e.chain.map(([t, n]) => `${fxDefinition(t).name} "${n}"`).join(' → ')}` }, e.name)),
+      ),
     );
     this.el.append(
       h(
@@ -214,6 +227,14 @@ export class FxPanel {
         ...[6, 9, 12, 18, 24].map((d) => h('option', { value: String(d), selected: d === duck.depth }, `−${d} dB`)),
       ),
     );
+  }
+
+  /** Appends a voice effect (a ready-made stack, e.g. Telephone) to the stack. */
+  private addEffect(target: FxTarget, id: string): void {
+    const effect = findVoiceEffect(id);
+    if (!effect) return;
+    this.edit((p) => addVoiceEffect(p, target, effect).project);
+    toast(`Added ${effect.name}: ${effect.chain.map(([t]) => fxDefinition(t).name).join(', ')}`);
   }
 
   private copyAll(target: FxTarget): void {

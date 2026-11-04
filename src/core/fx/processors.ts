@@ -6,6 +6,7 @@ import { PeakLimiter, UltraschallDynamics } from './ultraschallDynamics';
 import { GainMeter } from './meter';
 import { NoiseReduction } from './denoise';
 import { Reverb } from './reverb';
+import { BandPass, DistortionMix, Echo } from './drama';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -345,6 +346,12 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new NoiseReduction(sampleRate);
     case 'reverb':
       return new Reverb(sampleRate);
+    case 'bandpass':
+      return new BandPass(sampleRate);
+    case 'distortion':
+      return new DistortionMix(sampleRate);
+    case 'echo':
+      return new Echo(sampleRate);
   }
 }
 
