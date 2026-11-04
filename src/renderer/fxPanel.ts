@@ -1,13 +1,13 @@
 // Filter stack editor for a track or the master bus: add, bypass, tweak, reorder and remove filters.
 import type { Fx, FxMeter, FxType, VstParamInfo, VstPluginInfo } from '../shared/types';
 import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/definitions';
-import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, updateFx, type FxTarget } from '../core/fx/stack';
+import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, targetClipId, updateFx, type FxTarget } from '../core/fx/stack';
 import { presetEdited, presetKey, type FxPresetEntry } from '../core/fx/presets';
 import { createVstFx, visibleVstParams } from '../core/fx/vst';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
-import { updateTrack } from '../core/project';
+import { findClip, updateTrack } from '../core/project';
 import { DUCK_DEFAULT_DEPTH } from '../core/ducking';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
@@ -131,13 +131,19 @@ export class FxPanel {
   /** Re-renders when the stack changed from outside (undo, other edits), but not during slider drags. */
   refresh(): void {
     if (!this.target || store.liveEditing || isEditingValue(this.el) || this.naming) return;
-    if (this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target)) return this.close();
+    const clipId = targetClipId(this.target);
+    if (clipId !== null ? !findClip(store.project, clipId) : this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target)) return this.close();
     const key = JSON.stringify(fxList(store.project, this.target)) + this.title();
     if (key !== this.structure) this.render();
   }
 
   private title(): string {
     if (this.target === MASTER) return 'Master';
+    const clipId = this.target ? targetClipId(this.target) : null;
+    if (clipId !== null) {
+      const hit = findClip(store.project, clipId);
+      return hit ? `${hit.track.name}: ${hit.clip.file.split('/').pop() ?? 'Clip'}` : '';
+    }
     return store.project.tracks.find((t) => t.id === this.target)?.name ?? '';
   }
 
@@ -185,7 +191,7 @@ export class FxPanel {
       h(
         'div',
         { class: 'fx-head' },
-        h('div', null, h('div', { class: 'fx-kicker' }, 'Filters'), h('h2', null, this.title())),
+        h('div', null, h('div', { class: 'fx-kicker' }, targetClipId(target) !== null ? 'Clip filters' : 'Filters'), h('h2', null, this.title())),
         h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×'),
       ),
       h(
@@ -197,11 +203,15 @@ export class FxPanel {
         this.pasteMenu(target, list.length),
       ),
     );
-    if (target !== MASTER) this.el.append(this.renderDuck(target));
+    if (target !== MASTER && targetClipId(target) === null) this.el.append(this.renderDuck(target));
     if (this.picker) this.el.append(this.renderPicker(target));
     const cards = h('div', { class: 'fx-list' });
     if (!list.length) {
-      cards.append(h('p', { class: 'muted fx-empty' }, target === MASTER ? 'No filters on the master bus. A limiter here keeps the mix below a ceiling.' : 'No filters yet. Filters run top to bottom, before the track gain and pan.'));
+      cards.append(h('p', { class: 'muted fx-empty' }, target === MASTER
+            ? 'No filters on the master bus. A limiter here keeps the mix below a ceiling.'
+            : targetClipId(target) !== null
+              ? 'No filters on this clip yet. They run top to bottom on this clip only, after the track\'s filters.'
+              : 'No filters yet. Filters run top to bottom, before the track gain and pan.'));
     }
     list.forEach((fx, i) => cards.append(this.card(target, fx, i, list.length)));
     this.el.append(cards);

@@ -28,6 +28,8 @@ export interface Clip {
   /** Storyboard: a colour and a free-text note for the clip. */
   color?: string;
   note?: string;
+  /** Filter stack of this clip only, processed top to bottom after the track's filters. */
+  fx?: Fx[];
 }
 
 export interface Track {

@@ -85,6 +85,14 @@ export class FxChain {
       if (gain !== undefined) m.gain = gain;
       const level = s.proc.detectorLevel?.();
       if (level !== undefined) m.level = level;
+      // the same filter can run in several chains (a track's filters also run on its clips with filters)
+      const prev = into[s.id];
+      if (prev) {
+        m.in = Math.max(m.in, prev.in);
+        m.out = Math.max(m.out, prev.out);
+        if (prev.gain !== undefined) m.gain = m.gain === undefined || Math.abs(prev.gain) > Math.abs(m.gain) ? prev.gain : m.gain;
+        if (prev.level !== undefined) m.level = m.level === undefined ? prev.level : Math.max(m.level, prev.level);
+      }
       into[s.id] = m;
       s.inPeak = s.outPeak = 0;
       s.metered = false;

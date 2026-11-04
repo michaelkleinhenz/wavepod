@@ -76,6 +76,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
       fadeIn: c.fadeIn ?? 0,
       fadeOut: c.fadeOut ?? 0,
       offset: c.offset ?? 0,
+      ...(c.fx !== undefined ? { fx: normalizeFxList(c.fx) } : {}),
       ...(Array.isArray(c.envelope) ? { envelope: sortPoints(c.envelope.filter((e) => Number.isFinite(e?.pos) && Number.isFinite(e?.db))) } : {}),
     })),
   }));

@@ -5,7 +5,7 @@ import type { Fx, Project } from '../../shared/types';
 import { uid } from '../../shared/time';
 import { normalizeFx } from './definitions';
 import { presetKey } from './presets';
-import { MASTER, fxList, replaceFx, type FxTarget } from './stack';
+import { fxList, replaceFx, withList, type FxTarget } from './stack';
 
 export interface FxClipboard {
   /** 'filter': one filter was copied; 'stack': a track's whole stack (paste can replace a stack). */
@@ -38,8 +38,7 @@ function freshCopies(clip: FxClipboard): Fx[] {
 }
 
 function setList(project: Project, target: FxTarget, list: Fx[]): Project {
-  if (target === MASTER) return { ...project, masterFx: list };
-  return { ...project, tracks: project.tracks.map((t) => (t.id === target ? { ...t, fx: list } : t)) };
+  return withList(project, target, () => list);
 }
 
 /**

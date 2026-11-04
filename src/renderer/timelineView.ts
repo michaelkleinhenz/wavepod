@@ -68,6 +68,9 @@ const TICK_STEPS = [
 ];
 /** Volume-line toggle shown at the top left of a hovered clip (offsets from the clip's top left). */
 const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
+/** The clip's filter button, right of the volume-line toggle. */
+const FX_BTN = { x: VOL_BTN.x + VOL_BTN.w + 4, y: VOL_BTN.y, w: 28, h: VOL_BTN.h };
+const clipFxCount = (clip: Clip) => clip.fx?.filter((f) => f.enabled).length ?? 0;
 
 type Drag =
   | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean; ripple?: RippleSet; clickFrame: number }
@@ -111,6 +114,10 @@ export class TimelineView {
   private snapBtn = iconButton('snap', { label: 'Snapping' }, null, 'snap-btn');
   /** Opens the filter stack of a track. */
   onOpenFx: (trackId: string) => void = () => {};
+  /** Opens the filter stack of a single clip. */
+  onOpenClipFx: (clipId: string) => void = () => {};
+  /** Whether the filter panel currently shows this clip. */
+  isClipFxOpen: (clipId: string) => boolean = () => false;
   /** Opens the loudness analysis. */
   onOpenLoudness: () => void = () => {};
 
@@ -968,6 +975,22 @@ export class TimelineView {
     return null;
   }
 
+  /** The filter button at the top left of a clip, next to the volume-line toggle. */
+  private hitFxButton(x: number, y: number): Clip | null {
+    const ti = Math.floor(y / TRACK_H);
+    const track = store.project.tracks[ti];
+    if (!track) return null;
+    const top = ti * TRACK_H + 4;
+    for (let k = track.clips.length - 1; k >= 0; k--) {
+      const clip = track.clips[k];
+      const x0 = this.xOf(clip.start);
+      const w = (clip.length / this.sr) * this.pxPerSec;
+      if (w < FX_BTN.x + FX_BTN.w + 8) continue;
+      if (x >= x0 + FX_BTN.x && x <= x0 + FX_BTN.x + FX_BTN.w && y >= top + FX_BTN.y && y <= top + FX_BTN.y + FX_BTN.h) return clip;
+    }
+    return null;
+  }
+
   /** Regions as drawn, including one being dragged and a cough button being held. */
   private displayedRegions(t: Track): Array<{ a: number; b: number; index: number | null; live: boolean }> {
     const d = this.drag?.kind === 'mute' && this.drag.trackId === t.id ? this.drag : null;
@@ -1259,6 +1282,23 @@ export class TimelineView {
       ctx.font = '9px system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.fillText('Vol', bx + 6, by + VOL_BTN.h / 2 + 0.5);
+    }
+    // filter button, shown while hovering (and while the clip has filters or its panel is open)
+    const fxCount = clipFxCount(clip);
+    const fxOpen = this.isClipFxOpen(clip.id);
+    if ((this.hoverClipId === clip.id || fxCount > 0 || fxOpen) && g.w >= FX_BTN.x + FX_BTN.w + 8 && !this.drag) {
+      const bx = g.x + FX_BTN.x;
+      const by = g.y + FX_BTN.y;
+      const on = fxCount > 0;
+      ctx.fillStyle = fxOpen ? 'rgba(129,199,132,0.4)' : on ? 'rgba(129,199,132,0.22)' : 'rgba(15,16,20,0.45)';
+      ctx.fillRect(bx, by, FX_BTN.w, FX_BTN.h);
+      ctx.strokeStyle = on || fxOpen ? 'rgba(129,199,132,0.85)' : 'rgba(255,255,255,0.35)';
+      ctx.strokeRect(bx + 0.5, by + 0.5, FX_BTN.w - 1, FX_BTN.h - 1);
+      ctx.fillStyle = on ? '#c8e6c9' : 'rgba(255,255,255,0.75)';
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      const label = on ? `FX ${fxCount}` : 'FX';
+      ctx.fillText(label, bx + (FX_BTN.w - ctx.measureText(label).width) / 2, by + FX_BTN.h / 2 + 0.5);
     }
     ctx.strokeStyle = selected ? '#9ab8ff' : '#11131a';
     ctx.strokeRect(vx0 + 0.5, g.y + 0.5, vx1 - vx0 - 1, hgt - 1);
@@ -1565,6 +1605,11 @@ export class TimelineView {
         this.canvas.title = 'Drag to move the playhead';
         return;
       }
+      if (this.hitFxButton(x, y)) {
+        this.canvas.style.cursor = 'pointer';
+        this.canvas.title = 'Filters for this clip only (they run after the track\'s filters)';
+        return;
+      }
       if (this.hitVolButton(x, y)) {
         this.canvas.style.cursor = 'pointer';
         this.canvas.title = 'Show or hide this clip\'s volume line';
@@ -1675,6 +1720,13 @@ export class TimelineView {
       // 3. the playhead line (clip edges right at the playhead, e.g. after a split, stay trimmable)
       if (!hit?.edge && e.button === 0 && this.hitPlayhead(x, PLAYHEAD_GRAB_PX)) {
         this.startPlayheadDrag(e, x);
+        return;
+      }
+      // 3a. the clip's filter button
+      const fxClip = this.hitFxButton(x, y);
+      if (fxClip && e.button === 0) {
+        this.onOpenClipFx(fxClip.id);
+        this.draw();
         return;
       }
       // 3b. the clip's volume-line toggle

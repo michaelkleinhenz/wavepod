@@ -2,17 +2,46 @@
 import type { Fx, FxType, Project } from '../../shared/types';
 import { createFx } from './definitions';
 
-/** A track id, or 'master' for the master bus. */
+/** A track id, 'master' for the master bus, or 'clip:<clip id>' for a single clip. */
 export type FxTarget = string;
 export const MASTER: FxTarget = 'master';
+const CLIP_PREFIX = 'clip:';
+
+/** The filter target of one clip. */
+export function clipTarget(clipId: string): FxTarget {
+  return CLIP_PREFIX + clipId;
+}
+
+/** The clip id of a clip target, or null for tracks and the master bus. */
+export function targetClipId(target: FxTarget): string | null {
+  return target.startsWith(CLIP_PREFIX) ? target.slice(CLIP_PREFIX.length) : null;
+}
 
 export function fxList(project: Project, target: FxTarget): Fx[] {
   if (target === MASTER) return project.masterFx ?? [];
+  const clipId = targetClipId(target);
+  if (clipId !== null) {
+    for (const t of project.tracks) {
+      const c = t.clips.find((x) => x.id === clipId);
+      if (c) return c.fx ?? [];
+    }
+    return [];
+  }
   return project.tracks.find((t) => t.id === target)?.fx ?? [];
 }
 
-function withList(project: Project, target: FxTarget, fn: (list: Fx[]) => Fx[]): Project {
+/** Replaces the filter list of a target. */
+export function withList(project: Project, target: FxTarget, fn: (list: Fx[]) => Fx[]): Project {
   if (target === MASTER) return { ...project, masterFx: fn(project.masterFx ?? []) };
+  const clipId = targetClipId(target);
+  if (clipId !== null) {
+    return {
+      ...project,
+      tracks: project.tracks.map((t) =>
+        t.clips.some((c) => c.id === clipId) ? { ...t, clips: t.clips.map((c) => (c.id === clipId ? { ...c, fx: fn(c.fx ?? []) } : c)) } : t,
+      ),
+    };
+  }
   return { ...project, tracks: project.tracks.map((t) => (t.id === target ? { ...t, fx: fn(t.fx ?? []) } : t)) };
 }
 
