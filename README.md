@@ -46,8 +46,10 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   parameters, VST3 parameters, track gain) can be clicked to type an exact
   number, e.g. `-3,5 dB`, `1.2 kHz` or `250 ms`; Enter applies it (kept within
   the slider's range), Escape cancels.
-- **Filter presets**: every filter card has a preset menu. Built-in filters
-  come with a few factory presets (and *Default*); VST3 plug-ins offer their
+- **Filter presets**: every filter card has a preset menu. Every built-in filter
+  comes with factory presets tuned for speech, e.g. Compressor *Spoken word*,
+  EQ *Clarity for dynamic mics*, Noise reduction *Computer fan* (hover one to
+  see what it is for), plus *Default*; VST3 plug-ins offer their
   own programs (factory presets) there instead of a program slider. *Save as
   preset…* stores the current settings (for VST3 including the plug-in's
   state) as your own preset, available in every episode; rename (✎) or delete

@@ -261,7 +261,7 @@ export class FxPanel {
       // keep the first (label) option, replace the rest
       while (select.options.length > 1) select.remove(1);
       const group = (title: string, entries: FxPresetEntry[]) =>
-        entries.length ? select.append(h('optgroup', { label: title }, ...entries.map((p) => h('option', { value: p.id }, p.name)))) : undefined;
+        entries.length ? select.append(h('optgroup', { label: title }, ...entries.map((p) => h('option', { value: p.id, title: p.description }, p.name)))) : undefined;
       group(fx.type === 'vst3' ? 'Plug-in programs' : 'Factory', list.filter((p) => p.source !== 'user'));
       group('My presets', list.filter((p) => p.source === 'user'));
       select.append(h('optgroup', { label: '──────' }, h('option', { value: SAVE_PRESET }, 'Save as preset…'), h('option', { value: PRESETS_FOLDER }, 'Show presets folder')));

@@ -516,7 +516,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
           target,
           name,
           filter: { id: fx.id, name: filterName(fx), ...(fx.preset ? { preset: { name: fx.preset.name, edited: presetEdited(fx) } } : {}) },
-          presets: presets.map((p) => ({ id: p.id, name: p.name, source: p.source })),
+          presets: presets.map((p) => ({ id: p.id, name: p.name, source: p.source, ...(p.description ? { description: p.description } : {}) })),
         };
       },
     },

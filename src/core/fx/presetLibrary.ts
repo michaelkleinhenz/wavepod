@@ -57,7 +57,7 @@ export function createPresetLibrary(storage: PresetStorage, programs: ProgramHos
       const factory: FxPresetEntry[] =
         fx.type === 'vst3'
           ? (await programNames(fx)).map((name, i) => ({ id: programId(i), name, source: 'program' as const }))
-          : factoryPresets(fx.type).map(({ id, preset }) => ({ id, name: preset.name, source: 'factory' as const }));
+          : factoryPresets(fx.type).map(({ id, preset, description }) => ({ id, name: preset.name, source: 'factory' as const, description }));
       return [...factory, ...(await storage.list(fx))];
     },
 

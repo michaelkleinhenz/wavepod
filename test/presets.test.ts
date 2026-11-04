@@ -41,11 +41,18 @@ describe('filter presets', () => {
       const list = factoryPresets(d.type);
       expect(list[0].preset.name).toBe('Default');
       expect(list[0].preset.params).toEqual(createFx(d.type).params);
+      // meaningful choices for every filter, each with a description and distinct values
+      expect(list.length).toBeGreaterThanOrEqual(5);
+      expect(list.every((p) => p.description.length > 0)).toBe(true);
+      expect(new Set(list.map((p) => JSON.stringify(p.preset.params))).size).toBe(list.length);
       for (const { preset } of list) {
         // nothing was clamped: every value is inside its range
         const raw = normalizePreset({ ...preset });
         expect(raw!.params).toEqual(preset.params);
-        for (const spec of d.params) expect(preset.params[spec.key]).toBeGreaterThanOrEqual(spec.min);
+        for (const spec of d.params) {
+          expect(preset.params[spec.key]).toBeGreaterThanOrEqual(spec.min);
+          expect(preset.params[spec.key]).toBeLessThanOrEqual(spec.max);
+        }
       }
     }
   });
@@ -237,7 +244,7 @@ describe('preset MCP tools', () => {
   it('lists, applies by name and saves presets', async () => {
     const s = setup();
     let r = await call(s.server, 'list_filter_presets', { target: 'Host', filter: 'compressor' });
-    expect(r.data.presets.map((p: { name: string }) => p.name)).toEqual(['Default', 'Gentle voice', 'Broadcast', 'Leveler']);
+    expect(r.data.presets.map((p: { name: string }) => p.name)).toEqual(['Default', 'Gentle voice', 'Spoken word', 'Broadcast', 'Leveler', 'Peak control', 'Music bed']);
 
     r = await call(s.server, 'apply_filter_preset', { target: 'Host', filter: 'compressor', preset: 'broadcast' });
     expect(r.isError).toBe(false);
