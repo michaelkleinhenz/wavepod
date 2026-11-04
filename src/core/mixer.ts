@@ -1,6 +1,6 @@
 // Renders the project timeline into a stereo bus, block by block, from disk.
 import * as path from 'node:path';
-import type { Fx, FxMeter, Project, Track } from '../shared/types';
+import type { Clip, Fx, FxMeter, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { panGains } from './dsp';
 import { fadesAt, trackFades } from './crossfade';
@@ -51,6 +51,8 @@ export { audibleTracks, projectLength };
 /** Audio rendered before a jump in position so filters (envelopes, RMS windows) settle. */
 export const FX_WARMUP_SECONDS = 0.5;
 const PRIME_BLOCK = 4096;
+/** How long a clip's filters keep running after the clip ends, so echoes and reverb ring out. */
+export const CLIP_FX_TAIL_SECONDS = 3;
 
 interface ChainState {
   chain: FxChain;
@@ -59,11 +61,23 @@ interface ChainState {
   latency: number;
 }
 
+interface ClipChainState extends ChainState {
+  /** The track and clip lists the combined list was built from. */
+  trackFx?: Fx[];
+  clipFx?: Fx[];
+  list: Fx[];
+}
+
+const hasActiveFx = (list: Fx[] | undefined): boolean => !!list?.some((f) => f.enabled);
+
 export class Mixer {
   private scratch: Float32Array[] = [];
   private envBuf = new Float32Array(0);
   private pre: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private trackChains = new Map<string, ChainState>();
+  /** Chains of clips with their own filters (track filters, then clip filters), by clip id. */
+  private clipChains = new Map<string, ClipChainState>();
+  private clipBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   /** Audio rendered before a jump so filters settle; scrubbing uses less to keep jumps cheap. */
   warmupSeconds = FX_WARMUP_SECONDS;
   /** Measure what each filter does (live playback only; export leaves it off). */
@@ -98,6 +112,13 @@ export class Mixer {
         this.trackChains.delete(id);
       }
     }
+    const fxClips = new Set(p.tracks.flatMap((t) => t.clips.filter((c) => hasActiveFx(c.fx)).map((c) => c.id)));
+    for (const [id, s] of this.clipChains) {
+      if (!fxClips.has(id)) {
+        s.chain.dispose();
+        this.clipChains.delete(id);
+      }
+    }
     if (this.masterChain && !p.masterFx?.some((f) => f.enabled)) {
       this.masterChain.chain.dispose();
       this.masterChain = null;
@@ -108,6 +129,8 @@ export class Mixer {
   dispose(): void {
     for (const s of this.trackChains.values()) s.chain.dispose();
     this.trackChains.clear();
+    for (const s of this.clipChains.values()) s.chain.dispose();
+    this.clipChains.clear();
     this.masterChain?.chain.dispose();
     this.masterChain = null;
   }
@@ -256,6 +279,7 @@ export class Mixer {
   takeFxMeters(): Record<string, FxMeter> {
     const out: Record<string, FxMeter> = {};
     for (const s of this.trackChains.values()) s.chain.takeMeters(out);
+    for (const s of this.clipChains.values()) s.chain.takeMeters(out);
     this.masterChain?.chain.takeMeters(out);
     return out;
   }
@@ -287,7 +311,42 @@ export class Mixer {
     }
   }
 
-  /** Adds one track (ignoring mute/solo) into `out`: clips, mute regions, volume line, filter stack, gain and pan. */
+  /**
+   * Runs `state`'s chain over [position, position + frames) of what `raw` renders into `buf`, delaying the
+   * input by the chain's latency and re-priming the chain after a jump. Returns true if `raw` was stereo.
+   */
+  private runChain(state: ChainState, position: number, frames: number, buf: Float32Array[], raw: (pos: number, n: number, b: Float32Array[]) => boolean): boolean {
+    if (state.next !== position || state.latency !== state.chain.latency) {
+      state.chain.reset();
+      state.latency = state.chain.latency;
+      this.prime(position, (p, n, b) => {
+        raw(p + state.latency, n, b);
+        state.chain.process(b[0], b[1], n);
+      });
+    }
+    const stereo = raw(position + state.latency, frames, buf);
+    state.chain.process(buf[0], buf[1], frames, this.metering);
+    state.next = position + frames;
+    return stereo;
+  }
+
+  /** The chain of a clip with its own filters: the track's filters first, then the clip's. */
+  private clipChainState(track: Track, clip: Clip): ClipChainState {
+    let s = this.clipChains.get(clip.id);
+    if (!s) {
+      s = { chain: new FxChain(this.project.sampleRate), next: NaN, latency: 0, list: [] };
+      this.clipChains.set(clip.id, s);
+    }
+    if (s.trackFx !== track.fx || s.clipFx !== clip.fx) {
+      s.trackFx = track.fx;
+      s.clipFx = clip.fx;
+      s.list = [...(track.fx ?? []), ...(clip.fx ?? [])];
+    }
+    s.chain.sync(s.list);
+    return s;
+  }
+
+  /** Adds one track (ignoring mute/solo) into `out`: clips, mute regions, volume line, filter stacks, gain and pan. */
   renderTrackInto(track: Track, position: number, frames: number, out: Float32Array[]): void {
     const state = this.chainState(this.trackChains.get(track.id), track.fx);
     if (state) this.trackChains.set(track.id, state);
@@ -297,21 +356,28 @@ export class Mixer {
     }
     if (this.pre[0].length < frames) this.pre = [new Float32Array(frames), new Float32Array(frames)];
     const [pl, pr] = this.pre;
+    // clips with their own filters run through a chain of their own: track filters, then clip filters
+    const fxClips = track.clips.filter((c) => hasActiveFx(c.fx));
+    const plain = fxClips.length ? (c: Clip) => !hasActiveFx(c.fx) : undefined;
     let stereo: boolean;
-    if (!state) {
-      stereo = this.renderRaw(track, position, frames, this.pre);
-    } else {
-      if (state.next !== position || state.latency !== state.chain.latency) {
-        state.chain.reset();
-        state.latency = state.chain.latency;
-        this.prime(position, (p, n, buf) => {
-          this.renderRaw(track, p + state.latency, n, buf);
-          state.chain.process(buf[0], buf[1], n);
-        });
+    if (!state) stereo = this.renderRaw(track, position, frames, this.pre, plain);
+    else stereo = this.runChain(state, position, frames, this.pre, (p, n, b) => this.renderRaw(track, p, n, b, plain));
+    if (fxClips.length) {
+      const tail = Math.round(CLIP_FX_TAIL_SECONDS * this.project.sampleRate);
+      const end = position + frames;
+      if (this.clipBuf[0].length < frames) this.clipBuf = [new Float32Array(frames), new Float32Array(frames)];
+      const [cl, cr] = this.clipBuf;
+      for (const clip of fxClips) {
+        // a clip that is not playing keeps its chain idle; it is primed again when it comes back
+        if (clip.start >= end || clip.start + clip.length + tail <= position) continue;
+        const only = (c: Clip) => c === clip;
+        const cs = this.clipChainState(track, clip);
+        if (this.runChain(cs, position, frames, this.clipBuf, (p, n, b) => this.renderRaw(track, p, n, b, only))) stereo = true;
+        for (let i = 0; i < frames; i++) {
+          pl[i] += cl[i];
+          pr[i] += cr[i];
+        }
       }
-      stereo = this.renderRaw(track, position + state.latency, frames, this.pre);
-      state.chain.process(pl, pr, frames, this.metering);
-      state.next = position + frames;
     }
     const g = dbToGain(track.gain);
     const [panL, panR] = panGains(track.pan);
@@ -335,7 +401,7 @@ export class Mixer {
    * into `buf` (overwritten; mono material is duplicated into both channels).
    * Returns true if any clip is stereo.
    */
-  private renderRaw(track: Track, position: number, frames: number, buf: Float32Array[]): boolean {
+  private renderRaw(track: Track, position: number, frames: number, buf: Float32Array[], include?: (c: Clip) => boolean): boolean {
     buf[0].fill(0, 0, frames);
     buf[1].fill(0, 0, frames);
     let stereoTrack = false;
@@ -349,6 +415,7 @@ export class Mixer {
       if (!reader) continue;
       const stereo = reader.info.channels >= 2;
       if (stereo) stereoTrack = true;
+      if (include && !include(clip)) continue;
       const cStart = clip.start;
       const cEnd = clip.start + clip.length;
       if (cEnd <= position || cStart >= end) continue;

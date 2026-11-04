@@ -1,6 +1,6 @@
 // App shell: header with views and transport, view switching, keyboard shortcuts, engine events.
 import { FxPanel } from './fxPanel';
-import { MASTER } from '../core/fx/stack';
+import { MASTER, clipTarget } from '../core/fx/stack';
 import { formatTimestamp } from '../shared/time';
 import { toDb } from '../core/dsp';
 import { projectLength } from '../core/project';
@@ -109,6 +109,8 @@ async function main(): Promise<void> {
   // An empty episode needs its speakers set up next; an opened one or a template is ready to record.
   setup.onEpisodeChosen = (how) => (how === 'blank' ? setup.showTab('inputs') : store.setView('edit'));
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
+  timeline.onOpenClipFx = (clipId) => fxPanel.toggle(clipTarget(clipId));
+  timeline.isClipFxOpen = (clipId) => fxPanel.target === clipTarget(clipId);
   timeline.onOpenLoudness = () => loudnessDialog.open();
 
   // ---------------------------------------------------------------- header

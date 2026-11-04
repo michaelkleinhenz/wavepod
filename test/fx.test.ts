@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createFx, normalizeFx } from '../src/core/fx/definitions';
 import { createProcessor } from '../src/core/fx/processors';
-import { MASTER, addFx, fxList, moveFx, removeFx, updateFx } from '../src/core/fx/stack';
+import { MASTER, addFx, clipTarget, fxList, moveFx, removeFx, targetClipId, updateFx } from '../src/core/fx/stack';
 import { UltraschallDynamics, buildDynamicsTable, dynamicsCurve, dynamicsGainDb } from '../src/core/fx/ultraschallDynamics';
 import { Mixer, ReaderCache } from '../src/core/mixer';
 import { addTrack, createProject, normalizeProject } from '../src/core/project';
@@ -238,5 +238,77 @@ describe('filter meters', () => {
     const m: Record<string, FxMeter> = {};
     chain.takeMeters(m);
     expect(m).toEqual({});
+  });
+});
+
+describe('clip filters', () => {
+  const peakOf = (a: Float32Array, from: number, to: number) => {
+    let m = 0;
+    for (let i = from; i < to; i++) m = Math.max(m, Math.abs(a[i]));
+    return m;
+  };
+
+  function renderAll(p: ReturnType<typeof createProject>, dir: string, frames: number): Float32Array {
+    const readers = new ReaderCache(dir);
+    const mixer = new Mixer(p, readers);
+    const out = new Float32Array(frames);
+    const block = [new Float32Array(512), new Float32Array(512)];
+    for (let pos = 0; pos < frames; pos += 512) {
+      const n = Math.min(512, frames - pos);
+      mixer.render(pos, n, block);
+      out.set(block[0].subarray(0, n), pos);
+    }
+    mixer.dispose();
+    readers.closeAll();
+    return out;
+  }
+
+  it('edits a single clip\'s stack and keeps it on reload', () => {
+    let p = addTrack(createProject('C', SR), { name: 'Host' });
+    p.tracks[0].clips.push({ id: 'a', file: 'media/t.wav', start: 0, offset: 0, length: SR, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p.tracks[0].clips.push({ id: 'b', file: 'media/t.wav', start: SR, offset: 0, length: SR, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p = addFx(p, clipTarget('a'), 'echo').project;
+    expect(targetClipId(clipTarget('a'))).toBe('a');
+    expect(fxList(p, clipTarget('a')).map((f) => f.type)).toEqual(['echo']);
+    expect(fxList(p, clipTarget('b'))).toEqual([]);
+    expect(fxList(p, p.tracks[0].id)).toEqual([]);
+    const reloaded = normalizeProject(JSON.parse(JSON.stringify(p)));
+    expect(reloaded.tracks[0].clips[0].fx).toEqual(p.tracks[0].clips[0].fx);
+    expect(reloaded.tracks[0].clips[1].fx).toBeUndefined();
+  });
+
+  it('runs the track filters first, then the clip filters, on that clip only', () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    writeWavFile(path.join(dir, 'media/t.wav'), [sine(1000, 1, SR, 0.5)], SR);
+    let p = addTrack(createProject('C', SR), { name: 'Host' });
+    const tid = p.tracks[0].id;
+    p.tracks[0].clips.push({ id: 'a', file: 'media/t.wav', start: 0, offset: 0, length: SR, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p.tracks[0].clips.push({ id: 'b', file: 'media/t.wav', start: SR, offset: 0, length: SR, gain: 0, fadeIn: 0, fadeOut: 0 });
+    // track: limit to -12 dB; clip "a": +12 dB afterwards (band-pass output gain)
+    const lim = addFx(p, tid, 'limiter');
+    p = updateFx(lim.project, tid, lim.fx.id, { params: { ceiling: -12 } });
+    const bp = addFx(p, clipTarget('a'), 'bandpass');
+    p = updateFx(bp.project, clipTarget('a'), bp.fx.id, { params: { lowCut: 100, highCut: 10000, gain: 12 } });
+    const out = renderAll(p, dir, SR * 2);
+    const ceiling = Math.pow(10, -12 / 20);
+    // limited, then boosted: well above the track's ceiling (the other order would stay below it)
+    expect(peakOf(out, SR / 2, SR - 4800)).toBeGreaterThan(ceiling * 2.5);
+    // the second clip only gets the track's limiter
+    expect(peakOf(out, SR + SR / 2, 2 * SR - 4800)).toBeLessThan(ceiling * 1.1);
+    expect(peakOf(out, SR + SR / 2, 2 * SR - 4800)).toBeGreaterThan(ceiling * 0.7);
+  });
+
+  it('lets a clip\'s echo ring out past the end of the clip', () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    writeWavFile(path.join(dir, 'media/t.wav'), [sine(500, 0.5, SR, 0.5)], SR);
+    let p = addTrack(createProject('C', SR), { name: 'Host' });
+    p.tracks[0].clips.push({ id: 'a', file: 'media/t.wav', start: 0, offset: 0, length: SR / 2, gain: 0, fadeIn: 0, fadeOut: 0 });
+    const plain = renderAll(p, dir, SR * 2);
+    p = addFx(p, clipTarget('a'), 'echo').project;
+    const echoed = renderAll(p, dir, SR * 2);
+    expect(rms(plain, SR, 2 * SR)).toBe(0);
+    expect(rms(echoed, SR / 2 + 2400, 2 * SR)).toBeGreaterThan(0.001);
   });
 });
