@@ -42,3 +42,24 @@ export function selectionSpan(project: Project, range: [number, number] | null, 
   }
   return hi > lo ? [lo, hi] : null;
 }
+
+/**
+ * Clips touched by a marquee: every clip on tracks `fromTrack`..`toTrack` (either order)
+ * that overlaps the frames `a`..`b` (either order).
+ */
+export function clipsInRect(project: Project, fromTrack: number, toTrack: number, a: number, b: number): Set<string> {
+  const t0 = Math.max(0, Math.min(fromTrack, toTrack));
+  const t1 = Math.min(project.tracks.length - 1, Math.max(fromTrack, toTrack));
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  const ids = new Set<string>();
+  for (let ti = t0; ti <= t1; ti++) {
+    for (const c of project.tracks[ti].clips) if (c.start <= hi && c.start + c.length >= lo) ids.add(c.id);
+  }
+  return ids;
+}
+
+/** Every clip in the project, e.g. for Ctrl+A. */
+export function allClipIds(project: Project): Set<string> {
+  return new Set(project.tracks.flatMap((t) => t.clips.map((c) => c.id)));
+}

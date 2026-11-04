@@ -1,6 +1,6 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import { LevelMeter } from './levelMeter';
-import { selectionSpan } from '../core/navigation';
+import { clipsInRect, selectionSpan } from '../core/navigation';
 import type { Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
 import { dbToGain, formatTick } from '../shared/time';
 import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
@@ -70,7 +70,9 @@ type Drag =
   | { kind: 'envLine'; clipId: string; ti: number; indices: number[]; orig: EnvelopePoint[]; startY: number; moved: boolean }
   | { kind: 'marker'; markerId: string; startX: number; origPos: number; dx: number; moved: boolean }
   | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean }
-  | { kind: 'playhead'; startX: number; grabOffset: number; current: number; moved: boolean; lastSeek: number };
+  | { kind: 'playhead'; startX: number; grabOffset: number; current: number; moved: boolean; lastSeek: number }
+  // Shift+drag: a rubber band across tracks and time that selects every clip it touches
+  | { kind: 'marquee'; startX: number; startY: number; a: number; b: number; y0: number; y1: number; clipId: string | null; ids: Set<string>; moved: boolean };
 
 export class TimelineView {
   readonly el = h('div', { class: 'view edit-view' });
@@ -724,6 +726,22 @@ export class TimelineView {
     return Math.max(0, res.target);
   }
 
+  /** The Shift+drag rubber band. */
+  private drawMarquee(ctx: CanvasRenderingContext2D): void {
+    const d = this.drag;
+    if (d?.kind !== 'marquee' || !d.moved) return;
+    const x0 = this.cx(this.xOf(Math.min(d.a, d.b)));
+    const x1 = this.cx(this.xOf(Math.max(d.a, d.b)));
+    const y0 = Math.min(d.y0, d.y1);
+    const y1 = Math.max(d.y0, d.y1);
+    ctx.fillStyle = 'rgba(120,160,255,0.14)';
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = 'rgba(154,184,255,0.9)';
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(x1 - x0), Math.round(y1 - y0));
+    ctx.setLineDash([]);
+  }
+
   private drawTracks(): void {
     const ctx = this.ctx(this.canvas);
     const w = this.width;
@@ -786,6 +804,7 @@ export class TimelineView {
         ctx.fillRect(Math.round(x1) - 1, i * TRACK_H, 1, TRACK_H - 1);
       });
     }
+    this.drawMarquee(ctx);
     // marker lines
     for (const m of store.project.markers) {
       const x = Math.round(this.xOf(this.markerPos(m))) + 0.5;
@@ -1057,7 +1076,8 @@ export class TimelineView {
     const g = this.clipGeometry(trackIndex, clip);
     const hgt = TRACK_H - 9;
     if (g.x > this.width || g.x + g.w < 0) return;
-    const selected = store.selection.clipIds.has(clip.id);
+    const d = this.drag;
+    const selected = d?.kind === 'marquee' && d.moved ? d.ids.has(clip.id) : store.selection.clipIds.has(clip.id);
     const muted = track.mute || (store.project.tracks.some((t) => t.solo) && !track.solo);
     ctx.globalAlpha = muted ? 0.4 : 1;
     // visible part of the clip: at deep zoom a clip can be millions of pixels wide
@@ -1420,6 +1440,11 @@ export class TimelineView {
         this.hoverClipId = hover;
         this.draw();
       }
+      if (e.shiftKey) {
+        this.canvas.style.cursor = 'crosshair';
+        this.canvas.title = 'Drag to select every clip in the rectangle, click a clip to add or remove it';
+        return;
+      }
       const lane = this.hitMuteLane(x, y);
       if (lane) {
         this.canvas.style.cursor = lane.edge ? 'ew-resize' : lane.index !== null ? 'pointer' : 'crosshair';
@@ -1505,6 +1530,13 @@ export class TimelineView {
       if (e.button === 2) return; // right-click opens the clip's colour and note
       const { x, y } = local(e, this.canvas);
       this.snapLine = null;
+      // 0. Shift+drag draws a rubber band that selects every clip it touches (Shift+click still toggles a clip)
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && e.button === 0) {
+        const under = this.hitClip(x, y);
+        const f = this.frameOf(x);
+        this.drag = { kind: 'marquee', startX: e.clientX, startY: e.clientY, a: f, b: f, y0: y, y1: y, clipId: under?.clip.id ?? null, ids: new Set(), moved: false };
+        return;
+      }
       const lane = this.hitMuteLane(x, y);
       if (lane) {
         const f = this.frameOf(x);
@@ -1679,6 +1711,13 @@ export class TimelineView {
         d.current = this.frameOf(pos.x);
         d.moved = true;
         this.draw();
+      } else if (d.kind === 'marquee') {
+        if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 4) return;
+        d.moved = true;
+        d.b = this.frameOf(pos.x);
+        d.y1 = Math.max(0, Math.min(store.project.tracks.length * TRACK_H - 1, pos.y));
+        d.ids = clipsInRect(store.project, Math.floor(d.y0 / TRACK_H), Math.floor(d.y1 / TRACK_H), d.a, d.b);
+        this.draw();
       } else if (d.kind === 'playhead') {
         if (!d.moved && Math.abs(e.clientX - d.startX) < 2) return;
         d.moved = true;
@@ -1700,6 +1739,21 @@ export class TimelineView {
       document.body.classList.remove('scrubbing');
       if (!d) return;
       if (d.kind === 'playhead' && d.moved) seek(d.current);
+      if (d.kind === 'marquee') {
+        if (d.moved) {
+          store.select({ clipIds: d.ids, range: null, rangeTracks: null, markerId: null, muteRegion: null });
+        } else if (d.clipId) {
+          // Shift+click on a clip adds it to the selection or takes it out
+          const sel = new Set(store.selection.clipIds);
+          if (sel.has(d.clipId)) sel.delete(d.clipId);
+          else sel.add(d.clipId);
+          store.select({ clipIds: sel, range: null, rangeTracks: null, markerId: null });
+        } else {
+          // Shift+click on empty space: move the playhead, keep the clips selected
+          store.select({ range: null, rangeTracks: null });
+          seek(d.a);
+        }
+      }
       if (d.kind === 'clip' && d.moved && d.ripple) {
         const ripple = d.ripple;
         store.edit((p) => rippleMove(p, ripple, d.delta));

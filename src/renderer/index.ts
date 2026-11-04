@@ -32,6 +32,7 @@ import {
   previewCut,
   stepPlayhead,
   copySelection,
+  selectAllClips,
   pasteClipboard,
   toggleRepeat,
 } from './actions';
@@ -300,6 +301,9 @@ async function main(): Promise<void> {
       case 'paste-ripple':
         if (typingInField()) return void document.execCommand('paste');
         return void (Date.now() - editKeyAt > 500 && pasteClipboard(cmd === 'paste-ripple'));
+      case 'select-all':
+        if (typingInField()) return void document.execCommand('selectAll');
+        return void (Date.now() - editKeyAt > 500 && selectAllClips());
       case 'mute-selection':
         return void (!typingInField() && Date.now() - editKeyAt > 500 && muteSelection());
       case 'normalize-clips':
@@ -336,6 +340,12 @@ async function main(): Promise<void> {
       e.preventDefault();
       editKeyAt = Date.now();
       pasteClipboard(true);
+      return;
+    }
+    if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyA') {
+      e.preventDefault();
+      editKeyAt = Date.now();
+      selectAllClips();
       return;
     }
     if (mod) return; // menu accelerators

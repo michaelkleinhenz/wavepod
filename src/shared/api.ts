@@ -53,6 +53,7 @@ export type MenuCommand =
   | 'paste'
   | 'paste-ripple'
   | 'mute-selection'
+  | 'select-all'
   | 'normalize-clips'
   | 'loudness-analysis'
   | 'prepare-for-editing'

@@ -9,7 +9,7 @@ import { baseName, decodeBytes, decodeFile } from './audioFiles';
 import { errorMessage, h, toast } from './dom';
 import { api, saveRepeatSetting, store } from './store';
 import { runSoundcheck } from '../core/soundcheck';
-import { clipEdges, markerPositions, stepTo } from '../core/navigation';
+import { allClipIds, clipEdges, markerPositions, stepTo } from '../core/navigation';
 import { copyClips, copyRange, pasteClipboard as pasteInto } from '../core/clipboard';
 import { addRegion } from '../core/regions';
 import { selectionSpan } from '../core/navigation';
@@ -342,6 +342,12 @@ export function rippleCut(): void {
   store.clipboard = copyRange(store.project, r[0], r[1], store.project.tracks.map((t) => t.id));
   deleteSelection(true);
   toast('Ripple cut (Ctrl+V pastes it back in)');
+}
+
+/** Ctrl+A: selects every clip on every track. */
+export function selectAllClips(): void {
+  if (store.view !== 'edit') return;
+  store.select({ clipIds: allClipIds(store.project), range: null, rangeTracks: null, markerId: null, muteRegion: null });
 }
 
 /** Ctrl+C: copies the selected range (on its tracks) or the selected clips. */
