@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WavePod</title>
+  <meta name="description" content="WavePod is a simple multitrack recorder and editor for podcasts, for Linux, Windows and macOS.">
+  <meta property="og:title" content="WavePod">
+  <meta property="og:description" content="A simple multitrack recorder and editor for podcasts.">
+  <meta property="og:image" content="img/timeline.png">
+  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./"><img src="img/icon.svg" alt="" width="28" height="28"> WavePod</a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/michaelkleinhenz/wavepod">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Record and edit your podcast. One track per voice.</h1>
+      <p class="lead">
+        WavePod is a simple multitrack recorder and editor made for podcasts.
+        Plug in your RØDECaster or USB interface, get a track for every
+        speaker in one click, and go from recording to a finished MP3 with
+        chapters, without a full studio DAW.
+      </p>
+      <div class="cta">
+        <a class="button primary" href="#download">Download</a>
+        <a class="button" href="https://github.com/michaelkleinhenz/wavepod">Source on GitHub</a>
+      </div>
+      <figure class="shot hero-shot">
+        <img src="img/timeline.png" width="1400" height="640"
+             alt="WavePod timeline with Host, Guest and Co-host tracks, chapter markers and a soundboard jingle">
+      </figure>
+    </section>
+
+    <section id="features" class="features">
+      <h2>Made for talking, not for music</h2>
+      <div class="grid">
+        <article>
+          <h3>Every microphone on its own track</h3>
+          <p>Records all 16 multitrack channels of a RØDECaster Pro II, and
+          works with RØDECaster Duo, Zoom PodTrak, Focusrite and other
+          class-compliant interfaces. Known devices are recognised and their
+          inputs named for you.</p>
+        </article>
+        <article>
+          <h3>Recording you can trust</h3>
+          <p>Crash-safe 16, 24 or 32-bit WAV, one file per track, with the
+          waveform drawn live. If the app or the computer goes down mid-show,
+          the take is recovered when you reopen the episode.</p>
+        </article>
+        <article>
+          <h3>Editing for podcasters</h3>
+          <p>Split, trim, fade, ripple cut across all tracks, crossfades,
+          volume lines and cough buttons. Tape-style scrubbing and zoom down
+          to single samples when you need it.</p>
+        </article>
+        <article>
+          <h3>Filters that sound like radio</h3>
+          <p>High-pass, EQ, gate, compressor, de-esser, limiter, noise
+          reduction and Dynamics on every track and the master, with presets
+          tuned for speech. Your VST3 plug-ins work in the same stack.</p>
+        </article>
+        <article>
+          <h3>Chapters and loudness built in</h3>
+          <p>Set chapter markers while recording (<kbd>M</kbd>), add titles,
+          links and images later. EBU R128 analysis and loudness
+          normalisation to −16 LUFS or your own target.</p>
+        </article>
+        <article>
+          <h3>Ready to publish</h3>
+          <p>Export MP3 with ID3 chapters, WAV, Opus, stems and chapter files
+          for Podlove, Podcasting 2.0, mp4chaps and Audacity, or send the mix
+          to Auphonic.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gallery">
+      <figure class="shot">
+        <img src="img/setup.png" width="1280" height="820" loading="lazy"
+             alt="Setup view with level meters for all 16 RØDECaster inputs and a Create 8 speaker tracks button">
+        <figcaption>Check levels and create a track for every speaker.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/filters.png" width="1400" height="850" loading="lazy"
+             alt="Filter panel with high-pass, de-esser and Dynamics filters on a track">
+        <figcaption>Filter stacks per track, with live meters and presets.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/export.png" width="1280" height="833" loading="lazy"
+             alt="Export dialog with MP3 and WAV formats, loudness target and the measured loudness of the mix">
+        <figcaption>Export with loudness normalisation and a live analysis.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/chapters.png" width="1644" height="638" loading="lazy"
+             alt="Chapter list with start times, titles, links and image buttons">
+        <figcaption>Chapters with titles, links and images.</figcaption>
+      </figure>
+    </section>
+
+    <section id="download" class="download">
+      <h2>Download</h2>
+      <p class="muted" id="release-line">Free builds for every release are on GitHub.</p>
+      <div class="platforms">
+        <a class="platform" data-ext=".AppImage" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
+          <strong>Linux</strong>
+          <span>AppImage, x86-64</span>
+        </a>
+        <a class="platform" data-ext=".exe" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
+          <strong>Windows</strong>
+          <span>Installer, x64</span>
+        </a>
+        <a class="platform" data-ext=".dmg" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
+          <strong>macOS</strong>
+          <span>DMG, Apple silicon</span>
+        </a>
+      </div>
+      <p class="note">
+        The builds are not code-signed yet. On macOS, right-click the app and
+        choose <em>Open</em> the first time; on Windows, choose
+        <em>More info › Run anyway</em> if SmartScreen asks. On Linux, make
+        the AppImage executable (<code>chmod +x WavePod-*.AppImage</code>).
+        Older versions and release notes are on the
+        <a href="https://github.com/michaelkleinhenz/wavepod/releases">releases page</a>.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p>WavePod · <a href="https://github.com/michaelkleinhenz/wavepod">github.com/michaelkleinhenz/wavepod</a></p>
+  </footer>
+
+  <script>
+    // Point the download buttons straight at the files of the latest release.
+    // Without JavaScript or when the API is unreachable they open the release page.
+    fetch('https://api.github.com/repos/michaelkleinhenz/wavepod/releases/latest')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((release) => {
+        const assets = release.assets || [];
+        document.querySelectorAll('.platform[data-ext]').forEach((link) => {
+          const asset = assets.find((a) => a.name.endsWith(link.dataset.ext));
+          if (asset) link.href = asset.browser_download_url;
+        });
+        const line = document.getElementById('release-line');
+        const date = new Date(release.published_at).toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric' });
+        line.textContent = `Latest version ${release.tag_name.replace(/^v/, '')}, released ${date}.`;
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

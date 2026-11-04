@@ -1,0 +1,187 @@
+:root {
+  --bg: #15171c;
+  --panel: #1d2028;
+  --line: #2c313d;
+  --text: #e6e8ee;
+  --muted: #9aa1b1;
+  --accent: #5c8dff;
+  --accent-text: #0b1020;
+  --radius: 12px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+
+img { max-width: 100%; height: auto; display: block; }
+
+.top, main, footer {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1.15rem;
+  text-decoration: none;
+}
+
+.top nav { display: flex; gap: 20px; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--text); }
+
+.hero { padding: 48px 0 24px; text-align: center; }
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0 auto 20px;
+  max-width: 18ch;
+  text-wrap: balance;
+}
+
+.lead {
+  color: var(--muted);
+  font-size: 1.15rem;
+  max-width: 62ch;
+  margin: 0 auto 28px;
+}
+
+.cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+.button {
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+.button:hover { border-color: var(--muted); }
+.button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.button.primary:hover { filter: brightness(1.1); }
+
+.shot { margin: 0; }
+.shot img {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.45);
+}
+.shot figcaption { color: var(--muted); font-size: 0.95rem; margin-top: 12px; }
+
+.hero-shot { margin-top: 48px; }
+
+h2 {
+  font-size: 1.9rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 28px;
+  text-align: center;
+}
+
+section { padding: 64px 0; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.grid article {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+}
+.grid h3 { margin: 0 0 8px; font-size: 1.1rem; }
+.grid p { margin: 0; color: var(--muted); }
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 40px 32px;
+  padding-top: 16px;
+}
+
+.download { text-align: center; }
+.muted { color: var(--muted); margin: -12px 0 28px; }
+
+.platforms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.platform {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+}
+.platform strong { font-size: 1.2rem; }
+.platform span { color: var(--muted); font-size: 0.95rem; }
+.platform:hover { border-color: var(--accent); }
+
+.note {
+  color: var(--muted);
+  font-size: 0.92rem;
+  max-width: 66ch;
+  margin: 28px auto 0;
+}
+
+code, kbd {
+  font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+footer {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding-top: 24px;
+  padding-bottom: 40px;
+}
+
+@media (max-width: 600px) {
+  .top, main, footer { padding-left: 16px; padding-right: 16px; }
+  .top nav { gap: 14px; font-size: 0.95rem; }
+  .top nav a[href="#features"] { display: none; }
+  .gallery { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: 1fr; }
+  section { padding: 44px 0; }
+}
