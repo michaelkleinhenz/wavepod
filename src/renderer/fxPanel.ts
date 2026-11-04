@@ -11,12 +11,25 @@ import { updateTrack } from '../core/project';
 import { DUCK_DEFAULT_DEPTH } from '../core/ducking';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
+import { clipboardLabel, copyFilter, copyStack, pasteFilters, pasteSettings, settingsSource, type FxClipboard } from '../core/fx/fxClipboard';
+import { iconButton } from './icons';
 
 const VST_OPTION = '__vst3';
 const SAVE_PRESET = '__save';
 const PRESETS_FOLDER = '__folder';
 /** Plug-ins with many parameters show this many sliders until "Show all" is clicked. */
 const VST_COLLAPSED_PARAMS = 12;
+const PASTE_END = 'end';
+const PASTE_TOP = 'top';
+const PASTE_REPLACE = 'replace';
+
+/** Copied filters; kept for the whole session, so they can go onto tracks of another episode too. */
+let fxClipboard: FxClipboard | null = null;
+
+/** Display name of a filter. */
+function fxName(fx: Fx): string {
+  return fx.type === 'vst3' ? (fx.plugin?.name ?? 'VST3 plug-in') : fxDefinition(fx.type).name;
+}
 
 function formatValue(spec: FxParamSpec, v: number): string {
   if (spec.options) return spec.options.find((o) => o.value === v)?.label ?? String(v);
@@ -127,7 +140,14 @@ export class FxPanel {
         h('div', null, h('div', { class: 'fx-kicker' }, 'Filters'), h('h2', null, this.title())),
         h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×'),
       ),
-      h('div', { class: 'fx-toolbar' }, add, list.length === 0 && target !== MASTER ? h('button', { class: 'small', title: 'High-pass, De-esser and Dynamics', onclick: () => this.addVoiceChain() }, 'Voice chain') : null),
+      h(
+        'div',
+        { class: 'fx-toolbar' },
+        add,
+        list.length === 0 && target !== MASTER ? h('button', { class: 'small', title: 'High-pass, De-esser and Dynamics', onclick: () => this.addVoiceChain() }, 'Voice chain') : null,
+        list.length ? h('button', { class: 'small fx-copy-all', title: 'Copy the whole filter stack with all settings, to paste on another track', onclick: () => this.copyAll(target) }, 'Copy all') : null,
+        this.pasteMenu(target, list.length),
+      ),
     );
     if (target !== MASTER) this.el.append(this.renderDuck(target));
     if (this.picker) this.el.append(this.renderPicker(target));
@@ -158,6 +178,46 @@ export class FxPanel {
         { disabled: !duck.enabled, title: 'How much quieter', onchange: (e: Event) => set({ depth: Number((e.target as HTMLSelectElement).value) }) },
         ...[6, 9, 12, 18, 24].map((d) => h('option', { value: String(d), selected: d === duck.depth }, `−${d} dB`)),
       ),
+    );
+  }
+
+  private copyAll(target: FxTarget): void {
+    fxClipboard = copyStack(store.project, target, this.title());
+    if (fxClipboard) toast(`Copied ${clipboardLabel(fxClipboard, fxName)}`);
+    this.render();
+  }
+
+  private copyOne(fx: Fx): void {
+    fxClipboard = copyFilter(fx, this.title());
+    toast(`Copied ${fxName(fx)}`);
+    this.render();
+  }
+
+  /** "Paste…" menu of the toolbar: add the copied filters at the end or top, or replace the stack. */
+  private pasteMenu(target: FxTarget, count: number): HTMLElement | null {
+    const clip = fxClipboard;
+    if (!clip) return null;
+    const what = clipboardLabel(clip, fxName);
+    const many = clip.items.length > 1;
+    return h(
+      'select',
+      {
+        class: 'fx-paste',
+        title: `Paste ${what}`,
+        onchange: (e: Event) => {
+          const el = e.target as HTMLSelectElement;
+          const mode = el.value;
+          el.value = '';
+          if (!mode || !fxClipboard) return;
+          const c = fxClipboard;
+          this.edit((p) => pasteFilters(p, target, c, mode === PASTE_REPLACE ? 'replace' : mode === PASTE_TOP ? { index: 0 } : 'append'));
+          toast(mode === PASTE_REPLACE ? `Replaced the filters with ${what}` : `Pasted ${what}`);
+        },
+      },
+      h('option', { value: '' }, 'Paste…'),
+      h('option', { value: PASTE_END }, count ? `Add ${many ? 'them' : 'it'} at the end` : `Add ${what}`),
+      count ? h('option', { value: PASTE_TOP }, `Add ${many ? 'them' : 'it'} at the top`) : null,
+      count ? h('option', { value: PASTE_REPLACE }, `Replace all ${count} filter${count === 1 ? '' : 's'}`) : null,
     );
   }
 
@@ -235,6 +295,23 @@ export class FxPanel {
     return card;
   }
 
+  /** Shown when the copied filter is the same kind as this one: takes over its settings. */
+  private pasteSettingsButton(target: FxTarget, fx: Fx, name: string): HTMLElement | null {
+    const src = settingsSource(fxClipboard, fx);
+    if (!src || !fxClipboard) return null;
+    const c = fxClipboard;
+    const from = src.preset ? `"${src.preset.name}"` : `the ${name} copied from ${c.from}`;
+    return iconButton(
+      'paste',
+      { label: 'Paste settings', detail: `Sets this ${name} to the settings of ${from}.` },
+      () => {
+        this.edit((p) => pasteSettings(p, target, fx.id, c));
+        toast(`Pasted the settings onto ${name}`);
+      },
+      'toggle fx-paste-settings',
+    );
+  }
+
   /** The preset menu of a card: load a factory/plug-in/user preset, save, rename or delete one. */
   private presetRow(target: FxTarget, fx: Fx): HTMLElement {
     if (this.naming?.fxId === fx.id) return this.presetNameRow(target, fx, this.naming.mode);
@@ -281,6 +358,8 @@ export class FxPanel {
       'div',
       { class: 'fx-presets' },
       select,
+      iconButton('copy', { label: `Copy ${fxName(fx)}`, detail: 'Copies this filter with its settings, to paste on another track.' }, () => this.copyOne(fx), 'toggle fx-copy'),
+      this.pasteSettingsButton(target, fx, fxName(fx)),
       user ? h('button', { class: 'toggle', title: `Rename "${user.name}"`, onclick: () => ((this.naming = { fxId: fx.id, mode: 'rename' }), this.render()) }, '✎') : null,
       user ? h('button', { class: 'toggle remove', title: `Delete the preset "${user.name}"`, onclick: () => void this.deletePreset(target, fx) }, '🗑') : null,
     );

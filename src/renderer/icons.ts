@@ -20,6 +20,8 @@ const PATHS = {
   fit: '<path d="M3 5v14M21 5v14M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/>',
   align: '<path d="M4 7h10M8 17h12M12 3v18"/><path d="M17 4l3 3-3 3M7 14l-3 3 3 3"/>',
   region: '<path d="M3 7v10M21 7v10M3 12h18"/><rect x="7" y="9" width="10" height="6" rx="1"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
+  paste: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
   // transport: solid shapes, drawn to the same optical size as the stroke icons
   toStart: '<path d="M6 5v14" /><path d="M18 6.5v11a1 1 0 0 1-1.55.83l-8.2-5.5a1 1 0 0 1 0-1.66l8.2-5.5A1 1 0 0 1 18 6.5z" fill="currentColor"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>',
