@@ -20,6 +20,12 @@ const PATHS = {
   fit: '<path d="M3 5v14M21 5v14M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/>',
   align: '<path d="M4 7h10M8 17h12M12 3v18"/><path d="M17 4l3 3-3 3M7 14l-3 3 3 3"/>',
   region: '<path d="M3 7v10M21 7v10M3 12h18"/><rect x="7" y="9" width="10" height="6" rx="1"/>',
+  // transport: solid shapes, drawn to the same optical size as the stroke icons
+  toStart: '<path d="M6 5v14" /><path d="M18 6.5v11a1 1 0 0 1-1.55.83l-8.2-5.5a1 1 0 0 1 0-1.66l8.2-5.5A1 1 0 0 1 18 6.5z" fill="currentColor"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>',
+  play: '<path d="M8 5.6v12.8a1 1 0 0 0 1.52.85l10.2-6.4a1 1 0 0 0 0-1.7L9.52 4.75A1 1 0 0 0 8 5.6z" fill="currentColor"/>',
+  pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="3.5" height="14" rx="1" fill="currentColor"/>',
+  record: '<circle cx="12" cy="12" r="6.5" fill="currentColor"/>',
   zoomSel: '<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><rect x="8" y="9" width="8" height="6" rx="1"/>',
 } as const;
 
@@ -29,6 +35,13 @@ export function icon(name: IconName): SVGSVGElement {
   const t = document.createElement('template');
   t.innerHTML = `<svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${PATHS[name]}</svg>`;
   return t.content.firstElementChild as SVGSVGElement;
+}
+
+/** Swaps the icon inside an icon button (e.g. play ↔ pause) without touching its tooltip. */
+export function setIcon(btn: HTMLElement, name: IconName): void {
+  if (btn.dataset.icon === name) return;
+  btn.dataset.icon = name;
+  btn.querySelector('svg.icon')?.replaceWith(icon(name));
 }
 
 export interface Tip {

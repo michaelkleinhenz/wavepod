@@ -42,7 +42,7 @@ import { PLAYBACK_SPEEDS } from '../core/timeStretch';
 import { selectionSpan } from '../core/navigation';
 import { ExportDialog } from './exportDialog';
 import { LoudnessDialog, normalizeClips } from './loudnessDialog';
-import { iconButton } from './icons';
+import { iconButton, setIcon } from './icons';
 import { MenuBar } from './menuBar';
 import { midi } from './midi';
 import { SetupView } from './setupView';
@@ -95,11 +95,11 @@ async function main(): Promise<void> {
     chapters: h('button', { class: 'tab', onclick: () => store.setView('chapters') }, 'Chapters'),
   };
   const timeEl = h('div', { class: 'time-display' }, '00:00:00.000');
-  const recBtn = h('button', { class: 'transport rec', title: 'Record (R)', onclick: () => void toggleRecord() }, '●');
-  const playBtn = h('button', { class: 'transport play', title: 'Play / Stop (Space)', onclick: () => void togglePlay() }, '▶');
-  const stopBtn = h('button', { class: 'transport', title: 'Stop', onclick: () => void stop() }, '■');
+  const recBtn = iconButton('record', { label: 'Record', shortcut: 'R' }, () => void toggleRecord(), 'transport rec');
+  const playBtn = iconButton('play', { label: 'Play / Pause', shortcut: 'Space' }, () => void togglePlay(), 'transport play');
+  const stopBtn = iconButton('stop', { label: 'Stop' }, () => void stop(), 'transport');
   const repeatBtn = iconButton('repeat', { label: 'Repeat', shortcut: 'L', detail: 'Loop playback of the selected time range' }, toggleRepeat, 'transport repeat');
-  const homeBtn = h('button', { class: 'transport', title: 'To start (Home)', onclick: () => seek(0) }, '⏮');
+  const homeBtn = iconButton('toStart', { label: 'To start', shortcut: 'Home' }, () => seek(0), 'transport');
   // listening speed (pitch kept); playback only, remembered on this computer
   const SPEED_KEY = 'wavepod.playbackSpeed';
   let speed = 1;
@@ -210,7 +210,7 @@ async function main(): Promise<void> {
     timeEl.textContent = formatTimestamp(t.position / store.sampleRate);
     recBtn.classList.toggle('on', t.state === 'recording');
     playBtn.classList.toggle('on', t.state === 'playing');
-    playBtn.textContent = t.state === 'playing' ? '❚❚' : '▶';
+    setIcon(playBtn, t.state === 'playing' ? 'pause' : 'play');
     repeatBtn.classList.toggle('on', store.repeat);
     repeatBtn.setAttribute('aria-pressed', String(store.repeat));
     for (const [el, v] of [
