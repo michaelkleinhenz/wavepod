@@ -127,6 +127,8 @@ export interface WavePodApi {
   stop(): Promise<RecordedTake[]>;
   record(): Promise<string[]>;
   seek(position: number): Promise<void>;
+  /** Tape-style scrub to `position` while the playhead is dragged (also while stopped); null ends it. */
+  scrub(position: number | null): Promise<void>;
   /** Playback speed, 1 to 2, pitch kept (recording and export always run at 1x). */
   setPlaybackSpeed(speed: number): Promise<void>;
   /** Output preset: Pre-show (only the soundboard is heard) or Show. */
@@ -262,6 +264,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'stop',
   'record',
   'seek',
+  'scrub',
   'setPlaybackSpeed',
   'setPreShow',
   'setLoop',

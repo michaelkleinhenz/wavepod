@@ -131,6 +131,11 @@ export function seek(position: number): void {
   if (store.transport.state === 'playing') void api().play(pos);
 }
 
+/** Plays the timeline at the speed the dragged playhead moves (tape-style); null ends it. */
+export function scrub(position: number | null): void {
+  void api().scrub(position === null ? null : Math.max(0, position));
+}
+
 export function dropMarker(kind: MarkerKind): void {
   const pos = store.transport.position;
   // Markers set while recording don't need undo granularity per keypress, but keeping it is harmless.

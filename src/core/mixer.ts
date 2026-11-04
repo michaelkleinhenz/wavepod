@@ -48,7 +48,7 @@ export class ReaderCache {
 export { audibleTracks, projectLength };
 
 /** Audio rendered before a jump in position so filters (envelopes, RMS windows) settle. */
-const FX_WARMUP_SECONDS = 0.5;
+export const FX_WARMUP_SECONDS = 0.5;
 const PRIME_BLOCK = 4096;
 
 interface ChainState {
@@ -63,6 +63,8 @@ export class Mixer {
   private envBuf = new Float32Array(0);
   private pre: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private trackChains = new Map<string, ChainState>();
+  /** Audio rendered before a jump so filters settle; scrubbing uses less to keep jumps cheap. */
+  warmupSeconds = FX_WARMUP_SECONDS;
   /** Measure what each filter does (live playback only; export leaves it off). */
   metering = false;
   /** Peak each track contributed to the bus since the previous takeTrackPeaks() (metering only). */
@@ -209,7 +211,7 @@ export class Mixer {
 
   /** Runs `step` over the warm-up span before `position`, in blocks, discarding the output. */
   private prime(position: number, step: (pos: number, n: number, buf: Float32Array[]) => void): void {
-    const warm = Math.round(FX_WARMUP_SECONDS * this.project.sampleRate);
+    const warm = Math.round(this.warmupSeconds * this.project.sampleRate);
     const buf = [new Float32Array(PRIME_BLOCK), new Float32Array(PRIME_BLOCK)];
     for (let p = position - warm; p < position; p += PRIME_BLOCK) {
       const n = Math.min(PRIME_BLOCK, position - p);

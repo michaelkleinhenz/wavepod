@@ -24,6 +24,10 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   double-click to add points, drag points or the line up and down; the
   waveform shows the result. `Ctrl+Y` silences the selected range on the
   tracks it was dragged across.
+- **Tape-style scrubbing**: drag the playhead and you hear the timeline at
+  the speed and in the direction you move it, pitch and all, also while
+  stopped. Held still, it falls silent; let go and playback (if it was
+  running) carries on from there.
 - Dragging a clip straight up or down to another track keeps its time
   position, so the tracks stay in sync.
 - **Zoom down to single samples**: waveforms use multi-resolution peaks

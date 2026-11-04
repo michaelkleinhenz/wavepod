@@ -20,9 +20,10 @@ import type {
 import { dbToGain, uid } from '../../shared/time';
 import { interleavedPeaks } from '../../core/dsp';
 import { MipmapBuilder, PEAK_TILE, SAMPLE_TILE, TILED_MAX_SPP, encodePeaks, headerSize, mixToMono, parsePeakHeader, type PeakFileLayout } from '../../core/peaks';
-import { Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
+import { FX_WARMUP_SECONDS, Mixer, ReaderCache, audibleTracks } from '../../core/mixer';
 import { clipsEnd, createProject } from '../../core/project';
 import { TimeStretcher } from '../../core/timeStretch';
+import { SCRUB_WARMUP_SECONDS, Scrubber } from '../../core/scrub';
 import {
   JINGLE_PANIC_SECONDS,
   JINGLE_STOP_SECONDS,
@@ -134,6 +135,8 @@ export class AudioEngine extends EventEmitter {
   private speed = 1;
   private stretcher: TimeStretcher | null = null;
   private stretchTracks: Track[] = [];
+  /** Set while the playhead is dragged: the timeline plays at the mouse's speed instead (tape-style). */
+  private scrubber: Scrubber | null = null;
   /** Repeat range [start, end) in frames: playback that reaches `end` continues at `start`. */
   private loop: [number, number] | null = null;
   private recordStart = 0;
@@ -320,6 +323,7 @@ export class AudioEngine extends EventEmitter {
       this.mixer = Object.assign(new Mixer(project, this.readers), { metering: true });
     }
     else this.mixer.project = project;
+    this.scrubber?.invalidate();
     this.armedTrackIds = new Set(project.tracks.filter((t) => t.armed).map((t) => t.id));
   }
 
@@ -355,8 +359,35 @@ export class AudioEngine extends EventEmitter {
     this.stretcher = null;
   }
 
+  /**
+   * Tape-style scrubbing while the playhead is dragged: plays the timeline at the speed and in the
+   * direction the playhead moves to `position`, also while stopped. Playback (if running) holds
+   * still meanwhile. `null` ends it; the caller then seeks to where the playhead was let go.
+   */
+  scrub(position: number | null): void {
+    if (position === null || this.state === 'recording') {
+      this.scrubber = null;
+      return;
+    }
+    if (!this.scrubber) {
+      this.scrubber = new Scrubber(this.project.sampleRate, (pos, n, buf) => {
+        // short filter warm-up on jumps: scrubbing backwards jumps often, and each one costs a render
+        this.mixer.warmupSeconds = SCRUB_WARMUP_SECONDS;
+        try {
+          this.mixer.render(pos, n, buf, audibleTracks(this.project));
+        } finally {
+          this.mixer.warmupSeconds = FX_WARMUP_SECONDS;
+        }
+      });
+      this.scrubber.reset(this.playPos);
+      this.stretcher = null;
+    }
+    this.scrubber.moveTo(position);
+  }
+
   seek(position: number): void {
     if (this.state === 'recording') return;
+    this.scrubber = null;
     this.stretcher = null;
     this.playPos = Math.max(0, Math.round(position));
     this.emitTransport();
@@ -365,6 +396,7 @@ export class AudioEngine extends EventEmitter {
   play(from?: number): void {
     if (this.state === 'recording') return;
     if (from !== undefined) this.playPos = Math.max(0, Math.round(from));
+    this.scrubber = null;
     this.stretcher = null;
     this.state = 'playing';
     if (!this.output) this.startFallbackClock();
@@ -411,6 +443,7 @@ export class AudioEngine extends EventEmitter {
   /** Starts recording all armed tracks at the playhead. Returns the files being written. */
   record(): string[] {
     if (this.state === 'recording') return this.recorders.map((r) => r.file);
+    this.scrubber = null;
     if (!this.input) throw new Error('No input device is open. Choose one in Setup.');
     if (!this.projectDir) throw new Error('No project folder.');
     const sr = this.input.sampleRate;
@@ -521,6 +554,7 @@ export class AudioEngine extends EventEmitter {
 
   stop(): RecordedTake[] {
     const wasRecording = this.state === 'recording';
+    this.scrubber = null;
     this.stopFallbackClock();
     let takes: RecordedTake[] = [];
     let report: TakeReport | null = null;
@@ -727,6 +761,17 @@ export class AudioEngine extends EventEmitter {
   }
 
   private renderTimeline(frames: number): void {
+    if (this.scrubber) {
+      try {
+        this.scrubber.render(frames, this.mixBuf);
+      } catch (e) {
+        this.reportError(`Scrubbing: ${(e as Error).message}`);
+        this.scrubber = null;
+        return;
+      }
+      this.playPos = Math.round(this.scrubber.position);
+      return;
+    }
     if (this.state === 'stopped') return;
     const before = this.playPos;
     this.renderTimelineMix(frames);
@@ -853,7 +898,7 @@ export class AudioEngine extends EventEmitter {
       const now = performance.now();
       const frames = Math.round(((now - last) / 1000) * this.project.sampleRate);
       last = now;
-      for (let left = this.state === 'playing' ? Math.round(frames * this.speed) : 0; this.state === 'playing' && left > 0; ) {
+      for (let left = this.state === 'playing' && !this.scrubber ? Math.round(frames * this.speed) : 0; this.state === 'playing' && left > 0; ) {
         const n = this.framesUntilJump(left);
         this.advance(n);
         left -= n;
