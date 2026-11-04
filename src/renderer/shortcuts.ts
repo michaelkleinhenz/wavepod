@@ -52,7 +52,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       [`${mod}+drag clip`, 'Move it with everything after it on the track'],
       [`${mod}+Shift+drag clip`, 'Move it with everything after it on all tracks'],
       ['Double-click fade', 'Change the fade shape'],
-      ['Right-click clip', 'Colour and note'],
+      ['Right-click clip', 'Clip menu: split, copy, duplicate, fades, gain, colour, note…'],
     ],
   ],
   [

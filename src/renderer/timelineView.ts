@@ -17,7 +17,7 @@ import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, set
 import { snap, snapTargets } from '../core/snap';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
-import { showClipLabel } from './clipLabel';
+import { openClipMenu } from './clipMenu';
 import { editableNumber, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
@@ -1571,7 +1571,7 @@ export class TimelineView {
         this.canvas.title = env.point !== null ? 'Volume point: drag to move, double-click to remove' : 'Volume line: drag up or down, double-click to add a point';
         return;
       }
-      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click to edit the note` : hit ? 'Right-click for colour and note' : '';
+      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click for clip options` : hit ? 'Right-click for clip options' : '';
       this.canvas.style.cursor = hit?.edge ? 'ew-resize' : hit ? 'grab' : 'text';
     });
 
@@ -1615,12 +1615,19 @@ export class TimelineView {
       const { x, y } = local(e, this.canvas);
       const hit = this.hitClip(x, y);
       if (!hit) return;
-      if (!store.selection.clipIds.has(hit.clip.id)) store.select({ clipIds: new Set([hit.clip.id]), range: null, rangeTracks: null, markerId: null });
-      showClipLabel(hit.clip, e.clientX, e.clientY);
+      this.drag = null;
+      openClipMenu({
+        clipId: hit.clip.id,
+        at: this.frameOf(x),
+        pageX: e.clientX,
+        pageY: e.clientY,
+        zoomTo: (span) => this.toggleZoomToSelection(span),
+        openLoudness: () => this.onOpenLoudness(),
+      });
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2) return; // right-click opens the clip's colour and note
+      if (e.button === 2) return; // right-click opens the clip menu
       const { x, y } = local(e, this.canvas);
       this.snapLine = null;
       // 0. Shift+drag draws a rubber band that selects every clip it touches (Shift+click still toggles a clip)
