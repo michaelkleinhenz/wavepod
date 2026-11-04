@@ -340,3 +340,9 @@ certificates are configured as repository secrets.
   LGPL-3.0), bundled into the export worker
 - [opusscript](https://github.com/abalabahaha/opusscript) (libopus 1.4 as
   WebAssembly, MIT; libopus itself is BSD-3-Clause) for the Opus export
+- [VST3 SDK](https://github.com/steinbergmedia/vst3sdk) (MIT), used by the
+  VST3 host helper
+
+## License
+
+WavePod is open source under the [MIT License](LICENSE).
