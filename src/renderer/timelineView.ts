@@ -319,7 +319,7 @@ export class TimelineView {
       this.headers.append(
         h(
           'div',
-          { class: 'track-header', style: { height: `${TRACK_H}px`, borderLeftColor: t.color } },
+          { class: 'track-header', style: `height: ${TRACK_H}px; --track-color: ${t.color}` },
           h(
             'div',
             { class: 'th-row' },
@@ -772,7 +772,12 @@ export class TimelineView {
     tracks.forEach((t, i) => {
       const y = i * TRACK_H;
       ctx.fillStyle = i % 2 ? '#191b21' : '#1b1d23';
-      ctx.fillRect(0, y, w, TRACK_H - 1);
+      ctx.fillRect(0, y, w, TRACK_H - 2);
+      // faint wash of the track colour so the lane lines up with its tinted header
+      ctx.globalAlpha = 0.05;
+      ctx.fillStyle = t.color;
+      ctx.fillRect(0, y, w, TRACK_H - 2);
+      ctx.globalAlpha = 1;
       this.drawRowClips(ctx, i);
       if (recording && t.kind === 'soundboard') this.drawLiveJingles(ctx, y);
       this.drawMuteRegions(ctx, t, y);
@@ -788,8 +793,8 @@ export class TimelineView {
         ctx.textBaseline = 'top';
         ctx.fillText('● recording', Math.max(4, x0 + 4), y + 8);
       }
-      ctx.fillStyle = '#0f1014';
-      ctx.fillRect(0, y + TRACK_H - 1, w, 1);
+      ctx.fillStyle = '#0b0c0f';
+      ctx.fillRect(0, y + TRACK_H - 2, w, 2);
     });
     const range = this.liveRange();
     if (range) {

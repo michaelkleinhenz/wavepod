@@ -208,8 +208,15 @@ body.scrubbing, body.scrubbing * { cursor: ew-resize !important; }
   justify-content: center;
   gap: 4px;
   padding: 4px 8px;
-  border-left: 4px solid;
-  border-bottom: 1px solid #0f1014;
+  /* --track-color is set per header from the track's colour: tint the whole
+     header so each track reads as one coloured block, with a solid edge and a
+     dark gap between tracks so neighbours don't run together. */
+  --track-color: #8d94a3;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--track-color) 30%, var(--panel)) 0%,
+    color-mix(in srgb, var(--track-color) 16%, var(--panel)) 100%);
+  border-left: 5px solid var(--track-color);
+  border-bottom: 2px solid #0b0c0f;
 }
 .th-row { display: flex; align-items: center; gap: 4px; }
 .track-name { flex: 1; min-width: 0; padding: 2px 6px; background: transparent; border-color: transparent; font-weight: 600; }
