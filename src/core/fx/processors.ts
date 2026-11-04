@@ -89,7 +89,8 @@ class Equalizer implements FxProcessor {
 }
 
 class NoiseGate implements FxProcessor {
-  readonly latency = 0;
+  /** Pre-open: the detector sees the signal this many frames before it is heard. */
+  latency = 0;
   private env = 0;
   private gain = 1;
   private holdLeft = 0;
@@ -101,17 +102,29 @@ class NoiseGate implements FxProcessor {
   private att = 0;
   private rel = 0;
   private holdFrames = 0;
+  private delayL = new Float32Array(0);
+  private delayR = new Float32Array(0);
+  private pos = 0;
   constructor(private sr: number) {}
   setParams(p: Record<string, number>): void {
     this.thresh = dbToLin(p.threshold);
-    this.closeThresh = dbToLin(p.threshold - 4); // hysteresis against chattering
+    // hysteresis against chattering: the gate closes only below threshold minus this
+    this.closeThresh = dbToLin(p.threshold - Math.max(0, p.hysteresis ?? 4));
     this.floor = dbToLin(p.range);
     this.att = coef(p.attack, this.sr);
     this.rel = coef(p.release, this.sr);
     this.envRelease = coef(20, this.sr);
     this.holdFrames = Math.round((p.hold / 1000) * this.sr);
+    const lookahead = Math.max(0, Math.round(((p.preopen ?? 0) / 1000) * this.sr));
+    if (lookahead !== this.latency) {
+      this.latency = lookahead;
+      this.delayL = new Float32Array(lookahead);
+      this.delayR = new Float32Array(lookahead);
+      this.pos = 0;
+    }
   }
   process(L: Float32Array, R: Float32Array, n: number): void {
+    const lat = this.latency;
     for (let i = 0; i < n; i++) {
       const a = Math.max(Math.abs(L[i]), Math.abs(R[i]));
       this.env = a > this.env ? a : a + this.envRelease * (this.env - a);
@@ -125,8 +138,19 @@ class NoiseGate implements FxProcessor {
       const target = this.open ? 1 : this.floor;
       const c = target > this.gain ? this.att : this.rel;
       this.gain = target + c * (this.gain - target);
-      L[i] *= this.gain;
-      R[i] *= this.gain;
+      let l = L[i];
+      let r = R[i];
+      if (lat > 0) {
+        const dl = this.delayL[this.pos];
+        const dr = this.delayR[this.pos];
+        this.delayL[this.pos] = l;
+        this.delayR[this.pos] = r;
+        this.pos = this.pos + 1 === lat ? 0 : this.pos + 1;
+        l = dl;
+        r = dr;
+      }
+      L[i] = l * this.gain;
+      R[i] = r * this.gain;
     }
     this.meter.note(linToDb(this.gain));
   }
@@ -139,6 +163,9 @@ class NoiseGate implements FxProcessor {
     this.gain = this.floor;
     this.open = false;
     this.holdLeft = 0;
+    this.delayL.fill(0);
+    this.delayR.fill(0);
+    this.pos = 0;
   }
 }
 

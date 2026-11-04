@@ -59,13 +59,16 @@ export const FX_DEFINITIONS: FxDefinition[] = [
   {
     type: 'gate',
     name: 'Noise gate',
-    description: 'Turns the track down while nobody speaks into it (room noise, other speakers bleeding in).',
+    description:
+      'Turns the track down while nobody speaks into it (room noise, other speakers bleeding in). Pre-open looks ahead so the gate is already open when a word starts; it adds that much latency, which WavePod compensates. Hysteresis is how far below the threshold the level has to fall before the gate closes again.',
     params: [
       db('threshold', 'Threshold', -50, -80, -10),
       db('range', 'Reduction', -30, -80, 0),
       ms('attack', 'Attack', 2, 0.1, 50, 0.1),
       ms('hold', 'Hold', 80, 0, 500),
       ms('release', 'Release', 200, 10, 2000),
+      ms('preopen', 'Pre-open', 0, 0, 50, 0.1),
+      db('hysteresis', 'Hysteresis', 4, 0, 12),
     ],
   },
   {
