@@ -266,6 +266,31 @@ export function updateMarker(project: Project, markerId: string, patch: Partial<
   return p;
 }
 
+/**
+ * Moves a chapter's content (title, link, image) to another chapter slot. The chapter start
+ * times stay where they are; the content of the chapters in between shifts by one slot, like
+ * reordering a list. For fixing chapter text typed in the wrong order.
+ */
+export function moveChapterContent(project: Project, fromId: string, toId: string): Project {
+  const p = clone(project);
+  const chapters = p.markers.filter((m) => m.kind === 'chapter').sort((a, b) => a.position - b.position);
+  const from = chapters.findIndex((m) => m.id === fromId);
+  const to = chapters.findIndex((m) => m.id === toId);
+  if (from < 0 || to < 0 || from === to) return p;
+  const contents = chapters.map((m) => ({ title: m.title, url: m.url, image: m.image }));
+  const [moved] = contents.splice(from, 1);
+  contents.splice(to, 0, moved);
+  chapters.forEach((m, i) => {
+    const c = contents[i];
+    m.title = c.title;
+    if (c.url) m.url = c.url;
+    else delete m.url;
+    if (c.image) m.image = c.image;
+    else delete m.image;
+  });
+  return p;
+}
+
 export function removeMarker(project: Project, markerId: string): Project {
   const p = clone(project);
   p.markers = p.markers.filter((m) => m.id !== markerId);

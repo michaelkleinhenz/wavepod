@@ -2,7 +2,7 @@
 import type { Region, EpisodeMetadata, Marker } from '../shared/types';
 import { formatTimestamp, parseTimestamp } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from '../core/chapters';
-import { addMarker, chapterWarnings, markersToChapters, removeMarker, updateMarker } from '../core/project';
+import { addMarker, chapterWarnings, markersToChapters, moveChapterContent, removeMarker, updateMarker } from '../core/project';
 import { projectLength } from '../core/project';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { importChapterFile, seek } from './actions';
@@ -38,6 +38,8 @@ export function imagePicker(current: string | undefined, title: string, size: 's
 
 export class ChaptersView {
   readonly el = h('div', { class: 'view chapters-view' });
+  /** Chapter whose content is being dragged to another chapter slot. */
+  private dragId: string | null = null;
 
   render(): void {
     keepScroll(this.el, () => this.build());
@@ -64,10 +66,14 @@ export class ChaptersView {
         },
       });
 
-    const row = (m: Marker, withUrl: boolean) =>
-      h(
+    const moveContent = (fromId: string, toId: string) => store.edit((p) => moveChapterContent(p, fromId, toId));
+    const row = (m: Marker, withUrl: boolean, index = 0) => {
+      const prev = withUrl ? chapters[index - 1] : undefined;
+      const next = withUrl ? chapters[index + 1] : undefined;
+      const tr = h(
         'tr',
         { class: store.selection.markerId === m.id ? 'selected' : '' },
+        withUrl ? h('td', { class: 'grip', title: 'Drag to move this title, link and image to another chapter. The start times stay where they are.' }, '⋮⋮') : null,
         h('td', null, timeInput(m)),
         h(
           'td',
@@ -100,11 +106,20 @@ export class ChaptersView {
         h(
           'td',
           { class: 'actions' },
+          withUrl
+            ? h('button', { class: 'small', title: 'Move title, link and image to the chapter above (start times stay)', disabled: !prev, onclick: () => prev && moveContent(m.id, prev.id) }, '↑')
+            : null,
+          withUrl
+            ? h('button', { class: 'small', title: 'Move title, link and image to the chapter below (start times stay)', disabled: !next, onclick: () => next && moveContent(m.id, next.id) }, '↓')
+            : null,
           h('button', { class: 'small', title: 'Jump to marker', onclick: () => { seek(m.position); store.select({ markerId: m.id }); store.setView('edit'); } }, '▶'),
           withUrl ? null : h('button', { class: 'small', title: 'Turn into chapter', onclick: () => store.edit((p) => updateMarker(p, m.id, { kind: 'chapter' })) }, '→ chapter'),
           h('button', { class: 'small danger', title: 'Delete marker', onclick: () => store.edit((p) => removeMarker(p, m.id)) }, '×'),
         ),
       );
+      if (withUrl) this.makeDraggable(tr, m, index, moveContent);
+      return tr;
+    };
 
     const chapterCard = h(
       'section',
@@ -144,8 +159,8 @@ export class ChaptersView {
         ? h(
             'table',
             { class: 'markers' },
-            h('thead', null, h('tr', null, h('th', null, 'Start'), h('th', null, 'Title'), h('th', null, 'Link'), h('th', null, 'Image'), h('th', null, ''))),
-            h('tbody', null, ...chapters.map((m) => row(m, true))),
+            h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Start'), h('th', null, 'Title'), h('th', null, 'Link'), h('th', null, 'Image'), h('th', null, ''))),
+            h('tbody', null, ...chapters.map((m, i) => row(m, true, i))),
           )
         : h('p', { class: 'muted' }, 'Press M while recording or playing to drop a chapter marker at the playhead. Chapters are embedded in the MP3 export and written as chapter files.'),
       chapterWarningList(),
@@ -274,6 +289,44 @@ export class ChaptersView {
     );
 
     this.el.append(h('div', { class: 'columns' }, h('div', null, chapterCard, editCard, regionCard), h('div', null, metaCard)));
+  }
+
+  /**
+   * Drag a chapter row by its grip onto another chapter row to move its content (title, link,
+   * image) into that slot; the content in between shifts by one. Start times never move.
+   */
+  private makeDraggable(tr: HTMLElement, m: Marker, index: number, move: (fromId: string, toId: string) => void): void {
+    const indexOf = (id: string) => store.project.markers.filter((x) => x.kind === 'chapter').findIndex((x) => x.id === id);
+    // only the grip starts a drag, so the text fields keep working
+    tr.addEventListener('mousedown', (e) => {
+      tr.draggable = (e.target as HTMLElement).classList.contains('grip');
+    });
+    tr.addEventListener('dragstart', (e) => {
+      this.dragId = m.id;
+      e.dataTransfer?.setData('text/plain', m.id);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      tr.classList.add('dragging');
+    });
+    tr.addEventListener('dragend', () => {
+      this.dragId = null;
+      tr.draggable = false;
+      tr.classList.remove('dragging');
+    });
+    tr.addEventListener('dragover', (e) => {
+      if (!this.dragId || this.dragId === m.id) return;
+      e.preventDefault();
+      const from = indexOf(this.dragId);
+      tr.classList.toggle('drop-before', from > index);
+      tr.classList.toggle('drop-after', from < index);
+    });
+    tr.addEventListener('dragleave', () => tr.classList.remove('drop-before', 'drop-after'));
+    tr.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tr.classList.remove('drop-before', 'drop-after');
+      const id = this.dragId;
+      this.dragId = null;
+      if (id && id !== m.id) move(id, m.id);
+    });
   }
 }
 
