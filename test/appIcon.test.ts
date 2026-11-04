@@ -20,11 +20,12 @@ describe('app icon', () => {
   });
 
   it('ships a desktop entry whose icon and window class match the packaged app', () => {
-    const entry = readFileSync('build/linux/wavepod.desktop', 'utf8');
+    // Split into lines so a CRLF checkout (Windows without .gitattributes) still passes.
+    const entry = readFileSync('build/linux/wavepod.desktop', 'utf8').split(/\r?\n/);
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
     const id = pkg.desktopName.replace(/\.desktop$/, '');
-    expect(entry).toContain(`Icon=${id}\n`);
-    expect(entry).toContain(`StartupWMClass=${id}\n`);
-    expect(entry).toContain(`Name=${pkg.productName}\n`);
+    expect(entry).toContain(`Icon=${id}`);
+    expect(entry).toContain(`StartupWMClass=${id}`);
+    expect(entry).toContain(`Name=${pkg.productName}`);
   });
 });
