@@ -1,3 +1,13 @@
+// This file is licensed under the GNU Lesser General Public License, NOT under WavePod's MIT
+// License: it is a derivative of the Ultraschall Dynamics JSFX, which carries this notice:
+//   Copyright (C) 2016 Cockos Inc
+//   License: LGPL - http://www.gnu.org/licenses/lgpl.html
+//   Dynamics Code derived from Cockos General Dynamcis
+//   Limiter Code from LOSERs "MGA JS Limiter"
+//   modified by fernsehmuell and rstockm (ultraschall.fm)
+//   added further options by Meo-Ada Mespotine
+// See THIRD_PARTY_NOTICES.md and LICENSES/.
+//
 // A port of the "Ultraschall Dynamics" JSFX (Ultraschall 5, Effects/dynamics/Ultraschall_Dynamics,
 // LGPL; derived from Cockos "General Dynamics", limiter from LOSER's "MGA JS Limiter").
 //

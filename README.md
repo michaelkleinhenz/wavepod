@@ -342,7 +342,20 @@ certificates are configured as repository secrets.
   WebAssembly, MIT; libopus itself is BSD-3-Clause) for the Opus export
 - [VST3 SDK](https://github.com/steinbergmedia/vst3sdk) (MIT), used by the
   VST3 host helper
+- the Dynamics filter (`src/core/fx/ultraschallDynamics.ts`) is a port of the
+  Ultraschall Dynamics JSFX and stays under its original LGPL license
+- some toolbar icons come from [Lucide](https://lucide.dev) (ISC)
+
+Copyright notices and license texts are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSES/](LICENSES);
+release builds ship them next to the app.
 
 ## License
 
-WavePod is open source under the [MIT License](LICENSE).
+WavePod is open source under the [MIT License](LICENSE), except for the
+third-party parts listed above, which keep their own licenses.
+
+VST is a registered trademark of Steinberg Media Technologies GmbH. RØDECaster,
+Auphonic, Ultraschall and the other product names mentioned here are
+trademarks of their respective owners, used only to describe compatibility.
+WavePod is not affiliated with or endorsed by any of them.

@@ -44,6 +44,15 @@
           "wavepod-vsthost",
           "wavepod-vsthost.exe"
         ]
+      },
+      {
+        "from": ".",
+        "to": "licenses",
+        "filter": [
+          "LICENSE",
+          "THIRD_PARTY_NOTICES.md",
+          "LICENSES/**"
+        ]
       }
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
