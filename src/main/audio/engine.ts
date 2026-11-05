@@ -48,6 +48,12 @@ const METER_HZ = 30;
 const MIN_DISK_SECONDS = 60;
 const DISK_CHECK_MS = 5000;
 const JOURNAL_SAVE_MS = 2000;
+/** An open input that delivers nothing for this long has dropped out (e.g. a USB interface reset). */
+export const INPUT_LOST_MS = 2000;
+/** While the input is gone, how often to look for it and reopen it. */
+export const RECONNECT_MS = 2000;
+/** How often the input watchdog runs (and silence is written while the input is gone). */
+const WATCHDOG_MS = 100;
 
 /** What the engine hands over with the takes when a recording stops. */
 export interface TakeReport {
@@ -120,6 +126,19 @@ export class AudioEngine extends EventEmitter {
   config: DeviceConfig = defaultConfig();
   private input: StreamHandle | null = null;
   private output: StreamHandle | null = null;
+  /** The devices the streams were opened on, to find them again after they drop out (ids can change). */
+  private inputDevice: AudioDevice | null = null;
+  private outputDevice: AudioDevice | null = null;
+  /** When the input last delivered a buffer (performance.now()). */
+  private lastInputMs = 0;
+  /** Watches the input and reconnects it when it drops out. */
+  private watchdog: NodeJS.Timeout | null = null;
+  /**
+   * Set while the input device is gone: when its audio stopped, the last reconnect attempt and how
+   * far silence has been written into the take (so the take keeps time with the clock).
+   */
+  private inputLost: { since: number; lastTry: number; filledUntil: number; filledFrames: number; startFrame: number; errors: Set<string> } | null = null;
+  private silence = new Float32Array(0);
   private error: string | null = null;
 
   project: Project = createProject();
@@ -254,39 +273,12 @@ export class AudioEngine extends EventEmitter {
     this.config.outputDeviceId = outDev?.id ?? null;
     const errors: string[] = [];
     if (inDev) {
-      try {
-        this.input = this.backend().openInput({
-          deviceId: inDev.id,
-          channels: inDev.inputChannels,
-          sampleRate: this.config.sampleRate,
-          frameSize: this.config.bufferSize,
-          onData: (d) => this.onInput(d),
-          onError: (m) => this.reportError(`Input: ${m}`),
-        });
-        this.inputPeaks = new Array(inDev.inputChannels).fill(0);
-      } catch (e) {
-        errors.push(`Could not open input "${inDev.name}" (${this.config.api}, ${inDev.inputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`);
-      }
+      const err = this.openInputOn(inDev);
+      if (err) errors.push(err);
     }
     if (outDev) {
-      try {
-        if (this.config.outputFirstChannel + 2 > outDev.outputChannels) this.config.outputFirstChannel = 0;
-        const second = this.config.output2FirstChannel;
-        if (second !== null && second !== undefined && (second + 2 > outDev.outputChannels || second === this.config.outputFirstChannel)) {
-          this.config.output2FirstChannel = null;
-        }
-        this.output = this.backend().openOutput({
-          deviceId: outDev.id,
-          channels: outDev.outputChannels,
-          sampleRate: this.config.sampleRate,
-          frameSize: this.config.bufferSize,
-          // The prefill pull runs inside openOutput, before this.output is set.
-          pull: (n) => this.onOutput(n, outDev.outputChannels),
-          onError: (m) => this.reportError(`Output: ${m}`),
-        });
-      } catch (e) {
-        errors.push(`Could not open output "${outDev.name}" (${this.config.api}, ${outDev.outputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`);
-      }
+      const err = this.openOutputOn(outDev);
+      if (err) errors.push(err);
     }
     if (errors.length) this.error = [this.error, ...errors].filter(Boolean).join('\n');
     this.startMeters();
@@ -295,16 +287,173 @@ export class AudioEngine extends EventEmitter {
     return s;
   }
 
+  /** Opens the input stream on `dev`; returns an error message if that fails. */
+  private openInputOn(dev: AudioDevice): string | null {
+    try {
+      this.input = this.backend().openInput({
+        deviceId: dev.id,
+        channels: dev.inputChannels,
+        sampleRate: this.config.sampleRate,
+        frameSize: this.config.bufferSize,
+        onData: (d) => this.onInput(d),
+        onError: (m) => this.reportError(`Input: ${m}`),
+      });
+      this.inputDevice = dev;
+      this.inputPeaks = new Array(dev.inputChannels).fill(0);
+      this.lastInputMs = performance.now();
+      this.startWatchdog();
+      return null;
+    } catch (e) {
+      return `Could not open input "${dev.name}" (${this.config.api}, ${dev.inputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`;
+    }
+  }
+
+  /** Opens the output stream on `dev`; returns an error message if that fails. */
+  private openOutputOn(dev: AudioDevice): string | null {
+    try {
+      if (this.config.outputFirstChannel + 2 > dev.outputChannels) this.config.outputFirstChannel = 0;
+      const second = this.config.output2FirstChannel;
+      if (second !== null && second !== undefined && (second + 2 > dev.outputChannels || second === this.config.outputFirstChannel)) {
+        this.config.output2FirstChannel = null;
+      }
+      this.output = this.backend().openOutput({
+        deviceId: dev.id,
+        channels: dev.outputChannels,
+        sampleRate: this.config.sampleRate,
+        frameSize: this.config.bufferSize,
+        // The prefill pull runs inside openOutput, before this.output is set.
+        pull: (n) => this.onOutput(n, dev.outputChannels),
+        onError: (m) => this.reportError(`Output: ${m}`),
+      });
+      this.outputDevice = dev;
+      return null;
+    } catch (e) {
+      return `Could not open output "${dev.name}" (${this.config.api}, ${dev.outputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`;
+    }
+  }
+
+  // ------------------------------------------------------------ input watchdog
+
+  private startWatchdog(): void {
+    if (this.watchdog) return;
+    this.watchdog = setInterval(() => this.checkInput(performance.now()), WATCHDOG_MS);
+    this.watchdog.unref?.();
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
+  }
+
+  /**
+   * Notices when the input device stops delivering audio (a USB interface that resets or is
+   * unplugged takes its streams down for good) and reopens it once it is back. A take keeps running
+   * meanwhile: silence is written in real time, so the tracks stay in time with the clock (and with
+   * a guest's own recording), and the gap gets an edit marker.
+   */
+  private checkInput(now: number): void {
+    const dev = this.inputDevice;
+    if (!dev) return;
+    if (!this.inputLost) {
+      if (!this.input || now - this.lastInputMs < INPUT_LOST_MS) return;
+      this.inputLost = { since: this.lastInputMs, lastTry: 0, filledUntil: this.lastInputMs, filledFrames: 0, startFrame: this.recordedFrames, errors: new Set() };
+      this.reportLost(`The input device "${dev.name}" stopped sending audio (disconnected or reset?). Reconnecting as soon as it is back${this.state === 'recording' ? '; the recording goes on with silence meanwhile' : ''}.`);
+    }
+    const lost = this.inputLost;
+    if (this.state === 'recording') {
+      const frames = Math.floor(((now - lost.filledUntil) / 1000) * this.config.sampleRate);
+      if (frames > 0) {
+        lost.filledUntil += (frames / this.config.sampleRate) * 1000;
+        lost.filledFrames += frames;
+        this.recordSilence(frames);
+      }
+    } else {
+      lost.filledUntil = now;
+    }
+    if (now - lost.lastTry >= RECONNECT_MS) {
+      lost.lastTry = now;
+      this.reconnectInput(dev);
+    }
+  }
+
+  /** Looks for the lost input device (by name, as its id can change) and reopens its streams. */
+  private reconnectInput(dev: AudioDevice): void {
+    const devices = this.listDevices();
+    const inDev = devices.find((d) => d.name === dev.name && d.inputChannels === dev.inputChannels);
+    if (!inDev) return;
+    // The output goes with it if it is the same interface (or was never open); another one keeps playing.
+    const out = this.outputDevice;
+    const outDev = out && (out.name === dev.name || !this.output) ? devices.find((d) => d.name === out.name && d.outputChannels === out.outputChannels) : undefined;
+    this.input?.close();
+    this.input = null;
+    const errors = [this.openInputOn(inDev)];
+    if (outDev) {
+      this.output?.close();
+      this.output = null;
+      errors.push(this.openOutputOn(outDev));
+    }
+    const ids = [this.config.inputDeviceId, this.config.outputDeviceId];
+    this.config.inputDeviceId = inDev.id;
+    if (outDev && this.output) this.config.outputDeviceId = outDev.id;
+    if (ids[0] !== this.config.inputDeviceId || ids[1] !== this.config.outputDeviceId) this.emit('configChanged', { ...this.config });
+    // the stream counts as back only when audio arrives (onInput); until then keep retrying
+    const err = errors.filter(Boolean).join('\n');
+    if (err) this.reportLost(err);
+  }
+
+  /** Reports a problem of the lost input; it is cleared again when the input is back. */
+  private reportLost(message: string): void {
+    this.inputLost?.errors.add(message);
+    this.reportError(message);
+  }
+
+  /** The input delivers audio again after it was lost. */
+  private inputRecovered(): void {
+    const lost = this.inputLost;
+    if (!lost) return;
+    this.inputLost = null;
+    const seconds = Math.round((performance.now() - lost.since) / 1000);
+    const m = this.monitor;
+    if (m && lost.filledFrames > 0) {
+      const text = `The input device was gone for about ${seconds} s and reconnected; this part is silent`;
+      // the monitor noted the stall when it began: say what became of it there
+      const sr = this.config.sampleRate;
+      const ev = [...m.events].reverse().find((e) => e.kind === 'stall' && Math.abs(e.frame - lost.startFrame) < 5 * sr);
+      if (ev) {
+        ev.text = text;
+        m.revision++;
+      } else m.note({ frame: lost.startFrame, kind: 'stall', text });
+    }
+    if (this.error && lost.errors.has(this.error)) this.error = null;
+    this.emit('status', this.status());
+  }
+
+  /** Writes silence into the take while the input is gone. */
+  private recordSilence(frames: number): void {
+    const nch = this.input?.channels ?? this.inputDevice?.inputChannels ?? 1;
+    const chunk = Math.max(1, this.config.bufferSize);
+    if (this.silence.length !== chunk * nch) this.silence = new Float32Array(chunk * nch);
+    for (let left = frames; left > 0; ) {
+      const n = Math.min(chunk, left);
+      this.recordBuffer(this.silence.subarray(0, n * nch), n, nch, false);
+      left -= n;
+    }
+  }
+
   reportError(message: string): void {
     this.error = message;
     this.emit('status', this.status());
   }
 
   private closeStreams(): void {
+    this.stopWatchdog();
     this.input?.close();
     this.output?.close();
     this.input = null;
     this.output = null;
+    this.inputDevice = null;
+    this.outputDevice = null;
+    this.inputLost = null;
   }
 
   // ------------------------------------------------------------ project
@@ -699,9 +848,16 @@ export class AudioEngine extends EventEmitter {
   // ------------------------------------------------------------ audio callbacks
 
   private onInput(interleaved: Float32Array): void {
+    this.lastInputMs = performance.now();
+    if (this.inputLost) this.inputRecovered();
     const nch = this.input?.channels ?? 1;
     const frames = Math.floor(interleaved.length / nch);
     interleavedPeaks(interleaved, nch, this.inputPeaks);
+    this.recordBuffer(interleaved, frames, nch, true);
+  }
+
+  /** Adds one buffer to the take; `live` is false for silence written while the input is gone. */
+  private recordBuffer(interleaved: Float32Array, frames: number, nch: number, live: boolean): void {
     if (this.state !== 'recording' || this.recorders.length === 0) return;
     // Audio first: hand it to the writer before anything else can go wrong.
     try {
@@ -709,7 +865,8 @@ export class AudioEngine extends EventEmitter {
     } catch (e) {
       this.reportError(`Recording failed: ${(e as Error).message}`);
     }
-    this.monitor?.input(interleaved, nch, performance.now());
+    if (live) this.monitor?.input(interleaved, nch, performance.now());
+    else this.monitor?.gap(frames);
     for (const r of this.recorders) {
       if (r.scratch[0].length !== frames) r.scratch = r.channels.map(() => new Float32Array(frames));
       for (let k = 0; k < r.channels.length; k++) {

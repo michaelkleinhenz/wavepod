@@ -265,6 +265,18 @@ export class RecordingMonitor {
     }
   }
 
+  /**
+   * Counts `frames` of silence the engine wrote while the input device was gone, so event positions
+   * stay in step with the files. The device clock starts afresh with the next real buffer, so the
+   * missing time is not reported again as a dropout; the stall warning lasts until audio is back.
+   */
+  gap(frames: number): void {
+    if (frames <= 0) return;
+    this.frame += frames;
+    this.dropouts = new DropoutDetector(this.opts.sampleRate, Math.max(this.opts.bufferSize, this.opts.sampleRate * 0.01));
+    this.lastBufferMs = -1;
+  }
+
   /** Records a problem found elsewhere (e.g. the writer had to be restarted). */
   note(e: RecordingEvent): void {
     this.addEvent(e);
