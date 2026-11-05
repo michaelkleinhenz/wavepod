@@ -15,6 +15,7 @@ import { regionFromSelection, alignSelectedClip, coughDown, coughUp, dropMarker,
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
+import { edgeScrollSpeed } from '../core/edgeScroll';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
 import { openClipMenu } from './clipMenu';
@@ -86,6 +87,11 @@ type Drag =
   // Shift+drag: a rubber band across tracks and time that selects every clip it touches
   | { kind: 'marquee'; startX: number; startY: number; a: number; b: number; y0: number; y1: number; clipId: string | null; ids: Set<string>; moved: boolean };
 
+/** Drags that scroll the view when the mouse nears or leaves its left or right edge (Reaper style). */
+const AUTOSCROLL_X = new Set<Drag['kind']>(['clip', 'trim', 'fade', 'range', 'rangeEdge', 'marker', 'mute', 'marquee']);
+/** Drags that also scroll the tracks up or down at the top and bottom edge. */
+const AUTOSCROLL_Y = new Set<Drag['kind']>(['clip', 'range', 'marquee']);
+
 export class TimelineView {
   readonly el = h('div', { class: 'view edit-view' });
   private toolbar = h('div', { class: 'toolbar' });
@@ -102,6 +108,12 @@ export class TimelineView {
   pxPerSec = 40;
   private width = 800;
   private drag: Drag | null = null;
+  /** The view when the current drag started, so its movement counts in what the view scrolled since. */
+  private dragOrigin: { drag: Drag; viewStart: number; scrollTop: number } | null = null;
+  /** Edge autoscroll running during a drag: the last mouse event and the animation frame. */
+  private autoScroll: { e: MouseEvent; raf: number; last: number } | null = null;
+  /** Applies a mouse move to the current drag (set up in bindEvents; autoscroll replays the last move). */
+  private onDragMove: (e: MouseEvent) => void = () => {};
   /** Middle-mouse pan in progress (Reaper style): where it started and the view at that moment. */
   private pan: { startX: number; startY: number; viewStart: number; scrollTop: number } | null = null;
   private lastFollowPos = 0;
@@ -1415,6 +1427,70 @@ export class TimelineView {
     return Math.max(0, f + this.snapDelta([f], new Set(), e, extra));
   }
 
+  /** The view at the start of drag `d`. */
+  private originOf(d: Drag) {
+    if (this.dragOrigin?.drag !== d) this.dragOrigin = { drag: d, viewStart: this.viewStart, scrollTop: this.scroll.scrollTop };
+    return this.dragOrigin;
+  }
+
+  /** Horizontal mouse movement of drag `d` since `startX`, plus what the view scrolled meanwhile, in pixels. */
+  private dragDx(d: Drag, e: MouseEvent, startX: number): number {
+    return e.clientX - startX + (this.viewStart - this.originOf(d).viewStart) * this.pxPerSec;
+  }
+
+  /** Vertical mouse movement of drag `d` since `startY`, plus what the tracks scrolled meanwhile, in pixels. */
+  private dragDy(d: Drag, e: MouseEvent, startY: number): number {
+    return e.clientY - startY + (this.scroll.scrollTop - this.originOf(d).scrollTop);
+  }
+
+  /** Autoscroll speeds (pixels per second) for the current drag with the mouse at `e`. */
+  private autoScrollSpeed(e: MouseEvent): { vx: number; vy: number } {
+    const d = this.drag;
+    if (!d) return { vx: 0, vy: 0 };
+    let vx = 0;
+    let vy = 0;
+    if (AUTOSCROLL_X.has(d.kind)) {
+      vx = edgeScrollSpeed(e.clientX - this.canvas.getBoundingClientRect().left, this.width);
+      if (vx < 0 && this.viewStart <= 0) vx = 0;
+    }
+    if (AUTOSCROLL_Y.has(d.kind) && !(d.kind === 'range' && d.startTrack === null)) {
+      const r = this.scroll.getBoundingClientRect();
+      vy = edgeScrollSpeed(e.clientY - r.top, this.scroll.clientHeight);
+      const maxTop = this.scroll.scrollHeight - this.scroll.clientHeight;
+      if ((vy < 0 && this.scroll.scrollTop <= 0) || (vy > 0 && this.scroll.scrollTop >= maxTop)) vy = 0;
+    }
+    return { vx, vy };
+  }
+
+  /** Starts, feeds or stops the edge autoscroll after a mouse move during a drag. */
+  private updateAutoScroll(e: MouseEvent): void {
+    const { vx, vy } = this.autoScrollSpeed(e);
+    if (!vx && !vy) return this.stopAutoScroll();
+    if (this.autoScroll) {
+      this.autoScroll.e = e;
+      return;
+    }
+    const tick = (now: number) => {
+      const a = this.autoScroll;
+      if (!a) return;
+      const s = this.autoScrollSpeed(a.e);
+      if (!s.vx && !s.vy) return this.stopAutoScroll();
+      const dt = Math.min(0.05, Math.max(0, (now - a.last) / 1000));
+      a.last = now;
+      if (s.vx) this.viewStart = Math.max(0, this.viewStart + (s.vx * dt) / this.pxPerSec);
+      if (s.vy) this.scroll.scrollTop += s.vy * dt;
+      // the mouse stays put while the timeline slides under it: replay the move at the new view
+      this.onDragMove(a.e);
+      a.raf = requestAnimationFrame(tick);
+    };
+    this.autoScroll = { e, raf: requestAnimationFrame(tick), last: performance.now() };
+  }
+
+  private stopAutoScroll(): void {
+    if (this.autoScroll) cancelAnimationFrame(this.autoScroll.raf);
+    this.autoScroll = null;
+  }
+
   private bindEvents(): void {
     const local = (e: MouseEvent, el: HTMLElement) => {
       const r = el.getBoundingClientRect();
@@ -1489,6 +1565,7 @@ export class TimelineView {
       e.stopImmediatePropagation();
       if (this.drag?.kind === 'playhead' && this.drag.moved) scrub(null);
       this.drag = null;
+      this.stopAutoScroll();
       this.snapLine = null;
       document.body.classList.remove('scrubbing');
       this.pan = { startX: e.clientX, startY: e.clientY, viewStart: this.viewStart, scrollTop: this.scroll.scrollTop };
@@ -1797,14 +1874,20 @@ export class TimelineView {
       }
     });
 
-    window.addEventListener('mousemove', (e) => {
+    // remember the view a drag starts at (after the mousedown handlers above set it up)
+    window.addEventListener('mousedown', () => {
+      if (this.drag) this.originOf(this.drag);
+    });
+
+    this.onDragMove = (e: MouseEvent) => {
       const d = this.drag;
       if (!d) return;
+      this.originOf(d);
       const pos = local(e, this.canvas);
       const framesOf = (px: number) => Math.round((px / this.pxPerSec) * this.sr);
       if (d.kind === 'clip') {
-        const dx = e.clientX - d.startX;
-        d.dTrack = Math.max(d.minDTrack, Math.min(d.maxDTrack, Math.round((e.clientY - d.startY) / TRACK_H)));
+        const dx = this.dragDx(d, e, d.startX);
+        d.dTrack = Math.max(d.minDTrack, Math.min(d.maxDTrack, Math.round(this.dragDy(d, e, d.startY) / TRACK_H)));
         if (Math.abs(dx) > 3 || d.dTrack) d.moved = true;
         // moving to another track with little sideways movement keeps the position, so tracks stay in sync
         const locked = d.dTrack !== 0 && Math.abs(dx) < TRACK_MOVE_LOCK_PX;
@@ -1818,7 +1901,7 @@ export class TimelineView {
         d.delta = Math.max(d.ripple ? rippleMinDelta(store.project, d.ripple) : -minStart, delta);
         this.draw();
       } else if (d.kind === 'trim') {
-        let delta = framesOf(e.clientX - d.startX);
+        let delta = framesOf(this.dragDx(d, e, d.startX));
         const edgeAt = (dl: number) => {
           const t = trimmed(d.orig, d.side, dl);
           return d.side === 'left' ? t.start : t.start + t.length;
@@ -1829,7 +1912,7 @@ export class TimelineView {
       } else if (d.kind === 'fade') {
         d.moved = true;
         const o = d.orig;
-        const raw = framesOf(e.clientX - d.startX);
+        const raw = framesOf(this.dragDx(d, e, d.startX));
         const edge = d.side === 'in' ? o.start + o.fadeIn + raw : o.start + o.length - o.fadeOut + raw;
         const snapped = edge + this.snapDelta([edge], new Set([d.clipId]), e);
         const patch =
@@ -1862,7 +1945,7 @@ export class TimelineView {
         const pts = d.orig.map((p, i) => (d.indices.includes(i) ? { pos: p.pos, db: this.dbOfY(this.yOfDb(p.db, d.ti) + dy, d.ti) } : { ...p }));
         store.editLive((p) => setClipEnvelope(p, d.clipId, pts));
       } else if (d.kind === 'marker') {
-        d.dx = e.clientX - d.startX;
+        d.dx = this.dragDx(d, e, d.startX);
         if (Math.abs(d.dx) > 3) d.moved = true;
         this.draw();
       } else if (d.kind === 'mute') {
@@ -1884,11 +1967,18 @@ export class TimelineView {
         scrub(d.current);
         this.draw();
       }
+    };
+    window.addEventListener('mousemove', (e) => {
+      if (!this.drag) return;
+      this.onDragMove(e);
+      this.updateAutoScroll(e);
     });
 
     window.addEventListener('mouseup', () => {
       const d = this.drag;
       this.drag = null;
+      this.dragOrigin = null;
+      this.stopAutoScroll();
       this.snapLine = null;
       document.body.classList.remove('scrubbing');
       if (!d) return;

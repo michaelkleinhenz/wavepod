@@ -30,6 +30,9 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   running) carries on from there.
 - Dragging a clip straight up or down to another track keeps its time
   position, so the tracks stay in sync.
+- While dragging a clip, an edge, a selection or a marker, the view
+  scrolls when the mouse nears or leaves the edge of the timeline (faster
+  the further out), so a clip can be carried anywhere in one drag.
 - **Zoom down to single samples**: waveforms use multi-resolution peaks
   (cached in `.peaks` files next to the audio), so long multitrack episodes
   scroll smoothly; past the finest peak level the samples themselves are
