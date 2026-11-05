@@ -10,7 +10,8 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
 - **One track per speaker** in one click: known devices are recognised and
   their channels labelled (Combo 1–4, USB Chat, Bluetooth, …).
 - **Crash-safe recording** to 16/24/32-bit WAV, one file per track, with
-  the waveform drawn live while recording.
+  the waveform drawn live while recording. The timeline scrolls with the
+  recording, keeping the red cursor in view.
 - **Cough buttons**: hold `Shift`+`1`–`9` (or a track's `C` button) to mute
   a speaker; the audio is still recorded and the muted region can be
   adjusted or removed later.
@@ -30,6 +31,9 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   running) carries on from there.
 - Dragging a clip straight up or down to another track keeps its time
   position, so the tracks stay in sync.
+- While dragging a clip, an edge, a selection or a marker, the view
+  scrolls when the mouse nears or leaves the edge of the timeline (faster
+  the further out), so a clip can be carried anywhere in one drag.
 - **Zoom down to single samples**: waveforms use multi-resolution peaks
   (cached in `.peaks` files next to the audio), so long multitrack episodes
   scroll smoothly; past the finest peak level the samples themselves are
