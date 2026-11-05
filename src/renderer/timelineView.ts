@@ -60,6 +60,8 @@ const PLAYHEAD_HANDLE_H = 7;
 const SNAP_KEY = 'wavepod.timeline.snap';
 /** While a clip is dragged to another track, horizontal movement below this keeps its position (sync). */
 const TRACK_MOVE_LOCK_PX = 20;
+/** While recording, the view scrolls to keep the cursor at this share of its width from the left. */
+const RECORD_FOLLOW_ANCHOR = 0.75;
 /** Deepest zoom: one sample this many pixels wide. */
 const MAX_PX_PER_SAMPLE = 64;
 /** Ruler tick steps in seconds, from a few samples up to an hour. */
@@ -489,6 +491,17 @@ export class TimelineView {
     const t = store.transport;
     const moved = t.position !== this.lastFollowPos;
     this.lastFollowPos = t.position;
+    if (t.state === 'recording') {
+      // While recording the timeline scrolls with the cursor: once it reaches the anchor it stays
+      // there and the takes grow under it, so the view itself shows the recording is running. It is
+      // also brought back when scrolled away (not while the view is being panned by hand). Drags
+      // count in what the view scrolled, so they keep working while it moves.
+      if (this.pan) return;
+      const x = this.xOf(t.position);
+      const anchor = this.width * RECORD_FOLLOW_ANCHOR;
+      if (x > anchor || x < 0) this.viewStart = Math.max(0, t.position / this.sr - anchor / this.pxPerSec);
+      return;
+    }
     if (this.drag || this.pan || (t.state === 'stopped' && !moved)) return;
     const x = this.xOf(t.position);
     if (x > this.width * 0.92 || x < 0) {
