@@ -966,6 +966,11 @@ app.whenReady().then(() => {
     loggedEngineError = s.error;
     send(IPC.status, s);
   });
+  // a device that dropped out came back under another id: remember it for the next start
+  engine.on('configChanged', (config: DeviceConfig) => {
+    settings.device = config;
+    saveSettings();
+  });
   engine.on('recordingFinished', (takes: RecordedTake[], report: TakeReport | null) => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
     let project = current.project;

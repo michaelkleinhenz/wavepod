@@ -1,9 +1,13 @@
 name: CI
 
+# To save CI minutes this does not run on every merge. All three platforms are checked when a
+# release is tagged (alongside release.yml, which builds the installers) and when run by hand from
+# the Actions tab (Run workflow); pull requests are checked on Linux only.
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -55,6 +59,8 @@ jobs:
     name: Package smoke test (Linux)
     runs-on: ubuntu-latest
     needs: check
+    # a tag already packages every platform in release.yml; only a manual run needs this one
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

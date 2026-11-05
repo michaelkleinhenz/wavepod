@@ -382,6 +382,7 @@ Recordings are built to survive crashes, power cuts and full disks:
 - Files over 4 GB become RF64 automatically.
 - While a take runs, `recording-in-progress.json` in the project folder lists its files. If WavePod finds it when a project opens, the take was interrupted: the files are repaired and put back on their tracks, and a dialog says so. A backup of the project from before the recovery is kept in `backup/`.
 - If the disk fills up, audio is held in memory (up to 1 GB) and written as soon as there is space again. WavePod won't start a take with less than a minute of space left.
+- If the audio interface drops out mid-take (a USB reset or a loose cable), the take keeps running with silence, so the tracks stay in time with the clock and with a guest's own recording. WavePod reconnects as soon as the device is back, also under a new device id, and the gap gets a ⚠ edit marker.
 - Closing the window mid-take asks first; Ctrl+C, SIGTERM and logout stop the take and save; a crashed window reloads while recording continues.
 
 While recording, a bar under the toolbar warns about dropouts (audio the device never delivered), crackle, clipping, inputs that get no signal, a stalled input device, a slow or nearly full disk and write errors. The status bar shows how much recording time the disk has left. When the take stops, every problem spot gets a ⚠ edit marker so you can listen to it.
