@@ -1,7 +1,9 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import { LevelMeter } from './levelMeter';
-import { clipsInRect, selectionSpan } from '../core/navigation';
-import type { AutomationLane, AutomationPoint, Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
+import { selectionSpan } from '../core/navigation';
+import type { AutomationLane, AutomationPoint, Clip, EnvelopePoint, Marker, PeakLevel, Project, Track } from '../shared/types';
+import { DRAMA_FOLDERS, FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addDramaFolders, addFolder, audibleTracks, removeFolder, setTrackFolder, timelineRows, updateFolder, type TimelineRow } from '../core/folders';
+import { askName } from './nameDialog';
 import { addAutomationPoint, automationValueAt, formatPan, parsePan, setTrackAutomation, showTrackAutomation } from '../core/automation';
 import { showContextMenu } from './contextMenu';
 import { dbToGain, formatTick, formatTimestamp } from '../shared/time';
@@ -116,6 +118,10 @@ export class TimelineView {
   /** Overview strip (navigator): the whole episode, with the visible part framed; click or drag to move there. */
   private overview = h('canvas', { class: 'overview' });
   private trackMeters = new Map<string, LevelMeter>();
+  private folderMeters = new Map<string, LevelMeter>();
+  private folderBtn: HTMLButtonElement | null = null;
+  /** Timeline rows (folders and the tracks shown) for the current project, rebuilt when it changes. */
+  private layoutCache: { project: Project; rows: TimelineRow[]; rowOf: Map<string, number>; audible: Set<string> } | null = null;
 
   /** Seconds at the left edge. */
   viewStart = 0;
@@ -247,6 +253,7 @@ export class TimelineView {
     const btn = iconButton;
     this.toolbar.append(
       btn('addTrack', { label: 'Add track', detail: 'Add an empty track' }, () => store.edit((p) => addTrack(p))),
+      (this.folderBtn = btn('folder', { label: 'Track folders', detail: 'Group tracks (Dialogue, SFX, Atmo, Music) with one mute, solo and volume for the group' }, () => this.folderMenu())),
       btn('import', { label: 'Import audio…', shortcut: 'Ctrl+I', detail: 'Import audio files as new tracks at the playhead' }, () => void importAudioFiles()),
       btn(
         'prepareEdit',
@@ -324,6 +331,55 @@ export class TimelineView {
     });
   }
 
+  private layout(): { rows: TimelineRow[]; rowOf: Map<string, number>; audible: Set<string> } {
+    const project = store.project;
+    if (!project) return { rows: [], rowOf: new Map(), audible: new Set() };
+    if (this.layoutCache?.project !== project) {
+      const rows = timelineRows(project);
+      const rowOf = new Map<string, number>();
+      rows.forEach((r, i) => {
+        if (r.kind === 'track') rowOf.set(r.track.id, i);
+      });
+      this.layoutCache = { project, rows, rowOf, audible: new Set(audibleTracks(project).map((t) => t.id)) };
+    }
+    return this.layoutCache;
+  }
+
+  /** Rows of the timeline, top to bottom: folder rows and the tracks that are not folded away. */
+  private get rows(): TimelineRow[] {
+    return this.layout().rows;
+  }
+
+  /** The track on a row (undefined on folder rows and below the last row). */
+  private trackAt(row: number): Track | undefined {
+    const r = this.rows[row];
+    return r?.kind === 'track' ? r.track : undefined;
+  }
+
+  /** The row a track is drawn on, -1 while its folder is collapsed. */
+  private rowOfTrack(trackId: string): number {
+    return this.layout().rowOf.get(trackId) ?? -1;
+  }
+
+  /** The tracks rows a..b cover; a collapsed folder's row covers all its tracks. */
+  private tracksInRows(a: number, b: number): Track[] {
+    const rows = this.rows;
+    const lo = Math.max(0, Math.min(a, b));
+    const hi = Math.min(rows.length - 1, Math.max(a, b));
+    return rows.slice(lo, hi + 1).flatMap((r) => (r.kind === 'track' ? [r.track] : r.folder.collapsed ? r.members : []));
+  }
+
+  /** The row `d` rows away from `row` for a dragged clip; folder rows are stepped over. */
+  private shiftRow(row: number, d: number): number {
+    const rows = this.rows;
+    const r = Math.max(0, Math.min(rows.length - 1, row + d));
+    if (rows[r]?.kind === 'track') return r;
+    const dir = d >= 0 ? 1 : -1;
+    for (let k = r + dir; k >= 0 && k < rows.length; k += dir) if (rows[k].kind === 'track') return k;
+    for (let k = r - dir; k >= 0 && k < rows.length; k -= dir) if (rows[k].kind === 'track') return k;
+    return row;
+  }
+
   renderHeaders(): void {
     // don't pull a value field away while it is being typed into; it re-renders when it closes
     if (isEditingValue(this.headers)) return;
@@ -337,17 +393,22 @@ export class TimelineView {
     for (let i = 0; i < nIn; i++) inputOptions.push({ value: String(i), label: `${i + 1}: ${labelOf(i)}` });
     for (let i = 0; i + 1 < nIn; i += 2) inputOptions.push({ value: `${i},${i + 1}`, label: `${i + 1}/${i + 2}: ${labelOf(i).replace(/ L$/, '')} (stereo)` });
 
-    store.project.tracks.forEach((t: Track) => {
+    this.folderMeters.clear();
+    this.rows.forEach((row) => {
+      if (row.kind === 'folder') return void this.headers.append(this.folderHeader(row));
+      const t = row.track;
       const cur = t.inputChannels.join(',');
       if (cur && !inputOptions.some((o) => o.value === cur)) inputOptions.push({ value: cur, label: `${cur} (unavailable)` });
       const meter = new LevelMeter(`trk:${t.id}`);
       this.trackMeters.set(t.id, meter);
+      // a muted folder mutes its tracks; their own M shows that without changing the track's setting
+      const byFolder = (key: string) => (key === 'mute' && row.folder?.mute ? ' by-folder' : key === 'solo' && row.folder?.solo ? ' by-folder' : '');
       const toggle = (key: 'armed' | 'mute' | 'solo', label: string, title: string) =>
         h(
           'button',
           {
-            class: `toggle ${key}${t[key] ? ' on' : ''}`,
-            title,
+            class: `toggle ${key}${t[key] ? ' on' : ''}${byFolder(key)}`,
+            title: byFolder(key) ? `${title} (the folder "${row.folder!.name}" is ${key === 'mute' ? 'muted' : 'soloed'})` : title,
             onclick: () => {
               if (key === 'armed' && store.transport.state === 'recording') return toast('Stop recording before changing armed tracks');
               store.patch((p) => updateTrack(p, t.id, { [key]: !t[key] }));
@@ -358,7 +419,16 @@ export class TimelineView {
       this.headers.append(
         h(
           'div',
-          { class: 'track-header', style: `height: ${TRACK_H}px; --track-color: ${t.color}` },
+          {
+            class: `track-header${row.folder ? ' in-folder' : ''}`,
+            style: `height: ${TRACK_H}px; --track-color: ${t.color}${row.folder ? `; --folder-color: ${row.folder.color}` : ''}`,
+            oncontextmenu: (e: MouseEvent) => {
+              // text fields keep their own copy/paste menu
+              if ((e.target as HTMLElement).closest('input:not([type=range]), select')) return;
+              e.preventDefault();
+              this.trackFolderMenu(t, e.clientX, e.clientY);
+            },
+          },
           h(
             'div',
             { class: 'th-row' },
@@ -459,7 +529,7 @@ export class TimelineView {
         ),
       );
     });
-    if (!store.project.tracks.length) {
+    if (!this.rows.length) {
       this.headers.append(
         h(
           'div',
@@ -471,6 +541,159 @@ export class TimelineView {
       );
     }
     this.resize();
+  }
+
+  /** A folder's header: fold/unfold, name, group mute and solo, group volume and a meter over its tracks. */
+  private folderHeader(row: Extract<TimelineRow, { kind: 'folder' }>): HTMLElement {
+    const f = row.folder;
+    const meter = new LevelMeter(`fld:${f.id}`);
+    this.folderMeters.set(f.id, meter);
+    const set = (patch: Parameters<typeof updateFolder>[2], undo = true) => (undo ? store.edit : store.patch).call(store, (p: Project) => updateFolder(p, f.id, patch));
+    const toggle = (key: 'mute' | 'solo', label: string, title: string) =>
+      h('button', { class: `toggle ${key}${f[key] ? ' on' : ''}`, title, onclick: () => set({ [key]: !f[key] }, false) }, label);
+    const n = row.members.length;
+    return h(
+      'div',
+      {
+        class: `track-header folder-header${f.collapsed ? ' collapsed' : ''}`,
+        style: `height: ${TRACK_H}px; --track-color: ${f.color}`,
+        oncontextmenu: (e: MouseEvent) => {
+          if ((e.target as HTMLElement).closest('input:not([type=range])')) return;
+          e.preventDefault();
+          this.folderContextMenu(f.id, e.clientX, e.clientY);
+        },
+      },
+      h(
+        'div',
+        { class: 'th-row' },
+        h(
+          'button',
+          { class: 'toggle fold', title: f.collapsed ? 'Unfold: show the tracks in this folder' : 'Fold: hide the tracks in this folder', onclick: () => set({ collapsed: !f.collapsed }, false) },
+          f.collapsed ? '▸' : '▾',
+        ),
+        h('input', {
+          class: 'track-name folder-name',
+          value: f.name,
+          title: 'Folder name',
+          onchange: (e: Event) => set({ name: (e.target as HTMLInputElement).value.trim() || f.name }),
+        }),
+        toggle('mute', 'M', 'Mute every track in this folder'),
+        toggle('solo', 'S', 'Solo this folder: every track in it plays'),
+        h(
+          'button',
+          {
+            class: 'toggle remove',
+            title: 'Remove the folder (its tracks stay)',
+            onclick: () => store.edit((p) => removeFolder(p, f.id)),
+          },
+          '×',
+        ),
+      ),
+      h(
+        'div',
+        { class: 'th-row' },
+        h('span', { class: 'muted th-hint folder-count' }, n ? `Folder · ${n} track${n === 1 ? '' : 's'}${f.collapsed ? ' (folded)' : ''}` : 'Folder · empty'),
+        h(
+          'button',
+          {
+            class: 'fx-btn',
+            title: 'Add an empty track to this folder',
+            onclick: () => store.edit((p) => addTrack(p, { name: `${f.name} ${n + 1}`, folderId: f.id })),
+          },
+          '+ Track',
+        ),
+      ),
+      h(
+        'div',
+        { class: 'th-row' },
+        h('span', { class: 'folder-vol-label' }, 'Group'),
+        editableNumber(h('span', { class: 'gain-label', title: 'Group volume, added to every track in the folder (click to type a value)' }, `${f.gain > 0 ? '+' : ''}${f.gain.toFixed(1)} dB`), {
+          min: FOLDER_GAIN_MIN,
+          max: FOLDER_GAIN_MAX,
+          unit: 'dB',
+          precision: 0.1,
+          get: () => f.gain,
+          commit: (gain) => set({ gain }),
+          onClose: () => this.renderHeaders(),
+        }),
+        h('input', {
+          type: 'range',
+          class: 'gain',
+          min: String(FOLDER_GAIN_MIN),
+          max: String(FOLDER_GAIN_MAX),
+          step: '0.5',
+          value: String(f.gain),
+          title: 'Group volume for every track in the folder (double-click to reset)',
+          ondblclick: () => set({ gain: 0 }),
+          onchange: (e: Event) => set({ gain: Number((e.target as HTMLInputElement).value) }),
+        }),
+        meter.el,
+      ),
+    );
+  }
+
+  /** Toolbar menu: new folders. */
+  private folderMenu(): void {
+    const r = (this.folderBtn ?? this.toolbar).getBoundingClientRect();
+    const have = new Set((store.project.folders ?? []).map((f) => f.name.toLowerCase()));
+    showContextMenu(
+      [
+        { label: 'New folder…', run: () => void this.newFolder([]) },
+        {
+          label: `Audio drama folders (${DRAMA_FOLDERS.join(', ')})`,
+          enabled: DRAMA_FOLDERS.some((n) => !have.has(n.toLowerCase())),
+          title: 'Adds the folders that are not there yet',
+          run: () => store.edit((p) => addDramaFolders(p)),
+        },
+        { kind: 'separator' },
+        { label: 'Fold all folders', enabled: !!store.project.folders?.some((f) => !f.collapsed), run: () => this.foldAll(true) },
+        { label: 'Unfold all folders', enabled: !!store.project.folders?.some((f) => f.collapsed), run: () => this.foldAll(false) },
+      ],
+      r.left,
+      r.bottom + 2,
+    );
+  }
+
+  private foldAll(collapsed: boolean): void {
+    store.patch((p) => (p.folders ?? []).reduce((q, f) => updateFolder(q, f.id, { collapsed }), p));
+  }
+
+  private async newFolder(trackIds: string[]): Promise<void> {
+    const name = await askName({ title: 'New track folder', value: `Folder ${(store.project.folders?.length ?? 0) + 1}`, ok: 'Create' });
+    if (name) store.edit((p) => addFolder(p, { name, trackIds }));
+  }
+
+  /** Right-click on a track header: which folder the track is in. */
+  private trackFolderMenu(t: Track, x: number, y: number): void {
+    const folders = store.project.folders ?? [];
+    showContextMenu(
+      [
+        { kind: 'header', label: `Move "${t.name}" to folder` },
+        ...folders.map((f) => ({ label: f.name, checked: t.folderId === f.id, run: () => store.edit((p) => setTrackFolder(p, t.id, f.id)) })),
+        { label: 'No folder', checked: !t.folderId, run: () => store.edit((p) => setTrackFolder(p, t.id, null)) },
+        { kind: 'separator' },
+        { label: 'New folder with this track…', run: () => void this.newFolder([t.id]) },
+      ],
+      x,
+      y,
+    );
+  }
+
+  private folderContextMenu(folderId: string, x: number, y: number): void {
+    const f = store.project.folders?.find((q) => q.id === folderId);
+    if (!f) return;
+    const others = store.project.tracks.filter((t) => t.folderId !== f.id && t.kind !== 'soundboard');
+    showContextMenu(
+      [
+        { label: f.collapsed ? 'Unfold' : 'Fold', run: () => store.patch((p) => updateFolder(p, f.id, { collapsed: !f.collapsed })) },
+        { label: 'Add an empty track', run: () => store.edit((p) => addTrack(p, { name: `${f.name} ${folderMembersCount(p, f.id) + 1}`, folderId: f.id })) },
+        ...(others.length ? [{ kind: 'header' as const, label: 'Move a track here' }, ...others.slice(0, 24).map((t) => ({ label: t.name, run: () => store.edit((p) => setTrackFolder(p, t.id, f.id)) }))] : []),
+        { kind: 'separator' },
+        { label: 'Remove folder (keep its tracks)', run: () => store.edit((p) => removeFolder(p, f.id)) },
+      ],
+      x,
+      y,
+    );
   }
 
   /** Pan value (click to type) and slider; while the pan lane has points they follow it instead. */
@@ -548,13 +771,22 @@ export class TimelineView {
       const p = t.armed ? Math.max(0, ...t.inputChannels.map((c) => raw.inputPeaks[c] ?? 0)) : (raw.trackPeaks?.[t.id] ?? 0);
       meter.update(v, p);
     }
+    // a folder shows the loudest of its tracks
+    for (const f of store.project.folders ?? []) {
+      const meter = this.folderMeters.get(f.id);
+      if (!meter) continue;
+      const members = store.project.tracks.filter((t) => t.folderId === f.id);
+      const v = Math.max(0, ...members.map((t) => store.trackMeterHold.get(t.id) ?? 0));
+      const p = Math.max(0, ...members.map((t) => store.transport.trackPeaks?.[t.id] ?? 0));
+      meter.update(v, p);
+    }
   }
 
   private resize(): void {
     const w = Math.max(100, this.scroll.clientWidth - HEADER_W);
     this.width = w;
     const dpr = window.devicePixelRatio || 1;
-    const hTracks = Math.max(store.project?.tracks.length ?? 0, 1) * TRACK_H;
+    const hTracks = Math.max(this.rows.length, 1) * TRACK_H;
     for (const [c, height] of [
       [this.rulerCanvas, RULER_H + MARKER_H],
       [this.canvas, hTracks],
@@ -805,10 +1037,7 @@ export class TimelineView {
 
   private tracksBetween(a: number | null, b: number | null): string[] | null {
     if (a === null || b === null) return null;
-    const tracks = store.project.tracks;
-    const lo = Math.max(0, Math.min(a, b));
-    const hi = Math.min(tracks.length - 1, Math.max(a, b));
-    return tracks.slice(lo, hi + 1).map((t) => t.id);
+    return this.tracksInRows(a, b).map((t) => t.id);
   }
 
   /** Playhead position as shown: where it is being dragged to, otherwise the transport's. */
@@ -889,8 +1118,8 @@ export class TimelineView {
   private drawTracks(): void {
     const ctx = this.ctx(this.canvas);
     const w = this.width;
-    const tracks = store.project.tracks;
-    const height = Math.max(tracks.length, 1) * TRACK_H;
+    const rows = this.rows;
+    const height = Math.max(rows.length, 1) * TRACK_H;
     ctx.fillStyle = '#16181d';
     ctx.fillRect(0, 0, w, height);
     // grid
@@ -904,8 +1133,10 @@ export class TimelineView {
       ctx.stroke();
     }
     const recording = store.transport.state === 'recording';
-    tracks.forEach((t, i) => {
+    rows.forEach((row, i) => {
       const y = i * TRACK_H;
+      if (row.kind === 'folder') return this.drawFolderRow(ctx, row, y);
+      const t = row.track;
       ctx.fillStyle = i % 2 ? '#191b21' : '#1b1d23';
       ctx.fillRect(0, y, w, TRACK_H - 2);
       // faint wash of the track colour so the lane lines up with its tinted header
@@ -938,8 +1169,10 @@ export class TimelineView {
       const ids = this.liveRangeTracks();
       const x0 = this.cx(this.xOf(range[0]));
       const x1 = this.cx(this.xOf(range[1]));
-      tracks.forEach((t, i) => {
-        if (ids && !ids.includes(t.id)) return;
+      rows.forEach((r, i) => {
+        // a folder row is lit when the selection covers its tracks
+        const covered = r.kind === 'track' ? [r.track] : r.members;
+        if (!covered.length || (ids && !covered.some((t) => ids.includes(t.id)))) return;
         ctx.fillStyle = 'rgba(120,160,255,0.22)';
         ctx.fillRect(x0, i * TRACK_H, x1 - x0, TRACK_H - 1);
         ctx.fillStyle = 'rgba(154,184,255,0.8)';
@@ -963,6 +1196,52 @@ export class TimelineView {
     this.drawPlayhead(ctx, height);
     this.drawSnapLine(ctx, height);
     this.drawDropHint(ctx, height);
+  }
+
+  /**
+   * A folder's row: a band in the folder colour with each member's clips as a thin strip, so a
+   * folded folder still shows where its tracks have material.
+   */
+  private drawFolderRow(ctx: CanvasRenderingContext2D, row: Extract<TimelineRow, { kind: 'folder' }>, y: number): void {
+    const w = this.width;
+    const f = row.folder;
+    const silent = f.mute || (!f.solo && !row.members.some((t) => this.layout().audible.has(t.id)) && row.members.length > 0);
+    ctx.fillStyle = '#14161b';
+    ctx.fillRect(0, y, w, TRACK_H - 2);
+    ctx.globalAlpha = 0.1;
+    ctx.fillStyle = f.color;
+    ctx.fillRect(0, y, w, TRACK_H - 2);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = f.color;
+    ctx.fillRect(0, y, w, 2);
+    const n = row.members.length;
+    if (n) {
+      const top = y + 8;
+      const avail = TRACK_H - 18;
+      const laneH = Math.max(2, Math.min(12, avail / n - 1));
+      const used = n * (laneH + 1);
+      const y0 = top + Math.max(0, (avail - used) / 2);
+      ctx.globalAlpha = silent ? 0.3 : f.collapsed ? 0.85 : 0.5;
+      row.members.forEach((t, k) => {
+        const ly = y0 + k * (laneH + 1);
+        if (ly + laneH > y + TRACK_H - 6) return;
+        ctx.fillStyle = t.color;
+        for (const c of t.clips) {
+          const x0 = this.cx(this.xOf(c.start));
+          const x1 = this.cx(this.xOf(c.start + c.length));
+          if (x1 < 0 || x0 > w) continue;
+          ctx.fillRect(x0, ly, Math.max(1, x1 - x0), laneH);
+        }
+      });
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.fillStyle = '#6b7080';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Empty folder: right-click a track header › Move to folder', 10, y + TRACK_H / 2);
+    }
+    ctx.fillStyle = '#0b0c0f';
+    ctx.fillRect(0, y + TRACK_H - 2, w, 2);
   }
 
   /** A marker's position, following a marker drag or a ripple move across all tracks. */
@@ -1199,7 +1478,7 @@ export class TimelineView {
   private inAutomationArea(x: number, y: number, slack = 0): { track: Track; ti: number; lane: AutomationLane } | null {
     if (x < 0 || x > this.width) return null;
     const ti = Math.floor(y / TRACK_H);
-    const track = store.project.tracks[ti];
+    const track = this.trackAt(ti);
     const lane = shownLane(track);
     if (!track || !lane) return null;
     if (y < Math.max(ti * TRACK_H + FADE_ZONE_PX + 4, this.envTop(ti) - slack) || y > this.envBottom(ti) + slack) return null;
@@ -1209,7 +1488,7 @@ export class TimelineView {
   /** The clip whose visible volume line area contains (x, y). */
   private inEnvelopeArea(x: number, y: number, slack = 0): { clip: Clip; ti: number } | null {
     const ti = Math.floor(y / TRACK_H);
-    const track = store.project.tracks[ti];
+    const track = this.trackAt(ti);
     if (!track || shownLane(track)) return null;
     if (y < Math.max(ti * TRACK_H + FADE_ZONE_PX + 4, this.envTop(ti) - slack) || y > this.envBottom(ti) + slack) return null;
     for (let k = track.clips.length - 1; k >= 0; k--) {
@@ -1223,7 +1502,7 @@ export class TimelineView {
   /** The volume-line toggle at the top left of a clip. */
   private hitVolButton(x: number, y: number): Clip | null {
     const ti = Math.floor(y / TRACK_H);
-    const track = store.project.tracks[ti];
+    const track = this.trackAt(ti);
     if (!track || shownLane(track)) return null;
     const top = ti * TRACK_H + 4;
     for (let k = track.clips.length - 1; k >= 0; k--) {
@@ -1239,7 +1518,7 @@ export class TimelineView {
   /** The filter button at the top left of a clip, next to the volume-line toggle. */
   private hitFxButton(x: number, y: number): Clip | null {
     const ti = Math.floor(y / TRACK_H);
-    const track = store.project.tracks[ti];
+    const track = this.trackAt(ti);
     if (!track) return null;
     const top = ti * TRACK_H + 4;
     for (let k = track.clips.length - 1; k >= 0; k--) {
@@ -1291,7 +1570,7 @@ export class TimelineView {
 
   private hitMuteLane(x: number, y: number): { track: Track; index: number | null; edge: 'left' | 'right' | null } | null {
     const ti = Math.floor(y / TRACK_H);
-    const track = store.project.tracks[ti];
+    const track = this.trackAt(ti);
     if (!track || track.kind === 'soundboard') return null;
     const lane = ti * TRACK_H + TRACK_H - 1 - MUTE_LANE_H;
     if (y < lane) return null;
@@ -1355,7 +1634,7 @@ export class TimelineView {
     const d = this.drag;
     if (d?.kind === 'clip' && d.moved && d.ids.has(clip.id)) {
       start = Math.max(0, clip.start + d.delta);
-      ti = Math.max(0, Math.min(store.project.tracks.length - 1, trackIndex + d.dTrack));
+      ti = this.shiftRow(trackIndex, d.dTrack);
     } else if (d?.kind === 'trim' && d.clipId === clip.id) {
       ({ start, length, offset } = trimmed(d.orig, d.side, d.delta));
     }
@@ -1368,16 +1647,16 @@ export class TimelineView {
    * crossfades over overlaps show while dragging.
    */
   private rowClips(i: number): { track: Track; items: Array<{ clip: Clip; g: ClipGeo }> } {
-    const tracks = store.project.tracks;
-    const base = tracks[i];
+    const base = this.trackAt(i)!;
     const d = this.drag;
     if (!((d?.kind === 'clip' && d.moved) || d?.kind === 'trim')) {
       return { track: base, items: base.clips.map((clip) => ({ clip, g: this.clipGeometry(i, clip) })) };
     }
     const still: Array<{ clip: Clip; g: ClipGeo }> = [];
     const moving: Array<{ clip: Clip; g: ClipGeo }> = [];
-    tracks.forEach((t, ti) => {
-      for (const clip of t.clips) {
+    this.rows.forEach((r, ti) => {
+      if (r.kind !== 'track') return;
+      for (const clip of r.track.clips) {
         const g = this.clipGeometry(ti, clip);
         if (g.trackIndex === i) (this.isDragged(clip.id) ? moving : still).push({ clip, g });
       }
@@ -1423,7 +1702,8 @@ export class TimelineView {
   }
 
   private clipMuted(track: Track): boolean {
-    return track.mute || (store.project.tracks.some((t) => t.solo) && !track.solo);
+    // muted or soloed away, by the track itself or by its folder
+    return !this.layout().audible.has(track.id);
   }
 
   private clipSelected(clip: Clip): boolean {
@@ -1531,7 +1811,7 @@ export class TimelineView {
       }
     }
     // a track automation lane on the row takes the place of the clip volume lines
-    const laneShown = !!shownLane(store.project.tracks[g.trackIndex]);
+    const laneShown = !!shownLane(this.trackAt(g.trackIndex));
     if (clip.showEnvelope && !laneShown) this.drawClipEnvelope(ctx, clip, g);
     // volume-line toggle, shown while hovering (and while the line is visible)
     if (!laneShown && (this.hoverClipId === clip.id || clip.showEnvelope) && g.w >= VOL_BTN.x + VOL_BTN.w + 8 && !this.drag) {
@@ -1626,7 +1906,7 @@ export class TimelineView {
     y: number,
   ): { track: Track; trackIndex: number; clip: Clip; edge: 'left' | 'right' | null; fade: 'in' | 'out' | null } | null {
     const ti = Math.floor(y / TRACK_H);
-    const track = store.project.tracks[ti];
+    const track = this.trackAt(ti);
     if (!track) return null;
     for (let k = track.clips.length - 1; k >= 0; k--) {
       const clip = track.clips[k];
@@ -1654,7 +1934,7 @@ export class TimelineView {
     const r = store.selection.range;
     if (!r) return null;
     const ids = store.selection.rangeTracks;
-    if (trackIndex !== null && ids && !ids.includes(store.project.tracks[trackIndex]?.id ?? '')) return null;
+    if (trackIndex !== null && ids && !ids.includes(this.trackAt(trackIndex)?.id ?? '')) return null;
     const d0 = Math.abs(x - this.xOf(r[0]));
     const d1 = Math.abs(x - this.xOf(r[1]));
     if (Math.min(d0, d1) > RANGE_EDGE_PX) return null;
@@ -1666,22 +1946,26 @@ export class TimelineView {
    * and the time under the mouse, snapped to clip edges, markers and the playhead unless Alt is held.
    * Over the track headers the clip starts at the left edge of the view.
    */
-  private dropTarget(e: DragEvent): { at: number; trackId: string | null; trackIndex: number | null } {
+  private dropTarget(e: DragEvent): { at: number; trackId: string | null; trackIndex: number | null; folderId?: string } {
     const r = this.canvas.getBoundingClientRect();
     const ti = Math.floor((e.clientY - r.top) / TRACK_H);
-    const track = ti >= 0 ? store.project.tracks[ti] : undefined;
+    const track = ti >= 0 ? this.trackAt(ti) : undefined;
     const x = e.clientX - r.left;
     const at = x <= 0 ? this.frameOf(0) : this.snappedFrame(x, e);
+    // on a folder's row: a new track in that folder
+    const row = ti >= 0 ? this.rows[ti] : undefined;
+    if (row?.kind === 'folder') return { at, trackId: null, trackIndex: ti, folderId: row.folder.id };
     return { at, trackId: track?.id ?? null, trackIndex: track ? ti : null };
   }
 
-  private showDropHint(t: { at: number; trackIndex: number | null }, count: number, e: DragEvent): void {
+  private showDropHint(t: { at: number; trackIndex: number | null; folderId?: string }, count: number, e: DragEvent): void {
     const prev = this.dropHint;
     this.dropHint = { frame: t.at, trackIndex: t.trackIndex };
     if (!prev || prev.frame !== t.at || prev.trackIndex !== t.trackIndex) this.draw();
-    const track = t.trackIndex === null ? null : store.project.tracks[t.trackIndex];
+    const track = t.trackIndex === null ? null : this.trackAt(t.trackIndex);
     const what = count > 1 ? `${count} files` : 'Clip';
-    const where = track ? `on ${track.name}` : count > 1 ? 'on new tracks' : 'on a new track';
+    const folder = t.folderId ? store.project.folders?.find((f) => f.id === t.folderId) : undefined;
+    const where = track ? `on ${track.name}` : `${count > 1 ? 'on new tracks' : 'on a new track'}${folder ? ` in ${folder.name}` : ''}`;
     this.dropTag.textContent = `${what} ${where} at ${formatTimestamp(t.at / this.sr, false)}`;
     this.dropTag.style.left = `${e.clientX + 14}px`;
     this.dropTag.style.top = `${e.clientY + 16}px`;
@@ -1860,13 +2144,13 @@ export class TimelineView {
       this.clearDropHint();
       if (!hasFiles(e) || !store.project) return;
       e.preventDefault();
-      const { at, trackId } = this.dropTarget(e);
+      const { at, trackId, folderId } = this.dropTarget(e);
       // a sound dragged from the sound library
       const sound = e.dataTransfer!.getData(LIBRARY_DRAG_TYPE);
-      if (sound) return void insertLibrarySound(sound, { at, trackId });
+      if (sound) return void insertLibrarySound(sound, { at, trackId, folderId });
       const files = Array.from(e.dataTransfer!.files);
       if (!files.length) return;
-      void importDroppedFiles(files, at, trackId);
+      void importDroppedFiles(files, at, trackId, folderId);
     });
     // a file dropped anywhere else must not replace the app with the file (Chromium opens it)
     window.addEventListener('dragover', (e) => {
@@ -2218,7 +2502,7 @@ export class TimelineView {
         } else {
           // every selected clip moves along; limit the track offset so none leaves the track list
           const ids = sel.has(hit.clip.id) ? sel : new Set([hit.clip.id]);
-          const rows = store.project.tracks.flatMap((t, i) => (t.clips.some((c) => ids.has(c.id)) ? [i] : []));
+          const rows = this.rows.flatMap((r, i) => (r.kind === 'track' && r.track.clips.some((c) => ids.has(c.id)) ? [i] : []));
           this.drag = {
             kind: 'clip',
             clipId: hit.clip.id,
@@ -2228,7 +2512,7 @@ export class TimelineView {
             delta: 0,
             dTrack: 0,
             minDTrack: -Math.min(...rows),
-            maxDTrack: store.project.tracks.length - 1 - Math.max(...rows),
+            maxDTrack: this.rows.length - 1 - Math.max(...rows),
             moved: false,
             clickFrame: this.snappedFrame(x, e),
           };
@@ -2237,7 +2521,7 @@ export class TimelineView {
         // 6. empty space: select a time range on the tracks dragged across
         const f = this.snappedFrame(x, e);
         store.select({ clipIds: new Set(), markerId: null });
-        const row = Math.max(0, Math.min(store.project.tracks.length - 1, ti));
+        const row = Math.max(0, Math.min(this.rows.length - 1, ti));
         this.drag = { kind: 'range', startFrame: f, endFrame: f, startTrack: row, endTrack: row };
       }
     });
@@ -2291,7 +2575,7 @@ export class TimelineView {
         this.draw();
       } else if (d.kind === 'range') {
         d.endFrame = this.snappedFrame(pos.x, e);
-        if (d.startTrack !== null) d.endTrack = Math.max(0, Math.min(store.project.tracks.length - 1, Math.floor(pos.y / TRACK_H)));
+        if (d.startTrack !== null) d.endTrack = Math.max(0, Math.min(this.rows.length - 1, Math.floor(pos.y / TRACK_H)));
         this.draw();
       } else if (d.kind === 'rangeEdge') {
         d.current = this.snappedFrame(pos.x, e);
@@ -2299,7 +2583,7 @@ export class TimelineView {
         this.draw();
       } else if (d.kind === 'envPoint') {
         d.moved = true;
-        const clip = store.project.tracks[d.ti]?.clips.find((c) => c.id === d.clipId);
+        const clip = this.trackAt(d.ti)?.clips.find((c) => c.id === d.clipId);
         if (clip) {
           const prev = d.orig[d.index - 1]?.pos ?? clip.offset;
           const next = d.orig[d.index + 1]?.pos ?? clip.offset + clip.length;
@@ -2337,8 +2621,12 @@ export class TimelineView {
         if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 4) return;
         d.moved = true;
         d.b = this.frameOf(pos.x);
-        d.y1 = Math.max(0, Math.min(store.project.tracks.length * TRACK_H - 1, pos.y));
-        d.ids = clipsInRect(store.project, Math.floor(d.y0 / TRACK_H), Math.floor(d.y1 / TRACK_H), d.a, d.b);
+        d.y1 = Math.max(0, Math.min(this.rows.length * TRACK_H - 1, pos.y));
+        const lo = Math.min(d.a, d.b);
+        const hi = Math.max(d.a, d.b);
+        d.ids = new Set(
+          this.tracksInRows(Math.floor(d.y0 / TRACK_H), Math.floor(d.y1 / TRACK_H)).flatMap((t) => t.clips.filter((c) => c.start <= hi && c.start + c.length >= lo).map((c) => c.id)),
+        );
         this.draw();
       } else if (d.kind === 'playhead') {
         if (!d.moved && Math.abs(e.clientX - d.startX) < 2) return;
@@ -2386,14 +2674,18 @@ export class TimelineView {
         const ripple = d.ripple;
         store.edit((p) => rippleMove(p, ripple, d.delta));
       } else if (d.kind === 'clip' && d.moved) {
+        // target tracks by row (folder rows are stepped over); clips on folded-away tracks keep their track
+        const toTrackOf = new Map<string, string | undefined>();
+        for (const t of store.project.tracks) {
+          const row = this.rowOfTrack(t.id);
+          for (const c of t.clips) if (d.ids.has(c.id)) toTrackOf.set(c.id, d.dTrack && row >= 0 ? this.trackAt(this.shiftRow(row, d.dTrack))?.id : undefined);
+        }
         store.edit((p) => {
           let q = p;
           for (const id of d.ids) {
-            const ti = q.tracks.findIndex((t) => t.clips.some((c) => c.id === id));
-            if (ti < 0) continue;
-            const found = q.tracks[ti].clips.find((c) => c.id === id)!;
-            const toTrack = d.dTrack ? q.tracks[Math.max(0, Math.min(q.tracks.length - 1, ti + d.dTrack))]?.id : undefined;
-            q = moveClip(q, id, found.start + d.delta, toTrack);
+            const found = q.tracks.flatMap((t) => t.clips).find((c) => c.id === id);
+            if (!found) continue;
+            q = moveClip(q, id, found.start + d.delta, toTrackOf.get(id));
           }
           return q;
         });
@@ -2451,6 +2743,10 @@ export class TimelineView {
     }
     return best ? store.project.markers.find((m) => m.id === best!.id)! : null;
   }
+}
+
+function folderMembersCount(p: Project, folderId: string): number {
+  return p.tracks.filter((t) => t.folderId === folderId).length;
 }
 
 function coughKey(trackId: string): string {

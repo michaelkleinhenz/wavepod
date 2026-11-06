@@ -11,6 +11,7 @@ import { projectLength, updateTrack } from '../project';
 import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
 import { STEM_CHOICES, trackStem } from '../stems';
 import { setTrackAutomation, showTrackAutomation } from '../automation';
+import { FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addFolder, folderOf, removeFolder, setTrackFolder, updateFolder } from '../folders';
 import { paragraphs, timelineWords } from '../transcript';
 import { formatTimestamp, uid } from '../../shared/time';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
@@ -50,7 +51,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -91,6 +92,41 @@ function record(args: Record<string, unknown>, key: string): Record<string, unkn
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
+
+/** Resolves a folder id or name. */
+export function resolveFolder(project: Project, ref: string): string {
+  const folders = project.folders ?? [];
+  const f = folders.find((x) => x.id === ref) ?? folders.find((x) => norm(x.name) === norm(ref));
+  if (!f) throw new ToolError(`No folder "${ref}". Folders: ${folders.map((x) => x.name).join(', ') || 'none'}.`);
+  return f.id;
+}
+
+/** A list of track ids or names as track ids (tracks only, not the master). */
+function trackRefs(project: Project, refs: unknown, required: boolean): string[] {
+  if (refs === undefined || refs === null) {
+    if (required) throw new ToolError('"tracks" must list at least one track.');
+    return [];
+  }
+  if (!Array.isArray(refs) || (required && !refs.length)) throw new ToolError('"tracks" must list at least one track.');
+  return refs.map((ref) => {
+    const { target } = resolveTarget(project, String(ref));
+    if (target === MASTER) throw new ToolError('The master bus can\'t go into a folder.');
+    return target;
+  });
+}
+
+function describeFolder(p: Project, id: string): Record<string, unknown> {
+  const f = p.folders!.find((x) => x.id === id)!;
+  return {
+    id: f.id,
+    name: f.name,
+    mute: f.mute,
+    solo: f.solo,
+    gainDb: f.gain,
+    ...(f.collapsed ? { collapsed: true } : {}),
+    tracks: p.tracks.filter((t) => t.folderId === f.id).map((t) => t.name),
+  };
+}
 
 /** Resolves a track id, track name or "master" to a stack target. */
 export function resolveTarget(project: Project, target: string): { target: FxTarget; name: string } {
@@ -314,6 +350,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             number: i + 1,
             name: t.name,
             ...(t.kind ? { kind: t.kind } : {}),
+            ...(folderOf(p, t) ? { folder: folderOf(p, t)!.name } : {}),
             inputChannels: t.inputChannels.map((c) => c + 1),
             armed: t.armed,
             mute: t.mute,
@@ -325,7 +362,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             filters: (t.fx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`),
             ...(t.automix?.enabled ? { automix: { depthDb: t.automix.depth } } : {}),
             ...(t.duck?.enabled ? { duck: { depthDb: t.duck.depth } } : {}),
-            stem: trackStem(t),
+            stem: trackStem(t, folderOf(p, t)?.name),
             ...(t.stem ? {} : { stemGuessed: true }),
             ...(t.automation?.volume?.length || t.automation?.pan?.length
               ? {
@@ -337,6 +374,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
                 }
               : {}),
           })),
+          ...(p.folders?.length ? { folders: p.folders.map((f) => describeFolder(p, f.id)) } : {}),
           master: { id: MASTER, name: 'Master', gainDb: p.masterGain, filters: (p.masterFx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`) },
         };
       },
@@ -380,6 +418,105 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
       },
     },
     {
+      name: 'create_folder',
+      description:
+        'Makes a track folder: a named group of tracks (e.g. Dialogue, SFX, Atmo, Music) with one mute, solo and volume for all of them. ' +
+        'Folders don\'t change the sound by themselves; the tracks still go straight to the master. Optionally moves tracks into it right away.',
+      inputSchema: obj(
+        {
+          name: { type: 'string' },
+          tracks: { type: 'array', items: { type: 'string' }, description: 'Track ids or names to put into the folder.' },
+        },
+        ['name'],
+      ),
+      annotations: { title: 'Create folder', ...EDIT },
+      run: (args) => {
+        let project = host.project();
+        const name = str(args, 'name', true).trim();
+        if ((project.folders ?? []).some((f) => norm(f.name) === norm(name))) throw new ToolError(`There already is a folder "${name}".`);
+        const ids = trackRefs(project, args.tracks, false);
+        project = addFolder(project, { name, trackIds: ids });
+        host.apply(project, `New folder ${name}`);
+        const p = host.project();
+        return describeFolder(p, p.folders![p.folders!.length - 1].id);
+      },
+    },
+    {
+      name: 'move_tracks_to_folder',
+      description: 'Moves tracks into a folder (they go to the end of it) or, with folder null, out of their folder.',
+      inputSchema: obj(
+        {
+          tracks: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Track ids or names.' },
+          folder: { type: ['string', 'null'], description: 'Folder id or name; null takes the tracks out of their folder.' },
+        },
+        ['tracks', 'folder'],
+      ),
+      annotations: { title: 'Move tracks to folder', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const folderId = args.folder === null ? null : resolveFolder(project, str(args, 'folder', true));
+        const ids = trackRefs(project, args.tracks, true);
+        for (const id of ids) project = setTrackFolder(project, id, folderId);
+        const names = ids.map((id) => project.tracks.find((t) => t.id === id)!.name);
+        const fname = folderId ? project.folders!.find((f) => f.id === folderId)!.name : '';
+        host.apply(project, folderId ? `Moved ${names.join(', ')} to ${fname}` : `Took ${names.join(', ')} out of their folder`);
+        const p = host.project();
+        return { tracks: p.tracks.map((t) => ({ id: t.id, name: t.name, folder: folderOf(p, t)?.name ?? null })) };
+      },
+    },
+    {
+      name: 'update_folder',
+      description:
+        'Changes a track folder: rename it, mute or solo the whole group, set its group volume (dB added to every track in it), or fold it in the timeline. ' +
+        'Muting a folder mutes all its tracks; soloing it lets all its tracks play while anything is soloed.',
+      inputSchema: obj(
+        {
+          folder: { type: 'string', description: 'Folder id or name.' },
+          name: { type: 'string' },
+          mute: { type: 'boolean' },
+          solo: { type: 'boolean' },
+          gainDb: { type: 'number', minimum: FOLDER_GAIN_MIN, maximum: FOLDER_GAIN_MAX },
+          collapsed: { type: 'boolean', description: 'Fold the folder in the timeline (hides its tracks).' },
+        },
+        ['folder'],
+      ),
+      annotations: { title: 'Update folder', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const id = resolveFolder(project, str(args, 'folder', true));
+        const patch: Parameters<typeof updateFolder>[2] = {};
+        const name = str(args, 'name');
+        if (name !== undefined) patch.name = name.trim() || undefined;
+        if (!patch.name) delete patch.name;
+        for (const key of ['mute', 'solo', 'collapsed'] as const) {
+          const v = bool(args, key);
+          if (v !== undefined) patch[key] = v;
+        }
+        if (args.gainDb !== undefined) {
+          const g = Number(args.gainDb);
+          if (!(g >= FOLDER_GAIN_MIN && g <= FOLDER_GAIN_MAX)) throw new ToolError(`"gainDb" must be between ${FOLDER_GAIN_MIN} and ${FOLDER_GAIN_MAX}.`);
+          patch.gain = g;
+        }
+        if (!Object.keys(patch).length) throw new ToolError('Nothing to change: give name, mute, solo, gainDb or collapsed.');
+        project = updateFolder(project, id, patch);
+        host.apply(project, `Folder ${project.folders!.find((f) => f.id === id)!.name} changed`);
+        return describeFolder(host.project(), id);
+      },
+    },
+    {
+      name: 'remove_folder',
+      description: 'Removes a track folder. Its tracks stay, outside any folder.',
+      inputSchema: obj({ folder: { type: 'string', description: 'Folder id or name.' } }, ['folder']),
+      annotations: { title: 'Remove folder', ...EDIT },
+      run: (args) => {
+        const project = host.project();
+        const id = resolveFolder(project, str(args, 'folder', true));
+        const name = project.folders!.find((f) => f.id === id)!.name;
+        host.apply(removeFolder(project, id), `Removed folder ${name}`);
+        return { removed: name };
+      },
+    },
+    {
       name: 'set_track_stem',
       description:
         'Sets which stem tracks go to when the user exports dialogue, music and effects stems (DME, as broadcasters and festivals ask for): ' +
@@ -407,7 +544,8 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
           names.push(name);
         }
         host.apply(project, `${names.join(', ')} → ${choice.label} stem`);
-        return { stems: host.project().tracks.map((t) => ({ id: t.id, name: t.name, stem: trackStem(t), ...(t.stem ? {} : { guessed: true }) })) };
+        const p = host.project();
+        return { stems: p.tracks.map((t) => ({ id: t.id, name: t.name, stem: trackStem(t, folderOf(p, t)?.name), ...(t.stem ? {} : { guessed: true }) })) };
       },
     },
     {

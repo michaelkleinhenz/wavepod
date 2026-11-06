@@ -14,6 +14,7 @@ import { FlacWriter } from './flac';
 import { OpusWriter } from './opus';
 import { TruePeakLimiter } from './truePeakLimiter';
 import { STEM_GROUPS, stemFilePath, stemIndex } from './stems';
+import { folderOf } from './folders';
 
 const BLOCK = 4096;
 /** Width of the export waveform in columns, whatever the length of the export. */
@@ -201,7 +202,7 @@ function writeDmeStems(mixer: Mixer, project: Project, opts: ExportOptions, star
   const bufs = [...STEM_GROUPS, null].map(() => [new Float32Array(BLOCK), new Float32Array(BLOCK)]);
   const drop = STEM_GROUPS.length;
   const route = (t: Track) => {
-    const i = stemIndex(t);
+    const i = stemIndex(t, folderOf(project, t)?.name);
     return i < 0 ? drop : i;
   };
   const mix = [new Float32Array(BLOCK), new Float32Array(BLOCK)];

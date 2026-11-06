@@ -12,6 +12,7 @@ import { FxChain } from './fx/chain';
 import { fillEnvelope, isUnityEnvelope } from './envelope';
 import { fillAutomation, volumeAmp } from './automation';
 import { audibleTracks, projectLength } from './project';
+import { folderGainOf } from './folders';
 
 export class ReaderCache {
   private readers = new Map<string, WavReader>();
@@ -421,7 +422,8 @@ export class Mixer {
         }
       }
     }
-    const g = dbToGain(track.gain);
+    // the folder's group volume adds to the track gain
+    const g = dbToGain(track.gain + folderGainOf(this.project, track));
     const volPts = track.automation?.volume;
     const panPts = track.automation?.pan;
     const [ol, or] = out;

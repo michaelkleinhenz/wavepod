@@ -26,6 +26,12 @@ describe('stem assignment', () => {
     expect(trackStem(track({ name: 'Soundboard', kind: 'soundboard' }))).toBe('music');
     expect(trackStem(track({ name: 'Musik', stem: 'none' }))).toBe('none');
     expect(trackStem(track({ name: 'Host', stem: 'effects' }))).toBe('effects');
+    // a folder named like a stem wins over the track's own name
+    expect(trackStem(track({ name: 'Rain' }), 'SFX')).toBe('effects');
+    expect(trackStem(track({ name: 'Kommissar' }), 'Music')).toBe('music');
+    expect(trackStem(track({ name: 'Musik-Probe' }), 'Dialogue')).toBe('dialogue');
+    expect(trackStem(track({ name: 'Musik' }), 'Szene 1')).toBe('music');
+    expect(trackStem(track({ name: 'Host', stem: 'none' }), 'Music')).toBe('none');
   });
 
   it('keeps the choice when the episode is loaded again', () => {

@@ -8,7 +8,8 @@ import { regionOutputBase } from '../core/regions';
 import { chapterWarningList } from './chaptersView';
 import { audibleTracks, updateTrack } from '../core/project';
 import { STEM_CHOICES, STEM_GROUPS, trackStem } from '../core/stems';
-import type { StemGroup } from '../shared/types';
+import { folderOf } from '../core/folders';
+import type { StemGroup, Track } from '../shared/types';
 
 const PRESETS = LOUDNESS_PRESETS;
 
@@ -248,7 +249,8 @@ export class ExportDialog {
     if (!dme) return h('div', { class: 'export-stems' }, h('h3', null, 'Stems'), head, h('p', { class: 'muted' }, 'Every track with clips on its own, at the same gain as the mix.'));
     const tracks = audibleTracks(store.project).filter((t) => t.clips.length > 0);
     const counts = new Map<StemGroup, number>();
-    for (const t of tracks) counts.set(trackStem(t), (counts.get(trackStem(t)) ?? 0) + 1);
+    const stemOf = (t: Track) => trackStem(t, folderOf(store.project, t)?.name);
+    for (const t of tracks) counts.set(stemOf(t), (counts.get(stemOf(t)) ?? 0) + 1);
     const empty = STEM_GROUPS.filter((g) => !counts.get(g.id)).map((g) => g.label.toLowerCase());
     const masterFx = (store.project.masterFx ?? []).some((f) => f.enabled);
     return h('div', { class: 'export-stems' },
@@ -261,8 +263,8 @@ export class ExportDialog {
           h('div', { class: 'stem-track' },
             h('span', { class: 'stem-swatch', style: `background:${t.color}` }),
             h('span', { class: 'stem-name', title: t.name }, t.name),
-            t.stem ? null : h('span', { class: 'muted stem-guess', title: 'Guessed from the track name and settings; pick one to keep it' }, 'guessed'),
-            select(trackStem(t), STEM_CHOICES, (v) => {
+            t.stem ? null : h('span', { class: 'muted stem-guess', title: 'Guessed from the track and folder names and settings; pick one to keep it' }, 'guessed'),
+            select(stemOf(t), STEM_CHOICES, (v) => {
               store.edit((p) => updateTrack(p, t.id, { stem: v }));
               this.render();
             }),
