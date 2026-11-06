@@ -58,7 +58,8 @@ export function timelineWords(project: Project, transcripts: ReadonlyMap<string,
     if (track.kind === 'soundboard') continue;
     for (const clip of track.clips) {
       const t = get(clip.file);
-      if (!t?.words.length) continue;
+      // reversed, sped up or looped audio no longer lines up with the file's words
+      if (!t?.words.length || clip.sound) continue;
       // file frames → project frames (files are recorded at the project rate, but imports may not be)
       const scale = project.sampleRate / (t.sampleRate || project.sampleRate);
       const from = clip.offset / scale;

@@ -7,6 +7,7 @@ import { normalizeFx } from './fx/definitions';
 import { insertIntoRegionList, normalizeRegions, rippleDeleteRegions } from './regions';
 import { migrateTrackEnvelope, sortPoints } from './envelope';
 import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
+import { clampRate } from './clipSound';
 import { audibleTracks, groupFolderTracks, normalizeFolders } from './folders';
 
 function normalizeFxList(list: unknown): Fx[] {
@@ -79,7 +80,9 @@ export function normalizeProject(raw: Partial<Project>): Project {
       fadeIn: c.fadeIn ?? 0,
       fadeOut: c.fadeOut ?? 0,
       offset: c.offset ?? 0,
+      sound: undefined,
       ...(c.fx !== undefined ? { fx: normalizeFxList(c.fx) } : {}),
+      ...normalizeSound(c.sound),
       ...(Array.isArray(c.envelope) ? { envelope: sortPoints(c.envelope.filter((e) => Number.isFinite(e?.pos) && Number.isFinite(e?.db))) } : {}),
     })),
   }));
@@ -429,4 +432,23 @@ function formatClock(seconds: number): string {
   const mm = Math.floor((s % 3600) / 60);
   const ss = String(s % 60).padStart(2, '0');
   return hh ? `${hh}:${String(mm).padStart(2, '0')}:${ss}` : `${mm}:${ss}`;
+}
+
+/** Keeps a clip's reverse / varispeed / loop settings when they make sense, else drops them. */
+function normalizeSound(s: Clip['sound']): Pick<Clip, 'sound'> | Record<string, never> {
+  if (!s || typeof s !== 'object') return {};
+  const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+  if (!ok(s.start) || !ok(s.length) || !ok(s.base) || s.length <= 0) return {};
+  const rate = ok(s.rate) ? clampRate(s.rate!) : 1;
+  if (!s.reverse && !s.loop && rate === 1 && s.start === s.base) return {};
+  return {
+    sound: {
+      ...(s.reverse ? { reverse: true } : {}),
+      ...(rate !== 1 ? { rate } : {}),
+      ...(s.loop ? { loop: true } : {}),
+      start: s.start,
+      length: s.length,
+      base: s.base,
+    },
+  };
 }

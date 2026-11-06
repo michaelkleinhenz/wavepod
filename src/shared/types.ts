@@ -30,6 +30,28 @@ export interface Clip {
   note?: string;
   /** Filter stack of this clip only, processed top to bottom after the track's filters. */
   fx?: Fx[];
+  /** Sound design: reverse, varispeed and loop. Not set on a clip that plays its file as recorded. */
+  sound?: ClipSound;
+}
+
+/**
+ * How a sound-designed clip reads its file. `offset` (and the volume line) stay in "virtual"
+ * frames that run 1:1 with the timeline, so trims, splits and the volume line work as usual;
+ * virtual frame v plays the source at u = (v - base) * rate frames into [start, start + length),
+ * backwards when reversed and wrapped round when looping.
+ */
+export interface ClipSound {
+  /** Played backwards. */
+  reverse?: boolean;
+  /** Varispeed: source frames per timeline frame, so pitch follows speed (1 = as recorded). */
+  rate?: number;
+  /** The span repeats to fill the clip (ambiences). */
+  loop?: boolean;
+  /** The source span, in (possibly fractional) file frames: one loop cycle, or the audio a non-looping clip plays. */
+  start: number;
+  length: number;
+  /** Virtual frame where the span begins. */
+  base: number;
 }
 
 export interface Track {

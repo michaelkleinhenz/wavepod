@@ -2,6 +2,8 @@
 import type { Clip, Frames, Project } from '../shared/types';
 import { uid } from '../shared/time';
 import { copyClips, pasteClipboard } from './clipboard';
+import { loopClipTo, resetClipSound, setClipLoop, setClipRate, setClipReverse } from './clipSound';
+import { clipsEnd } from './project';
 
 /** The clips a right-click acts on: the whole selection when the clicked clip is part of it, else just that clip. */
 export function clipMenuTargets(selected: ReadonlySet<string>, clickedId: string): Set<string> {
@@ -104,4 +106,59 @@ export function colorClips(project: Project, ids: ReadonlySet<string>, color: st
 export function clipsOnSameTrack(project: Project, clipId: string): Set<string> {
   const t = project.tracks.find((x) => x.clips.some((c) => c.id === clipId));
   return new Set(t?.clips.map((c) => c.id) ?? []);
+}
+
+// ------------------------------------------------------------------ sound design
+
+/** Plays the clips backwards (or forwards again). */
+export function reverseClips(project: Project, ids: ReadonlySet<string>, on: boolean): Project {
+  return mapClips(project, ids, (c) => setClipReverse(c, on));
+}
+
+/** Varispeed: plays the clips `rate` times as fast, pitch following. */
+export function setClipsRate(project: Project, ids: ReadonlySet<string>, rate: number): Project {
+  return mapClips(project, ids, (c) => setClipRate(c, rate));
+}
+
+/** Turns looping on (drag the right edge to repeat) or off. */
+export function loopClips(project: Project, ids: ReadonlySet<string>, on: boolean): Project {
+  return mapClips(project, ids, (c) => setClipLoop(c, on));
+}
+
+/** Plays the clips as recorded again (no reverse, speed or loop). */
+export function resetClipsSound(project: Project, ids: ReadonlySet<string>): Project {
+  return mapClips(project, ids, (c) => resetClipSound(c));
+}
+
+/**
+ * Loops each clip until the next clip on its track starts, or to the end of the episode (the last
+ * clip on any track) when nothing follows it.
+ */
+export function loopClipsToNext(project: Project, ids: ReadonlySet<string>): Project {
+  const end = clipsEnd(project);
+  const tracks = project.tracks.map((t) => {
+    if (!t.clips.some((c) => ids.has(c.id))) return t;
+    return {
+      ...t,
+      clips: t.clips.map((c) => {
+        if (!ids.has(c.id)) return c;
+        const next = t.clips.filter((o) => o.id !== c.id && o.start > c.start).reduce((m, o) => Math.min(m, o.start), Infinity);
+        return loopClipTo(c, Number.isFinite(next) ? next : Math.max(end, c.start + c.length));
+      }),
+    };
+  });
+  return { ...project, tracks };
+}
+
+/** Loops each clip over the time range [a, b): it moves to start at `a` and repeats until `b`. */
+export function loopClipsOver(project: Project, ids: ReadonlySet<string>, range: [Frames, Frames]): Project {
+  const [a, b] = range[0] <= range[1] ? range : [range[1], range[0]];
+  if (b - a < 1) return project;
+  return mapClips(project, ids, (c) => {
+    const looped = setClipLoop(c, true);
+    if (!looped.sound?.loop) return c;
+    const len = Math.round(b - a);
+    const half = Math.floor(len / 2);
+    return { ...looped, start: Math.round(a), length: len, fadeIn: Math.min(looped.fadeIn, half), fadeOut: Math.min(looped.fadeOut, half) };
+  });
 }

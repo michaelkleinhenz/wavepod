@@ -8,6 +8,12 @@ import {
   clipsOnSameTrack,
   colorClips,
   duplicateClips,
+  loopClips,
+  loopClipsOver,
+  loopClipsToNext,
+  resetClipsSound,
+  reverseClips,
+  setClipsRate,
   removeClipFades,
   resetClipEnvelopes,
   setClipGain,
@@ -18,6 +24,7 @@ import {
 import { deleteClips, findClip } from '../core/project';
 import { selectionSpan } from '../core/navigation';
 import { parseNumberInput } from '../core/numberInput';
+import { clipRate, MAX_RATE, MIN_RATE, parseRateInput, rateToSemitones } from '../core/clipSound';
 import { alignSelectedClip, pasteClipboard, regionFromSelection } from './actions';
 import { CLIP_COLORS, showClipLabel } from './clipLabel';
 import { closeContextMenu, showContextMenu, type ContextMenuEntry } from './contextMenu';
@@ -39,6 +46,8 @@ export interface ClipMenuOptions {
 const FADE_SECONDS = 0.25;
 
 export function openClipMenu(o: ClipMenuOptions): void {
+  // a time range selected before the right-click is what "Loop over selection" fills
+  const range = store.selection.range && store.selection.range[1] - store.selection.range[0] > 0 ? store.selection.range : null;
   const ids = clipMenuTargets(store.selection.clipIds, o.clipId);
   store.select({ clipIds: ids, range: null, rangeTracks: null, markerId: null, muteRegion: null });
   const clips = targetClips(store.project, ids);
@@ -60,6 +69,10 @@ export function openClipMenu(o: ClipMenuOptions): void {
   const gains = new Set(clips.map((c) => c.gain));
   const gainText = gains.size === 1 ? `${clips[0].gain > 0 ? '+' : ''}${clips[0].gain.toFixed(1)} dB` : 'mixed';
   const target = loudnessTarget();
+  const reversed = clips.every((c) => c.sound?.reverse);
+  const looping = clips.every((c) => c.sound?.loop);
+  const rates = new Set(clips.map(clipRate));
+  const rateText = rates.size === 1 ? formatRate(clipRate(clips[0])) : 'mixed';
 
   const entries: ContextMenuEntry[] = [
     { kind: 'header', label: one ? clipName(clips[0].file) : `${n} clips selected` },
@@ -110,6 +123,24 @@ export function openClipMenu(o: ClipMenuOptions): void {
     { label: 'Reset clip gain', enabled: clips.some((c) => c.gain), run: () => edit((p) => setClipGain(p, ids, 0)) },
     { label: `Normalise to ${String(target.lufs).replace('-', '−')} LUFS`, accel: 'Alt+Shift+N', run: () => void normalizeClips([...ids]) },
     { label: 'Loudness analysis…', accel: 'Shift+Ctrl+L', run: o.openLoudness },
+    { kind: 'separator' },
+    { kind: 'header', label: 'Sound design' },
+    { label: 'Reverse', checked: reversed, enabled: !recording, title: 'Play backwards', run: () => edit((p) => reverseClips(p, ids, !reversed)) },
+    {
+      label: `Speed… (${rateText})`,
+      enabled: !recording,
+      title: 'Varispeed: faster is higher, slower is lower, like tape',
+      run: () => promptRate(ids, clipRate(clips[0]), o.pageX, o.pageY),
+    },
+    { label: 'Loop', checked: looping, enabled: !recording, title: 'Repeat the clip: drag its right edge to make it longer', run: () => edit((p) => loopClips(p, ids, !looping)) },
+    { label: 'Loop to next clip', enabled: !recording, title: 'Repeat until the next clip on the track (or the end of the episode)', run: () => edit((p) => loopClipsToNext(p, ids)) },
+    {
+      label: 'Loop over selection',
+      enabled: !recording && !!range,
+      title: range ? 'Move to the selected range and repeat to fill it' : 'Select a time range first, then right-click the clip',
+      run: () => range && edit((p) => loopClipsOver(p, ids, range)),
+    },
+    { label: 'Play as recorded', enabled: !recording && clips.some((c) => c.sound), title: 'Undo reverse, speed and loop', run: () => edit((p) => resetClipsSound(p, ids)) },
     { kind: 'separator' },
     { kind: 'custom', el: swatches(ids, clips) },
     {
@@ -182,6 +213,44 @@ function promptGain(ids: Set<string>, current: number, x: number, y: number): vo
     h('span', { class: 'muted' }, 'Clip gain'),
     input,
     h('span', { class: 'muted' }, 'dB'),
+  );
+  document.body.append(box);
+  input.focus();
+  input.select();
+}
+
+function formatRate(rate: number): string {
+  if (rate === 1) return '1×';
+  const st = rateToSemitones(rate);
+  return `${rate.toFixed(2)}×, ${st > 0 ? '+' : ''}${st.toFixed(1)} st`;
+}
+
+/** A small field to type the varispeed in: 1.5, 150 % or +7 st (Enter applies, Esc cancels). */
+function promptRate(ids: Set<string>, current: number, x: number, y: number): void {
+  document.querySelector('.gain-prompt')?.remove();
+  const input = h('input', { value: current === 1 ? '1' : current.toFixed(3).replace(/0+$/, ''), title: `${MIN_RATE}× to ${MAX_RATE}×, e.g. 1.5, 80 %, +3 st or -12 st` }) as HTMLInputElement;
+  let done = false;
+  const close = (apply: boolean) => {
+    if (done) return;
+    done = true;
+    box.remove();
+    if (!apply) return;
+    const v = parseRateInput(input.value);
+    if (v === null) return toast('Type a speed like 1.5, 80 % or semitones like +3 st');
+    store.edit((p) => setClipsRate(p, ids, v));
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') close(true);
+    else if (e.key === 'Escape') close(false);
+  });
+  input.addEventListener('blur', () => close(true));
+  const box = h(
+    'div',
+    { class: 'title-prompt gain-prompt', style: { left: `${Math.min(x, window.innerWidth - 300)}px`, top: `${Math.min(y, window.innerHeight - 60)}px`, transform: 'none' } },
+    h('span', { class: 'muted' }, 'Speed'),
+    input,
+    h('span', { class: 'muted' }, '× or st'),
   );
   document.body.append(box);
   input.focus();

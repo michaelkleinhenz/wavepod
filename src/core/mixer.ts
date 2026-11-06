@@ -1,4 +1,5 @@
 // Renders the project timeline into a stereo bus, block by block, from disk.
+import { readClip } from './clipSound';
 import * as path from 'node:path';
 import type { Clip, Fx, FxMeter, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
@@ -463,7 +464,7 @@ export class Mixer {
         const size = Math.max(n, this.scratch[0]?.length ?? 0);
         this.scratch = Array.from({ length: Math.max(2, reader.info.channels) }, () => new Float32Array(size));
       }
-      const src = reader.read(clip.offset + (from - cStart), n, this.scratch);
+      const src = readClip(reader, clip, from - cStart, n, this.scratch);
       const g = dbToGain(clip.gain);
       const fade = fades.get(clip.id)!;
       const outOffset = from - position;

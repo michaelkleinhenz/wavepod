@@ -291,6 +291,8 @@ it on the website first.
 
 **Sound library.** Set a folder of sound effects in Edit › Settings, then open View › Sound Library (Shift+Ctrl+B, or *Sounds* in the header). Type to search file and folder names ("door creak", "forest wind"); ↑/↓ walk the results and play each one, Enter or a double click inserts the sound at the playhead, and a row can be dragged onto any track. *Insert on* picks the track (by default a "Sound effects" track, created when needed). Right click › *Fill the Selection (Loop)* repeats an atmosphere over the selected time range with crossfades. Inserted sounds are copied into the episode, so it keeps working without the library.
 
+**Sound design on clips.** Right click a clip › *Sound design*: *Reverse* plays it backwards, *Speed…* is varispeed like tape (pitch follows speed; type 1.5, 80 % or semitones like +3 st), and *Loop* turns the clip into a loop, so dragging its right edge repeats it. *Loop to next clip* fills the gap up to the next clip on the track (or to the end of the episode), *Loop over selection* fills a time range you selected before right-clicking. Loop seams get a short crossfade, and *Play as recorded* undoes all of it. Fades, the volume line, splits and trims work on these clips as usual.
+
 ## Crosstalk removal (automix)
 
 When several people share a room, every mic also picks up the others. Tick
