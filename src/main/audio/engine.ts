@@ -35,7 +35,7 @@ import {
 } from '../../core/soundboard';
 import { WavReader, writeWavFile } from '../../core/wav';
 import type { TakeFileSpec, TakeFilesOptions } from '../../core/takeFiles';
-import { RecordingMonitor } from '../../core/recordingMonitor';
+import { RecordingMonitor, formatMinutes } from '../../core/recordingMonitor';
 import { clearJournal, writeJournal, type RecordingJournal } from '../../core/recordingJournal';
 import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
@@ -1171,7 +1171,20 @@ export class AudioEngine extends EventEmitter {
       }
       this.journalSaved = { rev: m.revision, at: now };
     }
-    return m.health(now);
+    const health = m.health(now);
+    // The watchdog can notice a lost device before the monitor does (or the monitor never does,
+    // because the engine writes silence meanwhile): either way it is one critical problem.
+    const lost = this.inputLost;
+    if (lost) {
+      const name = this.inputDevice?.name ?? 'the input device';
+      health.warnings = health.warnings.filter((w) => w.key !== 'stall');
+      health.warnings.unshift({
+        key: 'input-lost',
+        level: 'critical',
+        text: `No audio from "${name}" for ${formatMinutes((now - lost.since) / 1000)}. Is it still connected and switched on? WavePod reconnects as soon as it is back; the recording goes on with silence meanwhile.`,
+      });
+    }
+    return health;
   }
 
   private takeLivePeaks(): LivePeaks[] {
