@@ -384,6 +384,8 @@ export interface EngineStatus {
   inputChannelCount: number;
   outputChannelCount: number;
   error: string | null;
+  /** Advice about the chosen audio driver (not an error), e.g. a better one to pick. */
+  notice?: string | null;
   /** Pre-show output preset: only the soundboard is heard, timeline playback is silent. */
   preShow: boolean;
 }

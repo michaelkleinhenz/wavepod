@@ -131,6 +131,7 @@ main { flex: 1; min-height: 0; display: flex; }
 .setup-blurb { margin: 0 0 12px; }
 .setup-status { margin: 0 0 12px; }
 .setup-status.ok { color: var(--ok); }
+.setup-notice button { margin-left: 8px; }
 .field-help { color: var(--muted); font-size: 11px; line-height: 1.35; }
 details.disclosure { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
 details.disclosure > summary { cursor: pointer; color: var(--muted); font-size: 12px; user-select: none; padding: 2px 0; }

@@ -287,6 +287,16 @@ export class SetupView {
       h('h2', null, 'Audio interface'),
       s.backendError ? h('p', { class: 'warning' }, `${s.backendError}. Using virtual devices.`) : null,
       summary,
+      s.notice
+        ? h(
+            'p',
+            { class: 'setup-status warning setup-notice' },
+            s.notice,
+            s.apis.some((a) => a.id === 'pulse')
+              ? h('button', { onclick: () => this.apply({ api: 'pulse', inputDeviceId: null, outputDeviceId: null }) }, 'Use PulseAudio / PipeWire')
+              : null,
+          )
+        : null,
       h(
         'div',
         { class: 'grid' },
