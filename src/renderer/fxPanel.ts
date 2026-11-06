@@ -14,9 +14,11 @@ import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
 import { clipboardLabel, copyFilter, copyStack, pasteFilters, pasteSettings, settingsSource, type FxClipboard } from '../core/fx/fxClipboard';
 import { iconButton } from './icons';
-import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect } from '../core/fx/voiceEffects';
+import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect, type VoiceEffect } from '../core/fx/voiceEffects';
 
 const EFFECT_PREFIX = 'effect:';
+const effectOption = (e: VoiceEffect) =>
+  h('option', { value: EFFECT_PREFIX + e.id, title: `${e.description}\n${e.chain.map(([t, n]) => `${fxDefinition(t).name} "${n}"`).join(' → ')}` }, e.name);
 
 const VST_OPTION = '__vst3';
 const SAVE_PRESET = '__save';
@@ -69,7 +71,11 @@ const toSlider = (spec: FxParamSpec, v: number) => (spec.log ? (Math.log(v / spe
 const fromSlider = (spec: FxParamSpec, s: number) => {
   if (!spec.log) return s;
   const v = spec.min * Math.pow(spec.max / spec.min, s / 1000);
-  return v >= 1000 ? Math.round(v / 10) * 10 : Math.round(v);
+  if (v >= 1000) return Math.round(v / 10) * 10;
+  if (spec.step >= 1 || v >= 100) return Math.round(v);
+  // fine steps (metres, LFO speeds): two significant digits below 10, the step's precision above
+  const q = v < 10 ? Math.max(spec.step, v < 1 ? 0.01 : 0.1) : 1;
+  return Math.round(v / q) * q;
 };
 
 export class FxPanel {
@@ -185,8 +191,9 @@ export class FxPanel {
       h(
         'optgroup',
         { label: 'Voice effects (audio drama)' },
-        ...VOICE_EFFECTS.map((e) => h('option', { value: EFFECT_PREFIX + e.id, title: `${e.description}\n${e.chain.map(([t, n]) => `${fxDefinition(t).name} "${n}"`).join(' → ')}` }, e.name)),
+        ...VOICE_EFFECTS.filter((e) => e.group !== 'place').map(effectOption),
       ),
+      h('optgroup', { label: 'Places: room & distance' }, ...VOICE_EFFECTS.filter((e) => e.group === 'place').map(effectOption)),
     );
     this.el.append(
       h(

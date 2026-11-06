@@ -85,7 +85,11 @@ describe('WavePod MCP tools', () => {
     expect(r.data.filters.map((f: { type: string }) => f.type)).toEqual(['bandpass', 'distortion', 'compressor']);
     expect(h.summaries).toEqual(['Applied Walkie-talkie to Guest']);
     expect(h.project.tracks[1].fx!.map((f) => f.preset?.name)).toEqual(['Walkie-talkie', 'Walkie-talkie', 'Broadcast']);
-    r = await call(server, 'apply_voice_effect', { target: 'Guest', effect: 'robot' });
+    r = await call(server, 'apply_voice_effect', { target: 'Host', effect: 'robot', replace: true });
+    expect(r.data.filters.map((f: { type: string }) => f.type)).toEqual(['ringmod', 'bandpass', 'compressor']);
+    r = await call(server, 'apply_voice_effect', { target: 'Host', effect: 'place-forest', replace: true });
+    expect(r.data.filters.map((f: { type: string; preset?: { name: string } }) => [f.type, f.preset?.name])).toEqual([['space', 'Forest']]);
+    r = await call(server, 'apply_voice_effect', { target: 'Guest', effect: 'kazoo' });
     expect(r.isError).toBe(true);
   });
 
@@ -127,7 +131,7 @@ describe('WavePod MCP tools', () => {
     let r = await call(server, 'get_filter_stack', { target: 'Nobody' });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/"Host"/);
-    r = await call(server, 'add_filter', { target: 'Host', type: 'chorus' });
+    r = await call(server, 'add_filter', { target: 'Host', type: 'theremin' });
     expect(r.text).toMatch(/Unknown filter type/);
     r = await call(server, 'add_filter', { target: 'Host', type: 'compressor', params: { nonsense: 1 } });
     expect(r.text).toMatch(/no parameter "nonsense"/);

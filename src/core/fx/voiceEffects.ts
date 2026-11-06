@@ -12,6 +12,8 @@ export interface VoiceEffect {
   description: string;
   /** Filters top to bottom, each as [type, factory preset name]. */
   chain: Array<[FxType, string]>;
+  /** "place": where the scene happens (one Room & distance filter); "voice": what the voice is. */
+  group?: 'voice' | 'place';
 }
 
 export const VOICE_EFFECTS: VoiceEffect[] = [
@@ -93,6 +95,108 @@ export const VOICE_EFFECTS: VoiceEffect[] = [
     description: 'Memories and inner voices: soft repeats and a washed-out room.',
     chain: [['bandpass', 'Distant voice'], ['echo', 'Dream'], ['reverb', 'Dream']],
   },
+  {
+    id: 'robot',
+    name: 'Robot',
+    description: 'A metallic machine voice.',
+    chain: [['ringmod', 'Robot'], ['bandpass', 'Distant voice'], ['compressor', 'Broadcast']],
+  },
+  {
+    id: 'broken-robot',
+    name: 'Broken robot',
+    description: 'A failing machine: wobbling, crushed and buzzing.',
+    chain: [['ringmod', 'Broken robot'], ['distortion', 'Lo-fi digital'], ['compressor', 'Broadcast']],
+  },
+  {
+    id: 'alien',
+    name: 'Alien',
+    description: 'Bell-like, doubled and shimmering.',
+    chain: [['ringmod', 'Alien'], ['pitch', 'Alien detune (+7, doubled)'], ['chorus', 'Magic']],
+  },
+  {
+    id: 'giant',
+    name: 'Giant / monster',
+    description: 'A huge creature: much lower, with a big room around it.',
+    chain: [['pitch', 'Giant (−7)'], ['eq', 'Warmth'], ['reverb', 'Hall']],
+  },
+  {
+    id: 'demon',
+    name: 'Demon',
+    description: 'Possessed: an octave down doubled with the real voice, gritty and in a dark space.',
+    chain: [['pitch', 'Demon (−12, doubled)'], ['distortion', 'Warm saturation'], ['reverb', 'Cave']],
+  },
+  {
+    id: 'small-creature',
+    name: 'Small creature',
+    description: 'Goblins, gnomes and fairies.',
+    chain: [['pitch', 'Small creature (+5)'], ['highpass', 'Remote guest (150 Hz)']],
+  },
+  {
+    id: 'child',
+    name: 'Child-like voice',
+    description: 'Higher and smaller, with less body. Works best on a light adult voice.',
+    chain: [['pitch', 'Child-like (+4)'], ['highpass', 'Remote guest (150 Hz)'], ['eq', 'Proximity effect']],
+  },
+  {
+    id: 'chipmunk',
+    name: 'Chipmunk',
+    description: 'Cartoon squeak, an octave up.',
+    chain: [['pitch', 'Chipmunk (+12)']],
+  },
+  {
+    id: 'magic',
+    name: 'Magic / spirit',
+    description: 'Shimmering and otherworldly: fairies, spirits, spells.',
+    chain: [['chorus', 'Magic'], ['reverb', 'Dream']],
+  },
+  {
+    id: 'ghost',
+    name: 'Ghost',
+    description: 'A wavering, hollow voice from nowhere.',
+    chain: [['chorus', 'Vibrato / ghost'], ['bandpass', 'Distant voice'], ['reverb', 'Cathedral']],
+  },
+  {
+    id: 'teleport',
+    name: 'Time travel / teleport',
+    description: 'A sweeping jet flanger with soft repeats.',
+    chain: [['chorus', 'Jet flanger'], ['echo', 'Dream']],
+  },
+  {
+    id: 'dream-flanger',
+    name: 'Dream sequence',
+    description: 'Slowly wavering and washed out.',
+    chain: [['chorus', 'Dream'], ['echo', 'Dream'], ['reverb', 'Dream']],
+  },
+  ...(
+    [
+      ['Close to the mic', 'close'],
+      ['Living room', 'living-room'],
+      ['Bedroom', 'bedroom'],
+      ['Small kitchen', 'kitchen'],
+      ['Bathroom', 'bathroom-room'],
+      ['Car', 'car'],
+      ['Office', 'office'],
+      ['Classroom', 'classroom'],
+      ['Stairwell', 'stairwell'],
+      ['Basement', 'basement'],
+      ['Garage / warehouse', 'warehouse'],
+      ['Church', 'church'],
+      ['Concert hall', 'concert-hall'],
+      ['Cave', 'cave-room'],
+      ['Tunnel', 'tunnel'],
+      ['Forest', 'forest'],
+      ['Open field', 'open-field'],
+      ['Street', 'street'],
+    ] as const
+  ).map(
+    ([preset, id]): VoiceEffect => ({
+      id: `place-${id}`,
+      name: preset,
+      description: `${factoryPresets('space').find((p) => p.preset.name === preset)?.description ?? ''} Set the filter's Distance to move the voice away.`.trim(),
+      chain: [['space', preset]],
+      group: 'place',
+    }),
+  ),
 ];
 
 export function findVoiceEffect(ref: string): VoiceEffect | null {
