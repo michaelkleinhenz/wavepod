@@ -13,6 +13,7 @@ import { STEM_CHOICES, trackStem } from '../stems';
 import { setTrackAutomation, showTrackAutomation } from '../automation';
 import { FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addFolder, folderOf, removeFolder, setTrackFolder, updateFolder } from '../folders';
 import { paragraphs, timelineWords } from '../transcript';
+import type { WordFilter } from '../wordLevels';
 import { formatTimestamp, uid } from '../../shared/time';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
 
@@ -27,6 +28,8 @@ export interface WavePodHost {
   measureLoudness(): Promise<LoudnessReport[]>;
   /** The episode's transcripts by media file (made with Transcribe in WavePod). */
   transcripts?(): Record<string, FileTranscript>;
+  /** Which quiet words (crosstalk) to leave out of the transcript, from Settings › Transcription. */
+  transcriptFilter?(): WordFilter | null;
   /** Filter presets (factory, plug-in programs and the user's own), or null if not available. */
   presets?: FxPresetLibrary | null;
   /** VST3 support, or null when this build has no plug-in host. */
@@ -601,7 +604,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
       run: (args) => {
         const p = host.project();
         const sr = p.sampleRate;
-        const words = timelineWords(p, host.transcripts?.() ?? {});
+        const words = timelineWords(p, host.transcripts?.() ?? {}, host.transcriptFilter?.());
         if (!words.length) return { transcribed: false, note: 'No transcript yet. The user can make one in WavePod: View › Transcript › Transcribe.' };
         const from = Number(args.from ?? 0) * sr;
         const to = args.to === undefined ? Infinity : Number(args.to) * sr;

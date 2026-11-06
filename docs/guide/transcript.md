@@ -20,6 +20,17 @@ Each speaker track is uploaded as a small 16 kHz mono file and comes back with e
 
 Transcripts are stored per recorded file in the episode's `transcripts/` folder, in that file's own time, so they stay right through every cut, move and trim.
 
+## Crosstalk
+
+Because each track is transcribed on its own, speech-to-text also writes down the other speakers that bleed quietly into a microphone. WavePod leaves those words out: a word is dropped when another speaker track is much louder at the same moment, because that is the other person heard through this mic. The status line under the panel's buttons says how many words were left out.
+
+Set this in **Edit › Settings… › General › Transcription › Crosstalk**:
+
+- **Leave out words when another track is louder by**: 15 dB by default. Pick a smaller value if bleed still gets through, or a larger one if quiet words said over someone else go missing. **Off** keeps every word.
+- **Leave out words quieter than**: an optional fixed level, from −40 to −60 dBFS, for noise and very quiet background talk. It's off by default.
+
+Changes apply right away; nothing is uploaded again. Track and clip gain are taken into account when tracks are compared.
+
 ## Reading and cutting by text
 
 The panel shows the episode as text, one paragraph per speaker turn. Hesitations (äh, ähm, uh, um, …) are underlined.

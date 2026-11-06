@@ -8,6 +8,8 @@ import { midi } from './midi';
 import { renderMidiCard } from './midiCard';
 import { isOscOn, renderOscCard } from './oscCard';
 import { api, store } from './store';
+import { transcripts } from './transcripts';
+import { CROSSTALK_CHOICES, CROSSTALK_DEFAULT_DB, MIN_LEVEL_CHOICES } from '../core/wordLevels';
 
 export type SettingsTab = 'general' | 'controllers' | 'agents';
 const TABS: Array<{ id: SettingsTab; label: string; blurb: string }> = [
@@ -83,6 +85,7 @@ export class SettingsDialog {
   private async save(input: Parameters<ReturnType<typeof api>['setTranscriptionSettings']>[0], message?: string): Promise<void> {
     try {
       this.info = await api().setTranscriptionSettings(input);
+      transcripts().setFilter(this.info.settings);
       if (message) toast(message);
       this.render();
     } catch (e) {
@@ -305,6 +308,38 @@ export class SettingsDialog {
             void this.save({ keyterms: v });
           },
         }),
+      ),
+      h('h4', null, 'Crosstalk'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Each track is transcribed on its own, so the other speakers bleeding quietly into a microphone get written down too. ',
+        'WavePod leaves a word out when another track is much louder at the same moment, or when it is quieter than the level you set. ',
+        'Changing this applies right away; nothing is transcribed again.',
+      ),
+      h(
+        'div',
+        { class: 'settings-grid' },
+        h(
+          'label',
+          { class: 'field' },
+          h('span', null, 'Leave out words when another track is louder by'),
+          h(
+            'select',
+            { class: 'settings-crosstalk', disabled: !info, onchange: (e: Event) => void this.save({ crosstalkDb: Number((e.target as HTMLSelectElement).value) }) },
+            ...CROSSTALK_CHOICES.map((d) => h('option', { value: String(d), selected: d === s?.crosstalkDb }, d ? `${d} dB${d === CROSSTALK_DEFAULT_DB ? ' (default)' : ''}` : 'Off: keep every word')),
+          ),
+        ),
+        h(
+          'label',
+          { class: 'field' },
+          h('span', null, 'Leave out words quieter than'),
+          h(
+            'select',
+            { class: 'settings-min-level', disabled: !info, onchange: (e: Event) => void this.save({ minLevelDb: Number((e.target as HTMLSelectElement).value) }) },
+            ...MIN_LEVEL_CHOICES.map((d) => h('option', { value: String(d), selected: d === s?.minLevelDb }, d ? `${d} dBFS` : 'Off (default)')),
+          ),
+        ),
       ),
     ];
   }

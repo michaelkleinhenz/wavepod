@@ -287,6 +287,14 @@ export interface FileTranscript {
   model: string;
   created: string;
   words: TranscriptWord[];
+  /** Level curve of the file, to tell a speaker from crosstalk of the others (see core/wordLevels). */
+  levels?: TranscriptLevels;
+}
+
+/** A coarse level curve: one byte per `step` file frames, dB below full scale, base64 encoded. */
+export interface TranscriptLevels {
+  step: number;
+  db: string;
 }
 
 /** A word where it plays on the timeline. */
@@ -309,6 +317,10 @@ export interface TranscriptionSettings {
   language: string;
   /** Names and terms the model should get right (guests, products, places), comma separated. */
   keyterms: string;
+  /** Leave out words while another track is this many dB louder: crosstalk (0 = keep them). */
+  crosstalkDb: number;
+  /** Leave out words quieter than this, in dBFS (0 = keep them). */
+  minLevelDb: number;
 }
 
 /** Transcription settings as the renderer sees them (the API key itself stays in the main process). */

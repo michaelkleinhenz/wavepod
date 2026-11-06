@@ -345,6 +345,7 @@ const mcpHost: WavePodHost = {
   },
   measureLoudness: () => handlers.measureLoudness() as Promise<LoudnessReport[]>,
   transcripts: () => transcription.load(),
+  transcriptFilter: () => settings.transcription,
   get presets() {
     return presetLibrary;
   },
@@ -383,7 +384,7 @@ const speech = new SpeechService({
     settings.speech = s;
     saveSettings();
   },
-  words: () => timelineWords(current.project, transcription.load()),
+  words: () => timelineWords(current.project, transcription.load(), settings.transcription),
   updated: (file, transcript) => send(IPC.transcript, { file, transcript }),
 });
 
@@ -736,7 +737,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   speakWords: (input: SpeakInput) => speech.speak(input),
   storeSpokenWords: (text: string, spoken: Pick<SpokenWords, 'samples' | 'pad'>) => speech.store(text, spoken),
   findCleanup: (opts: CleanupOptions) => {
-    const words = timelineWords(current.project, transcription.load());
+    const words = timelineWords(current.project, transcription.load(), settings.transcription);
     return runWorker<CleanupItem[]>({ kind: 'cleanup', project: current.project, dir: current.dir, words, cleanup: opts });
   },
 

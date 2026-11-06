@@ -259,7 +259,15 @@ export class TranscriptPanel {
       const what = p.phase === 'preparing' ? 'Preparing' : p.phase === 'uploading' ? 'Uploading' : 'Transcribing';
       this.status.replaceChildren(h('span', { class: 'spinner' }), `${what} ${p.name ? `${p.name} ` : ''}(${p.file} of ${p.files})…`);
     } else if (t.busy) this.status.replaceChildren(h('span', { class: 'spinner' }), 'Starting…');
-    else this.status.textContent = t.count ? 'Click a word to jump there · Delete cuts it · Enter or double-click changes it · drag to select more' : '';
+    else if (t.count) {
+      const hidden = t.hidden();
+      this.status.replaceChildren(
+        'Click a word to jump there · Delete cuts it · Enter or double-click changes it · drag to select more',
+        hidden
+          ? h('span', { class: 'transcript-hidden', title: 'Words that are crosstalk from another track, or quieter than the set level, are left out. Change this in Edit › Settings.' }, ` · ${hidden.toLocaleString()} crosstalk word${hidden === 1 ? '' : 's'} left out`)
+          : '',
+      );
+    } else this.status.textContent = '';
     this.status.classList.toggle('busy', t.busy);
   }
 

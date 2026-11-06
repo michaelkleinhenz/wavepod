@@ -2,6 +2,7 @@
 // edit — cuts, moves, trims, splits — keeps them in place. The timeline view of a transcript is
 // worked out from the clips each time, the same way volume lines are.
 import type { FileTranscript, Frames, Project, TimelineWord, TranscriptWord } from '../shared/types';
+import { filterQuietWords, type WordFilter } from './wordLevels';
 
 /** One entry of the `words` list ElevenLabs' speech-to-text returns; times in seconds. */
 export interface ScribeWord {
@@ -49,9 +50,20 @@ export function isFiller(text: string, language = ''): boolean {
 
 /**
  * The transcript as it plays: every word of every track whose source still is on the timeline,
- * at its timeline position, sorted by time. Words muted by a cough region are flagged.
+ * at its timeline position, sorted by time. Words muted by a cough region are flagged. With a
+ * `filter`, crosstalk from other tracks and words below the level threshold are left out.
  */
-export function timelineWords(project: Project, transcripts: ReadonlyMap<string, FileTranscript> | Record<string, FileTranscript>): TimelineWord[] {
+export function timelineWords(
+  project: Project,
+  transcripts: ReadonlyMap<string, FileTranscript> | Record<string, FileTranscript>,
+  filter?: WordFilter | null,
+): TimelineWord[] {
+  const all = allTimelineWords(project, transcripts);
+  return filter ? filterQuietWords(project, transcripts, all, filter).words : all;
+}
+
+/** Every transcribed word on the timeline, crosstalk included. */
+export function allTimelineWords(project: Project, transcripts: ReadonlyMap<string, FileTranscript> | Record<string, FileTranscript>): TimelineWord[] {
   const get = (file: string) => (transcripts instanceof Map ? transcripts.get(file) : (transcripts as Record<string, FileTranscript>)[file]);
   const out: TimelineWord[] = [];
   for (const track of project.tracks) {

@@ -3,7 +3,8 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import * as path from 'node:path';
 import type { FileTranscript, TranscribeProgress, TranscriptionSettings } from '../../shared/types';
-import { pcmToWav, wavToSpeechPcm } from '../../core/speechAudio';
+import { SPEECH_RATE, pcmToWav, wavToSpeechPcm } from '../../core/speechAudio';
+import { levelCurve } from '../../core/wordLevels';
 import { wordsFromScribe } from '../../core/transcript';
 import { transcribeWithScribe } from '../../core/elevenlabs';
 
@@ -12,6 +13,8 @@ export interface TranscribeJob {
   base?: string;
   settings: TranscriptionSettings;
   files: Array<{ abs: string; file: string; name: string }>;
+  /** Only work out the level curves of files transcribed before WavePod kept them (no upload). */
+  levelsOnly?: boolean;
 }
 
 const job = workerData as TranscribeJob;
@@ -23,6 +26,19 @@ parentPort!.on('message', (msg: { type: string }) => {
 });
 
 async function run(): Promise<void> {
+  if (job.levelsOnly) {
+    for (const f of job.files) {
+      if (abort.signal.aborted) break;
+      try {
+        const { pcm, sampleRate } = wavToSpeechPcm(f.abs);
+        post({ type: 'levels', file: f.file, levels: levelCurve(pcm, SPEECH_RATE, sampleRate) });
+      } catch {
+        // missing or unreadable file: its words simply stay unfiltered
+      }
+    }
+    post({ type: 'done', stopped: abort.signal.aborted });
+    return;
+  }
   const files = job.files.length;
   for (let i = 0; i < files && !abort.signal.aborted; i++) {
     const f = job.files[i];
@@ -40,6 +56,7 @@ async function run(): Promise<void> {
         model: job.settings.model,
         created: new Date().toISOString(),
         words: wordsFromScribe(res.words ?? [], sampleRate),
+        levels: levelCurve(pcm, SPEECH_RATE, sampleRate),
       };
       post({ type: 'file', transcript });
     } catch (e) {

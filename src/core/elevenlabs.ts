@@ -2,6 +2,7 @@
 // One request per file; the answer has every word with its start and end time.
 import type { TranscriptionSettings } from '../shared/types';
 import type { ScribeWord } from './transcript';
+import { CROSSTALK_CHOICES, CROSSTALK_DEFAULT_DB, MIN_LEVEL_CHOICES } from './wordLevels';
 
 export const ELEVENLABS_BASE = 'https://api.elevenlabs.io';
 
@@ -22,7 +23,7 @@ export const TRANSCRIPT_LANGUAGES: Array<{ code: string; name: string }> = [
   { code: 'pt', name: 'Portuguese' },
 ];
 
-export const DEFAULT_TRANSCRIPTION: TranscriptionSettings = { model: 'scribe_v2', language: 'auto', keyterms: '' };
+export const DEFAULT_TRANSCRIPTION: TranscriptionSettings = { model: 'scribe_v2', language: 'auto', keyterms: '', crosstalkDb: CROSSTALK_DEFAULT_DB, minLevelDb: 0 };
 
 export function normalizeTranscriptionSettings(raw: unknown): TranscriptionSettings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<TranscriptionSettings>;
@@ -30,6 +31,8 @@ export function normalizeTranscriptionSettings(raw: unknown): TranscriptionSetti
     model: typeof r.model === 'string' && r.model.trim() ? r.model.trim() : DEFAULT_TRANSCRIPTION.model,
     language: TRANSCRIPT_LANGUAGES.some((l) => l.code === r.language) ? r.language! : 'auto',
     keyterms: typeof r.keyterms === 'string' ? r.keyterms.slice(0, 2000) : '',
+    crosstalkDb: CROSSTALK_CHOICES.includes(r.crosstalkDb as number) ? r.crosstalkDb! : DEFAULT_TRANSCRIPTION.crosstalkDb,
+    minLevelDb: MIN_LEVEL_CHOICES.includes(r.minLevelDb as number) ? r.minLevelDb! : DEFAULT_TRANSCRIPTION.minLevelDb,
   };
 }
 

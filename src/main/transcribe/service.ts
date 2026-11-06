@@ -24,6 +24,9 @@ export interface TranscriptionHost {
 
 export class TranscriptionService {
   private worker: Worker | null = null;
+  /** Fills in level curves for transcripts made before they were kept. */
+  private levelWorker: Worker | null = null;
+  private levelsTried = new Set<string>();
 
   constructor(private host: TranscriptionHost) {}
 
@@ -43,7 +46,39 @@ export class TranscriptionService {
 
   /** Transcripts of every file the episode uses, by file. */
   load(): Record<string, FileTranscript> {
-    return loadTranscripts(this.host.dir(), this.host.project().tracks.flatMap((t) => t.clips.map((c) => c.file)));
+    const all = loadTranscripts(this.host.dir(), this.host.project().tracks.flatMap((t) => t.clips.map((c) => c.file)));
+    this.fillLevels(all);
+    return all;
+  }
+
+  /** Works out the level curves older transcripts lack, in the background (they're sent as updates). */
+  private fillLevels(all: Record<string, FileTranscript>): void {
+    if (this.levelWorker) return;
+    const dir = this.host.dir();
+    const todo = Object.values(all)
+      .filter((t) => !t.levels && !this.levelsTried.has(`${dir}\n${t.file}`))
+      .map((t) => ({ abs: path.isAbsolute(t.file) ? t.file : path.join(dir, t.file), file: t.file, name: '' }));
+    if (!todo.length) return;
+    for (const f of todo) this.levelsTried.add(`${dir}\n${f.file}`);
+    const worker = new Worker(this.host.workerPath, { workerData: { apiKey: '', settings: this.host.settings(), files: todo, levelsOnly: true } satisfies TranscribeJob });
+    this.levelWorker = worker;
+    const end = () => {
+      if (this.levelWorker !== worker) return;
+      this.levelWorker = null;
+      void worker.terminate();
+    };
+    worker.on('message', (msg: { type: string; file?: string; levels?: FileTranscript['levels'] }) => {
+      if (msg.type === 'levels' && msg.file && msg.levels) {
+        const t = loadTranscript(dir, msg.file);
+        // a new transcript may have been made meanwhile; it has its own curve
+        if (!t || t.levels) return;
+        const next = { ...t, levels: msg.levels };
+        saveTranscript(dir, next);
+        if (this.host.dir() === dir) this.host.updated(next.file, next);
+      } else if (msg.type === 'done' || msg.type === 'error') end();
+    });
+    worker.on('error', end);
+    worker.on('exit', end);
   }
 
   /** Throws the transcripts of these tracks' files away (all tracks if none given). */
