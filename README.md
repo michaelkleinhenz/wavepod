@@ -292,6 +292,25 @@ Hesitations are underlined. **Save as…** writes the text with speakers and
 times, or WebVTT subtitles. The MCP tool `get_transcript` gives AI agents the
 text (for show notes or chapter titles).
 
+### Changing words (experimental)
+
+Double-click a word in the transcript (or click it, or select several, and press
+Enter, or use **Change…**) to replace it or to insert new words before or after
+it. [ElevenLabs text-to-speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
+says them in the speaker's voice: either an instant voice clone made from up to
+90 seconds of that track's own transcribed speech (you confirm that you have the
+speaker's permission; the clone is remembered on the track and can be deleted
+from your ElevenLabs account again), or any voice of your account. The speaker's
+words around the edit are sent along so the intonation fits.
+
+**Listen** plays the take; **Replace**/**Insert** puts it in: the silence around
+it is trimmed, the clip gain matches the speaker's level around the edit, the
+range is cut out of (or room made on) every track so they stay in sync, and the
+cut edges get short fades. The new clip is in `media/tts-….wav` with a
+transcript of its own, so it shows up in the text. Ctrl+Z undoes it. Takes are
+24 kHz unless *High quality* (44.1 kHz, ElevenLabs Pro plan) is on, and each one
+costs text-to-speech credits.
+
 ## Cleanup
 
 **Edit → Clean Up Pauses and Hesitations…** (Shift+Ctrl+K) lists:

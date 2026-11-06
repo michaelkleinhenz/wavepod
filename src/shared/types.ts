@@ -56,6 +56,15 @@ export interface Track {
   duck?: { enabled: boolean; depth: number };
   /** Crosstalk removal: automixed tracks are turned down by up to `depth` dB while another automixed track is louder. */
   automix?: { enabled: boolean; depth: number };
+  /** ElevenLabs voice for speech synthesis (experimental): cloned from this track, or chosen. */
+  voice?: TrackVoice;
+}
+
+export interface TrackVoice {
+  id: string;
+  name: string;
+  /** Made by WavePod from this track's own audio (may be deleted from the account again). */
+  cloned?: boolean;
 }
 
 /** One point of a clip's volume line. */
@@ -249,6 +258,33 @@ export interface TranscriptionInfo {
 export interface TranscriptionSettingsInput extends Partial<TranscriptionSettings> {
   /** New ElevenLabs API key; "" removes it, undefined keeps it. */
   apiKey?: string;
+}
+
+/** Speech synthesis (experimental): ElevenLabs text-to-speech for words typed into the transcript. */
+export interface SpeechSettings {
+  /** Text-to-speech model, e.g. "eleven_multilingual_v2". */
+  model: string;
+  /** 44.1 kHz instead of 24 kHz (needs an ElevenLabs Pro plan). */
+  hq: boolean;
+  /** Voice settings, 0..1. */
+  stability: number;
+  similarity: number;
+}
+
+export interface SpeechInfo {
+  hasKey: boolean;
+  settings: SpeechSettings;
+  models: Array<{ id: string; name: string; description: string }>;
+}
+
+/** Generated words, ready to listen to and put in. */
+export interface SpokenWords {
+  /** Mono, at the project rate, trimmed and padded. */
+  samples: Float32Array;
+  /** Clip gain that matches the speaker's level around the edit. */
+  gain: number;
+  /** Silence on each side, in frames. */
+  pad: Frames;
 }
 
 export interface TranscribeProgress {
