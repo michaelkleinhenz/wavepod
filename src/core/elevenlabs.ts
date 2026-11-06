@@ -23,7 +23,7 @@ export const TRANSCRIPT_LANGUAGES: Array<{ code: string; name: string }> = [
   { code: 'pt', name: 'Portuguese' },
 ];
 
-export const DEFAULT_TRANSCRIPTION: TranscriptionSettings = { model: 'scribe_v2', language: 'auto', keyterms: '', crosstalkDb: CROSSTALK_DEFAULT_DB, minLevelDb: 0 };
+export const DEFAULT_TRANSCRIPTION: TranscriptionSettings = { model: 'scribe_v2', language: 'auto', keyterms: '', crosstalkDb: CROSSTALK_DEFAULT_DB, minLevelDb: 0, matchWords: true };
 
 export function normalizeTranscriptionSettings(raw: unknown): TranscriptionSettings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<TranscriptionSettings>;
@@ -33,6 +33,7 @@ export function normalizeTranscriptionSettings(raw: unknown): TranscriptionSetti
     keyterms: typeof r.keyterms === 'string' ? r.keyterms.slice(0, 2000) : '',
     crosstalkDb: CROSSTALK_CHOICES.includes(r.crosstalkDb as number) ? r.crosstalkDb! : DEFAULT_TRANSCRIPTION.crosstalkDb,
     minLevelDb: MIN_LEVEL_CHOICES.includes(r.minLevelDb as number) ? r.minLevelDb! : DEFAULT_TRANSCRIPTION.minLevelDb,
+    matchWords: typeof r.matchWords === 'boolean' ? r.matchWords : DEFAULT_TRANSCRIPTION.matchWords,
   };
 }
 

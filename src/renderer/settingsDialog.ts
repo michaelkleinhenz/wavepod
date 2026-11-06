@@ -314,7 +314,7 @@ export class SettingsDialog {
         'p',
         { class: 'muted' },
         'Each track is transcribed on its own, so the other speakers bleeding quietly into a microphone get written down too. ',
-        'WavePod leaves a word out when another track is much louder at the same moment, or when it is quieter than the level you set. ',
+        'WavePod leaves a word out when another track says the same word at the same moment, louder; when another track is much louder at that moment; or when it is quieter than the level you set. ',
         'Changing this applies right away; nothing is transcribed again.',
       ),
       h(
@@ -340,6 +340,12 @@ export class SettingsDialog {
             ...MIN_LEVEL_CHOICES.map((d) => h('option', { value: String(d), selected: d === s?.minLevelDb }, d ? `${d} dBFS` : 'Off (default)')),
           ),
         ),
+      ),
+      h(
+        'label',
+        { class: 'check', title: 'Bleed is written down as a quieter copy of what the speaker said. This catches it even when the microphones are close together.' },
+        h('input', { type: 'checkbox', class: 'settings-match-words', checked: s?.matchWords ?? true, disabled: !info, onchange: (e: Event) => void this.save({ matchWords: (e.target as HTMLInputElement).checked }) }),
+        'Leave out words another track says at the same time, louder (recommended)',
       ),
     ];
   }

@@ -321,6 +321,8 @@ export interface TranscriptionSettings {
   crosstalkDb: number;
   /** Leave out words quieter than this, in dBFS (0 = keep them). */
   minLevelDb: number;
+  /** Leave out words another track has at the same time, louder: the other speaker's echo. */
+  matchWords: boolean;
 }
 
 /** Transcription settings as the renderer sees them (the API key itself stays in the main process). */

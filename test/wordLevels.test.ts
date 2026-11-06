@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addTrack, createProject } from '../src/core/project';
 import { timelineWords } from '../src/core/transcript';
-import { filterQuietWords, levelCurve, peakLevel } from '../src/core/wordLevels';
+import { filterQuietWords, levelCurve, peakLevel, sameWord } from '../src/core/wordLevels';
 import { normalizeTranscriptionSettings } from '../src/core/elevenlabs';
 import * as path from 'node:path';
 import { wavLevelCurve, wavToSpeechPcm, SPEECH_RATE } from '../src/core/speechAudio';
@@ -116,8 +116,48 @@ describe('word levels', () => {
     expect(words.filter((w) => w.trackId === p.tracks[1].id).map((w) => w.text)).toContain('Hallo');
   });
 
+  it('leaves out echoes: the same words, quieter, at the same time on another track', () => {
+    let p = createProject('T', SR);
+    p = addTrack(p, { name: 'Anna' });
+    p = addTrack(p, { name: 'Ben' });
+    p.tracks[0].clips.push(clip('a', 'anna.wav', 0));
+    p.tracks[1].clips.push(clip('b', 'ben.wav', 0));
+    // close mics: Anna's voice reaches Ben's mic only 6 dB down; Ben says "ja" over her
+    const transcripts = {
+      'anna.wav': tr('anna.wav', [['Wir', 1, 1.2], ['haben', 1.25, 1.5], ['heute', 1.55, 1.8], ['einen', 1.85, 2.0], ['Gast.', 2.05, 2.4]], [[1, 2.5, -20]]),
+      'ben.wav': tr(
+        'ben.wav',
+        // the speech-to-text heard "einen" on Ben's mic as "eine" and "heute" as "Leute"
+        [['wir', 1.02, 1.2], ['haben', 1.27, 1.5], ['Leute', 1.56, 1.8], ['eine', 1.86, 2.0], ['Gast', 2.06, 2.4], ['ja', 3, 3.2]],
+        [[1, 2.5, -26], [3, 3.3, -22]],
+      ),
+    };
+    const level = timelineWords(p, transcripts, { crosstalkDb: 15, minLevelDb: 0 });
+    expect(level).toHaveLength(11);
+    const words = timelineWords(p, transcripts, { crosstalkDb: 15, minLevelDb: 0, matchWords: true });
+    expect(words.filter((w) => w.trackId === p.tracks[0].id).map((w) => w.text)).toEqual(['Wir', 'haben', 'heute', 'einen', 'Gast.']);
+    expect(words.filter((w) => w.trackId === p.tracks[1].id).map((w) => w.text)).toEqual(['ja']);
+  });
+
+  it('does not take different words said at the same time for echoes', () => {
+    const { p, transcripts } = episode();
+    // Ben really talks over Anna, quieter, with other words
+    transcripts['ben.wav'] = tr('ben.wav', [['genau', 1.1, 1.4], ['richtig', 1.5, 1.9]], [[1, 2, -24]]);
+    const words = timelineWords(p, transcripts, { crosstalkDb: 15, minLevelDb: 0, matchWords: true });
+    expect(words.filter((w) => w.trackId === p.tracks[1].id).map((w) => w.text)).toEqual(['genau', 'richtig']);
+  });
+
+  it('matches words with one letter off only when they are long enough', () => {
+    expect(sameWord('okay', 'okey')).toBe(true);
+    expect(sameWord('genau', 'genauu')).toBe(true);
+    expect(sameWord('das', 'dass')).toBe(false);
+    expect(sameWord('ja', 'je')).toBe(false);
+    expect(sameWord('heute', 'leute')).toBe(true);
+  });
+
   it('settings default to 15 dB and fall back on unknown values', () => {
-    expect(normalizeTranscriptionSettings(null)).toMatchObject({ crosstalkDb: 15, minLevelDb: 0 });
+    expect(normalizeTranscriptionSettings(null)).toMatchObject({ crosstalkDb: 15, minLevelDb: 0, matchWords: true });
+    expect(normalizeTranscriptionSettings({ matchWords: false })).toMatchObject({ matchWords: false });
     expect(normalizeTranscriptionSettings({ crosstalkDb: 10, minLevelDb: -50 })).toMatchObject({ crosstalkDb: 10, minLevelDb: -50 });
     expect(normalizeTranscriptionSettings({ crosstalkDb: 7, minLevelDb: 3 })).toMatchObject({ crosstalkDb: 15, minLevelDb: 0 });
   });
