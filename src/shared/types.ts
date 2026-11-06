@@ -364,7 +364,8 @@ export interface SpokenWords {
 }
 
 export interface TranscribeProgress {
-  phase: 'preparing' | 'uploading' | 'transcribing' | 'done';
+  /** 'levels': working out the level curves older transcripts lack (for leaving out crosstalk). */
+  phase: 'preparing' | 'uploading' | 'transcribing' | 'levels' | 'done';
   /** 1-based number of the file being worked on, and how many there are. */
   file: number;
   files: number;

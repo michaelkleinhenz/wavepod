@@ -3,6 +3,10 @@ import { addTrack, createProject } from '../src/core/project';
 import { timelineWords } from '../src/core/transcript';
 import { filterQuietWords, levelCurve, peakLevel } from '../src/core/wordLevels';
 import { normalizeTranscriptionSettings } from '../src/core/elevenlabs';
+import * as path from 'node:path';
+import { wavLevelCurve, wavToSpeechPcm, SPEECH_RATE } from '../src/core/speechAudio';
+import { writeWavFile } from '../src/core/wav';
+import { tmpDir } from './helpers';
 import type { Clip, FileTranscript, Project } from '../src/shared/types';
 
 const SR = 48000;
@@ -54,6 +58,19 @@ describe('word levels', () => {
     // digital silence is the floor; only a span outside the file has no level at all
     expect(peakLevel(l, 3 * SR, 4 * SR)).toBe(-120);
     expect(peakLevel(l, 20 * SR, 21 * SR)).toBe(-Infinity);
+  });
+
+  it('reads the curve of a WAV file directly, matching the one made from speech audio', () => {
+    const file = path.join(tmpDir(), 'take.wav');
+    const x = new Float32Array(4 * SR);
+    for (let i = SR; i < 2 * SR; i++) x[i] = 0.1 * Math.sin(i / 10);
+    for (let i = 3 * SR; i < 4 * SR; i++) x[i] = 0.003 * Math.sin(i / 10);
+    writeWavFile(file, [x, x], SR, 24);
+    const fast = wavLevelCurve(file);
+    const { pcm, sampleRate } = wavToSpeechPcm(file);
+    const slow = levelCurve(pcm, SPEECH_RATE, sampleRate);
+    expect(fast.step).toBe(slow.step);
+    for (const [a, b] of [[1.2, 1.5], [3.2, 3.6]]) expect(peakLevel(fast, a * SR, b * SR)).toBeCloseTo(peakLevel(slow, a * SR, b * SR), 0);
   });
 
   it('leaves out crosstalk: words much louder on another track', () => {

@@ -2,6 +2,8 @@
 // (an hour is about 115 MB instead of half a gigabyte for a 48 kHz / 24-bit take).
 import { WavReader } from './wav';
 import { Resampler } from './opus';
+import { LevelMeter } from './wordLevels';
+import type { TranscriptLevels } from '../shared/types';
 
 export const SPEECH_RATE = 16000;
 const BLOCK = 1 << 16;
@@ -59,4 +61,31 @@ export function pcmToWav(pcm: Int16Array, sampleRate = SPEECH_RATE): Buffer {
   buf.writeUInt32LE(data, 40);
   Buffer.from(pcm.buffer, pcm.byteOffset, data).copy(buf, 44);
   return buf;
+}
+
+/**
+ * The level curve of a WAV file (see core/wordLevels), read straight at the file's own rate.
+ * Much quicker than preparing speech audio: older transcripts get their curve this way.
+ */
+export function wavLevelCurve(path: string): TranscriptLevels {
+  const reader = new WavReader(path);
+  try {
+    const { channels, sampleRate, frames } = reader.info;
+    const meter = new LevelMeter(sampleRate);
+    const mono = new Float32Array(BLOCK);
+    let buf: Float32Array[] | undefined;
+    for (let pos = 0; pos < frames; pos += BLOCK) {
+      const n = Math.min(BLOCK, frames - pos);
+      buf = reader.read(pos, n, buf);
+      for (let i = 0; i < n; i++) {
+        let v = 0;
+        for (let c = 0; c < channels; c++) v += buf[c][i];
+        mono[i] = v / channels;
+      }
+      meter.push(mono, n);
+    }
+    return meter.finish();
+  } finally {
+    reader.close();
+  }
 }

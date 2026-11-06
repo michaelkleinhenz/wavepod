@@ -55,20 +55,28 @@ export class TranscriptionService {
   private fillLevels(all: Record<string, FileTranscript>): void {
     if (this.levelWorker) return;
     const dir = this.host.dir();
+    const names = new Map<string, string>();
+    for (const tr of this.host.project().tracks) for (const c of tr.clips) if (!names.has(c.file)) names.set(c.file, tr.name);
     const todo = Object.values(all)
       .filter((t) => !t.levels && !this.levelsTried.has(`${dir}\n${t.file}`))
-      .map((t) => ({ abs: path.isAbsolute(t.file) ? t.file : path.join(dir, t.file), file: t.file, name: '' }));
+      .map((t) => ({ abs: path.isAbsolute(t.file) ? t.file : path.join(dir, t.file), file: t.file, name: names.get(t.file) ?? '' }));
     if (!todo.length) return;
     for (const f of todo) this.levelsTried.add(`${dir}\n${f.file}`);
     const worker = new Worker(this.host.workerPath, { workerData: { apiKey: '', settings: this.host.settings(), files: todo, levelsOnly: true } satisfies TranscribeJob });
     this.levelWorker = worker;
+    // shown in the transcript panel, unless a transcription is reporting its own progress
+    const show = (p: TranscribeProgress) => {
+      if (!this.busy && this.host.dir() === dir) this.host.progress(p);
+    };
     const end = () => {
       if (this.levelWorker !== worker) return;
       this.levelWorker = null;
       void worker.terminate();
+      show({ phase: 'done', file: todo.length, files: todo.length });
     };
-    worker.on('message', (msg: { type: string; file?: string; levels?: FileTranscript['levels'] }) => {
-      if (msg.type === 'levels' && msg.file && msg.levels) {
+    worker.on('message', (msg: { type: string; file?: string; levels?: FileTranscript['levels']; progress?: TranscribeProgress }) => {
+      if (msg.type === 'progress' && msg.progress) show(msg.progress);
+      else if (msg.type === 'levels' && msg.file && msg.levels) {
         const t = loadTranscript(dir, msg.file);
         // a new transcript may have been made meanwhile; it has its own curve
         if (!t || t.levels) return;
