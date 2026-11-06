@@ -64,6 +64,7 @@ import { TranscriptPanel } from './transcriptPanel';
 import { SoundLibraryPanel } from './soundLibraryPanel';
 import { CleanupDialog } from './cleanupDialog';
 import { transcripts } from './transcripts';
+import { RecordingAlertModal } from './recordingAlert';
 
 function formatDuration(seconds: number): string {
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
@@ -96,6 +97,7 @@ async function main(): Promise<void> {
   const templates = new TemplateDialog();
   const auphonic = new AuphonicDialog();
   const settingsDialog = new SettingsDialog();
+  new RecordingAlertModal();
   const transcriptPanel = new TranscriptPanel();
   const cleanupDialog = new CleanupDialog();
   transcriptPanel.onCleanup = () => cleanupDialog.open();

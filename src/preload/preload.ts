@@ -22,6 +22,7 @@ const api: Record<string, unknown> = {
   onSaveState: subscribe(IPC.saveState),
   onTranscribeProgress: subscribe(IPC.transcribeProgress),
   onTranscript: subscribe(IPC.transcript),
+  onRecordingAlert: subscribe(IPC.recordingAlert),
   platform: process.platform,
 };
 for (const method of INVOKE_METHODS) {

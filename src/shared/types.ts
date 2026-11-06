@@ -502,6 +502,19 @@ export interface RecordingWarning {
   text: string;
 }
 
+/**
+ * An emergency during a recording (the input device stopped delivering audio, the take can't be
+ * written), shown as a modal with an alarm sound and passed to the system as a notification.
+ */
+export interface RecordingAlert {
+  /** raised: a new emergency; update: new details; resolved: the problem went away; ended: the recording stopped. */
+  state: 'raised' | 'update' | 'resolved' | 'ended';
+  title: string;
+  problems: string[];
+  /** Fired by the "Test emergency alert" button in Settings. */
+  test?: boolean;
+}
+
 export interface RecordingHealth {
   warnings: RecordingWarning[];
   /** Seconds of recording the disk still has room for, if known. */
