@@ -49,6 +49,8 @@ import { normalizeTranscriptionSettings } from '../core/elevenlabs';
 import { timelineWords } from '../core/transcript';
 import { decodeKey, encodeKey } from './auphonic';
 import type { CleanupItem, CleanupOptions, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
+import { libraryFilePath, scanLibrary } from './soundLibrary';
+import type { SoundLibraryInfo } from '../core/soundLibrary';
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
@@ -72,6 +74,8 @@ interface Settings {
   transcription: TranscriptionSettings;
   /** ElevenLabs API key, stored like the Auphonic one ("enc:…" where the OS can encrypt). */
   elevenLabsKey: string;
+  /** Sound effects library folder ('' = none). */
+  soundLibraryFolder: string;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -91,9 +95,10 @@ function loadSettings(): Settings {
       auphonic: normalizeAuphonic(raw.auphonic),
       transcription: normalizeTranscriptionSettings(raw.transcription),
       elevenLabsKey: typeof raw.elevenLabsKey === 'string' ? raw.elevenLabsKey : '',
+      soundLibraryFolder: typeof raw.soundLibraryFolder === 'string' ? raw.soundLibraryFolder : '',
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '' };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', soundLibraryFolder: '' };
   }
 }
 
@@ -135,6 +140,13 @@ function inputDeviceName(): string | undefined {
 }
 
 let settings: Settings;
+/** The last scan of the sound library (folder and files), shared by all windows. */
+let libraryScan: Promise<SoundLibraryInfo> | null = null;
+function soundLibrary(rescan = false): Promise<SoundLibraryInfo> {
+  const folder = settings.soundLibraryFolder;
+  if (!libraryScan || rescan) libraryScan = scanLibrary(folder);
+  return libraryScan.then((info) => (info.folder === folder ? info : soundLibrary(true)));
+}
 let engine: AudioEngine;
 let win: BrowserWindow | null = null;
 let current: OpenedProject;
@@ -590,6 +602,27 @@ const handlers: Record<InvokeMethod, Handler> = {
   loadSound: (id: string, channels: Float32Array[]) => engine.loadSound(id, channels),
   playSound: (id: string) => engine.playSound(id),
   stopSounds: () => engine.stopSounds(),
+  getSoundLibrary: (rescan?: boolean) => soundLibrary(rescan),
+  chooseSoundLibraryFolder: async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Choose the sound library folder',
+      defaultPath: settings.soundLibraryFolder || safeGetPath('music') || app.getPath('home'),
+      properties: ['openDirectory'],
+    });
+    const dir = res.filePaths[0];
+    if (res.canceled || !dir) return null;
+    settings.soundLibraryFolder = dir;
+    saveSettings();
+    return soundLibrary(true);
+  },
+  clearSoundLibraryFolder: () => {
+    settings.soundLibraryFolder = '';
+    saveSettings();
+    return soundLibrary(true);
+  },
+  readLibraryFile: (rel: string) => new Uint8Array(fs.readFileSync(libraryFilePath(settings.soundLibraryFolder, rel))),
+  revealLibraryFile: (rel: string) => shell.showItemInFolder(libraryFilePath(settings.soundLibraryFolder, rel)),
+  previewSound: (channels: Float32Array[] | null) => engine.previewSound(channels),
 
   chooseExportBase: async (defaultName: string) => {
     const res = await dialog.showSaveDialog(win!, {
@@ -847,6 +880,7 @@ function buildMenu(): void {
         { label: 'Record && Edit', accelerator: 'CmdOrCtrl+2', click: menuSend('view-edit') },
         { label: 'Chapters', accelerator: 'CmdOrCtrl+3', click: menuSend('view-chapters') },
         { label: 'Transcript', accelerator: 'Shift+CmdOrCtrl+T', click: menuSend('transcript') },
+        { label: 'Sound Library', accelerator: 'Shift+CmdOrCtrl+B', click: menuSend('sound-library') },
         { type: 'separator' },
         // The keys > and < are handled in the window (they sit on different keys per layout); the
         // in-app menu bar only shows them, see MENU_KEY_HINTS.

@@ -65,7 +65,7 @@ export interface EnvelopePoint {
   db: number;
 }
 
-export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'bandpass' | 'distortion' | 'echo' | 'vst3';
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'bandpass' | 'distortion' | 'echo' | 'space' | 'pitch' | 'ringmod' | 'chorus' | 'vst3';
 
 /** One filter in a track's or the master's filter stack. */
 export interface Fx {
@@ -367,6 +367,8 @@ export interface TransportUpdate {
   recordingPeaks?: LivePeaks[];
   /** Jingles currently playing. */
   jingles?: PlayingJingle[];
+  /** Sound library preview playing: frames played and its length. */
+  preview?: { pos: Frames; length: Frames };
   /** While recording: jingles of this take that have finished (they become clips when recording stops). */
   recordedJingles?: Array<{ slotId: string; start: Frames; length: Frames }>;
   /** While playing: what each active filter did since the previous update, by filter id. */

@@ -104,6 +104,34 @@ export class Reverb implements FxProcessor {
     }
   }
 
+  /**
+   * Only the reverb tail of a mono input, added to outL/outR at `gain` (Space uses it for the
+   * room, with its own direct sound and reflections). Uses size, damping, pre-delay and width.
+   */
+  addWet(input: Float32Array, outL: Float32Array, outR: Float32Array, n: number, gain: number): void {
+    const g = gain * 0.06;
+    const w1 = g * (this.width / 2 + 0.5);
+    const w2 = g * ((1 - this.width) / 2);
+    for (let i = 0; i < n; i++) {
+      this.pre[this.preIdx] = input[i];
+      const d = this.preIdx - this.preLen;
+      const x = this.pre[d < 0 ? d + this.pre.length : d];
+      if (++this.preIdx === this.pre.length) this.preIdx = 0;
+      let l = 0;
+      let r = 0;
+      for (let k = 0; k < 8; k++) {
+        l += this.combsL[k].tick(x, this.feedback, this.damp);
+        r += this.combsR[k].tick(x, this.feedback, this.damp);
+      }
+      for (let k = 0; k < 4; k++) {
+        l = this.apsL[k].tick(l);
+        r = this.apsR[k].tick(r);
+      }
+      outL[i] += l * w1 + r * w2;
+      outR[i] += r * w1 + l * w2;
+    }
+  }
+
   reset(): void {
     for (const c of [...this.combsL, ...this.combsR]) c.reset();
     for (const a of [...this.apsL, ...this.apsR]) a.reset();

@@ -34,6 +34,7 @@ import type {
 import type { TemplateSummary } from '../core/template';
 import type { FxPresetEntry } from '../core/fx/presets';
 import type { AlignResult } from '../core/align';
+import type { SoundLibraryInfo } from '../core/soundLibrary';
 
 export interface OpenedProject {
   project: Project;
@@ -105,6 +106,7 @@ export type MenuCommand =
   | 'auphonic'
   | 'settings'
   | 'transcript'
+  | 'sound-library'
   | 'transcribe'
   | 'cleanup';
 
@@ -233,6 +235,20 @@ export interface WavePodApi {
   loadSound(id: string, channels: Float32Array[]): Promise<void>;
   playSound(id: string): Promise<void>;
   stopSounds(): Promise<void>;
+
+  // sound effects library (a folder of audio files, searched by name)
+  /** The library folder's files; scanned once, again with rescan. */
+  getSoundLibrary(rescan?: boolean): Promise<SoundLibraryInfo>;
+  /** Lets the user choose the library folder; null if cancelled. */
+  chooseSoundLibraryFolder(): Promise<SoundLibraryInfo | null>;
+  /** Forgets the library folder. */
+  clearSoundLibraryFolder(): Promise<SoundLibraryInfo>;
+  /** Bytes of a file in the library (path inside the library folder). */
+  readLibraryFile(rel: string): Promise<Uint8Array>;
+  /** Shows a library file in the system file manager. */
+  revealLibraryFile(rel: string): Promise<void>;
+  /** Plays decoded audio on the main output for pre-listening; null stops. False if nothing plays. */
+  previewSound(channels: Float32Array[] | null): Promise<boolean>;
 
   // export
   chooseExportBase(defaultName: string): Promise<string | null>;
@@ -377,6 +393,12 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'loadSound',
   'playSound',
   'stopSounds',
+  'getSoundLibrary',
+  'chooseSoundLibraryFolder',
+  'clearSoundLibraryFolder',
+  'readLibraryFile',
+  'revealLibraryFile',
+  'previewSound',
   'chooseExportBase',
   'exportProject',
   'measureLoudness',

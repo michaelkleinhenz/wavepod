@@ -179,6 +179,65 @@ export const FX_DEFINITIONS: FxDefinition[] = [
       { key: 'spread', label: 'Ping-pong', min: 0, max: 100, step: 1, default: 0, unit: '%' },
     ],
   },
+  {
+    type: 'space',
+    name: 'Room & distance',
+    aliases: ['Space', 'Room', 'Distance'],
+    description:
+      'Puts a voice into a place (kitchen, car, church, forest…) and moves it closer or further away. Distance turns the voice down, takes away highs and bass and lets the room take over, as if the speaker walked away; close up it adds the bass of speaking right into the mic. Pick a place from the presets, then set the distance.',
+    params: [
+      { key: 'distance', label: 'Distance', min: 0.3, max: 50, step: 0.1, default: 1, unit: 'm', log: true },
+      { key: 'size', label: 'Room size', min: 0, max: 100, step: 1, default: 40, unit: '%' },
+      { key: 'damping', label: 'Soft surfaces', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      { key: 'early', label: 'Reflections', min: 0, max: 100, step: 1, default: 30, unit: '%' },
+      { key: 'room', label: 'Reverb', min: 0, max: 100, step: 1, default: 20, unit: '%' },
+      ms('predelay', 'Pre-delay', 10, 0, 100),
+      { key: 'width', label: 'Width', min: 0, max: 100, step: 1, default: 100, unit: '%' },
+    ],
+  },
+  {
+    type: 'pitch',
+    name: 'Pitch shift',
+    aliases: ['Pitch shifter', 'Pitch'],
+    description:
+      'Makes a voice higher or lower without changing its speed: down for giants, monsters and demons, up for small creatures, goblins and chipmunks. The voice character moves with the pitch, so up sounds smaller and down bigger. Mix it with the dry voice for a doubled, unnatural sound. Adds half the grain size of latency, which WavePod compensates.',
+    params: [
+      { key: 'semitones', label: 'Pitch', min: -24, max: 24, step: 1, default: 0, unit: 'semitones' },
+      { key: 'cents', label: 'Fine', min: -100, max: 100, step: 1, default: 0, unit: 'cents' },
+      { key: 'mix', label: 'Mix', min: 0, max: 100, step: 1, default: 100, unit: '%' },
+      ms('window', 'Grain size', 50, 10, 200),
+    ],
+  },
+  {
+    type: 'ringmod',
+    name: 'Ring modulator',
+    aliases: ['Robot', 'Ring mod'],
+    description:
+      'Multiplies the voice with a tone, which makes it metallic and inhuman: around 30–60 Hz the classic robot, higher an alien or bell-like voice. Wobble moves the tone up and down for a broken machine.',
+    params: [
+      hz('freq', 'Tone', 50, 5, 2000),
+      { key: 'shape', label: 'Waveform', min: 0, max: 2, step: 1, default: 0, options: [{ value: 0, label: 'Sine (smooth)' }, { value: 1, label: 'Square (harsh)' }, { value: 2, label: 'Triangle' }] },
+      { key: 'mix', label: 'Mix', min: 0, max: 100, step: 1, default: 100, unit: '%' },
+      { key: 'wobble', label: 'Wobble', min: 0, max: 100, step: 1, default: 0, unit: '%' },
+      { key: 'wobbleRate', label: 'Wobble speed', min: 0, max: 20, step: 0.1, default: 2, unit: 'Hz' },
+    ],
+  },
+  {
+    type: 'chorus',
+    name: 'Chorus / flanger',
+    aliases: ['Chorus', 'Flanger', 'Vibrato', 'Modulation'],
+    description:
+      'A short delay that slowly sweeps back and forth. Chorus (10–30 ms, several voices) thickens a voice into something magical or many; flanger (1–5 ms with feedback) gives the jet "whoosh" of dreams, teleports and time travel; at 100 % mix it becomes a wavering vibrato, good for ghosts.',
+    params: [
+      ms('delay', 'Delay', 15, 0.3, 50, 0.1),
+      { key: 'depth', label: 'Depth', min: 0, max: 100, step: 1, default: 40, unit: '%' },
+      { key: 'rate', label: 'Speed', min: 0.01, max: 10, step: 0.01, default: 0.5, unit: 'Hz', log: true },
+      { key: 'feedback', label: 'Feedback', min: -95, max: 95, step: 1, default: 0, unit: '%' },
+      { key: 'voices', label: 'Voices', min: 1, max: 4, step: 1, default: 2 },
+      { key: 'mix', label: 'Mix', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      { key: 'width', label: 'Width', min: 0, max: 100, step: 1, default: 100, unit: '%' },
+    ],
+  },
 ];
 
 export function fxDefinition(type: FxType): FxDefinition {

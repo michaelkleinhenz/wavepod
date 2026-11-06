@@ -255,6 +255,14 @@ Paste the API key from Auphonic's Account Settings once; pick one of your
 multitrack presets and whether to start the production right away or review
 it on the website first.
 
+## Audio drama
+
+**Voices.** "+ Add filter" in the FX panel has a *Voice effects* group: telephone, mobile phone, old radio, walkie-talkie, megaphone, next room, robot, broken robot, alien, giant, demon, small creature, child-like voice, chipmunk, magic, ghost, time travel, dream and more. Each one adds a few ordinary filters set from factory presets, so every value stays editable. The building blocks are also filters of their own: Band-pass, Distortion, Echo, **Pitch shift** (−24 to +24 semitones, speed kept), **Ring modulator** (robots, aliens) and **Chorus / flanger** (chorus, flanger, vibrato).
+
+**Places.** The *Places* group puts a voice into a room with the **Room & distance** filter: living room, bedroom, small kitchen, bathroom, car, office, classroom, stairwell, basement, garage, church, concert hall, cave, tunnel, forest, open field and street. Its **Distance** (in metres) moves the speaker away: the voice gets quieter, loses highs and bass, and the room takes over; below 1 m it gets the bass of speaking close to the mic. Filters work per track and per clip, so one clip can be further away than the next.
+
+**Sound library.** Set a folder of sound effects in Edit › Settings, then open View › Sound Library (Shift+Ctrl+B, or *Sounds* in the header). Type to search file and folder names ("door creak", "forest wind"); ↑/↓ walk the results and play each one, Enter or a double click inserts the sound at the playhead, and a row can be dragged onto any track. *Insert on* picks the track (by default a "Sound effects" track, created when needed). Right click › *Fill the Selection (Loop)* repeats an atmosphere over the selected time range with crossfades. Inserted sounds are copied into the episode, so it keeps working without the library.
+
 ## Crosstalk removal (automix)
 
 When several people share a room, every mic also picks up the others. Tick

@@ -1,11 +1,14 @@
-// Edit › Settings…: app-wide settings that don't belong to an episode. For now: transcription.
+// Edit › Settings…: app-wide settings that don't belong to an episode: the sound library folder
+// and transcription.
 import type { TranscriptionInfo } from '../shared/types';
+import type { SoundLibraryInfo } from '../core/soundLibrary';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api } from './store';
 
 export class SettingsDialog {
   private overlay = h('div', { class: 'overlay' });
   private info: TranscriptionInfo | null = null;
+  private library: SoundLibraryInfo | null = null;
   private keyDraft = '';
   private keytermsDraft: string | null = null;
 
@@ -23,6 +26,13 @@ export class SettingsDialog {
     this.keytermsDraft = null;
     document.body.append(this.overlay);
     this.render();
+    void api()
+      .getSoundLibrary()
+      .then((l) => {
+        this.library = l;
+        this.render();
+      })
+      .catch(() => undefined);
     try {
       this.info = await api().getTranscriptionInfo();
       this.render();
@@ -46,6 +56,24 @@ export class SettingsDialog {
     }
   }
 
+  private async chooseLibrary(): Promise<void> {
+    try {
+      const l = await api().chooseSoundLibraryFolder();
+      if (!l) return;
+      this.library = l;
+      window.dispatchEvent(new Event('wavepod:library-changed'));
+      this.render();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
+  }
+
+  private async clearLibrary(): Promise<void> {
+    this.library = await api().clearSoundLibraryFolder();
+    window.dispatchEvent(new Event('wavepod:library-changed'));
+    this.render();
+  }
+
   private render(): void {
     keepScroll(this.overlay, () => this.build());
   }
@@ -63,6 +91,18 @@ export class SettingsDialog {
       'div',
       { class: 'dialog narrow settings-dialog' },
       h('h2', null, 'Settings'),
+      h('h3', null, 'Sound library'),
+      h('p', { class: 'muted' }, 'A folder of sound effects and atmospheres (subfolders included). Search it in View › Sound Library (Shift+Ctrl+B), listen, and insert sounds into the episode.'),
+      h(
+        'div',
+        { class: 'row settings-library' },
+        h('span', { class: `settings-library-path${this.library?.folder ? '' : ' muted'}`, title: this.library?.folder ?? '' }, this.library?.folder || 'No folder chosen'),
+        h('button', { class: 'small', onclick: () => void this.chooseLibrary() }, this.library?.folder ? 'Change…' : 'Choose folder…'),
+        this.library?.folder ? h('button', { class: 'small', onclick: () => void this.clearLibrary() }, 'Remove') : null,
+      ),
+      this.library?.folder
+        ? h('p', { class: this.library.error ? 'error-text' : 'ok-text' }, this.library.error ?? `✓ ${this.library.files.length.toLocaleString()} sound${this.library.files.length === 1 ? '' : 's'} found`)
+        : null,
       h('h3', null, 'Transcription'),
       h(
         'p',
