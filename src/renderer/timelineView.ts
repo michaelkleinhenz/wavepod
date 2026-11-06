@@ -24,7 +24,8 @@ import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
 import { openClipMenu } from './clipMenu';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
-import { drawFileWaveform, drawLevelsWaveform } from './waveform';
+import { drawFileWaveform, drawLevelsWaveform, type WaveLayout } from './waveform';
+import { clipPieces, loopSeams, minClipOffset, soundTag } from '../core/clipSound';
 
 /** Where a clip is drawn: its (possibly dragged or trimmed) place on the timeline. */
 interface ClipGeo {
@@ -1465,6 +1466,11 @@ export class TimelineView {
       const fx = fadesOf(track, clip);
       const fades = fx.fadeIn > 0 || fx.fadeOut > 0;
       const cg = clip.gain ? dbToGain(clip.gain) : 1;
+      if (clip.sound) {
+        this.drawSoundWave(ctx, track, clip, g, peaks, hgt, lim, (t) => cg * (fades ? fadesAt(fx, g.length, t) : 1) * (env ? envelopeAmpAt(env, g.offset + t) : 1));
+        ctx.globalAlpha = 1;
+        return;
+      }
       drawFileWaveform(ctx, store.waves, clip.file, peaks, {
         x0: Math.max(lim ? Math.floor(lim[0]) : 0, Math.floor(g.x)),
         x1: Math.min(lim ? Math.ceil(lim[1]) : this.width, Math.ceil(g.x + g.w)),
@@ -1488,6 +1494,64 @@ export class TimelineView {
       ctx.fillRect(vx0, g.y + hgt / 2, this.cx(g.x + g.w) - vx0, 1);
     }
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Waveform of a reversed, varispeed or looped clip: each straight stretch of it is drawn from the
+   * file's peaks at its own speed, mirrored when it plays backwards. `gainAt` takes clip-relative frames.
+   */
+  private drawSoundWave(
+    ctx: CanvasRenderingContext2D,
+    track: Track,
+    clip: Clip,
+    g: ClipGeo,
+    peaks: NonNullable<ReturnType<typeof store.requestPeaks>>,
+    hgt: number,
+    lim: [number, number] | undefined,
+    gainAt: (t: number) => number,
+  ): void {
+    const fppT = this.sr / this.pxPerSec;
+    const view: Clip = { ...clip, offset: g.offset, length: g.length };
+    const vx0 = Math.max(lim ? Math.floor(lim[0]) : 0, Math.floor(g.x), 0);
+    const vx1 = Math.min(lim ? Math.ceil(lim[1]) : this.width, Math.ceil(g.x + g.w), this.width);
+    if (vx1 <= vx0) return;
+    const tFrom = Math.max(0, (vx0 - g.x) * fppT);
+    const tTo = Math.min(g.length, (vx1 - g.x) * fppT);
+    for (const p of clipPieces(view, tFrom, tTo)) {
+      const xa = g.x + p.t0 / fppT;
+      const xb = g.x + p.t1 / fppT;
+      const rate = Math.abs(p.step);
+      const span = (p.t1 - p.t0) * rate;
+      const reverse = p.step < 0;
+      const layout: WaveLayout = {
+        x0: Math.max(vx0, Math.floor(xa)),
+        x1: Math.min(vx1, Math.ceil(xb)),
+        originX: xa,
+        srcStart: reverse ? p.src - span : p.src,
+        srcEnd: reverse ? p.src : p.src + span,
+        framesPerPx: fppT * rate,
+        mid: g.y + hgt / 2 + 6,
+        half: (hgt - 16) / 2,
+        top: g.y + 4,
+        bottom: g.y + hgt - 1,
+        color: track.color,
+        gain: (src) => gainAt(reverse ? p.t0 + (p.src - src) / rate : p.t0 + (src - p.src) / rate),
+      };
+      if (layout.x1 <= layout.x0) continue;
+      if (!reverse) {
+        drawFileWaveform(ctx, store.waves, clip.file, peaks, layout);
+        continue;
+      }
+      // backwards: draw it forwards in a mirrored frame (x → xa + xb − x)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(layout.x0, g.y, layout.x1 - layout.x0, hgt);
+      ctx.clip();
+      ctx.translate(xa + xb, 0);
+      ctx.scale(-1, 1);
+      drawFileWaveform(ctx, store.waves, clip.file, peaks, { ...layout, x0: Math.floor(xa + xb - layout.x1), x1: Math.ceil(xa + xb - layout.x0) });
+      ctx.restore();
+    }
   }
 
   /** Fade curves; with `shade` the faded-out part above them is darkened too. */
@@ -1563,6 +1627,20 @@ export class TimelineView {
       const label = on ? `FX ${fxCount}` : 'FX';
       ctx.fillText(label, bx + (FX_BTN.w - ctx.measureText(label).width) / 2, by + FX_BTN.h / 2 + 0.5);
     }
+    // loop seams: where each repeat starts
+    if (clip.sound?.loop) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      for (const t of loopSeams({ ...clip, offset: g.offset, length: g.length })) {
+        const sx = Math.round(g.x + (t / this.sr) * this.pxPerSec) + 0.5;
+        if (sx < -1 || sx > this.width + 1) continue;
+        ctx.moveTo(sx, g.y + 8);
+        ctx.lineTo(sx, g.y + hgt - 2);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.strokeStyle = selected ? '#9ab8ff' : '#11131a';
     ctx.strokeRect(vx0 + 0.5, g.y + 0.5, vx1 - vx0 - 1, hgt - 1);
     if (g.w > 60) {
@@ -1571,7 +1649,8 @@ export class TimelineView {
       ctx.textBaseline = 'top';
       const jingle = track.kind === 'soundboard' ? store.project.soundboard.find((s) => jingleMediaFile(s.id, this.sr) === clip.file) : undefined;
       const name = jingle ? `♪ ${jingle.name}` : clip.file.split('/').pop() ?? '';
-      ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
+      const tag = soundTag(clip);
+      ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}${tag ? `  ${tag}` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
       if (clip.note) {
         ctx.font = 'italic 11px system-ui, sans-serif';
         ctx.textBaseline = 'bottom';
@@ -2463,8 +2542,8 @@ function trimmed(orig: Clip, side: 'left' | 'right', delta: number): Pick<Clip, 
   if (side === 'right') {
     return { start: orig.start, offset: orig.offset, length: Math.max(minLen, orig.length + delta) };
   }
-  // left edge: can't go before the start of the source file
-  const d = Math.max(-orig.offset, -orig.start, Math.min(orig.length - minLen, delta));
+  // left edge: can't go before the start of the source file (a loop or reversed clip can grow to the timeline start)
+  const d = Math.max(minClipOffset(orig) - orig.offset, -orig.start, Math.min(orig.length - minLen, delta));
   return { start: orig.start + d, offset: orig.offset + d, length: orig.length - d };
 }
 

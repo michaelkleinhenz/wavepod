@@ -1,4 +1,5 @@
 // Loudness analysis of the mix, tracks and single clips (runs in the export worker).
+import { readClip } from './clipSound';
 import * as path from 'node:path';
 import type { Clip, LoudnessReport, LoudnessStats, Project } from '../shared/types';
 import { fadeGain } from './dsp';
@@ -27,7 +28,7 @@ export function measureClip(projectDir: string, clip: Clip): LoudnessStats {
     const r = new Float32Array(BLOCK);
     for (let done = 0; done < clip.length; done += BLOCK) {
       const n = Math.min(BLOCK, clip.length - done);
-      const src = reader.read(clip.offset + done, n, buf);
+      const src = readClip(reader, clip, done, n, buf);
       for (let i = 0; i < n; i++) {
         const g = fades ? fadeGain(done + i, clip.length, clip.fadeIn, clip.fadeOut, clip.fadeInShape, clip.fadeOutShape) : 1;
         l[i] = src[0][i] * g;

@@ -1,5 +1,6 @@
 // Double-ender alignment: finds where a guest's local recording lines up with the remote track
 // that was recorded during the call, by cross-correlating their (decimated) audio.
+import { readClip } from './clipSound';
 import type { Clip, Project, Track } from '../shared/types';
 import { ReaderCache } from './mixer';
 import { fft } from './fft';
@@ -77,7 +78,7 @@ function readTrack(readers: ReaderCache, track: Track, start: number, frames: nu
     if (b <= a) continue;
     const reader = readers.get(c.file);
     if (!reader) continue;
-    const data = reader.read(c.offset + (a - c.start), b - a);
+    const data = readClip(reader, c, a - c.start, b - a);
     for (let i = 0; i < b - a; i++) {
       out[0][a - start + i] += data[0][i];
       out[1][a - start + i] += (data[1] ?? data[0])[i];
@@ -111,7 +112,7 @@ export function alignClip(project: Project, dir: string, clipId: string, refTrac
   try {
     const reader = readers.get(clip.file);
     if (!reader) throw new Error(`Can't read ${clip.file}`);
-    const probe = decimate(reader.read(clip.offset, compare), compare, factor);
+    const probe = decimate(readClip(reader, clip, 0, compare), compare, factor);
     const refAudio = decimate(readTrack(readers, ref, refStart, refFrames), refFrames, factor);
     const { lag, confidence } = bestLag(refAudio, probe);
     const start = Math.max(0, refStart + lag * factor);
