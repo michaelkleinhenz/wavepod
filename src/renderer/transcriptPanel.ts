@@ -256,7 +256,7 @@ export class TranscriptPanel {
       ),
     );
     if (p) {
-      const what = p.phase === 'preparing' ? 'Preparing' : p.phase === 'uploading' ? 'Uploading' : 'Transcribing';
+      const what = p.phase === 'levels' ? 'Checking for crosstalk:' : p.phase === 'preparing' ? 'Preparing' : p.phase === 'uploading' ? 'Uploading' : 'Transcribing';
       this.status.replaceChildren(h('span', { class: 'spinner' }), `${what} ${p.name ? `${p.name} ` : ''}(${p.file} of ${p.files})…`);
     } else if (t.busy) this.status.replaceChildren(h('span', { class: 'spinner' }), 'Starting…');
     else if (t.count) {

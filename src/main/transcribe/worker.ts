@@ -3,7 +3,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import * as path from 'node:path';
 import type { FileTranscript, TranscribeProgress, TranscriptionSettings } from '../../shared/types';
-import { SPEECH_RATE, pcmToWav, wavToSpeechPcm } from '../../core/speechAudio';
+import { SPEECH_RATE, pcmToWav, wavLevelCurve, wavToSpeechPcm } from '../../core/speechAudio';
 import { levelCurve } from '../../core/wordLevels';
 import { wordsFromScribe } from '../../core/transcript';
 import { transcribeWithScribe } from '../../core/elevenlabs';
@@ -27,11 +27,11 @@ parentPort!.on('message', (msg: { type: string }) => {
 
 async function run(): Promise<void> {
   if (job.levelsOnly) {
-    for (const f of job.files) {
-      if (abort.signal.aborted) break;
+    for (let i = 0; i < job.files.length && !abort.signal.aborted; i++) {
+      const f = job.files[i];
+      progress({ phase: 'levels', file: i + 1, files: job.files.length, name: f.name });
       try {
-        const { pcm, sampleRate } = wavToSpeechPcm(f.abs);
-        post({ type: 'levels', file: f.file, levels: levelCurve(pcm, SPEECH_RATE, sampleRate) });
+        post({ type: 'levels', file: f.file, levels: wavLevelCurve(f.abs) });
       } catch {
         // missing or unreadable file: its words simply stay unfiltered
       }

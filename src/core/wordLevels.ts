@@ -30,23 +30,46 @@ export interface WordFilter {
  * `step` counts in frames of the original file (`fileRate`), like the word times do.
  */
 export function levelCurve(pcm: Int16Array | Float32Array, pcmRate: number, fileRate: number): TranscriptLevels {
-  const win = Math.max(1, Math.round(LEVEL_STEP_S * pcmRate));
-  const n = Math.ceil(pcm.length / win);
-  const bytes = new Uint8Array(n);
-  const scale = pcm instanceof Int16Array ? 1 / 32768 : 1;
-  for (let i = 0; i < n; i++) {
-    const a = i * win;
-    const b = Math.min(pcm.length, a + win);
-    let sum = 0;
-    for (let j = a; j < b; j++) {
-      const x = pcm[j] * scale;
-      sum += x * x;
-    }
-    const rms = Math.sqrt(sum / Math.max(1, b - a));
-    const db = rms > 0 ? -20 * Math.log10(rms) : LEVEL_FLOOR_DB;
-    bytes[i] = Math.max(0, Math.min(LEVEL_FLOOR_DB, Math.round(db)));
+  const meter = new LevelMeter(pcmRate, fileRate);
+  meter.push(pcm, pcm.length, pcm instanceof Int16Array ? 1 / 32768 : 1);
+  return meter.finish();
+}
+
+/** Builds a level curve block by block, so a long file never has to be in memory at once. */
+export class LevelMeter {
+  private readonly win: number;
+  private bytes: number[] = [];
+  private sum = 0;
+  private count = 0;
+
+  /** `rate`: rate of the samples pushed; `fileRate`: rate the curve's `step` counts in. */
+  constructor(
+    private readonly rate: number,
+    private readonly fileRate = rate,
+  ) {
+    this.win = Math.max(1, Math.round(LEVEL_STEP_S * rate));
   }
-  return { step: (win * fileRate) / pcmRate, db: toBase64(bytes) };
+
+  push(x: ArrayLike<number>, n = x.length, scale = 1): void {
+    for (let i = 0; i < n; i++) {
+      const v = x[i] * scale;
+      this.sum += v * v;
+      if (++this.count === this.win) this.flush();
+    }
+  }
+
+  private flush(): void {
+    const rms = Math.sqrt(this.sum / Math.max(1, this.count));
+    const db = rms > 0 ? -20 * Math.log10(rms) : LEVEL_FLOOR_DB;
+    this.bytes.push(Math.max(0, Math.min(LEVEL_FLOOR_DB, Math.round(db))));
+    this.sum = 0;
+    this.count = 0;
+  }
+
+  finish(): TranscriptLevels {
+    if (this.count) this.flush();
+    return { step: (this.win * this.fileRate) / this.rate, db: toBase64(Uint8Array.from(this.bytes)) };
+  }
 }
 
 const decoded = new WeakMap<TranscriptLevels, Uint8Array>();
