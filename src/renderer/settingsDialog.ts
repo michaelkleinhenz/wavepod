@@ -11,7 +11,7 @@ import { api, store } from './store';
 
 export type SettingsTab = 'general' | 'controllers' | 'agents';
 const TABS: Array<{ id: SettingsTab; label: string; blurb: string }> = [
-  { id: 'general', label: 'General', blurb: 'The sound effects folder and how transcripts are made.' },
+  { id: 'general', label: 'General', blurb: 'Recording alerts, the sound effects folder and how transcripts are made.' },
   { id: 'controllers', label: 'Controllers', blurb: 'Start recording, drop markers and fire jingles from a MIDI controller or Stream Deck.' },
   { id: 'agents', label: 'AI agents', blurb: 'Let AI apps on this computer help with filters and loudness.' },
 ];
@@ -177,6 +177,28 @@ export class SettingsDialog {
     this.overlay.append(this.dialog);
   }
 
+  private testAlert(btn: HTMLButtonElement): void {
+    const SECONDS = 5;
+    api()
+      .testRecordingAlert(SECONDS)
+      .then(() => {
+        let left = SECONDS;
+        btn.disabled = true;
+        const label = btn.textContent;
+        const tick = () => {
+          if (left <= 0) {
+            btn.disabled = false;
+            btn.textContent = label;
+            return;
+          }
+          btn.textContent = `Alert in ${left--} s…`;
+          window.setTimeout(tick, 1000);
+        };
+        tick();
+      })
+      .catch((e) => toast(errorMessage(e), 'error'));
+  }
+
   private renderGeneral(): Array<HTMLElement | null> {
     const info = this.info;
     const s = info?.settings;
@@ -186,6 +208,18 @@ export class SettingsDialog {
       void this.save({ apiKey: key }, key ? 'ElevenLabs API key saved' : 'ElevenLabs API key removed');
     };
     return [
+      h('h3', null, 'Recording alerts'),
+      h(
+        'p',
+        { class: 'muted' },
+        'If the audio device drops out or stops delivering audio while you record, or the take can’t be written to disk, WavePod sounds an alarm, shows a warning, sends a system notification and flashes its taskbar entry, even when the window is in the background. A silent microphone is not an alarm.',
+      ),
+      h(
+        'div',
+        { class: 'row settings-alert-row' },
+        h('button', { class: 'small', onclick: (e: Event) => this.testAlert(e.currentTarget as HTMLButtonElement) }, 'Test emergency notification'),
+        h('span', { class: 'muted settings-alert-hint' }, 'Fires after 5 seconds, so you can switch to another window first.'),
+      ),
       h('h3', null, 'Sound library'),
       h('p', { class: 'muted' }, 'A folder of sound effects and atmospheres (subfolders included). Search it in View › Sound Library (Shift+Ctrl+B), listen, and insert sounds into the episode.'),
       h(

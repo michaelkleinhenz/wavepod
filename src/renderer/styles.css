@@ -689,3 +689,18 @@ body.library-open .library-btn { background: var(--panel-2); color: var(--text);
 .speech-dialog .row.end { margin-top: 12px; }
 button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; font: inherit; }
 button.link:hover:not(:disabled) { background: none; border: none; }
+
+/* Recording emergency (device lost, take not written): above every other dialog. */
+.overlay.emergency-overlay { z-index: 1000; background: rgba(60, 0, 0, 0.6); }
+.dialog.emergency { border: 2px solid var(--rec); box-shadow: 0 0 0 4px rgba(229, 57, 53, 0.25), 0 20px 60px rgba(0, 0, 0, 0.6); text-align: center; animation: emergency-pulse 1.2s ease-in-out infinite; }
+.dialog.emergency h2 { color: #ff8a80; font-size: 20px; }
+.dialog.emergency p { font-size: 14px; margin: 0 0 10px; user-select: text; }
+.dialog.emergency .row.end { justify-content: center; margin-top: 14px; }
+.dialog.emergency .emergency-icon { font-size: 42px; line-height: 1; margin-bottom: 8px; }
+.dialog.emergency.ok { border-color: var(--ok); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); animation: none; }
+.dialog.emergency.ok h2 { color: #a5d6a7; }
+.dialog.emergency.ok .emergency-icon { color: var(--ok); }
+@keyframes emergency-pulse { 50% { box-shadow: 0 0 0 10px rgba(229, 57, 53, 0.4), 0 20px 60px rgba(0, 0, 0, 0.6); } }
+@media (prefers-reduced-motion: reduce) { .dialog.emergency { animation: none; } }
+.settings-alert-hint { font-size: 12px; align-self: center; }
+.settings-alert-row { margin-bottom: 14px; }

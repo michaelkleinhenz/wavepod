@@ -2,6 +2,7 @@ import { BrowserWindow, Menu, MenuItem, app, dialog, ipcMain, shell, type MenuIt
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
+import { RecordingAlerter, withAlertMark } from './recordingAlert';
 import { IPC, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject, type SaveState } from '../shared/api';
 import { acceleratorLabel, menuLabel } from '../core/menuText';
 import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
@@ -169,6 +170,8 @@ let saveTimer: NodeJS.Timeout | null = null;
 let mcp: McpController;
 let osc: OscServer;
 let recordWorker: RecordWorker | null = null;
+/** Gets emergencies during a recording to the user, even with the window in the background. */
+let alerter: RecordingAlerter;
 /** A recovery to tell the user about once the window is there. */
 let recoveryNotice: string | null = null;
 /** Temporary folder of the Zencastr import in progress. */
@@ -241,7 +244,7 @@ function openProjectDir(dir: string): OpenedProject {
   engine.setProject(project, dir);
   settings.lastProject = dir;
   saveSettings();
-  win?.setTitle(`${project.name} — WavePod`);
+  if (win) win.setTitle(withAlertMark(win, `${project.name} — WavePod`));
   return current;
 }
 
@@ -324,7 +327,7 @@ function backupNow(reason = ''): void {
 function setCurrentProject(project: Project): void {
   current.project = project;
   engine.setProject(project);
-  win?.setTitle(`${project.name} — WavePod`);
+  if (win) win.setTitle(withAlertMark(win, `${project.name} — WavePod`));
   // a failed save stays red until a save works
   if (saveState.state !== 'error') setSaveState({ state: 'unsaved' });
   if (saveTimer) clearTimeout(saveTimer);
@@ -470,6 +473,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     return { inputDeviceName: inputDeviceName(), freeBytes };
   },
   confirmStopRecording: () => settings.confirmStopRecording,
+  testRecordingAlert: (delaySeconds: number) => alerter.test(delaySeconds),
   restoreBackup: async () => {
     const res = await dialog.showOpenDialog(win!, {
       title: 'Restore backup',
@@ -1026,6 +1030,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Windows shows notifications only for an app with an id (the installer uses the same one).
+  if (process.platform === 'win32') app.setAppUserModelId('net.kleinhenz.wavepod');
   settings = loadSettings();
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
@@ -1047,7 +1053,14 @@ app.whenReady().then(() => {
     vstHost = new VstHostProcess(vstExe, path.join(__dirname, 'vstBridge.js'));
     setVstHost(vstHost, (_id, message) => engine.reportError(message));
   }
-  engine.on('transport', (u) => send(IPC.transport, u));
+  alerter = new RecordingAlerter(
+    () => win,
+    (alert) => send(IPC.recordingAlert, alert),
+  );
+  engine.on('transport', (u) => {
+    send(IPC.transport, u);
+    alerter.transport(u);
+  });
   let loggedEngineError: string | null = null;
   engine.on('status', (s) => {
     // Every audio engine error also goes to the terminal, once per change.
