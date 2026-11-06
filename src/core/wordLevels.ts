@@ -148,69 +148,135 @@ export function filterQuietWords(
     return best;
   };
   const n = words.length;
-  /** The word's level on its own track, and the loudest other track's level during it. */
+  const sr = project.sampleRate;
+  /** The word's level on its own track, the loudest other track's level during it, and which track that is. */
   const own = new Float64Array(n);
   const other = new Float64Array(n);
+  const otherLane: string[] = new Array(n).fill('');
   for (let i = 0; i < n; i++) {
     const w = words[i];
     const lane = byId.get(w.trackId);
     own[i] = lane ? laneLevel(lane, w.start, w.end, w.clipId) : -Infinity;
     let o = -Infinity;
-    if (own[i] !== -Infinity) for (const l of lanes) if (l !== lane) o = Math.max(o, laneLevel(l, w.start, w.end));
+    if (own[i] !== -Infinity)
+      for (const l of lanes) {
+        if (l === lane) continue;
+        const v = laneLevel(l, w.start, w.end);
+        if (v > o) {
+          o = v;
+          otherLane[i] = l.id;
+        }
+      }
     other[i] = o;
   }
+  const bare = words.map((w) => bareWord(w.text));
+  /** Laughter or other non-speech the speech-to-text wrote down as a word ("haha", "hehe"). */
+  const speechWord = (i: number) => !!bare[i] && !LAUGH.test(bare[i]);
+  /** 1: this word is the speaker's copy of an echo pair, 2: it is the bleed (see below). */
+  const role = new Uint8Array(n);
+  /** Whether a track has a spoken word of its own (not bleed) overlapping this span (words are sorted by start). */
+  const speaksAt = (i: number, trackId: string): boolean => {
+    const { start, end } = words[i];
+    const pad = 0.1 * sr;
+    const its = (j: number) => words[j].trackId === trackId && role[j] !== 2 && speechWord(j);
+    for (let j = i - 1; j >= 0 && words[j].start >= start - 10 * sr; j--) if (its(j) && words[j].end > start - pad) return true;
+    for (let j = i + 1; j < n && words[j].start < end + pad; j++) if (its(j)) return true;
+    return false;
+  };
+
+  // Echoes: the same word on two tracks at the same time. Which track is the speaker is decided
+  // per run of such pairs (a sentence), by most of its words: a laugh or a cough of the other
+  // person over a few of them then doesn't swap who said it.
+  if (filter.matchWords) {
+    const win = MATCH_WINDOW_S * sr;
+    const pairs: Array<[number, number]> = [];
+    for (let i = 0; i < n; i++) {
+      if (own[i] === -Infinity || !speechWord(i)) continue;
+      const w = words[i];
+      const mid = (w.start + w.end) / 2;
+      // pair each word with the closest same word on a later-listed word of another track
+      let best = -1;
+      let bestD = Infinity;
+      for (let j = i + 1; j < n && words[j].start <= w.end + win; j++) {
+        const u = words[j];
+        if (u.trackId === w.trackId || own[j] === -Infinity || !sameWord(bare[i], bare[j])) continue;
+        const d = Math.abs((u.start + u.end) / 2 - mid);
+        if (d <= win && d < bestD) {
+          best = j;
+          bestD = d;
+        }
+      }
+      if (best >= 0) pairs.push([i, best]);
+    }
+    // runs per pair of tracks: pairs no further apart than ECHO_RUN_GAP_S
+    const gap = ECHO_RUN_GAP_S * sr;
+    const runs = new Map<string, Array<Array<[number, number]>>>();
+    for (const [i, j] of pairs) {
+      const [a, b] = words[i].trackId < words[j].trackId ? [i, j] : [j, i];
+      const key = `${words[a].trackId}\n${words[b].trackId}`;
+      const list = runs.get(key) ?? [];
+      runs.set(key, list);
+      const last = list[list.length - 1];
+      if (last && words[a].start - words[last[last.length - 1][0]].end <= gap) last.push([a, b]);
+      else list.push([[a, b]]);
+    }
+    for (const list of runs.values())
+      for (const run of list) {
+        // the louder side of most pairs is the speaker (median of the differences)
+        const diffs = run.map(([a, b]) => own[a] - own[b]).sort((x, y) => x - y);
+        const m = diffs.length % 2 ? diffs[(diffs.length - 1) >> 1] : (diffs[diffs.length / 2 - 1] + diffs[diffs.length / 2]) / 2;
+        if (m === 0) continue;
+        for (const [a, b] of run) {
+          const [speaker, bleed] = m > 0 ? [a, b] : [b, a];
+          role[speaker] = 1;
+          role[bleed] = 2;
+        }
+      }
+    // words heard a bit differently inside a run: between two bleed words of the same track
+    const prev = new Int32Array(n).fill(-1);
+    const next = new Int32Array(n).fill(-1);
+    const last = new Map<string, number>();
+    for (let i = 0; i < n; i++) {
+      prev[i] = last.get(words[i].trackId) ?? -1;
+      if (role[i] === 2) last.set(words[i].trackId, i);
+    }
+    last.clear();
+    for (let i = n - 1; i >= 0; i--) {
+      next[i] = last.get(words[i].trackId) ?? -1;
+      if (role[i] === 2) last.set(words[i].trackId, i);
+    }
+    for (let i = 0; i < n; i++) {
+      // (a laugh in between is this person's own)
+      if (role[i] || own[i] === -Infinity || !speechWord(i) || prev[i] < 0 || next[i] < 0) continue;
+      const near = words[i].start - words[prev[i]].end <= gap && words[next[i]].start - words[i].end <= gap;
+      // the speaker's track says something here too, so this is the same sentence heard through the mic
+      if (near && otherLane[i] && speaksAt(i, otherLane[i])) role[i] = 2;
+    }
+  }
+
   const drop = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     // no level curve for this word (older transcript, synthesized words): keep it
     if (own[i] === -Infinity) continue;
+    if (role[i] === 2) {
+      drop[i] = 1;
+      continue;
+    }
     const w = words[i];
     // the threshold looks at the file's own level, before any gain
     const clipGain = byId.get(w.trackId)!.clips.find((x) => x.c.id === w.clipId)?.gain ?? 0;
     if (filter.minLevelDb < 0 && own[i] - clipGain < filter.minLevelDb) drop[i] = 1;
-    else if (filter.crosstalkDb > 0 && other[i] - own[i] >= filter.crosstalkDb) drop[i] = 1;
-  }
-  if (filter.matchWords) {
-    const sr = project.sampleRate;
-    const win = MATCH_WINDOW_S * sr;
-    const bare = words.map((w) => bareWord(w.text));
-    const echo = new Uint8Array(n);
-    // words are sorted by start, so the candidates of a word are close to it in the list
-    for (let i = 0; i < n; i++) {
-      if (own[i] === -Infinity || !bare[i]) continue;
-      const w = words[i];
-      const mid = (w.start + w.end) / 2;
-      for (let j = i - 1; j >= 0 && words[j].start >= w.start - win - sr * 2; j--) if (isEcho(i, j)) echo[i] = 1;
-      for (let j = i + 1; !echo[i] && j < n && words[j].start <= w.end + win; j++) if (isEcho(i, j)) echo[i] = 1;
-      function isEcho(a: number, b: number): boolean {
-        const u = words[b];
-        if (u.trackId === w.trackId || own[b] <= own[a] || Math.abs((u.start + u.end) / 2 - mid) > win) return false;
-        return sameWord(bare[a], bare[b]);
-      }
-    }
-    // words heard a bit differently in a run of echoes: between two echoes, other track louder
-    const lastEcho = new Map<string, number>();
-    const prevEcho = new Int32Array(n).fill(-1);
-    for (let i = 0; i < n; i++) {
-      prevEcho[i] = lastEcho.get(words[i].trackId) ?? -1;
-      if (echo[i]) lastEcho.set(words[i].trackId, i);
-    }
-    const nextEcho = new Int32Array(n).fill(-1);
-    lastEcho.clear();
-    for (let i = n - 1; i >= 0; i--) {
-      nextEcho[i] = lastEcho.get(words[i].trackId) ?? -1;
-      if (echo[i]) lastEcho.set(words[i].trackId, i);
-    }
-    const gap = ECHO_RUN_GAP_S * sr;
-    for (let i = 0; i < n; i++) {
-      if (echo[i]) drop[i] = 1;
-      else if (own[i] !== -Infinity && other[i] > own[i] && prevEcho[i] >= 0 && nextEcho[i] >= 0) {
-        if (words[i].start - words[prevEcho[i]].end <= gap && words[nextEcho[i]].start - words[i].end <= gap) drop[i] = 1;
-      }
-    }
+    // much louder elsewhere: only crosstalk if that track is speaking then. Laughing, coughing or
+    // moving the mic doesn't take this speaker's words away, and nor does a word the echo check
+    // already found to be the speaker's own.
+    else if (filter.crosstalkDb > 0 && role[i] !== 1 && other[i] - own[i] >= filter.crosstalkDb && speaksAt(i, otherLane[i])) drop[i] = 1;
   }
   const out = words.filter((_, i) => !drop[i]);
   return { words: out, hidden: n - out.length };
 }
+
+/** Laughter written as words. */
+const LAUGH = /^(h+[aeiou]+){2,}h*$/;
 
 /** The same word, allowing one letter off in longer words ("okay"/"okey", "genau"/"genauu"). */
 export function sameWord(a: string, b: string): boolean {

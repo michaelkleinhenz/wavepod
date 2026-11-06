@@ -147,6 +147,35 @@ describe('word levels', () => {
     expect(words.filter((w) => w.trackId === p.tracks[1].id).map((w) => w.text)).toEqual(['genau', 'richtig']);
   });
 
+  it('keeps the speaker right when the other person laughs over part of a sentence', () => {
+    let p = createProject('T', SR);
+    p = addTrack(p, { name: 'Anna' });
+    p = addTrack(p, { name: 'Ben' });
+    p.tracks[0].clips.push(clip('a', 'anna.wav', 0));
+    p.tracks[1].clips.push(clip('b', 'ben.wav', 0));
+    const sentence: Array<[string, number, number]> = [
+      ['Und', 1, 1.2], ['dann', 1.3, 1.5], ['ist', 1.6, 1.8], ['der', 1.9, 2.1], ['Hund', 2.2, 2.5],
+      ['einfach', 2.6, 3.0], ['in', 3.1, 3.2], ['den', 3.3, 3.5], ['See', 3.6, 3.9], ['gesprungen.', 4.0, 4.5],
+    ];
+    // close mics: Anna 6 dB down on Ben's mic; Ben laughs loudly from 2.2 to 3.2 s (her bleed of it on her mic)
+    const transcripts = {
+      'anna.wav': tr('anna.wav', sentence, [[1, 4.6, -20], [2.2, 3.2, -18]]),
+      'ben.wav': tr('ben.wav', [...sentence.map(([t, a, b]) => [t.toLowerCase(), a + 0.01, b] as [string, number, number]), ['haha', 2.2, 3.2]], [[1, 4.6, -26], [2.2, 3.2, -8]]),
+    };
+    const words = timelineWords(p, transcripts, { crosstalkDb: 6, minLevelDb: 0, matchWords: true });
+    expect(words.filter((w) => w.trackId === p.tracks[0].id).map((w) => w.text)).toEqual(sentence.map(([t]) => t));
+    // Ben keeps only his laugh, none of Anna's words
+    expect(words.filter((w) => w.trackId === p.tracks[1].id).map((w) => w.text)).toEqual(['haha']);
+  });
+
+  it('does not drop words because another track only laughs or coughs', () => {
+    const { p, transcripts } = episode();
+    // Ben laughs loudly over Anna's "Hallo Ben" and nothing of it is transcribed on his track
+    transcripts['ben.wav'] = tr('ben.wav', [['Hi', 4, 4.4]], [[1, 2, -8], [4, 4.5, -18]]);
+    const words = timelineWords(p, transcripts, { crosstalkDb: 6, minLevelDb: 0, matchWords: true });
+    expect(words.filter((w) => w.trackId === p.tracks[0].id).map((w) => w.text)).toEqual(['Hallo', 'Ben', 'ja']);
+  });
+
   it('matches words with one letter off only when they are long enough', () => {
     expect(sameWord('okay', 'okey')).toBe(true);
     expect(sameWord('genau', 'genauu')).toBe(true);
