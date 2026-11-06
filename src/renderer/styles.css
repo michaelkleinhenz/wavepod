@@ -618,3 +618,4 @@ body.library-open .library-btn { background: var(--panel-2); color: var(--text);
 .library-folder-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; color: var(--muted); }
 .settings-library { align-items: center; gap: 8px; }
 .settings-library-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-tag { position: fixed; z-index: 30; pointer-events: none; padding: 3px 8px; border-radius: 5px; background: var(--panel); border: 1px solid var(--accent); color: var(--text, #e6e6e6); font-size: 12px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }

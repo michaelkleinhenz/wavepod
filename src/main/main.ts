@@ -560,7 +560,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     const res = await dialog.showOpenDialog(win!, {
       title: 'Choose audio files',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'flac', 'webm'] }],
+      filters: [{ name: 'Audio', extensions: ['wav', 'aif', 'aiff', 'aifc', 'mp3', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'flac', 'webm'] }],
     });
     return res.canceled ? [] : res.filePaths;
   },
@@ -942,6 +942,11 @@ function createWindow(): void {
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.webContents.on('did-finish-load', () => flushRecoveryNotice());
+  // never navigate away from the app, e.g. to an audio file dropped next to the timeline
+  win.webContents.on('will-navigate', (e) => {
+    e.preventDefault();
+    if (/^https?:/i.test(e.url)) void shell.openExternal(e.url);
+  });
   // The window crashing must not end a recording: the engine keeps recording, the window comes back.
   win.webContents.on('render-process-gone', (_e, details) => {
     console.error(`[renderer] gone: ${details.reason}`);

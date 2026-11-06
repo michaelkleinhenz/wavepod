@@ -2,7 +2,7 @@
 // names. Pure helpers; main/soundLibrary.ts scans the folder, the renderer shows the panel.
 import type { Clip } from '../shared/types';
 
-export const LIBRARY_EXTENSIONS = ['wav', 'wave', 'mp3', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'aif', 'aiff', 'webm'];
+export const LIBRARY_EXTENSIONS = ['wav', 'wave', 'mp3', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'aif', 'aiff', 'aifc', 'webm'];
 /** A scan stops after this many files (and says so). */
 export const MAX_LIBRARY_FILES = 200_000;
 

@@ -1,5 +1,6 @@
 // Decodes audio files (any format Chromium supports) and resamples to the project rate.
 import { api } from './store';
+import { decodeAiff, isAiff } from '../core/aiff';
 
 export async function decodeFile(path: string, sampleRate: number): Promise<Float32Array[]> {
   const bytes = await api().readFile(path);
@@ -8,12 +9,22 @@ export async function decodeFile(path: string, sampleRate: number): Promise<Floa
 
 /** Decodes an encoded audio file's bytes and resamples to `sampleRate`. */
 export async function decodeBytes(data: ArrayBuffer, sampleRate: number): Promise<Float32Array[]> {
-  const ctx = new AudioContext();
   let decoded: AudioBuffer;
-  try {
-    decoded = await ctx.decodeAudioData(data);
-  } finally {
-    void ctx.close();
+  if (isAiff(data)) {
+    // Chromium does not decode AIFF
+    const aiff = decodeAiff(data);
+    const n = Math.min(2, aiff.channels.length);
+    decoded = new AudioBuffer({ numberOfChannels: n, length: Math.max(1, aiff.channels[0].length), sampleRate: aiff.sampleRate });
+    for (let c = 0; c < n; c++) decoded.copyToChannel(aiff.channels[c] as Float32Array<ArrayBuffer>, c);
+  } else {
+    const ctx = new AudioContext();
+    try {
+      decoded = await ctx.decodeAudioData(data);
+    } catch {
+      throw new Error('not an audio file WavePod can read (WAV, AIFF, MP3, FLAC, Ogg, Opus, M4A/AAC)');
+    } finally {
+      void ctx.close();
+    }
   }
   const channels = Math.min(2, decoded.numberOfChannels);
   let buffer = decoded;

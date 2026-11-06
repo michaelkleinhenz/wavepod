@@ -4,7 +4,7 @@ import { addClip, addMarker, addTrack, applyChapterContent, chaptersToMarkers, c
 import { importChapters, parseChapterContent } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
-import { uid } from '../shared/time';
+import { formatTimestamp, uid } from '../shared/time';
 import { baseName, decodeBytes, decodeFile } from './audioFiles';
 import { errorMessage, h, toast } from './dom';
 import { api, saveRepeatSetting, saveSpeedSetting, store } from './store';
@@ -701,29 +701,45 @@ function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, t
   });
 }
 
-/** Files dropped on the timeline: onto a track at the drop position, or as new tracks. */
+/**
+ * Files dropped on the timeline: onto a track at the drop position (several files one after the
+ * other), or below the tracks as one new track per file. All of it is one undo step.
+ */
 export async function importDroppedFiles(files: File[], at: number, trackId: string | null): Promise<void> {
   const sr = store.sampleRate;
-  let pos = at;
+  const imported: { name: string; file: string; length: number }[] = [];
   for (const file of files) {
     try {
       toast(`Importing ${file.name}…`);
       const channels = await decodeBytes(await file.arrayBuffer(), sr);
       const res = await api().importAudio(file.name, channels, sr);
-      store.edit((p) => {
-        let q = p;
-        let id = trackId && q.tracks.some((t) => t.id === trackId) ? trackId : null;
-        if (!id) {
-          q = addTrack(q, { name: file.name.replace(/\.[^.]+$/, '') });
-          id = q.tracks[q.tracks.length - 1].id;
-        }
-        return addClip(q, id, { id: uid('clp'), file: res.file, start: pos, offset: 0, length: res.length, gain: 0, fadeIn: 0, fadeOut: 0 });
-      });
-      // several files on one track go one after the other
-      if (trackId) pos += res.length;
-      toast(`Imported ${file.name}`);
+      imported.push({ name: file.name, file: res.file, length: res.length });
     } catch (e) {
-      toast(`${file.name}: ${errorMessage(e)}`, 'error');
+      toast(`${file.name}: ${errorMessage(e) || 'not an audio file this app can read'}`, 'error');
     }
   }
+  if (!imported.length) return;
+  const ids: string[] = [];
+  let onTrack = '';
+  store.edit((p) => {
+    let q = p;
+    const target = trackId && q.tracks.some((t) => t.id === trackId) ? trackId : null;
+    let pos = at;
+    for (const f of imported) {
+      let id = target;
+      if (!id) {
+        q = addTrack(q, { name: f.name.replace(/\.[^.]+$/, '') });
+        id = q.tracks[q.tracks.length - 1].id;
+      }
+      const clipId = uid('clp');
+      ids.push(clipId);
+      q = addClip(q, id, { id: clipId, file: f.file, start: pos, offset: 0, length: f.length, gain: 0, fadeIn: 0, fadeOut: 0 });
+      if (target) pos += f.length;
+    }
+    onTrack = target ? (q.tracks.find((t) => t.id === target)?.name ?? '') : '';
+    return q;
+  });
+  store.select({ clipIds: new Set(ids), range: null, markerId: null });
+  const what = imported.length === 1 ? imported[0].name : `${imported.length} files`;
+  toast(`Imported ${what} ${onTrack ? `on ${onTrack}` : imported.length === 1 ? 'on a new track' : 'on new tracks'} at ${formatTimestamp(at / sr, false)}`);
 }
