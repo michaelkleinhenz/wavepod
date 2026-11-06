@@ -105,6 +105,8 @@ export type MenuCommand =
   | 'show-project-folder'
   | 'restore-backup'
   | 'shortcuts'
+  | 'help'
+  | 'about'
   | 'speed-up'
   | 'speed-down'
   | 'speed-normal'
@@ -221,6 +223,10 @@ export interface WavePodApi {
   /** Removes the temporary folder of the last Zencastr import. */
   finishZencastrImport(): Promise<void>;
   showTemplatesFolder(): Promise<void>;
+  /** Version and runtime details for Help › About WavePod. */
+  getAppInfo(): Promise<AppInfo>;
+  /** Opens one of the About dialog's links (website, source code, licences). */
+  openAboutLink(which: AboutLink): Promise<void>;
   showProjectFolder(): Promise<void>;
 
   // app menu, drawn by the renderer where the native menu bar can't follow the app's theme
@@ -273,6 +279,8 @@ export interface WavePodApi {
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;
+  /** Opens the help window at a page of the user guide (`topic` or `topic/anchor`). */
+  openHelp(topic?: string): Promise<void>;
   /** Where a clip should start to line up with a reference track (double-ender alignment). */
   alignClip(clipId: string, refTrackId: string): Promise<AlignResult>;
 
@@ -344,6 +352,18 @@ export interface WavePodApi {
   platform: string;
 }
 
+export interface AppInfo {
+  name: string;
+  version: string;
+  electron: string;
+  chrome: string;
+  node: string;
+  platform: string;
+  arch: string;
+}
+
+export type AboutLink = 'website' | 'source' | 'licenses';
+
 export const IPC = {
   invoke: 'wavepod:invoke',
   transport: 'wavepod:transport',
@@ -413,6 +433,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'importZencastr',
   'finishZencastrImport',
   'showTemplatesFolder',
+  'getAppInfo',
+  'openAboutLink',
   'showProjectFolder',
   'getMenu',
   'menuClick',
@@ -437,6 +459,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'measureLoudness',
   'measureClips',
   'revealFile',
+  'openHelp',
   'alignClip',
   'getTranscriptionInfo',
   'setTranscriptionSettings',

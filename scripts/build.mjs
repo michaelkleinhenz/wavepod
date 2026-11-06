@@ -7,6 +7,7 @@ const prod = process.env.NODE_ENV === 'production';
 
 rmSync('dist', { recursive: true, force: true });
 mkdirSync('dist/renderer', { recursive: true });
+mkdirSync('dist/help', { recursive: true });
 
 const common = { bundle: true, sourcemap: !prod, minify: prod, logLevel: 'info', target: 'es2022' };
 
@@ -34,12 +35,25 @@ const configs = [
     outdir: 'dist/renderer',
     platform: 'browser',
     format: 'iife',
+    // The About dialog shows the app icon; the page's CSP allows data: images.
+    loader: { '.svg': 'dataurl' },
+  },
+  {
+    // the help window: the user guide in docs/guide/, bundled as text
+    ...common,
+    entryPoints: { help: 'src/help/help.ts' },
+    outdir: 'dist/help',
+    platform: 'browser',
+    format: 'iife',
+    loader: { '.md': 'text' },
   },
 ];
 
 function copyStatic() {
   cpSync('src/renderer/index.html', 'dist/renderer/index.html');
   cpSync('src/renderer/styles.css', 'dist/renderer/styles.css');
+  cpSync('src/help/help.html', 'dist/help/help.html');
+  cpSync('src/help/help.css', 'dist/help/help.css');
   // Window and taskbar icon on Linux and Windows (macOS takes it from the bundle).
   cpSync('build/icons/512x512.png', 'dist/icon.png');
 }

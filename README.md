@@ -112,6 +112,11 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   (plus an optional M&E mix) for broadcasters and festivals; each track's
   stem is picked in the export dialog and saved with the episode.
 
+The **user guide** explains every feature step by step. In the app it opens
+with **Help › WavePod Help** (`F1`, at the page for the view or dialog you are
+in), with a contents list and full-text search; the pages are also readable
+here in [docs/guide/](docs/guide/README.md).
+
 See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.
 
 ## Getting started
@@ -471,6 +476,11 @@ Pushing a tag like `v0.1.0` runs `.github/workflows/release.yml`, which
 builds a Linux AppImage, a Windows NSIS installer and a macOS DMG and
 attaches them to a GitHub release. Builds are unsigned until signing
 certificates are configured as repository secrets.
+
+The app version comes from the tag: the workflow sets `package.json`'s
+`version` to the tag without its `v` before packaging, so tagging `v0.7.0`
+builds an app whose Help › About shows 0.7.0. There is no need to edit
+`package.json` for a release; the version there only shows in local builds.
 
 ## Third-party components
 
