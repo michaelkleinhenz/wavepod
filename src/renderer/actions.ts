@@ -455,8 +455,9 @@ export async function importChapterFile(): Promise<void> {
 }
 
 /**
- * Imports chapter titles and links without times ("title;link" per line) into the existing
- * chapters, in order. The start times stay.
+ * Imports chapter titles, links and images without times ("title;link;image" per line, link
+ * and image optional) into the existing chapters, in order. The start times stay. Images are
+ * looked up next to the list file and copied into the project.
  */
 export async function importChapterContentFile(): Promise<void> {
   try {
@@ -465,19 +466,34 @@ export async function importChapterContentFile(): Promise<void> {
       toast('Add chapter markers first: the titles and links are filled into the existing chapters in order.', 'error');
       return;
     }
-    const res = await api().openTextFile('Chapter titles and links (title;link per line)', ['txt', 'csv']);
+    const res = await api().openTextFile('Chapter titles, links and images (title;link;image per line)', ['txt', 'csv']);
     if (!res) return;
     const content = parseChapterContent(res.text);
     if (!content.length) {
-      toast('No chapter lines found. Use one "title;link" per line.', 'error');
+      toast('No chapter lines found. Use one "title;link;image" per line.', 'error');
       return;
     }
-    store.edit((p) => applyChapterContent(p, content));
+    let images = 0;
+    const missing: string[] = [];
+    for (const c of content.slice(0, chapters)) {
+      if (!c.image) continue;
+      const rel = await api().importChapterImage(res.path, c.image);
+      if (rel) {
+        c.image = rel;
+        images++;
+      } else {
+        missing.push(c.image);
+        delete c.image;
+      }
+    }
+    store.edit((p) => applyChapterContent(p, content.slice(0, chapters)));
     const used = Math.min(content.length, chapters);
     const notes: string[] = [];
     if (content.length > chapters) notes.push(`${content.length - chapters} line(s) left over: there are only ${chapters} chapters`);
     if (content.length < chapters) notes.push(`${chapters - content.length} chapter(s) at the end kept their text`);
-    toast(`Filled ${used} chapter(s) with titles and links${notes.length ? ` (${notes.join('; ')})` : ''}`, content.length > chapters ? 'error' : 'info');
+    if (missing.length) notes.push(`image(s) not found or not JPEG/PNG next to the list: ${missing.join(', ')}`);
+    const what = images ? `titles, links and ${images} image(s)` : 'titles and links';
+    toast(`Filled ${used} chapter(s) with ${what}${notes.length ? ` (${notes.join('; ')})` : ''}`, content.length > chapters || missing.length ? 'error' : 'info');
   } catch (e) {
     toast(`Could not import chapter titles: ${errorMessage(e)}`, 'error');
   }

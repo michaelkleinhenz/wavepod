@@ -14,9 +14,9 @@ import { removeRegion, updateRegion } from '../core/regions';
 import { thumbnail } from './images';
 
 /** Asks for an image and copies it into the project; null if cancelled or failed (failure is shown). */
-async function chooseImage(title: string): Promise<string | null> {
+async function chooseImage(title: string, kind?: 'chapter'): Promise<string | null> {
   try {
-    return await api().pickImage(title);
+    return await api().pickImage(title, kind);
   } catch (e) {
     toast(errorMessage(e), 'error');
     return null;
@@ -24,9 +24,9 @@ async function chooseImage(title: string): Promise<string | null> {
 }
 
 /** Image picker cell: thumbnail (click to change) and a remove button, or an "Image…" button. */
-export function imagePicker(current: string | undefined, title: string, size: 'small' | 'large', set: (rel: string | undefined) => void): HTMLElement {
+export function imagePicker(current: string | undefined, title: string, size: 'small' | 'large', set: (rel: string | undefined) => void, kind?: 'chapter'): HTMLElement {
   const choose = async () => {
-    const rel = await chooseImage(title);
+    const rel = await chooseImage(title, kind);
     if (rel) set(rel);
   };
   if (!current) return h('button', { class: 'small', title, onclick: () => void choose() }, size === 'large' ? 'Choose image…' : 'Image…');
@@ -101,7 +101,7 @@ export class ChaptersView {
             )
           : null,
         withUrl
-          ? h('td', { class: 'image' }, imagePicker(m.image, 'Chapter image', 'small', (image) => store.edit((p) => updateMarker(p, m.id, { image }))))
+          ? h('td', { class: 'image' }, imagePicker(m.image, 'Chapter image', 'small', (image) => store.edit((p) => updateMarker(p, m.id, { image })), 'chapter'))
           : null,
         h(
           'td',
@@ -137,7 +137,7 @@ export class ChaptersView {
             'button',
             {
               class: 'small',
-              title: 'Fill the existing chapters, in order, from a text file with one "title;link" per line (link optional). Start times stay.',
+              title: 'Fill the existing chapters, in order, from a text file with one "title;link;image" per line (link and image optional; images are loaded from the same folder as the file). Start times stay.',
               disabled: chapters.length === 0,
               onclick: () => void importChapterContentFile(),
             },
