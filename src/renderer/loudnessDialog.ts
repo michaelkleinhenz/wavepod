@@ -98,12 +98,27 @@ export function loudnessTable(reports: LoudnessReport[], target: LoudnessTarget,
 }
 
 /** The figures of one source as tiles, the way Ultraschall's loudness summary lists them. Shared with the export dialog. */
-export function loudnessTiles(s: LoudnessStats, t: LoudnessTarget): HTMLElement {
-  const g = gainToTarget(s, t);
+/**
+ * Loudness figures as tiles. With `exportLimiter` the "To target" tile describes the export,
+ * where a true-peak limiter lets the full gain through instead of stopping at the ceiling.
+ */
+export function loudnessTiles(s: LoudnessStats, t: LoudnessTarget, exportLimiter = false): HTMLElement {
+  const capped = gainToTarget(s, t);
+  const full = Number.isFinite(s.integrated) ? t.lufs - s.integrated : null;
+  const g = exportLimiter ? full : capped;
   const tile = (label: string, value: string, hint: string, state = '', note: string | null = null) =>
     h('div', { class: `lu-tile ${state}`, title: hint }, h('div', { class: 'lu-label' }, label), h('div', { class: 'lu-value' }, value), note ? h('div', { class: 'lu-note' }, note) : null);
   // the true-peak ceiling keeps the gain from reaching the target
-  const limited = g !== null && s.integrated + g < t.lufs - 0.05;
+  const limited = capped !== null && s.integrated + capped < t.lufs - 0.05;
+  const over = full !== null ? s.truePeak + full - t.ceiling : 0;
+  const note = !limited
+    ? null
+    : exportLimiter
+      ? `the export limits the peaks by about ${over.toFixed(1)} dB`
+      : `held back by the true-peak ceiling (reaches ${(s.integrated + capped).toFixed(1)} LUFS)`;
+  const hint = exportLimiter
+    ? `Gain to reach ${t.lufs} LUFS; a true-peak limiter keeps the peaks under ${t.ceiling} dBTP`
+    : `Gain to reach ${t.lufs} LUFS without the true peak going over ${t.ceiling} dBTP`;
   return h(
     'div',
     { class: 'lu-tiles' },
@@ -113,7 +128,7 @@ export function loudnessTiles(s: LoudnessStats, t: LoudnessTarget): HTMLElement 
     tile('Momentary max', fmtLufs(s.momentaryMax), 'Loudest 400-millisecond stretch'),
     tile('True peak', fmtLufs(s.truePeak, 'dBTP'), `Highest peak between samples; ceiling ${t.ceiling} dBTP`, peakState(s, t)),
     tile('Sample peak', fmtLufs(s.samplePeak, 'dBFS'), 'Highest sample value'),
-    tile('To target', g === null ? '—' : fmtGain(g), `Gain to reach ${t.lufs} LUFS without the true peak going over ${t.ceiling} dBTP`, '', limited ? `held back by the true-peak ceiling (reaches ${(s.integrated + g).toFixed(1)} LUFS)` : null),
+    tile('To target', g === null ? '—' : fmtGain(g), hint, '', note),
   );
 }
 

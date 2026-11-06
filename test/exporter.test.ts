@@ -101,4 +101,42 @@ describe('exporter', () => {
     expect(second.live.momentary).toBeLessThan(first.live.momentary - 15);
     expect(second.live.truePeak).toBeCloseTo(first.live.truePeak, 3);
   });
+  it('reaches the target with a limiter when the peaks would hit the ceiling first', () => {
+    // quiet speech-like tone with short loud bursts: gain alone could only add ~1 dB
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    const sr = 44100;
+    const voice = sine(220, 6, sr, 0.03);
+    for (let s = 0; s < 6; s++) for (let i = 0; i < 60; i++) voice[s * sr + i] = 0.9 * Math.sin((2 * Math.PI * 1000 * i) / sr);
+    writeWavFile(path.join(dir, 'media/v.wav'), [voice], sr);
+    let p = createProject('Peaky', sr);
+    p = addTrack(p, { name: 'Host' });
+    p.tracks[0].clips.push({ id: 'v', file: 'media/v.wav', start: 0, offset: 0, length: 6 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    const before = measureLoudness(p, dir);
+    expect(before.truePeak + (-16 - before.integrated)).toBeGreaterThan(5);
+
+    const res = exportProject(p, dir, {
+      outputBase: path.join(dir, 'export', 'peaky'),
+      formats: ['wav'],
+      mp3Bitrate: 128,
+      normalize: true,
+      targetLufs: -16,
+      peakCeiling: -1,
+      stems: false,
+      chapterFiles: false,
+    });
+    expect(res.limiterReductionDb).toBeLessThan(-3);
+    const { info, channels } = readWavFile(path.join(dir, 'export/peaky.wav'));
+    // the limiter's delay is taken out again: same length, same timing
+    expect(info.frames).toBe(6 * sr);
+    const m = new LoudnessMeter(sr, 2);
+    m.push(channels);
+    expect(m.integrated()).toBeCloseTo(-16, 0);
+    expect(Math.abs(m.integrated() - -16)).toBeLessThan(0.2);
+    expect(m.truePeakDb()).toBeLessThanOrEqual(-1 + 0.05);
+    expect(res.outputLoudness).toBeCloseTo(m.integrated(), 1);
+    // the tone between the bursts is only turned up, not limited
+    const g = channels[0][3 * sr + 30000] / voice[3 * sr + 30000];
+    expect(20 * Math.log10(g)).toBeCloseTo(res.appliedGainDb, 1);
+  });
 });

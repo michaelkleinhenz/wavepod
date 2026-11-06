@@ -56,9 +56,9 @@ class BiquadState {
  * an inter-sample peak more than 12 dB above both neighbouring samples does
  * not occur in band-limited audio.
  */
-const TP_TAPS = 12;
+export const TP_TAPS = 12;
 const TP_PHASES = 4;
-const TP_COEFFS: Float64Array[] = (() => {
+export const TP_COEFFS: Float64Array[] = (() => {
   const half = TP_TAPS / 2;
   const phases: Float64Array[] = [];
   for (let p = 1; p < TP_PHASES; p++) {

@@ -12,6 +12,7 @@ import { markersToChapters } from './project';
 import { WavWriter } from './wav';
 import { FlacWriter } from './flac';
 import { OpusWriter } from './opus';
+import { TruePeakLimiter } from './truePeakLimiter';
 
 const BLOCK = 4096;
 /** Width of the export waveform in columns, whatever the length of the export. */
@@ -153,6 +154,32 @@ function exportChapterImages(chapters: Id3Chapter[], projectDir: string, outputB
   });
 }
 
+/** The export limiter holds true peaks a hair under the ceiling, so rounding and the meter's own estimate stay below it. */
+function makeLimiter(sampleRate: number, ceilingDb: number): TruePeakLimiter {
+  return new TruePeakLimiter(sampleRate, dbToGain(ceilingDb - 0.05));
+}
+
+/** Passes over the mix that may be spent getting the limited loudness onto the target. */
+const MAX_FIT_PASSES = 3;
+const FIT_TOLERANCE_LU = 0.1;
+
+/** Integrated loudness of the mix with `gainDb` applied and its peaks limited at `ceilingDb`. */
+function limitedLoudness(mixer: Mixer, start: number, end: number, sampleRate: number, gainDb: number, ceilingDb: number, onProgress: (f: number) => void): number {
+  const meter = new LoudnessMeter(sampleRate, 2);
+  const lim = makeLimiter(sampleRate, ceilingDb);
+  const out = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+  const g = dbToGain(gainDb);
+  renderRange(mixer, start, end, null, (b, n) => {
+    for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) b[c][i] *= g;
+    lim.process(b[0], b[1], n, out[0], out[1]);
+    meter.push(out, n);
+  }, onProgress);
+  const tail = [new Float32Array(lim.latency), new Float32Array(lim.latency)];
+  lim.flush(tail[0], tail[1]);
+  meter.push(tail, lim.latency);
+  return meter.integrated();
+}
+
 export function exportProject(project: Project, projectDir: string, opts: ExportOptions, progress: ProgressFn = () => {}): ExportResult {
   const readers = new ReaderCache(projectDir);
   const files: string[] = [];
@@ -174,8 +201,30 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     const loudness = meter.integrated();
     const peakDb = meter.peakDb();
     // The ceiling is in dBTP, like the loudness analysis: the peaks between samples count too.
-    const appliedGainDb = opts.normalize ? normalizationGain(loudness, meter.truePeakDb(), opts.targetLufs, opts.peakCeiling) : 0;
+    // Gain alone stops where the loudest peak meets the ceiling, which for speech is often well
+    // short of the target; a true-peak limiter then holds the peaks so the target is reached.
+    let appliedGainDb = 0;
+    let limiting = false;
+    if (opts.normalize && Number.isFinite(loudness)) {
+      appliedGainDb = opts.targetLufs - loudness;
+      limiting = meter.truePeakDb() + appliedGainDb > opts.peakCeiling;
+      if (limiting && mixFiles) {
+        // limiting takes a little loudness off: measure the limited mix and make up for it,
+        // again if the make-up gain itself got limited enough to miss
+        for (let pass = 1; pass <= MAX_FIT_PASSES; pass++) {
+          const reached = limitedLoudness(mixer, start, end, project.sampleRate, appliedGainDb, opts.peakCeiling, (f) =>
+            progress({ phase: pass === 1 ? 'Fitting the limiter' : `Fitting the limiter (${pass})`, fraction: f }),
+          );
+          const short = opts.targetLufs - reached;
+          if (!Number.isFinite(short) || Math.abs(short) <= FIT_TOLERANCE_LU) break;
+          appliedGainDb += Math.max(-6, Math.min(short, 6));
+        }
+      }
+    } else if (opts.normalize) {
+      appliedGainDb = normalizationGain(loudness, meter.truePeakDb(), opts.targetLufs, opts.peakCeiling);
+    }
     const gain = dbToGain(appliedGainDb);
+    const limiter = limiting ? makeLimiter(project.sampleRate, opts.peakCeiling) : null;
 
     // Pass 2: write outputs.
     const wav = opts.formats.includes('wav') ? new WavWriter(`${opts.outputBase}.wav`, 2, project.sampleRate, 24, 1 << 20) : null;
@@ -226,24 +275,43 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     const scaled = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     // waveform and loudness of the audio as written (after normalisation)
     const renderTap = new LiveTap(end - start, new LoudnessMeter(project.sampleRate, 2));
-    if (mixFiles) renderRange(
-      mixer,
-      start,
-      end,
-      null,
-      (b, n) => {
-        for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) scaled[c][i] = b[c][i] * gain;
-        renderTap.push(scaled, n);
-        if (wav) wav.write(scaled, n);
-        if (flac) flac.write(scaled, n);
-        if (opus) opus.write(scaled, n);
-        if (encoder && mp3Fd !== null) {
-          const data = encoder.encodeBuffer(toInt16(b[0], n, gain, l16).subarray(0, n), toInt16(b[1], n, gain, r16).subarray(0, n));
-          if (data.length) fs.writeSync(mp3Fd, data);
-        }
-      },
-      (f) => progress({ phase: 'Rendering mix', fraction: f, ...renderTap.take() }),
-    );
+    const emit = (out: Float32Array[], n: number): void => {
+      if (n <= 0) return;
+      renderTap.push(out, n);
+      if (wav) wav.write(out, n);
+      if (flac) flac.write(out, n);
+      if (opus) opus.write(out, n);
+      if (encoder && mp3Fd !== null) {
+        const data = encoder.encodeBuffer(toInt16(out[0], n, 1, l16).subarray(0, n), toInt16(out[1], n, 1, r16).subarray(0, n));
+        if (data.length) fs.writeSync(mp3Fd, data);
+      }
+    };
+    // the limiter's output lags its input; the first frames out are its delay, the last come from flush()
+    let skip = limiter ? limiter.latency : 0;
+    const limited = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    if (mixFiles) {
+      renderRange(
+        mixer,
+        start,
+        end,
+        null,
+        (b, n) => {
+          for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) scaled[c][i] = b[c][i] * gain;
+          if (!limiter) return emit(scaled, n);
+          limiter.process(scaled[0], scaled[1], n, limited[0], limited[1]);
+          const drop = Math.min(skip, n);
+          skip -= drop;
+          emit([limited[0].subarray(drop), limited[1].subarray(drop)], n - drop);
+        },
+        (f) => progress({ phase: 'Rendering mix', fraction: f, ...renderTap.take() }),
+      );
+      if (limiter) {
+        const tail = [new Float32Array(limiter.latency), new Float32Array(limiter.latency)];
+        limiter.flush(tail[0], tail[1]);
+        // what is still to skip here is left over from a render shorter than the delay
+        emit([tail[0].subarray(skip), tail[1].subarray(skip)], limiter.latency - skip);
+      }
+    }
     if (wav) {
       wav.close();
       files.push(wav.path);
@@ -289,7 +357,15 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     }
 
     progress({ phase: 'Done', fraction: 1 });
-    return { files, loudness, peakDb, appliedGainDb };
+    const written = renderTap.meter;
+    return {
+      files,
+      loudness,
+      peakDb,
+      appliedGainDb,
+      ...(mixFiles ? { outputLoudness: written.integrated(), outputTruePeakDb: written.truePeakDb() } : {}),
+      limiterReductionDb: limiter ? limiter.maxReductionDb : 0,
+    };
   } finally {
     mixer.dispose();
     readers.closeAll();
