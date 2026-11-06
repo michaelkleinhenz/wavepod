@@ -86,7 +86,7 @@ function sfxTrackId(): string | null {
  * Inserts a library sound: at `at` (default: the playhead) on `trackId` (null: a new track named
  * after the sound; undefined: the panel's chosen target). With `fill`, the sound repeats over that range.
  */
-export async function insertLibrarySound(rel: string, opts: { at?: number; trackId?: string | null; fill?: [number, number] } = {}): Promise<void> {
+export async function insertLibrarySound(rel: string, opts: { at?: number; trackId?: string | null; fill?: [number, number]; folderId?: string } = {}): Promise<void> {
   const title = libraryTitle(rel);
   try {
     const media = await importLibraryFile(rel);
@@ -100,8 +100,8 @@ export async function insertLibrarySound(rel: string, opts: { at?: number; track
       if (!id && target === SFX_TARGET) id = q.tracks.find((t) => t.name === SFX_TRACK_NAME && t.kind !== 'soundboard')?.id ?? null;
       if (!id) {
         created = target === SFX_TARGET ? SFX_TRACK_NAME : title;
-        q = addTrack(q, { name: created });
-        id = q.tracks[q.tracks.length - 1].id;
+        id = uid('trk');
+        q = addTrack(q, { id, name: created, ...(opts.folderId ? { folderId: opts.folderId } : {}) });
       }
       target = id;
       const clips: Clip[] = opts.fill

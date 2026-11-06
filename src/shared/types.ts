@@ -82,6 +82,24 @@ export interface Track {
   automix?: { enabled: boolean; depth: number };
   /** ElevenLabs voice for speech synthesis (experimental): cloned from this track, or chosen. */
   voice?: TrackVoice;
+  /** The track folder (group) this track belongs to; its members sit next to each other in the track list. */
+  folderId?: string;
+}
+
+/**
+ * A group of tracks (e.g. Dialogue, SFX, Atmo, Music) with its own mute, solo and volume that act on
+ * every track in it. Folders are not buses: the tracks still mix straight into the master.
+ */
+export interface TrackFolder {
+  id: string;
+  name: string;
+  color: string;
+  mute: boolean;
+  solo: boolean;
+  /** Group volume in dB, added to each member's track gain. */
+  gain: number;
+  /** Members hidden in the timeline; the folder row stands in for them. */
+  collapsed?: boolean;
 }
 
 export interface TrackVoice {
@@ -234,6 +252,8 @@ export interface Project {
   /** Named time spans that can be exported as separate files. */
   regions?: Region[];
   tracks: Track[];
+  /** Track folders, in the order they were made; members are found by Track.folderId. */
+  folders?: TrackFolder[];
   markers: Marker[];
   soundboard: SoundboardSlot[];
   metadata: EpisodeMetadata;

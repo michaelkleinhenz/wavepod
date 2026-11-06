@@ -721,7 +721,8 @@ function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, t
  * Files dropped on the timeline: onto a track at the drop position (several files one after the
  * other), or below the tracks as one new track per file. All of it is one undo step.
  */
-export async function importDroppedFiles(files: File[], at: number, trackId: string | null): Promise<void> {
+/** `folderId`: new tracks go into this track folder (files dropped on a folder row). */
+export async function importDroppedFiles(files: File[], at: number, trackId: string | null, folderId?: string): Promise<void> {
   const sr = store.sampleRate;
   const imported: { name: string; file: string; length: number }[] = [];
   for (const file of files) {
@@ -744,8 +745,8 @@ export async function importDroppedFiles(files: File[], at: number, trackId: str
     for (const f of imported) {
       let id = target;
       if (!id) {
-        q = addTrack(q, { name: f.name.replace(/\.[^.]+$/, '') });
-        id = q.tracks[q.tracks.length - 1].id;
+        id = uid('trk');
+        q = addTrack(q, { id, name: f.name.replace(/\.[^.]+$/, ''), ...(folderId ? { folderId } : {}) });
       }
       const clipId = uid('clp');
       ids.push(clipId);
