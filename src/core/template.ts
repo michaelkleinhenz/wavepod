@@ -1,5 +1,5 @@
 // Project templates: a project's setup (tracks, input channels, filter stacks, soundboard) without any recorded material.
-import type { BitDepth, EpisodeMetadata, Fx, Project, SoundboardSlot, Track } from '../shared/types';
+import type { BitDepth, EpisodeMetadata, Fx, Project, SoundboardSlot, Track, TrackFolder } from '../shared/types';
 import { uid } from '../shared/time';
 import { createProject, normalizeProject } from './project';
 
@@ -17,6 +17,8 @@ export interface ProjectTemplate {
   masterGain: number;
   masterFx: Fx[];
   tracks: TemplateTrack[];
+  /** Track folders (Dialogue, SFX, …) the tracks are grouped in. */
+  folders?: TrackFolder[];
   /** Slot files are relative to the template folder ("sounds/…") or absolute. */
   soundboard: SoundboardSlot[];
   /** Show-level metadata that stays the same from episode to episode. */
@@ -54,6 +56,7 @@ export function projectToTemplate(project: Project, name: string, inputDevice?: 
       const { clips: _c, muteRegions: _m, automation: _a, envelope: _e, showEnvelope: _s, ...rest } = t as Track & { envelope?: unknown; showEnvelope?: unknown };
       return { ...rest, solo: false };
     }),
+    ...(p.folders?.length ? { folders: p.folders.map((f) => ({ ...f, solo: false })) } : {}),
     soundboard: p.soundboard,
     metadata: {
       podcast: p.metadata.podcast,
@@ -72,6 +75,7 @@ export function normalizeTemplate(raw: Partial<ProjectTemplate>, fallbackName = 
     masterGain: raw.masterGain,
     masterFx: raw.masterFx,
     tracks: (Array.isArray(raw.tracks) ? raw.tracks : []).map((t) => ({ ...t, clips: [] }) as Track),
+    folders: Array.isArray(raw.folders) ? raw.folders : undefined,
     soundboard: Array.isArray(raw.soundboard) ? raw.soundboard : [],
   });
   const t = projectToTemplate(p, typeof raw.name === 'string' && raw.name.trim() ? raw.name : fallbackName, raw.inputDevice);
@@ -100,6 +104,7 @@ export function projectFromTemplate(template: ProjectTemplate, name: string, sam
     masterGain: t.masterGain,
     masterFx: freshFx(t.masterFx),
     tracks: t.tracks.map((tr) => ({ ...tr, fx: freshFx(tr.fx), clips: [] })),
+    ...(t.folders?.length ? { folders: t.folders } : {}),
     soundboard: t.soundboard,
     metadata: {
       ...base.metadata,

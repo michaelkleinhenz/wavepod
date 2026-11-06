@@ -7,6 +7,7 @@ import { normalizeFx } from './fx/definitions';
 import { insertIntoRegionList, normalizeRegions, rippleDeleteRegions } from './regions';
 import { migrateTrackEnvelope, sortPoints } from './envelope';
 import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
+import { audibleTracks, groupFolderTracks, normalizeFolders } from './folders';
 
 function normalizeFxList(list: unknown): Fx[] {
   return Array.isArray(list) ? list.map((f) => normalizeFx(f as Partial<Fx>)).filter((f): f is Fx => !!f) : [];
@@ -28,10 +29,7 @@ export function createProject(name = 'Untitled episode', sampleRate = 48000): Pr
   };
 }
 
-export function audibleTracks(project: Project): Track[] {
-  const anySolo = project.tracks.some((t) => t.solo);
-  return project.tracks.filter((t) => !t.mute && (!anySolo || t.solo));
-}
+export { audibleTracks };
 
 /** Length of the project in frames (end of the last clip or marker). */
 /** Where the last clip on the timeline ends (playback stops there). */
@@ -74,6 +72,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     ...(t.duck ? { duck: { enabled: !!t.duck.enabled, depth: Number.isFinite(t.duck.depth) ? Math.min(40, Math.max(1, Math.abs(t.duck.depth))) : 12 } } : {}),
     ...(t.automix ? { automix: { enabled: !!t.automix.enabled, depth: Number.isFinite(t.automix.depth) ? Math.min(60, Math.max(1, Math.abs(t.automix.depth))) : 18 } } : {}),
     ...(t.voice && typeof t.voice.id === 'string' && t.voice.id ? { voice: { id: t.voice.id, name: String(t.voice.name ?? ''), ...(t.voice.cloned ? { cloned: true } : {}) } } : {}),
+    ...(typeof t.folderId === 'string' && t.folderId ? { folderId: t.folderId } : {}),
     clips: (t.clips ?? []).map((c) => ({
       ...c,
       gain: c.gain ?? 0,
@@ -93,6 +92,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
   p.soundboard = p.soundboard ?? [];
   p.masterFx = normalizeFxList(p.masterFx);
   if (raw.regions !== undefined) p.regions = normalizeRegions(raw.regions);
+  normalizeFolders(p);
   return p;
 }
 
@@ -112,6 +112,8 @@ export function addTrack(project: Project, opts: Partial<Track> = {}): Project {
     clips: [],
     ...opts,
   });
+  // a track made inside a folder joins the end of it
+  if (opts.folderId) p.tracks = groupFolderTracks(p.tracks);
   return p;
 }
 

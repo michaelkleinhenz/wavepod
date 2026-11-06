@@ -33,6 +33,16 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   track's pan (the header shows `lane`) while it has points. Ripple cuts and
   ripple moves take the points along. Each track's pan can also be set in its
   header (click the value to type `L 40`, `C` or `R 25`).
+- **Track folders** for big productions such as audio dramas (the folder
+  button in the toolbar, or right-click a track header › Move to folder):
+  group tracks into Dialogue, SFX, Atmo, Music or any folder you name. A
+  folder's row has one mute, solo and group volume for all its tracks (the
+  volume is added to each track's own gain) and a meter showing the loudest
+  of them. Fold a folder to hide its tracks; its row still shows where they
+  have clips, and a time selection over it covers all of them. Files dropped
+  on a folder's row land on a new track in that folder. Folders are kept in
+  templates. MCP tools: `create_folder`, `move_tracks_to_folder`,
+  `update_folder`, `remove_folder`.
 - **Tape-style scrubbing**: drag the playhead and you hear the timeline at
   the speed and in the direction you move it, pitch and all, also while
   stopped. Held still, it falls silent; let go and playback (if it was
