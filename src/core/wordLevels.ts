@@ -4,6 +4,7 @@
 // when another track is much louder at the same moment (it's that speaker, heard through this
 // mic) or when it is quieter than a set level.
 import type { FileTranscript, Frames, Project, TimelineWord, TranscriptLevels } from '../shared/types';
+import { bareWord } from './transcript';
 
 /** One level value per this many seconds. */
 export const LEVEL_STEP_S = 0.02;
@@ -22,7 +23,14 @@ export interface WordFilter {
   crosstalkDb: number;
   /** Leave a word out when its own level stays below this (dBFS, 0 = off). */
   minLevelDb: number;
+  /** Leave a word out when another track has the same word at the same time, louder (an echo of that speaker). */
+  matchWords?: boolean;
 }
+
+/** How far apart (seconds) the same word on two tracks may be timed and still count as one. */
+const MATCH_WINDOW_S = 0.5;
+/** A word between two echoes counts as one too if the gaps to them are at most this long (seconds). */
+const ECHO_RUN_GAP_S = 1.5;
 
 /**
  * The level curve of a mono signal (e.g. the 16 kHz speech audio sent for transcription):
@@ -95,9 +103,15 @@ export function peakLevel(l: TranscriptLevels, from: number, to: number): number
 }
 
 /**
- * Leaves out the words that are crosstalk or too quiet. A word is crosstalk when, during it,
- * another speech track (with its clip and track gain) peaks `crosstalkDb` or more above this
- * track. Words of files without a level curve are always kept.
+ * Leaves out the words that are crosstalk or too quiet:
+ * - level: during the word another speech track (with its clip and track gain) peaks
+ *   `crosstalkDb` or more above this track;
+ * - echo (`matchWords`): another track has the same word at about the same time and is louder
+ *   there. Bleed is transcribed as a quieter copy of what the speaker said, so this catches it
+ *   even when the mics are close and the bleed is only a few dB down. A word the speech-to-text
+ *   heard a bit differently is caught when it sits between two such echoes and the other
+ *   track is louder during it.
+ * Words of files without a level curve are always kept.
  */
 export function filterQuietWords(
   project: Project,
@@ -105,7 +119,7 @@ export function filterQuietWords(
   words: TimelineWord[],
   filter: WordFilter | null | undefined,
 ): { words: TimelineWord[]; hidden: number } {
-  if (!filter || (!(filter.crosstalkDb > 0) && !(filter.minLevelDb < 0))) return { words, hidden: 0 };
+  if (!filter || (!(filter.crosstalkDb > 0) && !(filter.minLevelDb < 0) && !filter.matchWords)) return { words, hidden: 0 };
   const get = (file: string) => (transcripts instanceof Map ? transcripts.get(file) : (transcripts as Record<string, FileTranscript>)[file]);
   const speech = project.tracks.filter((t) => t.kind !== 'soundboard');
   // per track: its clips in time order, with what's needed to read their level
@@ -133,26 +147,80 @@ export function filterQuietWords(
     }
     return best;
   };
-  const out: TimelineWord[] = [];
-  for (const w of words) {
+  const n = words.length;
+  /** The word's level on its own track, and the loudest other track's level during it. */
+  const own = new Float64Array(n);
+  const other = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const w = words[i];
     const lane = byId.get(w.trackId);
-    const own = lane ? laneLevel(lane, w.start, w.end, w.clipId) : -Infinity;
-    // no level curve for this word (older transcript, synthesized words): keep it
-    if (own === -Infinity) {
-      out.push(w);
-      continue;
-    }
-    // the threshold looks at the file's own level, before any gain
-    const clipGain = lane!.clips.find((x) => x.c.id === w.clipId)?.gain ?? 0;
-    if (filter.minLevelDb < 0 && own - clipGain < filter.minLevelDb) continue;
-    if (filter.crosstalkDb > 0) {
-      let other = -Infinity;
-      for (const l of lanes) if (l !== lane) other = Math.max(other, laneLevel(l, w.start, w.end));
-      if (other - own >= filter.crosstalkDb) continue;
-    }
-    out.push(w);
+    own[i] = lane ? laneLevel(lane, w.start, w.end, w.clipId) : -Infinity;
+    let o = -Infinity;
+    if (own[i] !== -Infinity) for (const l of lanes) if (l !== lane) o = Math.max(o, laneLevel(l, w.start, w.end));
+    other[i] = o;
   }
-  return { words: out, hidden: words.length - out.length };
+  const drop = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    // no level curve for this word (older transcript, synthesized words): keep it
+    if (own[i] === -Infinity) continue;
+    const w = words[i];
+    // the threshold looks at the file's own level, before any gain
+    const clipGain = byId.get(w.trackId)!.clips.find((x) => x.c.id === w.clipId)?.gain ?? 0;
+    if (filter.minLevelDb < 0 && own[i] - clipGain < filter.minLevelDb) drop[i] = 1;
+    else if (filter.crosstalkDb > 0 && other[i] - own[i] >= filter.crosstalkDb) drop[i] = 1;
+  }
+  if (filter.matchWords) {
+    const sr = project.sampleRate;
+    const win = MATCH_WINDOW_S * sr;
+    const bare = words.map((w) => bareWord(w.text));
+    const echo = new Uint8Array(n);
+    // words are sorted by start, so the candidates of a word are close to it in the list
+    for (let i = 0; i < n; i++) {
+      if (own[i] === -Infinity || !bare[i]) continue;
+      const w = words[i];
+      const mid = (w.start + w.end) / 2;
+      for (let j = i - 1; j >= 0 && words[j].start >= w.start - win - sr * 2; j--) if (isEcho(i, j)) echo[i] = 1;
+      for (let j = i + 1; !echo[i] && j < n && words[j].start <= w.end + win; j++) if (isEcho(i, j)) echo[i] = 1;
+      function isEcho(a: number, b: number): boolean {
+        const u = words[b];
+        if (u.trackId === w.trackId || own[b] <= own[a] || Math.abs((u.start + u.end) / 2 - mid) > win) return false;
+        return sameWord(bare[a], bare[b]);
+      }
+    }
+    // words heard a bit differently in a run of echoes: between two echoes, other track louder
+    const lastEcho = new Map<string, number>();
+    const prevEcho = new Int32Array(n).fill(-1);
+    for (let i = 0; i < n; i++) {
+      prevEcho[i] = lastEcho.get(words[i].trackId) ?? -1;
+      if (echo[i]) lastEcho.set(words[i].trackId, i);
+    }
+    const nextEcho = new Int32Array(n).fill(-1);
+    lastEcho.clear();
+    for (let i = n - 1; i >= 0; i--) {
+      nextEcho[i] = lastEcho.get(words[i].trackId) ?? -1;
+      if (echo[i]) lastEcho.set(words[i].trackId, i);
+    }
+    const gap = ECHO_RUN_GAP_S * sr;
+    for (let i = 0; i < n; i++) {
+      if (echo[i]) drop[i] = 1;
+      else if (own[i] !== -Infinity && other[i] > own[i] && prevEcho[i] >= 0 && nextEcho[i] >= 0) {
+        if (words[i].start - words[prevEcho[i]].end <= gap && words[nextEcho[i]].start - words[i].end <= gap) drop[i] = 1;
+      }
+    }
+  }
+  const out = words.filter((_, i) => !drop[i]);
+  return { words: out, hidden: n - out.length };
+}
+
+/** The same word, allowing one letter off in longer words ("okay"/"okey", "genau"/"genauu"). */
+export function sameWord(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.min(a.length, b.length) < 4 || Math.abs(a.length - b.length) > 1) return false;
+  // at most one edit
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+  return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
