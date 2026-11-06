@@ -6,6 +6,7 @@ import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
 import { normalizeFx } from './fx/definitions';
 import { insertIntoRegionList, normalizeRegions, rippleDeleteRegions } from './regions';
 import { migrateTrackEnvelope, sortPoints } from './envelope';
+import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
 
 function normalizeFxList(list: unknown): Fx[] {
   return Array.isArray(list) ? list.map((f) => normalizeFx(f as Partial<Fx>)).filter((f): f is Fx => !!f) : [];
@@ -66,7 +67,8 @@ export function normalizeProject(raw: Partial<Project>): Project {
     mute: !!t.mute,
     solo: !!t.solo,
     gain: t.gain ?? 0,
-    pan: t.pan ?? 0,
+    pan: Number.isFinite(t.pan) ? Math.max(-1, Math.min(1, t.pan)) : 0,
+    ...(normalizeAutomation(t.automation) ? { automation: normalizeAutomation(t.automation) } : {}),
     muteRegions: mergeRegions(t.muteRegions ?? []),
     fx: normalizeFxList(t.fx),
     ...(t.duck ? { duck: { enabled: !!t.duck.enabled, depth: Number.isFinite(t.duck.depth) ? Math.min(40, Math.max(1, Math.abs(t.duck.depth))) : 12 } } : {}),
@@ -226,6 +228,7 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
       .filter((c) => !(c.start >= start && c.start + c.length <= end))
       .map((c) => (c.start >= end ? { ...c, start: c.start - len } : c));
     if (t.muteRegions?.length) t.muteRegions = rippleRegions(t.muteRegions, start, end);
+    mapTrackAutomation(t, (pts) => shiftAutomation(pts, end, -len));
   }
   if (p.regions?.length) p.regions = rippleDeleteRegions(p.regions, start, end);
   p.markers = p.markers
@@ -241,6 +244,7 @@ export function insertSilence(project: Project, position: number, length: number
   for (const t of p.tracks) {
     for (const c of t.clips) if (c.start >= position) c.start += length;
     if (t.muteRegions?.length) t.muteRegions = insertIntoRegions(t.muteRegions, position, length);
+    mapTrackAutomation(t, (pts) => shiftAutomation(pts, position, length));
   }
   for (const m of p.markers) if (m.position >= position) m.position += length;
   if (p.regions?.length) p.regions = insertIntoRegionList(p.regions, position, length);

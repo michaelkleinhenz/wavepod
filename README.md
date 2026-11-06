@@ -25,6 +25,14 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   double-click to add points, drag points or the line up and down; the
   waveform shows the result. `Ctrl+Y` silences the selected range on the
   tracks it was dragged across.
+- **Pan and volume automation** per track (the `Auto` button in the track
+  header): show the volume or pan lane on the track, double-click to add
+  breakpoints and drag them, e.g. to walk a voice from left to right or to
+  bring the music bed down under a scene. Volume automation works on top of
+  the track gain, after the track's filters; pan automation replaces the
+  track's pan (the header shows `lane`) while it has points. Ripple cuts and
+  ripple moves take the points along. Each track's pan can also be set in its
+  header (click the value to type `L 40`, `C` or `R 25`).
 - **Tape-style scrubbing**: drag the playhead and you hear the timeline at
   the speed and in the direction you move it, pitch and all, also while
   stopped. Held still, it falls silent; let go and playback (if it was
@@ -75,7 +83,7 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   filter stacks including Master FX and VST3 settings, soundboard jingles)
   with File › Save as Template…, and start the next episode from it with
   File › New Episode from Template… (`Shift+Ctrl+N`) or the Setup view.
-  No recordings, markers or volume lines are stored in a template.
+  No recordings, markers, volume lines or automation are stored in a template.
 - **Loudness**: EBU R128 analysis of the mix, every track or selected clips
   (Loudness… in the toolbar, `Shift+Ctrl+L`) with the figures Ultraschall
   shows: integrated, loudness range (LRA), short-term and momentary maximum,

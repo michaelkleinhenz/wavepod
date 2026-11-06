@@ -45,8 +45,10 @@ export interface Track {
   solo: boolean;
   /** Track gain in dB. */
   gain: number;
-  /** -1 (left) .. 1 (right); used for mono tracks. */
+  /** -1 (left) .. 1 (right); pan law for mono material, balance for stereo. */
   pan: number;
+  /** Volume and pan automation over the timeline; `shown` is the lane drawn on the track's row. */
+  automation?: TrackAutomation;
   clips: Clip[];
   /** Cough-button mutes: [start, end) in timeline frames, sorted, non-overlapping. */
   muteRegions?: MuteRegion[];
@@ -65,6 +67,22 @@ export interface TrackVoice {
   name: string;
   /** Made by WavePod from this track's own audio (may be deleted from the account again). */
   cloned?: boolean;
+}
+
+export type AutomationLane = 'volume' | 'pan';
+
+/** One breakpoint of a track automation lane. */
+export interface AutomationPoint {
+  /** Timeline frame. */
+  pos: Frames;
+  /** Volume: dB (-60 is silent, up to +6), relative to the track gain. Pan: -1 (left) .. 1 (right). */
+  value: number;
+}
+
+export interface TrackAutomation {
+  volume?: AutomationPoint[];
+  pan?: AutomationPoint[];
+  shown?: AutomationLane;
 }
 
 /** One point of a clip's volume line. */

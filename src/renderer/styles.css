@@ -240,6 +240,15 @@ body.scrubbing, body.scrubbing * { cursor: ew-resize !important; }
 .input-select { flex: 1; min-width: 0; padding: 2px 4px; font-size: 12px; }
 .gain-label { font-size: 11px; color: var(--muted); width: 54px; font-variant-numeric: tabular-nums; }
 .gain { width: 64px; padding: 0; }
+.pan-label { font-size: 11px; color: var(--muted); width: 34px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.pan-label.automated { color: #82b1ff; }
+.pan { width: 52px; flex: none; padding: 0; }
+.pan:disabled { opacity: 0.4; }
+.th-row .th-hint { flex: 1; min-width: 0; display: flex; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.auto-btn { flex: none; min-width: 34px; }
+.auto-btn.active { color: #ffcc80; border-color: #6d5432; }
+.auto-btn.open.lane-volume { background: rgba(255, 183, 77, 0.18); color: #ffcc80; border-color: #ffb74d; }
+.auto-btn.open.lane-pan { background: rgba(130, 177, 255, 0.18); color: #bbdefb; border-color: #82b1ff; }
 .empty-tracks { padding: 20px 14px; width: 290px; }
 .hscroll-row { display: flex; background: var(--panel); border-top: 1px solid var(--border); }
 .overview { display: block; cursor: pointer; }

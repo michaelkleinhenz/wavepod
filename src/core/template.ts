@@ -4,7 +4,7 @@ import { uid } from '../shared/time';
 import { createProject, normalizeProject } from './project';
 
 /** A track as a template keeps it: everything except its clips (with their volume lines) and mute regions. */
-export type TemplateTrack = Omit<Track, 'clips' | 'muteRegions'>;
+export type TemplateTrack = Omit<Track, 'clips' | 'muteRegions' | 'automation'>;
 
 export interface ProjectTemplate {
   version: 1;
@@ -51,7 +51,7 @@ export function projectToTemplate(project: Project, name: string, inputDevice?: 
     masterFx: p.masterFx ?? [],
     tracks: p.tracks.map((t) => {
       // envelope/showEnvelope: per-track volume lines of an early version, now per clip
-      const { clips: _c, muteRegions: _m, envelope: _e, showEnvelope: _s, ...rest } = t as Track & { envelope?: unknown; showEnvelope?: unknown };
+      const { clips: _c, muteRegions: _m, automation: _a, envelope: _e, showEnvelope: _s, ...rest } = t as Track & { envelope?: unknown; showEnvelope?: unknown };
       return { ...rest, solo: false };
     }),
     soundboard: p.soundboard,

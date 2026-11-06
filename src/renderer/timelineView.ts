@@ -1,7 +1,9 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import { LevelMeter } from './levelMeter';
 import { clipsInRect, selectionSpan } from '../core/navigation';
-import type { Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
+import type { AutomationLane, AutomationPoint, Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
+import { addAutomationPoint, automationValueAt, formatPan, parsePan, setTrackAutomation, showTrackAutomation } from '../core/automation';
+import { showContextMenu } from './contextMenu';
 import { dbToGain, formatTick, formatTimestamp } from '../shared/time';
 import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
 import { fitText, layoutMarkerLabels, type LabelLayout } from '../core/markerLabels';
@@ -21,7 +23,7 @@ import { edgeScrollSpeed } from '../core/edgeScroll';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
 import { openClipMenu } from './clipMenu';
-import { editableNumber, isEditingValue } from './valueEdit';
+import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform } from './waveform';
 
 /** Where a clip is drawn: its (possibly dragged or trimmed) place on the timeline. */
@@ -76,6 +78,11 @@ const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
 /** The clip's filter button, right of the volume-line toggle. */
 const FX_BTN = { x: VOL_BTN.x + VOL_BTN.w + 4, y: VOL_BTN.y, w: 28, h: VOL_BTN.h };
 const clipFxCount = (clip: Clip) => clip.fx?.filter((f) => f.enabled).length ?? 0;
+/** Colours of the track automation lanes (the clip volume line is green). */
+const LANE_COLOR: Record<AutomationLane, string> = { volume: '#ffb74d', pan: '#82b1ff' };
+const LANE_NAME: Record<AutomationLane, string> = { volume: 'Volume', pan: 'Pan' };
+/** The lane shown on a track's row, if any. */
+const shownLane = (t: Track | undefined): AutomationLane | null => t?.automation?.shown ?? null;
 
 type Drag =
   | { kind: 'clip'; clipId: string; ids: Set<string>; startX: number; startY: number; delta: number; dTrack: number; minDTrack: number; maxDTrack: number; moved: boolean; ripple?: RippleSet; clickFrame: number }
@@ -85,6 +92,9 @@ type Drag =
   | { kind: 'rangeEdge'; fixed: number; current: number; tracks: string[] | null; moved: boolean }
   | { kind: 'envPoint'; clipId: string; ti: number; index: number; orig: EnvelopePoint[]; moved: boolean }
   | { kind: 'envLine'; clipId: string; ti: number; indices: number[]; orig: EnvelopePoint[]; startY: number; moved: boolean }
+  // track automation (volume or pan lane shown on the track's row)
+  | { kind: 'autoPoint'; trackId: string; lane: AutomationLane; ti: number; index: number; orig: AutomationPoint[]; moved: boolean }
+  | { kind: 'autoLine'; trackId: string; lane: AutomationLane; ti: number; indices: number[]; orig: AutomationPoint[]; startY: number; moved: boolean }
   | { kind: 'marker'; markerId: string; startX: number; origPos: number; dx: number; moved: boolean }
   | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean }
   | { kind: 'playhead'; startX: number; grabOffset: number; current: number; moved: boolean }
@@ -92,7 +102,7 @@ type Drag =
   | { kind: 'marquee'; startX: number; startY: number; a: number; b: number; y0: number; y1: number; clipId: string | null; ids: Set<string>; moved: boolean };
 
 /** Drags that scroll the view when the mouse nears or leaves its left or right edge (Reaper style). */
-const AUTOSCROLL_X = new Set<Drag['kind']>(['clip', 'trim', 'fade', 'range', 'rangeEdge', 'marker', 'mute', 'marquee']);
+const AUTOSCROLL_X = new Set<Drag['kind']>(['clip', 'trim', 'fade', 'range', 'rangeEdge', 'marker', 'mute', 'marquee', 'autoPoint']);
 /** Drags that also scroll the tracks up or down at the top and bottom edge. */
 const AUTOSCROLL_Y = new Set<Drag['kind']>(['clip', 'range', 'marquee']);
 
@@ -392,23 +402,25 @@ export class TimelineView {
               '×',
             ),
           ),
-          t.kind === 'soundboard'
-            ? h('div', { class: 'th-row muted th-hint' }, 'Jingles played while recording')
-            : h(
+          h(
             'div',
             { class: 'th-row' },
-            h(
-              'select',
-              {
-                class: 'input-select',
-                title: 'Input channel(s) this track records from',
-                onchange: (e: Event) => {
-                  const v = (e.target as HTMLSelectElement).value;
-                  store.patch((p) => updateTrack(p, t.id, { inputChannels: v ? v.split(',').map(Number) : [] }));
-                },
-              },
-              ...inputOptions.map((o) => h('option', { value: o.value, selected: o.value === cur }, o.label)),
-            ),
+            t.kind === 'soundboard'
+              ? h('span', { class: 'muted th-hint' }, 'Jingles played while recording')
+              : h(
+                  'select',
+                  {
+                    class: 'input-select',
+                    title: 'Input channel(s) this track records from',
+                    onchange: (e: Event) => {
+                      const v = (e.target as HTMLSelectElement).value;
+                      store.patch((p) => updateTrack(p, t.id, { inputChannels: v ? v.split(',').map(Number) : [] }));
+                    },
+                  },
+                  ...inputOptions.map((o) => h('option', { value: o.value, selected: o.value === cur }, o.label)),
+                ),
+            ...this.panControls(t),
+            this.automationButton(t),
           ),
           h(
             'div',
@@ -459,6 +471,70 @@ export class TimelineView {
       );
     }
     this.resize();
+  }
+
+  /** Pan value (click to type) and slider; while the pan lane has points they follow it instead. */
+  private panControls(t: Track): HTMLElement[] {
+    const automated = !!t.automation?.pan?.length;
+    const label = h(
+      'span',
+      { class: `pan-label${automated ? ' automated' : ''}`, title: automated ? 'Pan follows the pan automation' : 'Pan (click to type, e.g. L 40, C, R 25)' },
+      automated ? 'lane' : formatPan(t.pan),
+    );
+    if (!automated) {
+      editableValue(label, {
+        initial: () => formatPan(t.pan),
+        parse: parsePan,
+        commit: (pan) => store.edit((p) => updateTrack(p, t.id, { pan })),
+        onClose: () => this.renderHeaders(),
+      });
+    }
+    const slider = h('input', {
+      type: 'range',
+      class: 'pan',
+      min: '-100',
+      max: '100',
+      step: '1',
+      value: String(Math.round(t.pan * 100)),
+      disabled: automated,
+      title: automated ? 'Pan follows the pan automation (Auto ▾ › Clear pan automation to set it here)' : 'Pan: left … right (double-click to centre)',
+      ondblclick: () => store.edit((p) => updateTrack(p, t.id, { pan: 0 })),
+      onchange: (e: Event) => store.edit((p) => updateTrack(p, t.id, { pan: Number((e.target as HTMLInputElement).value) / 100 })),
+    });
+    return [label, slider];
+  }
+
+  /** Picks the automation lane drawn on the track's row, and clears lanes. */
+  private automationButton(t: Track): HTMLElement {
+    const shown = shownLane(t);
+    const has = (lane: AutomationLane) => !!t.automation?.[lane]?.length;
+    const used = (['volume', 'pan'] as AutomationLane[]).filter(has);
+    const btn = h(
+      'button',
+      {
+        class: `fx-btn auto-btn${used.length ? ' active' : ''}${shown ? ` open lane-${shown}` : ''}`,
+        title: `Volume and pan automation${used.length ? ` (${used.map((l) => LANE_NAME[l].toLowerCase()).join(' and ')} automated)` : ''}`,
+        onclick: (e: MouseEvent) => {
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const show = (lane: AutomationLane | null) => store.patch((p) => showTrackAutomation(p, t.id, lane));
+          showContextMenu(
+            [
+              { kind: 'header', label: 'Show on the track' },
+              { label: 'Clips only', checked: !shown, run: () => show(null) },
+              { label: `Volume automation${has('volume') ? ' •' : ''}`, checked: shown === 'volume', run: () => show('volume') },
+              { label: `Pan automation${has('pan') ? ' •' : ''}`, checked: shown === 'pan', run: () => show('pan') },
+              { kind: 'separator' },
+              { label: 'Clear volume automation', enabled: has('volume'), run: () => store.edit((p) => setTrackAutomation(p, t.id, 'volume', [])) },
+              { label: 'Clear pan automation', enabled: has('pan'), run: () => store.edit((p) => setTrackAutomation(p, t.id, 'pan', [])) },
+            ],
+            r.left,
+            r.bottom + 2,
+          );
+        },
+      },
+      shown ? (shown === 'volume' ? 'Vol' : 'Pan') : 'Auto',
+    );
+    return btn;
   }
 
   updateMeters(): void {
@@ -840,6 +916,8 @@ export class TimelineView {
       this.drawRowClips(ctx, i);
       if (recording && t.kind === 'soundboard') this.drawLiveJingles(ctx, y);
       this.drawMuteRegions(ctx, t, y);
+      const lane = shownLane(t);
+      if (lane) this.drawAutomation(ctx, t, i, lane);
       if (recording && t.armed && t.inputChannels.length) {
         const x0 = this.xOf(store.recordStart);
         const x1 = this.xOf(store.transport.position);
@@ -998,11 +1076,141 @@ export class TimelineView {
     return null;
   }
 
+  // ------------------------------------------------------------ track automation
+
+  /** Height of a lane value: the fader scale for volume, left at the top and right at the bottom for pan. */
+  private yOfValue(lane: AutomationLane, v: number, ti: number): number {
+    if (lane === 'volume') return this.yOfDb(v, ti);
+    return this.envTop(ti) + ((v + 1) / 2) * (this.envBottom(ti) - this.envTop(ti));
+  }
+
+  private valueOfY(lane: AutomationLane, y: number, ti: number): number {
+    if (lane === 'volume') return this.dbOfY(y, ti);
+    const frac = Math.max(0, Math.min(1, (y - this.envTop(ti)) / (this.envBottom(ti) - this.envTop(ti))));
+    const v = Math.round((frac * 2 - 1) * 100) / 100;
+    // centre is sticky, so a voice can be put back in the middle exactly
+    return Math.abs(v) <= 0.03 ? 0 : v;
+  }
+
+  /** Value of a lane without points: unity for volume, the track's fixed pan. */
+  private laneFallback(t: Track, lane: AutomationLane): number {
+    return lane === 'volume' ? 0 : t.pan;
+  }
+
+  private formatLaneValue(lane: AutomationLane, v: number): string {
+    return lane === 'volume' ? formatDb(v) : formatPan(v);
+  }
+
+  /** The lane shown on a track's row: the line across the whole timeline, its points and a scale. */
+  private drawAutomation(ctx: CanvasRenderingContext2D, t: Track, ti: number, lane: AutomationLane): void {
+    const points = t.automation?.[lane] ?? [];
+    const fallback = this.laneFallback(t, lane);
+    const w = this.width;
+    const top = this.envTop(ti);
+    const bottom = this.envBottom(ti);
+    const color = LANE_COLOR[lane];
+    ctx.save();
+    // dim the clips a little so the line reads on top of the waveforms
+    ctx.fillStyle = 'rgba(14,15,19,0.38)';
+    ctx.fillRect(0, ti * TRACK_H, w, TRACK_H - 2);
+    // guide: centre for pan, 0 dB for volume
+    const guide = lane === 'pan' ? this.yOfValue('pan', 0, ti) : this.yOfDb(0, ti);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(guide) + 0.5);
+    ctx.lineTo(w, Math.round(guide) + 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // the line: one value per pixel (volume curves on the fader scale), plus the exact corners at the points
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let k = 0;
+    for (let x = 0; x <= w; x++) {
+      for (; k < points.length && this.xOf(points[k].pos) <= x; k++) {
+        const px = this.xOf(points[k].pos);
+        if (px >= 0) ctx.lineTo(px, this.yOfValue(lane, points[k].value, ti));
+      }
+      const y = this.yOfValue(lane, automationValueAt(points, this.frameOf(x), fallback), ti);
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    const d = this.drag;
+    const active = (d?.kind === 'autoPoint' || d?.kind === 'autoLine') && d.trackId === t.id && d.lane === lane && d.moved ? d : null;
+    ctx.font = '10px system-ui, sans-serif';
+    for (let i = 0; i < points.length; i++) {
+      const x = this.xOf(points[i].pos);
+      if (x < -5 || x > w + 5) continue;
+      const y = this.yOfValue(lane, points[i].value, ti);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#0f1014';
+      ctx.beginPath();
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      const label = active && (active.kind === 'autoPoint' ? active.index === i : active.indices[0] === i);
+      if (label) {
+        ctx.fillStyle = '#fff3e0';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(this.formatLaneValue(lane, points[i].value), x + 6, y - 2);
+      }
+    }
+    // lane name at the right edge (clip names sit at the left), scale at the left edge
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'top';
+    const name = `${LANE_NAME[lane]} automation`;
+    ctx.fillText(name, w - ctx.measureText(name).width - 6, ti * TRACK_H + 3);
+    if (lane === 'pan') {
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillText('L', 4, top - 1);
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('R', 4, bottom + 1);
+    }
+    ctx.restore();
+  }
+
+  /** Point or line of a shown automation lane under the mouse. */
+  private hitAutomation(x: number, y: number): { track: Track; ti: number; lane: AutomationLane; point: number | null; frame: number } | null {
+    const area = this.inAutomationArea(x, y, ENV_HIT_PX);
+    if (!area) return null;
+    const { track, ti, lane } = area;
+    const points = track.automation?.[lane] ?? [];
+    let best: number | null = null;
+    let bestD = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const dx = Math.abs(x - this.xOf(points[i].pos));
+      const dy = Math.abs(y - this.yOfValue(lane, points[i].value, ti));
+      if (dx <= ENV_HIT_PX && dy <= ENV_HIT_PX && dx + dy < bestD) {
+        best = i;
+        bestD = dx + dy;
+      }
+    }
+    const frame = this.frameOf(x);
+    if (best !== null) return { ...area, point: best, frame };
+    const lineY = this.yOfValue(lane, automationValueAt(points, frame, this.laneFallback(track, lane)), ti);
+    if (Math.abs(y - lineY) <= ENV_HIT_PX - 1) return { ...area, point: null, frame };
+    return null;
+  }
+
+  /** The track whose shown automation lane contains (x, y). */
+  private inAutomationArea(x: number, y: number, slack = 0): { track: Track; ti: number; lane: AutomationLane } | null {
+    if (x < 0 || x > this.width) return null;
+    const ti = Math.floor(y / TRACK_H);
+    const track = store.project.tracks[ti];
+    const lane = shownLane(track);
+    if (!track || !lane) return null;
+    if (y < Math.max(ti * TRACK_H + FADE_ZONE_PX + 4, this.envTop(ti) - slack) || y > this.envBottom(ti) + slack) return null;
+    return { track, ti, lane };
+  }
+
   /** The clip whose visible volume line area contains (x, y). */
   private inEnvelopeArea(x: number, y: number, slack = 0): { clip: Clip; ti: number } | null {
     const ti = Math.floor(y / TRACK_H);
     const track = store.project.tracks[ti];
-    if (!track) return null;
+    if (!track || shownLane(track)) return null;
     if (y < Math.max(ti * TRACK_H + FADE_ZONE_PX + 4, this.envTop(ti) - slack) || y > this.envBottom(ti) + slack) return null;
     for (let k = track.clips.length - 1; k >= 0; k--) {
       const clip = track.clips[k];
@@ -1016,7 +1224,7 @@ export class TimelineView {
   private hitVolButton(x: number, y: number): Clip | null {
     const ti = Math.floor(y / TRACK_H);
     const track = store.project.tracks[ti];
-    if (!track) return null;
+    if (!track || shownLane(track)) return null;
     const top = ti * TRACK_H + 4;
     for (let k = track.clips.length - 1; k >= 0; k--) {
       const clip = track.clips[k];
@@ -1322,9 +1530,11 @@ export class TimelineView {
         ctx.fillText(label, lx, g.y + 20);
       }
     }
-    if (clip.showEnvelope) this.drawClipEnvelope(ctx, clip, g);
+    // a track automation lane on the row takes the place of the clip volume lines
+    const laneShown = !!shownLane(store.project.tracks[g.trackIndex]);
+    if (clip.showEnvelope && !laneShown) this.drawClipEnvelope(ctx, clip, g);
     // volume-line toggle, shown while hovering (and while the line is visible)
-    if ((this.hoverClipId === clip.id || clip.showEnvelope) && g.w >= VOL_BTN.x + VOL_BTN.w + 8 && !this.drag) {
+    if (!laneShown && (this.hoverClipId === clip.id || clip.showEnvelope) && g.w >= VOL_BTN.x + VOL_BTN.w + 8 && !this.drag) {
       const bx = g.x + VOL_BTN.x;
       const by = g.y + VOL_BTN.y;
       ctx.fillStyle = clip.showEnvelope ? 'rgba(105,240,174,0.28)' : 'rgba(15,16,20,0.45)';
@@ -1806,13 +2016,21 @@ export class TimelineView {
         this.canvas.title = 'Show or hide this clip\'s volume line';
         return;
       }
+      const auto = this.hitAutomation(x, y);
+      if (auto) {
+        const what = LANE_NAME[auto.lane];
+        this.canvas.style.cursor = auto.point !== null ? 'move' : 'ns-resize';
+        this.canvas.title = auto.point !== null ? `${what} point: drag to move, double-click to remove` : `${what} automation: drag up or down, double-click to add a point`;
+        return;
+      }
       const env = this.hitEnvelope(x, y);
       if (env) {
         this.canvas.style.cursor = env.point !== null ? 'move' : 'ns-resize';
         this.canvas.title = env.point !== null ? 'Volume point: drag to move, double-click to remove' : 'Volume line: drag up or down, double-click to add a point';
         return;
       }
-      this.canvas.title = this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click for clip options` : hit ? 'Right-click for clip options' : '';
+      const autoArea = this.inAutomationArea(x, y);
+      this.canvas.title = autoArea ? `Double-click to add a ${LANE_NAME[autoArea.lane].toLowerCase()} point` : this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click for clip options` : hit ? 'Right-click for clip options' : '';
       this.canvas.style.cursor = hit?.edge ? 'ew-resize' : hit ? 'grab' : 'text';
     });
 
@@ -1826,6 +2044,21 @@ export class TimelineView {
         return;
       }
       if (lane) return;
+      // automation lane: double-click a point to remove it, anywhere else on the row to add one on the line
+      const auto = this.hitAutomation(x, y);
+      const autoArea = auto ?? this.inAutomationArea(x, y);
+      if (autoArea) {
+        const { track, lane } = autoArea;
+        const pts = track.automation?.[lane] ?? [];
+        if (auto && auto.point !== null) {
+          const index = auto.point;
+          store.edit((p) => setTrackAutomation(p, track.id, lane, pts.filter((_, i) => i !== index)));
+        } else {
+          const f = this.frameOf(x);
+          store.edit((p) => setTrackAutomation(p, track.id, lane, addAutomationPoint(lane, pts, f, automationValueAt(pts, f, this.laneFallback(track, lane))).points));
+        }
+        return;
+      }
       // volume line: double-click a point to remove it, anywhere else on the track to add one on the line
       if (this.hitVolButton(x, y)) return;
       const env = this.hitEnvelope(x, y);
@@ -1926,7 +2159,28 @@ export class TimelineView {
         store.edit((p) => updateClip(p, volClip.id, { showEnvelope: !volClip.showEnvelope }));
         return;
       }
-      // 4. volume line points and segments
+      // 4. track automation points and segments
+      const auto = this.hitAutomation(x, y);
+      if (auto && e.button === 0) {
+        const { track, lane, ti } = auto;
+        const orig = track.automation?.[lane] ?? [];
+        const base = { trackId: track.id, lane, ti, moved: false };
+        if (auto.point !== null) {
+          this.drag = { kind: 'autoPoint', ...base, index: auto.point, orig };
+        } else if (!orig.length) {
+          // no points yet: the first drag creates one and moves the whole line
+          this.drag = { kind: 'autoLine', ...base, startY: e.clientY, indices: [0], orig: [{ pos: auto.frame, value: this.laneFallback(track, lane) }] };
+        } else {
+          // the two points around the mouse (one at either end of the line)
+          let i1 = orig.findIndex((p) => p.pos > auto.frame);
+          if (i1 < 0) i1 = orig.length;
+          const indices = [i1 - 1, i1].filter((i) => i >= 0 && i < orig.length);
+          this.drag = { kind: 'autoLine', ...base, startY: e.clientY, indices, orig };
+        }
+        this.draw();
+        return;
+      }
+      // 4a. volume line points and segments
       const env = this.hitEnvelope(x, y);
       if (env) {
         const orig = env.clip.envelope ?? [];
@@ -2058,6 +2312,19 @@ export class TimelineView {
         const dy = e.clientY - d.startY;
         const pts = d.orig.map((p, i) => (d.indices.includes(i) ? { pos: p.pos, db: this.dbOfY(this.yOfDb(p.db, d.ti) + dy, d.ti) } : { ...p }));
         store.editLive((p) => setClipEnvelope(p, d.clipId, pts));
+      } else if (d.kind === 'autoPoint') {
+        d.moved = true;
+        const prev = d.orig[d.index - 1]?.pos ?? 0;
+        const next = d.orig[d.index + 1]?.pos ?? Infinity;
+        const pts = d.orig.map((p) => ({ ...p }));
+        const f = this.snappedFrame(pos.x, e);
+        pts[d.index] = { pos: Math.max(prev, Math.min(next, f)), value: this.valueOfY(d.lane, pos.y, d.ti) };
+        store.editLive((p) => setTrackAutomation(p, d.trackId, d.lane, pts));
+      } else if (d.kind === 'autoLine') {
+        d.moved = true;
+        const dy = e.clientY - d.startY;
+        const pts = d.orig.map((p, i) => (d.indices.includes(i) ? { pos: p.pos, value: this.valueOfY(d.lane, this.yOfValue(d.lane, p.value, d.ti) + dy, d.ti) } : { ...p }));
+        store.editLive((p) => setTrackAutomation(p, d.trackId, d.lane, pts));
       } else if (d.kind === 'marker') {
         d.dx = this.dragDx(d, e, d.startX);
         if (Math.abs(d.dx) > 3) d.moved = true;
@@ -2135,7 +2402,7 @@ export class TimelineView {
         seek(d.clickFrame);
       } else if (d.kind === 'trim' && d.delta !== 0) {
         store.edit((p) => updateClip(p, d.clipId, trimmed(d.orig, d.side, d.delta)));
-      } else if (d.kind === 'fade' || d.kind === 'envPoint' || d.kind === 'envLine') {
+      } else if (d.kind === 'fade' || d.kind === 'envPoint' || d.kind === 'envLine' || d.kind === 'autoPoint' || d.kind === 'autoLine') {
         store.commitLive();
       } else if (d.kind === 'range') {
         const a = Math.min(d.startFrame, d.endFrame);

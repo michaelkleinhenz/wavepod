@@ -250,6 +250,27 @@ describe('MCP automix', () => {
   });
 });
 
+describe('MCP track automation', () => {
+  it('sets, shows and clears a pan lane', async () => {
+    const fake = fakeHost();
+    const server = createWavePodServer(fake.host, '1');
+    const sr = fake.project.sampleRate;
+    let r = await call(server, 'set_track_automation', { track: 'Guest', lane: 'pan', points: [{ seconds: 2, value: 1 }, { seconds: 0, value: -1 }] });
+    expect(r.isError).toBe(false);
+    expect(r.data.points).toEqual([{ seconds: 0, value: -1 }, { seconds: 2, value: 1 }]);
+    expect(fake.project.tracks[1].automation).toEqual({ pan: [{ pos: 0, value: -1 }, { pos: 2 * sr, value: 1 }], shown: 'pan' });
+    expect(fake.summaries.at(-1)).toBe('Pan automation on Guest');
+    r = await call(server, 'list_tracks');
+    expect(r.data.tracks[1].automation.pan).toHaveLength(2);
+    r = await call(server, 'set_track_automation', { track: 'Guest', lane: 'pan', points: [] });
+    expect(fake.project.tracks[1].automation?.pan).toBeUndefined();
+    r = await call(server, 'set_track_automation', { track: 'master', lane: 'volume', points: [] });
+    expect(r.isError).toBe(true);
+    r = await call(server, 'set_track_automation', { track: 'Host', lane: 'volume', points: [{ seconds: -1, value: 0 }] });
+    expect(r.isError).toBe(true);
+  });
+});
+
 describe('MCP transcript', () => {
   it('returns speaker paragraphs at timeline times, or says there is none', async () => {
     const fake = fakeHost();
