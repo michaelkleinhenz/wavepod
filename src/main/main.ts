@@ -45,10 +45,12 @@ import { auphonicInfo, auphonicPresets, normalizeAuphonic, sendToAuphonic, updat
 import { normalizeOscSettings } from '../core/osc';
 import { unpackZencastrZip } from './zencastr';
 import { TranscriptionService } from './transcribe/service';
+import { SpeechService, type SpeakInput } from './speech';
+import { normalizeSpeechSettings } from '../core/speech';
 import { normalizeTranscriptionSettings } from '../core/elevenlabs';
 import { timelineWords } from '../core/transcript';
 import { decodeKey, encodeKey } from './auphonic';
-import type { CleanupItem, CleanupOptions, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
+import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
 import type { SoundLibraryInfo } from '../core/soundLibrary';
 
@@ -74,6 +76,8 @@ interface Settings {
   transcription: TranscriptionSettings;
   /** ElevenLabs API key, stored like the Auphonic one ("enc:…" where the OS can encrypt). */
   elevenLabsKey: string;
+  /** Speech synthesis (experimental), with the same ElevenLabs key. */
+  speech: SpeechSettings;
   /** Sound effects library folder ('' = none). */
   soundLibraryFolder: string;
   /** Folder the chapter image picker opens in: where the last chapter image came from ('' = none yet). */
@@ -97,11 +101,12 @@ function loadSettings(): Settings {
       auphonic: normalizeAuphonic(raw.auphonic),
       transcription: normalizeTranscriptionSettings(raw.transcription),
       elevenLabsKey: typeof raw.elevenLabsKey === 'string' ? raw.elevenLabsKey : '',
+      speech: normalizeSpeechSettings(raw.speech),
       soundLibraryFolder: typeof raw.soundLibraryFolder === 'string' ? raw.soundLibraryFolder : '',
       chapterImageFolder: typeof raw.chapterImageFolder === 'string' ? raw.chapterImageFolder : '',
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', soundLibraryFolder: '', chapterImageFolder: '' };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', chapterImageFolder: '' };
   }
 }
 
@@ -363,6 +368,19 @@ const transcription = new TranscriptionService({
   },
   workerPath: path.join(__dirname, 'transcribeWorker.js'),
   progress: (p) => send(IPC.transcribeProgress, p),
+  updated: (file, transcript) => send(IPC.transcript, { file, transcript }),
+});
+
+const speech = new SpeechService({
+  project: () => current.project,
+  dir: () => current.dir,
+  apiKey: () => decodeKey(settings.elevenLabsKey),
+  settings: () => settings.speech,
+  saveSettings: (s) => {
+    settings.speech = s;
+    saveSettings();
+  },
+  words: () => timelineWords(current.project, transcription.load()),
   updated: (file, transcript) => send(IPC.transcript, { file, transcript }),
 });
 
@@ -677,6 +695,13 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   stopTranscribing: () => transcription.stop(),
   deleteTranscripts: (trackIds?: string[]) => transcription.remove(trackIds),
+  getSpeechInfo: () => speech.info(),
+  setSpeechSettings: (patch: Partial<SpeechSettings>) => speech.setSettings(patch),
+  listVoices: () => speech.voices(),
+  cloneVoice: (trackId: string) => speech.clone(trackId),
+  deleteVoice: (voiceId: string) => speech.deleteVoice(voiceId),
+  speakWords: (input: SpeakInput) => speech.speak(input),
+  storeSpokenWords: (text: string, spoken: Pick<SpokenWords, 'samples' | 'pad'>) => speech.store(text, spoken),
   findCleanup: (opts: CleanupOptions) => {
     const words = timelineWords(current.project, transcription.load());
     return runWorker<CleanupItem[]>({ kind: 'cleanup', project: current.project, dir: current.dir, words, cleanup: opts });

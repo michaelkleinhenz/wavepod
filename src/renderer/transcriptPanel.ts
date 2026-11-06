@@ -1,6 +1,8 @@
 // View › Transcript: the episode as text beside the timeline. Click a word to jump there; drag
 // across words to select that time; Delete cuts it out of every track (ripple cut), so editing
-// the text edits the audio. Delete right after clicking a single word cuts just that word. Hesitations are marked, the playing word is highlighted.
+// the text edits the audio. Delete right after clicking a single word cuts just that word.
+// Enter or a double-click changes the words: speech synthesis says new ones (experimental).
+// Hesitations are marked, the playing word is highlighted.
 import type { TimelineWord } from '../shared/types';
 import { paragraphs, transcriptText, transcriptVtt, wordAt, wordsRange } from '../core/transcript';
 import { formatTimestamp } from '../shared/time';
@@ -8,6 +10,7 @@ import { errorMessage, h, toast } from './dom';
 import { rippleCut, seek } from './actions';
 import { api, store } from './store';
 import { transcripts } from './transcripts';
+import { SpeechDialog } from './speechDialog';
 
 export class TranscriptPanel {
   readonly el = h('aside', { class: 'transcript-panel', tabIndex: -1 });
@@ -24,6 +27,7 @@ export class TranscriptPanel {
   private follow = true;
   private shown = false;
   private hidden = false;
+  private speech = new SpeechDialog();
   /** Opens the cleanup dialog (set by the app shell). */
   onCleanup: () => void = () => {};
 
@@ -37,7 +41,19 @@ export class TranscriptPanel {
     this.body.addEventListener('mousedown', (e) => this.down(e));
     this.body.addEventListener('mouseover', (e) => this.over(e));
     window.addEventListener('mouseup', () => (this.dragging = false));
+    this.body.addEventListener('dblclick', (e) => {
+      const i = this.index(e);
+      if (i === null) return;
+      e.preventDefault();
+      this.changeWords();
+    });
     this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === 'F2') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.changeWords();
+        return;
+      }
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (!store.selection.range && this.picked !== null) this.selectWords(this.picked, this.picked);
       if (!store.selection.range) return;
@@ -152,6 +168,30 @@ export class TranscriptPanel {
     this.selectWords(this.anchor, i);
   }
 
+  /** The chosen words: the selected ones, else the clicked one (indices into the shown words). */
+  private chosenWords(): [number, number] | null {
+    const words = this.shownWords ?? [];
+    const r = store.selection.range;
+    if (r) {
+      let a = -1;
+      let b = -1;
+      words.forEach((w, i) => {
+        if (w.start < r[0] - 1 || w.end > r[1] + 1) return;
+        if (a < 0) a = i;
+        b = i;
+      });
+      if (a >= 0) return [a, b];
+    }
+    return this.picked !== null && words[this.picked] ? [this.picked, this.picked] : null;
+  }
+
+  /** Experimental: type new words for the chosen ones (or around them); ElevenLabs says them. */
+  changeWords(): void {
+    const chosen = this.chosenWords();
+    if (!chosen || !this.shownWords) return toast('Click a word first (or drag across some)');
+    this.speech.open(this.shownWords, chosen[0], chosen[1]);
+  }
+
   private setPicked(i: number | null): void {
     if (this.picked !== null) this.spans[this.picked]?.classList.remove('picked');
     this.picked = i;
@@ -197,6 +237,7 @@ export class TranscriptPanel {
       t.busy
         ? h('button', { class: 'small', onclick: () => t.stop() }, 'Stop')
         : h('button', { class: missing ? 'small primary' : 'small', title: 'Upload the tracks to ElevenLabs speech-to-text. Only files without a transcript are sent.', onclick: () => void t.transcribe(false) }, missing ? 'Transcribe' : 'Up to date'),
+      h('button', { class: 'small', title: 'Experimental: replace the clicked or selected words, or insert new ones, spoken by ElevenLabs in the speaker’s voice (Enter or double-click a word)', onclick: () => this.changeWords() }, 'Change…'),
       h('button', { class: 'small', title: 'Find long pauses and hesitations (äh, ähm, uh) and take them out', onclick: () => this.onCleanup() }, 'Clean up…'),
       h(
         'select',
@@ -218,7 +259,7 @@ export class TranscriptPanel {
       const what = p.phase === 'preparing' ? 'Preparing' : p.phase === 'uploading' ? 'Uploading' : 'Transcribing';
       this.status.replaceChildren(h('span', { class: 'spinner' }), `${what} ${p.name ? `${p.name} ` : ''}(${p.file} of ${p.files})…`);
     } else if (t.busy) this.status.replaceChildren(h('span', { class: 'spinner' }), 'Starting…');
-    else this.status.textContent = t.count ? 'Click a word to jump there · Delete cuts it · drag to select more' : '';
+    else this.status.textContent = t.count ? 'Click a word to jump there · Delete cuts it · Enter or double-click changes it · drag to select more' : '';
     this.status.classList.toggle('busy', t.busy);
   }
 

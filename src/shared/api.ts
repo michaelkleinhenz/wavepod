@@ -30,7 +30,11 @@ import type {
   TranscribeProgress,
   TranscriptionInfo,
   TranscriptionSettingsInput,
+  SpeechInfo,
+  SpeechSettings,
+  SpokenWords,
 } from './types';
+import type { ElevenVoice, SpeechEditMode } from '../core/speech';
 import type { TemplateSummary } from '../core/template';
 import type { FxPresetEntry } from '../core/fx/presets';
 import type { AlignResult } from '../core/align';
@@ -279,6 +283,19 @@ export interface WavePodApi {
   stopTranscribing(): Promise<void>;
   /** Removes the transcripts of these tracks (all if none); returns how many files had one. */
   deleteTranscripts(trackIds?: string[]): Promise<number>;
+  // speech synthesis (experimental): words typed into the transcript, said by ElevenLabs
+  getSpeechInfo(): Promise<SpeechInfo>;
+  setSpeechSettings(patch: Partial<SpeechSettings>): Promise<SpeechInfo>;
+  /** The voices of the ElevenLabs account, cloned ones first. */
+  listVoices(): Promise<ElevenVoice[]>;
+  /** Clones a track speaker's voice from their transcribed speech (up to 90 s is uploaded). */
+  cloneVoice(trackId: string): Promise<{ id: string; name: string; seconds: number }>;
+  /** Removes a voice from the ElevenLabs account. */
+  deleteVoice(voiceId: string): Promise<void>;
+  /** Generates the words, trimmed and with a clip gain that matches the speaker around `at`. */
+  speakWords(input: { trackId: string; voiceId: string; text: string; previousText?: string; nextText?: string; mode: SpeechEditMode; at: number }): Promise<SpokenWords>;
+  /** Saves generated words as a media file with its own transcript. */
+  storeSpokenWords(text: string, spoken: Pick<SpokenWords, 'samples' | 'pad'>): Promise<{ file: string; length: number }>;
   /** Finds long pauses and hesitations to take out (pauses from the audio, hesitations from the transcript). */
   findCleanup(opts: CleanupOptions): Promise<CleanupItem[]>;
 
@@ -420,6 +437,13 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'transcribe',
   'stopTranscribing',
   'deleteTranscripts',
+  'getSpeechInfo',
+  'setSpeechSettings',
+  'listVoices',
+  'cloneVoice',
+  'deleteVoice',
+  'speakWords',
+  'storeSpokenWords',
   'findCleanup',
   'vstStatus',
   'vstScan',
