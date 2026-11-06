@@ -2,6 +2,7 @@
 import type { AudioApiInfo, AudioDevice } from '../../shared/types';
 import type { AudioBackend, InputStreamOptions, OutputStreamOptions, StreamHandle } from './backend';
 import { bufferToFloat32, float32ToBuffer } from '../../core/dsp';
+import { clampVirtualAlsaDevices, friendlyStreamError, throttleErrors, USE_PULSE_HINT } from './linuxAudio';
 
 // Values of audify's RtAudioApi / RtAudioFormat const enums.
 const API_IDS: Record<string, number> = {
@@ -58,6 +59,10 @@ export class RtAudioBackend implements AudioBackend {
   private audify: Audify;
   private _api = 'default';
   private probe: RtAudioInstance | null = null;
+  /** Whether a PulseAudio (or PipeWire) server answered at the last device scan. */
+  private serverRunning = false;
+  /** Channels of the sound server's default input/output, for ALSA's plug-in devices. */
+  private serverDefaults: { inputChannels: number; outputChannels: number } | null = null;
 
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -69,7 +74,10 @@ export class RtAudioBackend implements AudioBackend {
   }
 
   listApis(): AudioApiInfo[] {
-    return ['default', ...this.compiledApis()].map((id) => ({ id, label: API_LABELS[id] ?? id }));
+    return ['default', ...this.compiledApis()].map((id) => ({
+      id,
+      label: id === 'default' && process.platform === 'linux' && this.compiledApis().includes('pulse') ? 'System default (PipeWire / PulseAudio when running)' : (API_LABELS[id] ?? id),
+    }));
   }
 
   private compiled: string[] | null = null;
@@ -98,16 +106,56 @@ export class RtAudioBackend implements AudioBackend {
     this.probe = null;
   }
 
+  /**
+   * The API streams really use. RtAudio's own default on Linux is ALSA (the
+   * first API it was built with), which can't reach sound cards that PipeWire
+   * or PulseAudio hold; so "System default" means PulseAudio/PipeWire whenever
+   * such a server is running.
+   */
+  private effectiveApi(): string {
+    if (this._api !== 'default' || process.platform !== 'linux') return this._api;
+    if (this.compiledApis().includes('pulse') && this.serverRunning) return 'pulse';
+    return this.compiledApis().includes('alsa') ? 'alsa' : 'default';
+  }
+
   private create(): RtAudioInstance {
-    return new this.audify.RtAudio(API_IDS[this._api] as never);
+    return new this.audify.RtAudio(API_IDS[this.effectiveApi()] as never);
+  }
+
+  /** Asks the PulseAudio API (PipeWire's pulse server answers it too) whether a server runs, and its default devices. */
+  private probeSoundServer(): void {
+    this.serverRunning = false;
+    this.serverDefaults = null;
+    if (process.platform !== 'linux' || !this.compiledApis().includes('pulse')) return;
+    const rt = safe(() => new this.audify.RtAudio(API_IDS.pulse as never), null);
+    if (!rt) return;
+    const devices = safe(() => rt.getDevices(), []);
+    if (!devices.length) return;
+    this.serverRunning = true;
+    const defIn = safe(() => rt.getDefaultInputDevice(), -1);
+    const defOut = safe(() => rt.getDefaultOutputDevice(), -1);
+    const input = devices.find((d) => d.isDefaultInput || d.id === defIn);
+    const output = devices.find((d) => d.isDefaultOutput || d.id === defOut);
+    this.serverDefaults = { inputChannels: input?.inputChannels ?? 0, outputChannels: output?.outputChannels ?? 0 };
+  }
+
+  /** A hint for the Setup view about the chosen API, or null. */
+  notice(): string | null {
+    return this.effectiveApi() === 'alsa' && this.serverRunning ? USE_PULSE_HINT : null;
+  }
+
+  private streamError(onError: ((message: string) => void) | undefined): (message: string) => void {
+    const report = throttleErrors(onError);
+    return (msg) => report(friendlyStreamError(msg, { api: this.effectiveApi(), serverRunning: this.serverRunning }));
   }
 
   listDevices(): AudioDevice[] {
+    this.probeSoundServer();
     // A fresh instance picks up hot-plugged devices.
     this.probe = this.create();
     const defIn = safe(() => this.probe!.getDefaultInputDevice(), -1);
     const defOut = safe(() => this.probe!.getDefaultOutputDevice(), -1);
-    return this.probe.getDevices().map((d) => ({
+    const devices = this.probe.getDevices().map((d) => ({
       id: d.id,
       name: d.name,
       inputChannels: d.inputChannels,
@@ -117,11 +165,13 @@ export class RtAudioBackend implements AudioBackend {
       isDefaultInput: !!d.isDefaultInput || d.id === defIn,
       isDefaultOutput: !!d.isDefaultOutput || d.id === defOut,
     }));
+    return this.effectiveApi() === 'alsa' ? clampVirtualAlsaDevices(devices, this.serverDefaults) : devices;
   }
 
   openInput(opts: InputStreamOptions): StreamHandle {
     const rt = this.create();
-    const frameSize = rt.openStream(
+    const onError = this.streamError(opts.onError);
+    const frameSize = this.open(rt, () => rt.openStream(
       null,
       { deviceId: opts.deviceId, nChannels: opts.channels, firstChannel: 0 },
       RTAUDIO_FLOAT32 as never,
@@ -131,14 +181,14 @@ export class RtAudioBackend implements AudioBackend {
       (pcm: Buffer) => guard(() => opts.onData(bufferToFloat32(pcm)), opts.onError),
       null,
       0 as never,
-      (_type: unknown, msg: string) => opts.onError?.(msg),
-    );
-    rt.start();
+      (_type: unknown, msg: string) => onError(msg),
+    ));
     return handle(rt, opts.channels, opts.sampleRate, frameSize || opts.frameSize);
   }
 
   openOutput(opts: OutputStreamOptions): StreamHandle {
     const rt = this.create();
+    const onError = this.streamError(opts.onError);
     let frameSize = opts.frameSize;
     // audify plays from a queue we fill with write() and calls us back once per
     // buffer it consumed. When the queue is empty it plays silence and does not
@@ -162,7 +212,7 @@ export class RtAudioBackend implements AudioBackend {
       for (let i = 0; i < MAX_WRITES_PER_PUMP && written - played < QUEUE_BUFFERS * frameSize; i++) writeNext();
     };
     frameSize =
-      rt.openStream(
+      this.open(rt, () => rt.openStream(
         { deviceId: opts.deviceId, nChannels: opts.channels, firstChannel: 0 },
         null,
         RTAUDIO_FLOAT32 as never,
@@ -172,9 +222,8 @@ export class RtAudioBackend implements AudioBackend {
         null,
         () => guard(pump, opts.onError),
         0 as never,
-        (_type: unknown, msg: string) => opts.onError?.(msg),
-      ) || opts.frameSize;
-    rt.start();
+        (_type: unknown, msg: string) => onError(msg),
+      )) || opts.frameSize;
     pump();
     const periodMs = (frameSize / opts.sampleRate) * 1000;
     const timer = setInterval(() => guard(pump, opts.onError), Math.max(2, Math.floor(periodMs / 2)));
@@ -187,6 +236,24 @@ export class RtAudioBackend implements AudioBackend {
         h.close();
       },
     };
+  }
+
+  /**
+   * Opens and starts a stream. If starting fails, the opened stream is closed
+   * again instead of being left to the garbage collector; the error says what
+   * failed in words a user can act on.
+   */
+  private open(rt: RtAudioInstance, openStream: () => number): number {
+    let frameSize: number;
+    try {
+      frameSize = openStream();
+      rt.start();
+    } catch (e) {
+      safe(() => rt.isStreamOpen() && rt.closeStream(), undefined);
+      const message = (e as Error).message ?? String(e);
+      throw new Error(friendlyStreamError(message, { api: this.effectiveApi(), serverRunning: this.serverRunning }));
+    }
+    return frameSize;
   }
 
   dispose(): void {
@@ -204,7 +271,7 @@ function handle(rt: RtAudioInstance, channels: number, sampleRate: number, frame
       if (closed) return;
       closed = true;
       safe(() => rt.isStreamRunning() && rt.stop(), undefined);
-      safe(() => rt.closeStream(), undefined);
+      safe(() => rt.isStreamOpen() && rt.closeStream(), undefined);
     },
   };
 }

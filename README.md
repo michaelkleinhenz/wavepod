@@ -114,6 +114,15 @@ Steinberg's VST3 SDK), and `make dist*` builds it automatically. Without it
 WavePod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`
 (present on normal desktop installs).
 
+#### Linux: audio driver
+
+On a desktop with PipeWire or PulseAudio running, the sound server keeps the
+sound cards to itself. "System default" then uses PulseAudio / PipeWire, which
+reaches every device with all its inputs (e.g. a RØDECaster Pro II in its
+multitrack profile). Over ALSA only the server's shared "Default ALSA Device"
+is left (stereo, no separate inputs), and Setup says so. Pick ALSA only when no
+sound server runs.
+
 #### Linux: Chromium sandbox
 
 Electron sandboxes its renderer processes. On Linux it does this with

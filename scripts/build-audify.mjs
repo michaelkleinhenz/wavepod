@@ -11,6 +11,11 @@
 //  - a JS exception in a stream callback ended in std::terminate (SIGABRT);
 //  - PulseAudio playback used a ~2 s buffer refilled in bursts, so audify's
 //    write queue underran and playback ran slow and crackled.
+//  - an ALSA read error (e.g. EIO from PipeWire's plug-in) made the capture
+//    thread spin and report the same error thousands of times a second;
+//  - every RtAudio instance that never opened a stream warned "no open stream
+//    to close!" when it was garbage collected;
+//  - probing ALSA printed "Invalid CTL pulse" on systems without that plug-in.
 // The prebuilt binary that audify downloads has none of these fixes, so we
 // compile it here.
 //

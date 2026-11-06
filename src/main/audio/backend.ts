@@ -36,5 +36,7 @@ export interface AudioBackend {
   listDevices(): AudioDevice[];
   openInput(opts: InputStreamOptions): StreamHandle;
   openOutput(opts: OutputStreamOptions): StreamHandle;
+  /** A hint about the chosen API for the Setup view (e.g. a better driver to pick), or null. */
+  notice?(): string | null;
   dispose(): void;
 }

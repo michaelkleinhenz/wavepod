@@ -240,6 +240,7 @@ export class AudioEngine extends EventEmitter {
       inputChannelCount: this.input?.channels ?? 0,
       outputChannelCount: this.output?.channels ?? 0,
       error: this.error,
+      notice: this.backend().notice?.() ?? null,
       preShow: this.preShow,
     };
   }
