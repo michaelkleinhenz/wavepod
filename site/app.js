@@ -621,4 +621,200 @@
     document.addEventListener('visibilitychange', kick);
     frameDraw(t0);
   }
+  // ---------------------------------------------------------- text-based editing demo
+  (() => {
+    const demo = $('#te-demo');
+    if (!demo) return;
+    const textEl = $('#te-text'), waveEl = $('#te-wave'), statusEl = $('#te-status');
+    const SPK = { Anna: 'var(--cyan)', Ben: 'var(--amber)' };
+    const SCRIPT = [
+      ['Anna', 'Welcome back! Today we edit a podcast like a document.'],
+      ['Ben', 'Um, that sounds, uh, too good to be true.'],
+      ['Anna', 'Delete a sentence in the text, you know, like this one, and it is cut from every track.', 4.3],
+      ['Ben', 'And the, um, hesitations?'],
+      ['Anna', 'One click. And if I misspeak, I type the fix. It is a lot of fun.'],
+    ];
+    const FILLER = /^(um|uh|ähm|äh)\W*$/i;
+    let words = [], pxPerSec = 10, busy = false, user = false, timers = [];
+
+    const fmt = (s) => { s = Math.max(0, Math.round(s)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+    const later = (ms) => new Promise((r) => timers.push(setTimeout(r, reduce ? 0 : ms)));
+    const length = () => words.reduce((a, w) => a + (w.cut ? 0 : w.dur), 0);
+    const say = (html) => { statusEl.innerHTML = html; };
+    // paragraph start times follow the edits, like in the app
+    const times = () => {
+      let t = 0; const seen = new Set();
+      for (const w of words) {
+        if (!seen.has(w.para)) { seen.add(w.para); w.para.querySelector('time').textContent = fmt(t); }
+        if (!w.cut) t += w.dur;
+      }
+    };
+    const lengthLine = () => { times(); return `Episode length <b>${fmt(length())}</b>`; };
+
+    const segFor = (w) => {
+      const seg = document.createElement('span');
+      seg.className = 'seg' + (w.pause ? ' pause' : '') + (w.isNew ? ' new' : '');
+      seg.style.setProperty('--c', SPK[w.who]);
+      const n = Math.max(1, Math.round((w.dur * pxPerSec) / 4));
+      for (let i = 0; i < n; i++) {
+        const b = document.createElement('i');
+        const env = Math.sin(Math.PI * (i + 0.5) / n) ** 0.6;
+        b.style.setProperty('--h', (w.pause ? 4 + Math.random() * 3 : 12 + env * (30 + Math.random() * 55)).toFixed(0) + '%');
+        seg.appendChild(b);
+      }
+      return seg;
+    };
+    const sizeSeg = (w) => { w.seg.style.width = (w.cut ? 0 : w.dur * pxPerSec) + 'px'; };
+
+    const layout = () => {
+      const total = words.reduce((a, w) => a + w.dur, 0);
+      pxPerSec = (waveEl.clientWidth - 6) / total;
+      waveEl.innerHTML = '';
+      for (const w of words) { w.seg = segFor(w); if (w.cut) w.seg.classList.add('cut'); sizeSeg(w); waveEl.appendChild(w.seg); }
+    };
+    const build = () => {
+      textEl.innerHTML = ''; words = [];
+      let t = 0;
+      for (const [who, line, pause] of SCRIPT) {
+        const para = document.createElement('div');
+        para.className = 'te-para'; para.style.setProperty('--c', SPK[who]);
+        para.innerHTML = `<small>${who}<time></time></small>`;
+        const p = document.createElement('p');
+        for (const text of line.split(' ')) {
+          const filler = FILLER.test(text);
+          const dur = filler ? 0.7 : 0.12 + text.replace(/\W/g, '').length * 0.06;
+          const el = document.createElement('span');
+          el.className = 'tw' + (filler ? ' filler' : '');
+          el.textContent = text + ' ';
+          p.appendChild(el);
+          words.push({ el, text, who, dur, filler, cut: false, para });
+          t += dur;
+        }
+        if (pause) {
+          const el = document.createElement('span');
+          el.className = 'tw pause'; el.textContent = `··· ${pause.toFixed(1)} s `;
+          p.appendChild(el);
+          words.push({ el, text: '', who, dur: pause, pause, cut: false, para });
+          t += pause;
+        }
+        para.appendChild(p); textEl.appendChild(para);
+      }
+      words.forEach((w, i) => { w.el.dataset.i = i; });
+      layout();
+      say('Click a word to cut it, or drag across words. ' + lengthLine());
+    };
+    let lastW = 0;
+    addEventListener('resize', () => { if (waveEl.clientWidth !== lastW) { lastW = waveEl.clientWidth; layout(); } });
+
+    const select = (a, b) => {
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      words.forEach((w, i) => { const on = i >= lo && i <= hi && !w.cut; w.el.classList.toggle('sel', on); w.seg.classList.toggle('sel', on); });
+    };
+    const cut = (list) => {
+      let s = 0;
+      for (const w of list) {
+        if (w.cut) continue;
+        w.cut = true; s += w.dur;
+        w.el.classList.remove('sel'); w.seg.classList.remove('sel');
+        w.el.classList.add('cut'); w.seg.classList.add('cut'); sizeSeg(w);
+      }
+      return s;
+    };
+    const cutSelection = async () => {
+      const sel = words.filter((w) => w.el.classList.contains('sel'));
+      if (!sel.length) return;
+      busy = true;
+      await later(380);
+      const quote = sel.map((w) => w.text).join(' ').trim();
+      const s = cut(sel);
+      say(`Cut “${quote.length > 34 ? quote.slice(0, 32) + '…' : quote}” from both tracks · −${s.toFixed(1)} s · ${lengthLine()}`);
+      busy = false;
+    };
+
+    // autoplay control (declared before the handlers that stop it)
+    let playing = false, gen = 0;
+    const halt = () => { gen++; timers.forEach(clearTimeout); timers = []; busy = false; };
+    const stopAuto = () => { if (!user) { user = true; halt(); } };
+
+    // pointer: click or drag across words
+    let anchor = null;
+    const idx = (e) => { const el = e.target.closest('.tw'); return el && !el.classList.contains('cut') ? Number(el.dataset.i) : null; };
+    textEl.addEventListener('pointerdown', (e) => {
+      if (busy && user) return;
+      stopAuto();
+      const i = idx(e); if (i === null) return;
+      e.preventDefault(); anchor = i; select(i, i);
+    });
+    textEl.addEventListener('pointerover', (e) => { if (anchor === null) return; const i = idx(e); if (i !== null) select(anchor, i); });
+    addEventListener('pointerup', () => { if (anchor === null) return; anchor = null; void cutSelection(); });
+
+    const clean = async () => {
+      if (busy) return; busy = true;
+      const fillers = words.filter((w) => w.filler && !w.cut);
+      const pauses = words.filter((w) => w.pause && !w.cut && w.dur > 0.7);
+      if (!fillers.length && !pauses.length) { say('Nothing left to clean up. ' + lengthLine()); busy = false; return; }
+      fillers.forEach((w) => { w.el.classList.add('sel'); w.seg.classList.add('sel'); });
+      await later(500);
+      let s = cut(fillers);
+      for (const w of pauses) { s += w.dur - 0.7; w.dur = 0.7; w.el.textContent = '··· 0.7 s '; sizeSeg(w); }
+      say(`Removed ${fillers.length} hesitation${fillers.length === 1 ? '' : 's'}${pauses.length ? ', shortened the long pause' : ''} · −${s.toFixed(1)} s · ${lengthLine()}`);
+      busy = false;
+    };
+    const speak = async () => {
+      if (busy) return;
+      const target = words.find((w) => w.text === 'fun.' && !w.cut && !w.isNew);
+      if (!target) { say('Already changed. Press ↺ to start over.'); return; }
+      busy = true;
+      target.el.classList.add('sel'); target.seg.classList.add('sel');
+      say('Double-click “fun.”, type the new words…');
+      await later(450);
+      cut([target]);
+      const el = document.createElement('span');
+      el.className = 'tw new typing';
+      target.el.after(el);
+      const text = 'fun to work with.';
+      for (let k = 1; k <= text.length; k++) { el.textContent = text.slice(0, k); await later(45); }
+      el.textContent = text + ' '; el.classList.remove('typing');
+      say('Saying it in Anna’s cloned voice…');
+      await later(700);
+      const w = { el, text, who: 'Anna', dur: 1.1, isNew: true, cut: false, para: target.para };
+      w.seg = segFor(w); w.seg.style.width = '0px';
+      target.seg.after(w.seg);
+      words.splice(words.indexOf(target) + 1, 0, w);
+      words.forEach((x, i) => { x.el.dataset.i = i; });
+      requestAnimationFrame(() => requestAnimationFrame(() => sizeSeg(w)));
+      say(`Replaced “fun.” in Anna’s voice <span class="badge-exp">Experimental</span> ${lengthLine()}`);
+      busy = false;
+    };
+    const acts = { clean, speak, reset: () => { busy = false; build(); } };
+    $$('.te-actions button', demo).forEach((b) => b.addEventListener('click', () => {
+      const wasAuto = !user;
+      stopAuto();
+      // the first click takes over from the autoplay: start from a fresh transcript
+      if (wasAuto && b.dataset.act !== 'reset') build();
+      void acts[b.dataset.act]();
+    }));
+
+    // autoplay: a short edit session, on a loop, until the visitor takes over
+    const auto = async () => {
+      const my = ++gen;
+      const alive = () => my === gen && !user;
+      while (alive()) {
+        build();
+        await later(1600); if (!alive()) return;
+        const from = words.findIndex((w) => w.text === 'you'), to = words.findIndex((w) => w.text === 'one,');
+        for (let i = from; i <= to; i++) { select(from, i); await later(140); if (!alive()) return; }
+        await cutSelection(); await later(2200); if (!alive()) return;
+        await clean(); await later(2600); if (!alive()) return;
+        await speak(); await later(4200); if (!alive()) return;
+      }
+    };
+    build(); lastW = waveEl.clientWidth;
+    document.fonts?.ready.then(() => { if (!user && !playing) layout(); });
+    if (!reduce) visible(demo, (v) => {
+      if (user) return;
+      if (v && !playing) { playing = true; void auto(); }
+      else if (!v && playing) { playing = false; halt(); }
+    });
+  })();
 })();

@@ -25,6 +25,7 @@
   <header class="top">
     <a class="brand" href="./"><img src="img/icon.svg" alt="" width="30" height="30"> WavePod</a>
     <nav>
+      <a href="#text-editing">Text editing</a>
       <a href="#features">Features</a>
       <a href="#tour">Tour</a>
       <a href="#open-source">Open Source</a>
@@ -47,8 +48,9 @@
       <p class="lead reveal">
         WavePod is the multitrack studio made for talking. Plug in your
         RØDECaster or USB interface, get a track for every speaker in one
-        click, and go from first word to finished MP3 with chapters.
-        Free, fully Open Source, on Linux, Windows and macOS.
+        click, edit the episode by editing its transcript, and go from first
+        word to finished MP3 with chapters. Free, fully Open Source, on
+        Linux, Windows and macOS.
       </p>
       <div class="cta reveal">
         <a class="button primary magnetic" href="#download"><span>Download for free</span></a>
@@ -78,7 +80,7 @@
         <div class="marquee-track">
           <span>RØDECaster Pro II</span><span>RØDECaster Duo</span><span>Zoom PodTrak</span>
           <span>Focusrite Scarlett</span><span>Class-compliant USB</span><span>VST3 plug-ins</span>
-          <span>MIDI controllers</span><span>OSC remotes</span><span>Auphonic</span>
+          <span>MIDI controllers</span><span>OSC remotes</span><span>Auphonic</span><span>ElevenLabs</span>
           <span>Core Audio</span><span>WASAPI · ASIO</span><span>ALSA · PulseAudio · JACK</span>
         </div>
       </div>
@@ -90,6 +92,76 @@
       <div class="stat reveal"><b data-count="3">3</b><span>platforms, one app</span></div>
       <div class="stat reveal"><b data-count="-16" data-suffix=" LUFS">−16 LUFS</b><span>loudness, on target</span></div>
       <div class="stat reveal"><b data-count="0" data-prefix="€">€0</b><span>forever, MIT licensed</span></div>
+    </section>
+
+    <!-- ============================================================ TEXT EDITING -->
+    <section id="text-editing" class="textedit">
+      <p class="eyebrow center reveal">Text-based editing</p>
+      <h2 class="reveal">Edit your podcast<br><span class="dim">like a document.</span></h2>
+
+      <div class="te-grid">
+        <div class="te-demo reveal" id="te-demo">
+          <div class="te-bar">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="te-title">Transcript</span>
+            <span class="te-actions">
+              <button type="button" data-act="clean">Clean up</button>
+              <button type="button" data-act="speak">Change word</button>
+              <button type="button" data-act="reset" class="te-reset" title="Start over">↺</button>
+            </span>
+          </div>
+          <div class="te-text" id="te-text" aria-label="Demo transcript: click a word to cut it from the audio"></div>
+          <div class="te-wave" id="te-wave" aria-hidden="true"></div>
+          <p class="te-status" id="te-status" aria-live="polite">Click a word to cut it, or drag across words.</p>
+        </div>
+
+        <ul class="te-points">
+          <li class="reveal">
+            <b>A transcript of every track</b>
+            <span>Transcribe the episode with ElevenLabs Scribe, using your own API
+            key. Every word knows its time, and the text stays in place through
+            every cut, move and trim. Click a word and the playhead jumps there;
+            during playback the current word lights up.</span>
+          </li>
+          <li class="reveal">
+            <b>Delete text, cut audio</b>
+            <span>Drag across a sentence and press <kbd>Delete</kbd>, or click a single
+            word and delete just that one. WavePod ripple-cuts it from every track
+            at once, so the conversation stays in sync and the gap closes.</span>
+          </li>
+          <li class="reveal">
+            <b>Pauses and hesitations, gone in one click</b>
+            <span><em>Clean up</em> finds long pauses and shortens them, keeping the
+            breaths, and lists every “um”, “uh” and “ähm” from the transcript. Listen to
+            each one, untick what should stay, apply the rest.</span>
+          </li>
+          <li class="reveal">
+            <b>Fix a word in the speaker's voice <span class="badge-exp">Experimental</span></b>
+            <span>Double-click a word and type what should have been said. WavePod
+            clones the speaker's voice from their own track (with their permission),
+            says the new words with ElevenLabs speech synthesis, matches the level
+            and splices them in.</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="te-shots">
+        <figure class="te-shot reveal">
+          <a href="img/transcript.png"><img src="img/transcript.png" width="960" height="650" loading="lazy" alt="WavePod timeline with the transcript panel open: a selected phrase in the text is selected on both tracks"></a>
+          <figcaption><b>Select in the text,</b> and the same time is selected on every track.</figcaption>
+        </figure>
+        <figure class="te-shot reveal">
+          <a href="img/cleanup.png"><img src="img/cleanup.png" width="760" height="548" loading="lazy" alt="Clean up pauses and hesitations dialog listing a long pause and four hesitations, each with a play button"></a>
+          <figcaption><b>Clean up</b> lists every long pause and hesitation to review.</figcaption>
+        </figure>
+        <figure class="te-shot reveal">
+          <a href="img/speech.png"><img src="img/speech.png" width="1000" height="650" loading="lazy" alt="Change words dialog: replace a word in Anna's sentence with new words spoken in her cloned voice"></a>
+          <figcaption><b>Change words</b> says new words in the speaker's cloned voice.</figcaption>
+        </figure>
+      </div>
+      <p class="note reveal">Transcription and speech synthesis use your own
+      <a href="https://elevenlabs.io/">ElevenLabs</a> account. Audio only leaves your
+      computer when you start one of them; everything else in WavePod works offline.</p>
     </section>
 
     <!-- ============================================================ FEATURES -->
@@ -140,7 +212,8 @@
           </div>
           <h3>Editing for podcasters</h3>
           <p>Split, trim, fade, ripple cut across all tracks, crossfades, volume lines,
-          cough buttons and tape-style scrubbing.</p>
+          cough buttons, tape-style scrubbing, and cutting by deleting words in the
+          transcript.</p>
         </article>
 
         <article class="card reveal">
@@ -282,7 +355,7 @@
     <p>Open Source under the <a href="https://github.com/michaelkleinhenz/wavepod/blob/main/LICENSE">MIT License</a>;
     third-party parts keep their own licenses (<a href="https://github.com/michaelkleinhenz/wavepod/blob/main/THIRD_PARTY_NOTICES.md">notices</a>).</p>
     <p><a href="https://github.com/michaelkleinhenz/wavepod">Source on GitHub</a> · <a href="imprint.html">Imprint &amp; privacy</a></p>
-    <p class="fine">RØDECaster, Zoom PodTrak, Focusrite, Auphonic and the other product names are trademarks of their
+    <p class="fine">RØDECaster, Zoom PodTrak, Focusrite, Auphonic, ElevenLabs and the other product names are trademarks of their
     respective owners, used only to describe compatibility. VST is a registered trademark of Steinberg Media
     Technologies GmbH. WavePod is not affiliated with or endorsed by any of them.</p>
   </footer>
