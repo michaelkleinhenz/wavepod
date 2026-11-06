@@ -1,14 +1,11 @@
-// Setup: tabs for the episode (open, new, save), the audio interface, microphones (meters and track creation), controllers (MIDI, OSC)
-// and AI agents (MCP). Technical settings sit in collapsed "Advanced" sections.
+// Setup: two tabs, one for the episode (open, new, save) and one for the audio interface and the microphones
+// (meters and track creation). Technical settings sit in collapsed "Advanced" sections. Controllers and
+// AI agents are app settings and live in Edit › Settings….
 import type { BitDepth, DeviceConfig, DeviceProfile, EngineStatus, OutputSource } from '../shared/types';
 import { addTrack } from '../core/project';
 import { suggestTracks } from '../core/deviceProfiles';
 import { LevelMeter } from './levelMeter';
 import { append, clear, disclosure, errorMessage, h, keepScroll, toast } from './dom';
-import { isMcpOn, renderMcpCard } from './mcpCard';
-import { midi } from './midi';
-import { renderMidiCard } from './midiCard';
-import { isOscOn, renderOscCard } from './oscCard';
 import { api, store } from './store';
 import type { RecentProject } from '../shared/api';
 import type { TemplateSummary } from '../core/template';
@@ -18,13 +15,10 @@ import { newFromTemplate } from './templateDialog';
 const SAMPLE_RATES = [44100, 48000, 96000];
 const BUFFER_SIZES = [128, 256, 512, 1024, 2048];
 
-export type SetupTab = 'project' | 'audio' | 'inputs' | 'controllers' | 'agents';
+export type SetupTab = 'project' | 'audio';
 const TABS: Array<{ id: SetupTab; label: string; blurb: string }> = [
   { id: 'project', label: 'Project', blurb: 'Continue an episode, open another one or start a new one, empty or from a template.' },
-  { id: 'audio', label: 'Audio', blurb: 'Choose the device you record from and the one you listen on.' },
-  { id: 'inputs', label: 'Microphones', blurb: 'Check your levels and create a track for every speaker.' },
-  { id: 'controllers', label: 'Controllers', blurb: 'Start recording, drop markers and fire jingles from a MIDI controller or Stream Deck.' },
-  { id: 'agents', label: 'AI agents', blurb: 'Let AI apps on this computer help with filters and loudness.' },
+  { id: 'audio', label: 'Audio', blurb: 'Choose the device you record from and the one you listen on, check your levels and create a track for every speaker.' },
 ];
 const TAB_KEY = 'wavepod.setupTab';
 
@@ -32,6 +26,7 @@ function savedTab(): SetupTab {
   try {
     const t = localStorage.getItem(TAB_KEY);
     if (TABS.some((x) => x.id === t)) return t as SetupTab;
+    // the old Microphones tab is part of Audio now
   } catch {
     /* storage unavailable */
   }
@@ -42,8 +37,6 @@ export class SetupView {
   readonly el = h('div', { class: 'view setup-view' });
   private meterEls: LevelMeter[] = [];
   private tab: SetupTab = savedTab();
-  /** Opens the template dialogs (set by the app shell). */
-  onTemplates?: { start: () => void; save: () => void };
   /** Called after the Project tab opened or created an episode, with what happened. */
   onEpisodeChosen?: (how: 'opened' | 'blank' | 'template') => void;
   /** Project tab: the name typed for a new episode, the templates and the recent episodes. */
@@ -150,9 +143,6 @@ export class SetupView {
     const badge: Record<SetupTab, 'warn' | 'on' | null> = {
       project: store.saveState.state === 'error' ? 'warn' : null,
       audio: audioProblem ? 'warn' : null,
-      inputs: null,
-      controllers: midi.settings.enabled || isOscOn() ? 'on' : null,
-      agents: isMcpOn() ? 'on' : null,
     };
     const tabs = h(
       'div',
@@ -179,20 +169,11 @@ export class SetupView {
         append(page, [this.renderCurrentEpisode(), this.renderNewEpisode(), this.renderOpenEpisode()]);
         break;
       case 'audio':
-        append(page, [this.renderAudio(s), this.renderSecondOutput(s)]);
-        break;
-      case 'inputs':
-        append(page, [this.renderChannels(store.profile, s.inputChannelCount), this.renderTemplates()]);
-        break;
-      case 'controllers':
-        append(page, [renderMidiCard(), renderOscCard()]);
-        break;
-      case 'agents':
-        page.append(renderMcpCard());
+        append(page, [this.renderAudio(s), this.renderChannels(store.profile, s.inputChannelCount), this.renderSecondOutput(s)]);
         break;
     }
-    // Meters only exist on the Microphones tab.
-    if (this.tab !== 'inputs') this.meterEls = [];
+    // Meters only exist on the Audio tab.
+    if (this.tab !== 'audio') this.meterEls = [];
     this.el.append(tabs, page);
   }
 
@@ -387,7 +368,7 @@ export class SetupView {
     this.meterEls = [];
     const card = h('section', { class: 'card' }, h('h2', null, 'Microphones and inputs'));
     if (!channelCount) {
-      card.append(h('p', { class: 'muted' }, 'Nothing to show yet: choose a device to record from on the Audio tab.'));
+      card.append(h('p', { class: 'muted' }, 'Nothing to show yet: choose a device to record from above.'));
       return card;
     }
     const labels = profile?.inputs ?? Array.from({ length: channelCount }, (_, i) => ({ index: i, label: `Input ${i + 1}` }));
@@ -560,21 +541,6 @@ export class SetupView {
             ),
           )
         : h('p', { class: 'muted' }, 'No other episodes in the WavePod folder yet.'),
-    );
-  }
-
-  private renderTemplates(): HTMLElement {
-    return h(
-      'section',
-      { class: 'card' },
-      h('h2', null, 'Episode templates'),
-      h('p', { class: 'muted' }, 'Reuse the same tracks, input channels, filters and soundboard for every episode. Recordings are not included.'),
-      h(
-        'div',
-        { class: 'row' },
-        h('button', { onclick: () => this.onTemplates?.start() }, 'New episode from template…'),
-        h('button', { disabled: !store.project.tracks.length, onclick: () => this.onTemplates?.save() }, 'Save this setup as a template…'),
-      ),
     );
   }
 

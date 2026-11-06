@@ -1,4 +1,4 @@
-// Setup card for the OSC server (Stream Deck via Bitfocus Companion, TouchOSC, …).
+// Settings › Controllers card for the OSC server (Stream Deck via Bitfocus Companion, TouchOSC, …).
 import type { OscSettings, OscStatus } from '../shared/types';
 import { OSC_ADDRESSES } from '../core/osc';
 import { disclosure, errorMessage, h, toast } from './dom';
@@ -30,7 +30,7 @@ async function apply(patch: Partial<OscSettings>): Promise<void> {
   store.notify('osc');
 }
 
-/** True while OSC remote control is switched on (for the Setup tab's indicator). */
+/** True while OSC remote control is switched on (for the Settings tab's indicator). */
 export function isOscOn(): boolean {
   return !!status?.enabled;
 }

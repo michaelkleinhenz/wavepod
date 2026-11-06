@@ -66,9 +66,9 @@ interface Settings {
   confirmStopRecording: boolean;
   /** Beep when playback passes a marker. */
   markerPing: boolean;
-  /** Local MCP server for AI agents; off unless the user switches it on in Setup. */
+  /** Local MCP server for AI agents; off unless the user switches it on in Settings › AI agents. */
   mcp: McpSettings;
-  /** OSC remote control; off unless switched on in Setup. */
+  /** OSC remote control; off unless switched on in Settings › Controllers. */
   osc: OscSettings;
   auphonic: StoredAuphonic;
   transcription: TranscriptionSettings;

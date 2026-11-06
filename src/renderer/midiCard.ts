@@ -1,4 +1,4 @@
-// Setup card for MIDI controller mappings: enable/disable, connected devices, learn and clear per function.
+// Settings › Controllers card for MIDI controller mappings: enable/disable, connected devices, learn and clear per function.
 import type { MidiButtonMode } from '../shared/types';
 import { MIDI_ACTIONS, describeTrigger, normalizeDeviceName } from '../core/midi';
 import { h } from './dom';
