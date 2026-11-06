@@ -112,6 +112,11 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   (plus an optional M&E mix) for broadcasters and festivals; each track's
   stem is picked in the export dialog and saved with the episode.
 
+The **user guide** explains every feature step by step. In the app it opens
+with **Help › WavePod Help** (`F1`, at the page for the view or dialog you are
+in), with a contents list and full-text search; the pages are also readable
+here in [docs/guide/](docs/guide/README.md).
+
 See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.
 
 ## Getting started

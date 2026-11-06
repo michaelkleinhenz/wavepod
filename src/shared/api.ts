@@ -104,6 +104,7 @@ export type MenuCommand =
   | 'show-project-folder'
   | 'restore-backup'
   | 'shortcuts'
+  | 'help'
   | 'speed-up'
   | 'speed-down'
   | 'speed-normal'
@@ -270,6 +271,8 @@ export interface WavePodApi {
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;
+  /** Opens the help window at a page of the user guide (`topic` or `topic/anchor`). */
+  openHelp(topic?: string): Promise<void>;
   /** Where a clip should start to line up with a reference track (double-ender alignment). */
   alignClip(clipId: string, refTrackId: string): Promise<AlignResult>;
 
@@ -430,6 +433,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'measureLoudness',
   'measureClips',
   'revealFile',
+  'openHelp',
   'alignClip',
   'getTranscriptionInfo',
   'setTranscriptionSettings',

@@ -55,6 +55,7 @@ import { TemplateDialog } from './templateDialog';
 import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
 import { showShortcuts } from './shortcuts';
+import { openContextHelp } from './help';
 import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
@@ -445,6 +446,7 @@ async function main(): Promise<void> {
       case 'show-project-folder': return void api().showProjectFolder();
       case 'restore-backup': return void restoreBackup();
       case 'shortcuts': return showShortcuts();
+      case 'help': return openContextHelp();
       case 'speed-up': return stepPlaybackSpeed(1);
       case 'speed-down': return stepPlaybackSpeed(-1);
       case 'speed-normal': return setSpeed(1, true);
