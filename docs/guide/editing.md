@@ -44,6 +44,8 @@ Ripple edits keep all tracks in sync, and they move markers, regions, mute regio
 
 Drag one clip so it overlaps the next on the same track and the overlap becomes a crossfade by itself. Overlapping clips are drawn see-through, with both waveforms and the crossing fade curves visible, also while you drag.
 
+Cuts never click. Wherever a cut leaves a hard clip edge (a deleted word, a ripple cut, a clip trimmed in the middle of a sound), WavePod blends it over 5 ms when it plays and exports: two clips that meet get a tiny crossfade, a clip that ends on its own a tiny fade. These are not drawn and change nothing in the clips; a plain split that keeps the audio running is left untouched.
+
 ## Volume line
 
 Each clip can have a **volume line** to make words louder or quieter, or fade a music bed under a voice.

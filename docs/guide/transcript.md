@@ -26,7 +26,7 @@ The panel shows the episode as text, one paragraph per speaker turn. Hesitations
 
 - **Click a word** to jump there.
 - **Drag across words** to select their time.
-- Press `Delete` (or `Backspace`) to cut the selection out of all tracks; the gap closes and everything stays in sync. `Ctrl+Z` brings it back.
+- Press `Delete` (or `Backspace`) to cut the selection out of all tracks; the gap closes and everything stays in sync, and the joint is blended over a few milliseconds so it doesn't click. `Ctrl+Z` brings it back.
 
 **Save as…** writes the transcript as **Text with speakers (.txt)** with times, or as **Subtitles (.vtt)**.
 
