@@ -226,7 +226,7 @@ async function main(): Promise<void> {
     saveDot,
   );
   const statusBar = h('footer', { class: 'statusbar' });
-  // Live problems of the running take (dropouts, crackle, clipping, silent inputs, disk).
+  // Live problems of the running take (dropouts, crackle, clipping, a stalled input, disk).
   const healthBar = h('div', { class: 'rec-health', role: 'status', 'aria-live': 'polite' });
   const main = h('main');
   root.append(new MenuBar().el, header, healthBar, main, statusBar);

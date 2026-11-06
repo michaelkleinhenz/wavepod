@@ -1,6 +1,8 @@
 // Watches a running recording for problems and reports them while there is still time to react:
-// lost audio (dropouts / buffer overruns), clicks and crackle, clipping, inputs without signal,
+// lost audio (dropouts / buffer overruns), clicks and crackle, clipping,
 // a stalled input device, a disk that is filling up or can't keep up, and write errors.
+// It only speaks up about real trouble: a silent input is normal (a muted mic, a guest who
+// listens), and so are noise gates opening, a busy main thread and audio that arrives in bursts.
 import type { RecordingEvent, RecordingHealth, RecordingWarning } from '../shared/types';
 
 export interface MonitoredTrack {
@@ -40,17 +42,16 @@ const CLICK_MIN = 0.01;
 const CLICK_RATIO = 10;
 /** Samples after a click candidate that must be calm again. */
 const CLICK_POST = 64;
+/**
+ * -50 dBFS: clicks only count where there is signal before and after them. A step into or out of
+ * silence is a noise gate, a fader or mute button, or a word starting, not crackle.
+ */
+const CLICK_SIGNAL = 0.003;
 /** Clicks in CRACKLE_WINDOW seconds that count as crackle. */
-const CRACKLE_CLICKS = 3;
+const CRACKLE_CLICKS = 5;
 const CRACKLE_WINDOW = 5;
-/** -80 dBFS: below this an input is treated as silent. */
-const SILENCE_LEVEL = 1e-4;
-/** Seconds without any signal since the take started before warning. */
-const NO_SIGNAL_START = 5;
-/** Seconds of silence after there was signal before warning. */
-const NO_SIGNAL_LATER = 60;
 /** Seconds without input buffers that count as a stalled device. */
-const STALL_SECONDS = 1;
+const STALL_SECONDS = 2;
 /** How long a passing problem stays on screen. */
 const SHOW_SECONDS = 8;
 /** Seconds of audio held back by the writer that mean the disk can't keep up. */
@@ -68,16 +69,15 @@ interface ChannelState {
   x2: number;
   /** Mean of |second difference| (the signal's "roughness"). */
   env: number;
-  cand: { pos: number; mag: number; pre: number; postSum: number; postN: number } | null;
+  /** Mean of |sample| over the last ~10 ms (is there signal at all?). */
+  lev: number;
+  cand: { pos: number; mag: number; pre: number; postSum: number; postLev: number; postN: number } | null;
   clipRun: number;
 }
 
 interface TrackState {
   track: MonitoredTrack;
   chans: ChannelState[];
-  everSignal: boolean;
-  /** Frame of the last sample above SILENCE_LEVEL. */
-  lastSignal: number;
   clicks: number[];
   lastClip: number;
   lastCrackle: number;
@@ -85,13 +85,18 @@ interface TrackState {
   clickCount: number;
 }
 
-/** Wall-clock check for audio the device never delivered. */
+/**
+ * Wall-clock check for audio the device never delivered. Late buffers are not lost buffers: the
+ * smallest deficit over two windows in a row must rise, so a main thread that was busy for a
+ * second (a save, a redraw, garbage collection) and then catches up is not a dropout.
+ */
 class DropoutDetector {
   private t0 = -1;
   private got = 0;
   private windowStart = 0;
   private windowMin = Infinity;
   private baseline: number | null = null;
+  private prevFloor = 0;
   constructor(
     private sampleRate: number,
     private threshold: number,
@@ -117,10 +122,14 @@ class DropoutDetector {
     this.windowMin = Infinity;
     if (this.baseline === null) {
       this.baseline = floor;
+      this.prevFloor = floor;
       return 0;
     }
-    const lost = floor - this.baseline;
-    this.baseline = floor;
+    // Lost audio keeps the deficit up in both windows; a late burst only in one of them.
+    const confirmed = Math.min(this.prevFloor, floor);
+    this.prevFloor = floor;
+    const lost = confirmed - this.baseline;
+    this.baseline = confirmed;
     return lost > this.threshold ? Math.round(lost) : 0;
   }
 }
@@ -147,6 +156,7 @@ export class RecordingMonitor {
   private lastDropout = -Infinity;
   private droppedTotal = 0;
   private lastBufferMs = -1;
+  private lastTickMs = -1;
   private stalledSince: number | null = null;
   private writer: WriterState = { queuedBytes: 0, error: null, droppedFrames: 0, freeBytes: null };
   private writerError: { text: string; since: number } | null = null;
@@ -159,9 +169,7 @@ export class RecordingMonitor {
     const sr = opts.sampleRate;
     this.tracks = opts.tracks.map((track) => ({
       track,
-      chans: track.channels.map((channel) => ({ channel, x1: 0, x2: 0, env: 0, cand: null, clipRun: 0 })),
-      everSignal: false,
-      lastSignal: 0,
+      chans: track.channels.map((channel) => ({ channel, x1: 0, x2: 0, env: 0, lev: 0, cand: null, clipRun: 0 })),
       clicks: [],
       lastClip: -Infinity,
       lastCrackle: -Infinity,
@@ -195,16 +203,15 @@ export class RecordingMonitor {
     this.lastBufferMs = nowMs;
     this.stalledSince = null;
     const alpha = 1 / (0.002 * sr);
+    const levAlpha = 1 / (0.01 * sr);
     for (const t of this.tracks) {
-      let peak = 0;
       for (const c of t.chans) {
         const ch = c.channel;
         if (ch >= nch) continue;
-        let { x1, x2, env, cand, clipRun } = c;
+        let { x1, x2, env, lev, cand, clipRun } = c;
         for (let i = 0; i < frames; i++) {
           const x = interleaved[i * nch + ch];
           const ax = x < 0 ? -x : x;
-          if (ax > peak) peak = ax;
           // clipping: a run of samples at full scale
           if (ax >= CLIP_LEVEL) {
             if (++clipRun === CLIP_RUN) this.clip(t, start + i);
@@ -220,29 +227,32 @@ export class RecordingMonitor {
               inCand = true;
             } else {
               cand.postSum += a;
+              cand.postLev += ax;
               if (++cand.postN >= CLICK_POST) {
                 const post = cand.postSum / cand.postN;
-                if (cand.mag > CLICK_RATIO * Math.max(cand.pre, post)) this.click(t, cand.pos);
+                // signal on both sides: a cut to silence is a gate closing or a mute button
+                const audible = cand.postLev / cand.postN > CLICK_SIGNAL;
+                if (audible && cand.mag > CLICK_RATIO * Math.max(cand.pre, post)) this.click(t, cand.pos);
                 cand = null;
               }
             }
-          } else if (a > CLICK_MIN && a > CLICK_RATIO * env && n > 2) {
-            cand = { pos: n, mag: a, pre: env, postSum: 0, postN: 0 };
+          } else if (a > CLICK_MIN && a > CLICK_RATIO * env && lev > CLICK_SIGNAL && n > 2) {
+            cand = { pos: n, mag: a, pre: env, postSum: 0, postLev: 0, postN: 0 };
             inCand = true;
           }
-          if (!inCand) env += (a - env) * alpha;
+          if (!inCand) {
+            env += (a - env) * alpha;
+            lev += (ax - lev) * levAlpha;
+          }
           x2 = x1;
           x1 = x;
         }
         c.x1 = x1;
         c.x2 = x2;
         c.env = env;
+        c.lev = lev;
         c.cand = cand;
         c.clipRun = clipRun;
-      }
-      if (peak > SILENCE_LEVEL) {
-        t.everSignal = true;
-        t.lastSignal = start + frames;
       }
     }
     this.frame += frames;
@@ -300,7 +310,11 @@ export class RecordingMonitor {
   /** Call a few times per second, with or without input, to check the device and the disk. */
   tick(nowMs: number, writer: WriterState): void {
     this.writer = writer;
-    if (this.lastBufferMs >= 0 && nowMs - this.lastBufferMs > STALL_SECONDS * 1000) {
+    // If the ticks themselves were held up, this thread was busy and the buffers are still queued
+    // behind it: that is not the device stopping. Look again on the next regular tick.
+    const tickGap = this.lastTickMs < 0 ? 0 : nowMs - this.lastTickMs;
+    this.lastTickMs = nowMs;
+    if (tickGap < STALL_SECONDS * 500 && this.lastBufferMs >= 0 && nowMs - this.lastBufferMs > STALL_SECONDS * 1000) {
       if (this.stalledSince === null) {
         this.stalledSince = this.lastBufferMs;
         this.addEvent({ frame: this.frame, kind: 'stall', text: 'The input device stopped sending audio' });
@@ -360,14 +374,9 @@ export class RecordingMonitor {
         text: `Audio dropped out at ${fmtTime(this.lastDropout / sr)} (${Math.round((this.droppedTotal / sr) * 1000)} ms lost so far). A higher latency (Setup › Audio › Advanced audio settings) can help.`,
       });
     }
+    // A silent input is not a problem: mics are muted, guests listen. The track meters show it.
     for (const t of this.tracks) {
       const name = t.track.name;
-      const inputs = t.track.channels.map((c) => c + 1).join('+');
-      if (!t.everSignal && now > NO_SIGNAL_START * sr) {
-        warnings.push({ key: `silent-${t.track.trackId}`, level: 'warning', trackId: t.track.trackId, text: `${name}: no signal on input ${inputs} since the recording started. Muted, or the wrong input?` });
-      } else if (t.everSignal && now - t.lastSignal > NO_SIGNAL_LATER * sr) {
-        warnings.push({ key: `silent-${t.track.trackId}`, level: 'warning', trackId: t.track.trackId, text: `${name}: input ${inputs} has been silent for ${formatMinutes((now - t.lastSignal) / sr)}.` });
-      }
       if (recent(t.lastCrackle)) {
         warnings.push({ key: `crackle-${t.track.trackId}`, level: 'warning', trackId: t.track.trackId, text: `${name}: crackling (${t.clickCount} clicks so far). Check the cable, or try a larger buffer size.` });
       }

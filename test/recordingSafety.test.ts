@@ -206,7 +206,7 @@ describe('RecordingMonitor', () => {
     const cut = new Float32Array(s.length);
     let o = 0;
     for (let i = 0; i < s.length && o < cut.length; i++) {
-      if (i > SR && i < 3 * SR && i % 9600 === 0) i += 37;
+      if (i > SR && i < 3 * SR && i % 4800 === 0) i += 37;
       cut[o++] = s[i];
     }
     feed(m, cut);
@@ -216,7 +216,7 @@ describe('RecordingMonitor', () => {
     expect(m.health(0).warnings.some((w) => w.key === 'crackle-t1')).toBe(true);
   });
 
-  it('reports clipping and inputs without signal', () => {
+  it('reports clipping, but not inputs without signal', () => {
     const m = new RecordingMonitor({
       sampleRate: SR,
       bufferSize: 512,
@@ -231,9 +231,58 @@ describe('RecordingMonitor', () => {
       t += (512 / SR) * 1000;
     }
     expect(m.events.some((e) => e.kind === 'clipping' && e.trackId === 't1')).toBe(true);
+    // a muted mic is normal: nothing about the silent guest
     const w = m.health(t).warnings;
-    expect(w.find((x) => x.key === 'silent-t2')?.text).toContain('input 2');
-    expect(w.some((x) => x.key === 'silent-t1')).toBe(false);
+    expect(w.some((x) => x.trackId === 't2')).toBe(false);
+    expect(m.events.some((e) => e.trackId === 't2')).toBe(false);
+  });
+
+  it('stays quiet in normal operation: silence, gated voices, mute buttons', () => {
+    const m = new RecordingMonitor({
+      sampleRate: SR,
+      bufferSize: 512,
+      tracks: [...tracks, { trackId: 't2', name: 'Guest', channels: [1] }, { trackId: 't3', name: 'Cohost', channels: [2] }],
+      bytesPerSecond: SR * 9,
+    });
+    const n = SR * 90;
+    const silent = new Float32Array(n);
+    // a noise gate: words that snap on out of digital silence and off again, several per second
+    const gated = new Float32Array(n);
+    let ph = 0;
+    for (let i = 0; i < n; i++) {
+      ph += (2 * Math.PI * 180) / SR;
+      const on = Math.floor(i / (SR * 0.15)) % 3 !== 2;
+      gated[i] = on ? 0.3 * Math.sin(ph + 1) + 0.1 * Math.sin(3 * ph) : 0;
+    }
+    // a mute button: room tone and voice, cut hard to zero and back every few seconds
+    const muted = speechLike(90, 5).map((v, i) => (Math.floor(i / (SR * 2.5)) % 2 ? 0 : v));
+    let t = 0;
+    for (let i = 0; i + 512 <= n; i += 512) {
+      m.input(interleave([gated.subarray(i, i + 512), silent.subarray(i, i + 512), muted.subarray(i, i + 512)]), 3, t);
+      t += (512 / SR) * 1000;
+      if (i % (512 * 8) === 0) m.tick(t, { queuedBytes: 0, error: null, droppedFrames: 0, freeBytes: 1e12 });
+    }
+    expect(m.events).toEqual([]);
+    expect(m.health(t).warnings).toEqual([]);
+  });
+
+  it('is not fooled by a busy thread that catches up', () => {
+    const m = new RecordingMonitor({ sampleRate: SR, bufferSize: 512, tracks, bytesPerSecond: SR * 3 });
+    const s = speechLike(10);
+    const ok = { queuedBytes: 0, error: null, droppedFrames: 0, freeBytes: 1e12 };
+    const dt = (512 / SR) * 1000;
+    let busyUntil = 0;
+    for (let i = 0, k = 0; i + 512 <= s.length; i += 512, k++) {
+      const due = k * dt;
+      // at 4 s the thread is blocked for 1.5 s; the queued buffers then arrive in a burst
+      if (k === 375) {
+        busyUntil = due + 1500;
+        m.tick(busyUntil, ok); // the first tick after the pause runs before the queued buffers
+      }
+      m.input(s.subarray(i, i + 512), 1, Math.max(due, busyUntil) + (k % 5));
+      if (k % 8 === 0) m.tick(Math.max(due, busyUntil), ok);
+    }
+    expect(m.events).toEqual([]);
   });
 
   it('notices audio the device never delivered', () => {
@@ -260,7 +309,8 @@ describe('RecordingMonitor', () => {
     expect(w.find((x) => x.key === 'disk-space')?.level).toBe('critical');
     expect(w.some((x) => x.key === 'disk-slow')).toBe(true);
     expect(m.health(t).diskSecondsLeft).toBe(240);
-    m.tick(t + 3000, { queuedBytes: 5000, error: 'The disk is full', droppedFrames: 0, freeBytes: 0 });
+    // the ticks keep coming, the input buffers don't
+    for (let k = 1; k <= 10; k++) m.tick(t + k * 300, { queuedBytes: 5000, error: 'The disk is full', droppedFrames: 0, freeBytes: 0 });
     w = m.health(t + 3000).warnings;
     expect(w.find((x) => x.key === 'disk-error')?.text).toContain('held in memory');
     expect(w.find((x) => x.key === 'stall')?.level).toBe('critical');
