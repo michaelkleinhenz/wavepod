@@ -1,6 +1,6 @@
 // View › Transcript: the episode as text beside the timeline. Click a word to jump there; drag
 // across words to select that time; Delete cuts it out of every track (ripple cut), so editing
-// the text edits the audio. Hesitations are marked, the playing word is highlighted.
+// the text edits the audio. Delete right after clicking a single word cuts just that word. Hesitations are marked, the playing word is highlighted.
 import type { TimelineWord } from '../shared/types';
 import { paragraphs, transcriptText, transcriptVtt, wordAt, wordsRange } from '../core/transcript';
 import { formatTimestamp } from '../shared/time';
@@ -18,6 +18,8 @@ export class TranscriptPanel {
   private shownWords: TimelineWord[] | null = null;
   private current = -1;
   private anchor: number | null = null;
+  /** The word last clicked (without dragging): Delete cuts it when nothing is selected. */
+  private picked: number | null = null;
   private dragging = false;
   private follow = true;
   private shown = false;
@@ -36,13 +38,15 @@ export class TranscriptPanel {
     this.body.addEventListener('mouseover', (e) => this.over(e));
     window.addEventListener('mouseup', () => (this.dragging = false));
     this.el.addEventListener('keydown', (e) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && store.selection.range) {
-        // in the text, deleting words means cutting them out (the gap closes)
-        e.preventDefault();
-        e.stopPropagation();
-        rippleCut();
-        this.anchor = null;
-      }
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (!store.selection.range && this.picked !== null) this.selectWords(this.picked, this.picked);
+      if (!store.selection.range) return;
+      // in the text, deleting words means cutting them out (the gap closes)
+      e.preventDefault();
+      e.stopPropagation();
+      rippleCut();
+      this.anchor = null;
+      this.setPicked(null);
     });
     // scrolling by hand pauses following until the next click
     this.body.addEventListener('wheel', () => {
@@ -128,20 +132,30 @@ export class TranscriptPanel {
     this.el.focus({ preventScroll: true });
     this.follow = true;
     if (e.shiftKey && this.anchor !== null) {
+      this.setPicked(null);
       this.selectWords(this.anchor, i);
       return;
     }
     this.anchor = i;
     this.dragging = true;
-    // a plain click jumps there and clears a selection; dragging selects
+    // a plain click jumps there, clears a selection and picks the word for Delete; dragging selects
     store.select({ range: null, rangeTracks: null, clipIds: new Set() });
+    this.setPicked(i);
     seek(this.shownWords[i].start);
   }
 
   private over(e: MouseEvent): void {
     if (!this.dragging || this.anchor === null || !(e.buttons & 1)) return;
     const i = this.index(e);
-    if (i !== null) this.selectWords(this.anchor, i);
+    if (i === null || i === this.anchor) return;
+    this.setPicked(null);
+    this.selectWords(this.anchor, i);
+  }
+
+  private setPicked(i: number | null): void {
+    if (this.picked !== null) this.spans[this.picked]?.classList.remove('picked');
+    this.picked = i;
+    if (i !== null) this.spans[i]?.classList.add('picked');
   }
 
   private selectWords(a: number, b: number): void {
@@ -202,9 +216,9 @@ export class TranscriptPanel {
     );
     if (p) {
       const what = p.phase === 'preparing' ? 'Preparing' : p.phase === 'uploading' ? 'Uploading' : 'Transcribing';
-      this.status.textContent = `${what} ${p.name ? `${p.name} ` : ''}(${p.file} of ${p.files})…`;
-    } else if (t.busy) this.status.textContent = 'Starting…';
-    else this.status.textContent = t.count ? 'Click a word to jump there · drag to select · Delete cuts the selection from all tracks' : '';
+      this.status.replaceChildren(h('span', { class: 'spinner' }), `${what} ${p.name ? `${p.name} ` : ''}(${p.file} of ${p.files})…`);
+    } else if (t.busy) this.status.replaceChildren(h('span', { class: 'spinner' }), 'Starting…');
+    else this.status.textContent = t.count ? 'Click a word to jump there · Delete cuts it · drag to select more' : '';
     this.status.classList.toggle('busy', t.busy);
   }
 
@@ -216,6 +230,9 @@ export class TranscriptPanel {
     this.shownWords = words;
     this.current = -1;
     this.spans = [];
+    // word numbers refer to the words shown before
+    this.anchor = null;
+    this.picked = null;
     if (!words.length) {
       this.body.replaceChildren(
         h(
