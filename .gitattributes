@@ -1,2 +1,5 @@
 # The desktop entry must keep LF endings on every platform (freedesktop spec).
 *.desktop text eol=lf
+# patch-package needs the audify patch byte for byte: it mixes CRLF and LF lines
+# like the files it patches, so Git must never convert its line endings (Windows).
+patches/*.patch -text
