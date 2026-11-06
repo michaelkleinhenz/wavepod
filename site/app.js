@@ -6,6 +6,66 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
+  // ---------------------------------------------------------- podcast / audio drama
+  // The inline script in <head> sets html[data-mode] before first paint; this keeps it in sync.
+  const root = document.documentElement;
+  const DRAMA_HASH = /^(audio-?drama|drama|audio-?play|hoerspiel|hörspiel|fiction)$/i;
+  const modeNow = () => (root.dataset.mode === 'drama' ? 'drama' : 'podcast');
+  const modeHooks = [];
+  const onMode = (fn) => modeHooks.push(fn);
+  const syncMode = () => {
+    const m = modeNow();
+    $$('[data-set-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.setMode === m)));
+    modeHooks.forEach((fn) => fn(m));
+  };
+  const setMode = (m, from) => {
+    if (m === modeNow()) return;
+    try { localStorage.setItem('wavepod-mode', m); } catch { /* private mode */ }
+    root.removeAttribute('data-first-visit');
+    // Keep the section the visitor is reading in view; its content above may change height.
+    const anchor = scrollY > innerHeight * 0.6
+      ? $$('main > section').find((sec) => sec.offsetParent !== null && sec.getBoundingClientRect().bottom > 120)
+      : null;
+    const apply = () => {
+      root.dataset.mode = m;
+      history.replaceState(null, '', location.pathname + location.search + (m === 'drama' ? '#audio-drama' : '#podcast'));
+      if (anchor) anchor.scrollIntoView({ block: 'start', behavior: 'instant' });
+      // What is now on screen shows at once instead of fading in under the wipe.
+      $$('.reveal:not(.in)').forEach((el) => {
+        if (el.offsetParent === null) return;
+        const r = el.getBoundingClientRect();
+        if (r.top < innerHeight && r.bottom > 0) el.classList.add('in', 'instant');
+      });
+      syncMode();
+    };
+    if (reduce || !document.startViewTransition) { apply(); return; }
+    const r = from?.getBoundingClientRect?.();
+    const x = r ? r.left + r.width / 2 : innerWidth / 2, y = r ? r.top + r.height / 2 : 0;
+    const vt = document.startViewTransition(apply);
+    vt.ready.then(() => {
+      const rad = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      root.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${rad}px at ${x}px ${y}px)`] },
+        { duration: 800, easing: 'cubic-bezier(.65, 0, .25, 1)', pseudoElement: '::view-transition-new(root)' },
+      );
+    }).catch(() => {});
+  };
+  $$('[data-set-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.setMode, b)));
+  // Arrow keys move between the two options, as in any radio group.
+  $$('[role="radiogroup"]').forEach((g) => g.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    const next = modeNow() === 'drama' ? 'podcast' : 'drama';
+    const btn = $(`[data-set-mode="${next}"]`, g);
+    setMode(next, btn); btn.focus();
+  }));
+  addEventListener('hashchange', () => {
+    const h = decodeURIComponent(location.hash.slice(1));
+    if (DRAMA_HASH.test(h)) setMode('drama');
+    else if (/^podcasts?$/i.test(h)) setMode('podcast');
+  });
+  syncMode();
+
   // ---------------------------------------------------------- header + cursor glow
   const top = $('.top');
   const onScroll = () => top.classList.toggle('scrolled', scrollY > 12);
@@ -62,8 +122,7 @@
   }
 
   // ---------------------------------------------------------- marquee (seamless loop)
-  const mq = $('.marquee-track');
-  if (mq) mq.append(...[...mq.children].map((n) => { const c = n.cloneNode(true); c.setAttribute('aria-hidden', 'true'); return c; }));
+  $$('.marquee-track').forEach((mq) => mq.append(...[...mq.children].map((n) => { const c = n.cloneNode(true); c.setAttribute('aria-hidden', 'true'); return c; })));
 
   // ---------------------------------------------------------- count-up stats
   const fmt = (n) => (n < 0 ? '−' : '') + Math.abs(n);
@@ -221,49 +280,48 @@
     void lines;
   }
 
-  // ---------------------------------------------------------- tour tabs + tilt
-  const tabs = $$('.tabs button'), shots = $$('.shot'), ink = $('.tab-ink'), cap = $('#tour-caption');
-  const captions = [
-    'Every speaker on a track of their own, with chapters, edit marks and the soundboard.',
-    'Check every input level and create a track per microphone in one click.',
-    'Stack filters per track, see what each one does live, and save your own presets.',
-    'Export MP3, WAV and chapter files, normalised to your loudness target.',
-    'Titles, links and images for every chapter, ready for Podlove and Podcasting 2.0.',
-  ];
-  let cur = 0, auto = null;
-  const moveInk = () => {
-    const b = tabs[cur];
-    ink.style.width = b.offsetWidth + 'px';
-    ink.style.transform = `translateX(${b.offsetLeft}px)`;
-  };
-  const show = (i) => {
-    cur = i;
-    tabs.forEach((b, k) => b.setAttribute('aria-selected', String(k === i)));
-    shots.forEach((s, k) => s.classList.toggle('active', k === i));
-    cap.textContent = captions[i];
+  // ---------------------------------------------------------- tour tabs + tilt (one set per audience)
+  $$('.tour-set').forEach((set) => {
+    const tabs = $$('[role="tab"]', set), shots = $$('.shot', set), ink = $('.tab-ink', set), cap = $('.tour-caption', set);
+    let cur = 0, auto = null, started = false;
+    const moveInk = () => {
+      const b = tabs[cur];
+      if (!b.offsetWidth) return;
+      ink.style.width = b.offsetWidth + 'px';
+      ink.style.transform = `translateX(${b.offsetLeft}px)`;
+    };
+    const show = (i) => {
+      cur = i;
+      tabs.forEach((b, k) => b.setAttribute('aria-selected', String(k === i)));
+      shots.forEach((sh, k) => sh.classList.toggle('active', k === i));
+      cap.textContent = shots[i].dataset.caption;
+      moveInk();
+    };
+    tabs.forEach((b, i) => b.addEventListener('click', () => { show(i); clearInterval(auto); auto = null; started = true; }));
+    addEventListener('resize', moveInk);
+    document.fonts?.ready.then(moveInk);
+    onMode(() => requestAnimationFrame(moveInk));
     moveInk();
-  };
-  tabs.forEach((b, i) => b.addEventListener('click', () => { show(i); clearInterval(auto); auto = null; }));
-  addEventListener('resize', moveInk);
-  document.fonts?.ready.then(moveInk);
-  moveInk();
-  if (!reduce) {
-    whenSeen($('#tilt'), () => {
-      auto = setInterval(() => { if (!document.hidden) show((cur + 1) % shots.length); }, 5000);
-    });
-  }
-  const tilt = $('#tilt .tilt-inner');
-  if (tilt && fine && !reduce) {
-    tilt.addEventListener('pointermove', (e) => {
-      const r = tilt.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-      tilt.style.setProperty('--ry', (x - 0.5) * 8 + 'deg');
-      tilt.style.setProperty('--rx', (0.5 - y) * 6 + 'deg');
-      tilt.style.setProperty('--gx', x * 100 + '%');
-      tilt.style.setProperty('--gy', y * 100 + '%');
-    });
-    tilt.addEventListener('pointerleave', () => { tilt.style.setProperty('--rx', '0deg'); tilt.style.setProperty('--ry', '0deg'); });
-  }
+    if (!reduce) {
+      new IntersectionObserver(([e]) => {
+        if (!e.isIntersecting || started) return;
+        started = true;
+        auto = setInterval(() => { if (!document.hidden && set.offsetParent !== null) show((cur + 1) % shots.length); }, 5000);
+      }, { threshold: 0.3 }).observe($('.tilt', set));
+    }
+    const tilt = $('.tilt-inner', set);
+    if (tilt && fine && !reduce) {
+      tilt.addEventListener('pointermove', (e) => {
+        const r = tilt.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        tilt.style.setProperty('--ry', (x - 0.5) * 8 + 'deg');
+        tilt.style.setProperty('--rx', (0.5 - y) * 6 + 'deg');
+        tilt.style.setProperty('--gx', x * 100 + '%');
+        tilt.style.setProperty('--gy', y * 100 + '%');
+      });
+      tilt.addEventListener('pointerleave', () => { tilt.style.setProperty('--rx', '0deg'); tilt.style.setProperty('--ry', '0deg'); });
+    }
+  });
 
   // ---------------------------------------------------------- hero frame tilt on scroll
   const frame = $('.studio-frame');
@@ -326,17 +384,243 @@
   };
   if (!reduce) $$('.platform').forEach((p) => p.addEventListener('click', (e) => burst(e.clientX, e.clientY)));
 
+  // ---------------------------------------------------------- audio drama: voice effects
+  // A stylised waveform of one spoken phrase, reshaped the way each effect changes it.
+  // The chains are the app's own (src/core/fx/voiceEffects.ts).
+  (() => {
+    const cvx = $('#vfx-wave'), chips = $('#vfx-chips'), chain = $('#vfx-chain');
+    if (!cvx) return;
+    const EFFECTS = [
+      ['Dry voice', '', 'Your actor, straight from the mic.'],
+      ['Telephone', 'Band-pass › Distortion › Compressor', 'tel'],
+      ['Old radio', 'Band-pass › Distortion › Compressor', 'radio'],
+      ['Walkie-talkie', 'Band-pass › Distortion › Compressor', 'walkie'],
+      ['Next room', 'Band-pass › Reverb', 'room'],
+      ['Underwater', 'Band-pass › Reverb', 'water'],
+      ['Robot', 'Ring modulator › Band-pass › Compressor', 'robot'],
+      ['Giant', 'Pitch −7 › EQ › Reverb', 'giant'],
+      ['Chipmunk', 'Pitch +12', 'chip'],
+      ['Ghost', 'Chorus › Band-pass › Reverb', 'ghost'],
+      ['Church', 'Reverb', 'church'],
+      ['Far away', 'Band-pass › Echo', 'far'],
+    ];
+    const N = 220;
+    const h = (n) => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 0x27d4eb2d); n ^= n >>> 15; return (n >>> 0) / 4294967296; };
+    // The dry phrase: syllables with gaps.
+    const dry = Array.from({ length: N }, (_, i) => {
+      const syl = Math.floor(i / 9), ph = (i % 9) / 9;
+      const gap = h(syl * 7 + 3) < 0.16 || i > N - 26;
+      return gap ? 0.02 : (0.3 + 0.7 * h(syl * 13 + 1)) * Math.sin(ph * Math.PI) ** 0.8;
+    });
+    const tail = (a, len, amt) => { const o = a.slice(); for (let i = 1; i < N; i++) o[i] = Math.max(o[i], o[i - 1] * (1 - 1 / len) * amt + o[i] * (1 - amt)); return o; };
+    const smooth = (a, k) => a.map((_, i) => { let t = 0, c = 0; for (let j = -k; j <= k; j++) { const v = a[i + j]; if (v !== undefined) { t += v; c++; } } return t / c; });
+    const shape = (kind) => {
+      let a = dry.slice();
+      switch (kind) {
+        case 'tel': return a.map((v, i) => Math.min(0.5, v * 1.4) * (0.85 + 0.15 * h(i)) + 0.03 * h(i * 3));
+        case 'radio': return a.map((v, i) => Math.min(0.55, v * 1.3) * (0.8 + 0.2 * Math.sin(i * 0.9)) + 0.07 * h(i * 5));
+        case 'walkie': return a.map((v, i) => (v > 0.08 ? 0.5 : 0.02) * (0.9 + 0.1 * h(i)) + (i > N - 30 && i < N - 22 ? 0.4 * h(i) : 0));
+        case 'room': return tail(smooth(a, 2).map((v) => v * 0.55), 8, 0.6);
+        case 'water': return smooth(a, 5).map((v, i) => v * 0.75 * (0.8 + 0.2 * Math.sin(i * 0.15)));
+        case 'robot': return a.map((v, i) => v * (0.55 + 0.45 * Math.sign(Math.sin(i * 1.3))));
+        case 'giant': { const o = []; for (let i = 0; i < N; i++) o.push(dry[Math.floor(i * 0.7)] * 1.1); return tail(o, 10, 0.5).map((v) => Math.min(1, v)); }
+        case 'chip': { const o = []; for (let i = 0; i < N; i++) o.push(dry[Math.floor((i * 1.9) % (N - 26))] * (i < N * 0.52 ? 1 : 0.02) * 0.8); return o; }
+        case 'ghost': return tail(a.map((v, i) => v * 0.6 * (0.7 + 0.3 * Math.sin(i * 0.25))), 18, 0.75);
+        case 'church': return tail(a.map((v) => v * 0.8), 26, 0.85);
+        case 'far': { const o = a.map((v) => v * 0.35); for (let i = 26; i < N; i++) o[i] = Math.max(o[i], o[i - 26] * 0.45); return o; }
+        default: return a;
+      }
+    };
+    const targets = EFFECTS.map((e) => shape(e[2]));
+    let cur = dry.slice(), pick = 1, user = false, W = 0, H = 0;
+    const ctx = cvx.getContext('2d');
+    const size = () => {
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      W = cvx.clientWidth; H = cvx.clientHeight;
+      cvx.width = W * dpr; cvx.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      const mid = H / 2 + 6, half = H / 2 - 14, n = W < 500 ? 110 : N, step = N / n, bw = W / n;
+      const g = ctx.createLinearGradient(0, 0, W, 0);
+      const st = getComputedStyle(root);
+      g.addColorStop(0, '#ffd27a'); g.addColorStop(0.5, pick ? '#ff5a6a' : '#4fc3f7'); g.addColorStop(1, '#c04dff');
+      ctx.fillStyle = g;
+      ctx.shadowColor = `rgb(${st.getPropertyValue('--glow').trim().replace(/\s+/g, ',')})`; ctx.shadowBlur = 10;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const v = cur[Math.floor(i * step)], a = Math.max(1, v * half);
+        ctx.rect(i * bw + 1, mid - a, Math.max(1, bw - 1.5), a * 2);
+      }
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    };
+    const select = (i) => {
+      pick = i;
+      $$('button', chips).forEach((b, k) => b.setAttribute('aria-pressed', String(k === i)));
+      const e = EFFECTS[i];
+      chain.innerHTML = e[1] ? `<b>${e[0]}</b> = ${e[1]}` : e[2];
+      if (reduce) { cur = targets[i].slice(); draw(); }
+    };
+    EFFECTS.forEach((e, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = e[0]; b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', () => { user = true; select(i); });
+      if (fine) b.addEventListener('pointerenter', () => { user = true; select(i); });
+      chips.appendChild(b);
+    });
+    size(); select(1);
+    addEventListener('resize', () => { size(); draw(); });
+    onMode(() => requestAnimationFrame(() => { size(); draw(); }));
+    if (reduce) { cur = targets[1].slice(); draw(); return; }
+    let on = false;
+    const loop = () => {
+      const t = targets[pick];
+      for (let i = 0; i < N; i++) cur[i] += (t[i] - cur[i]) * 0.14;
+      draw();
+      if (on) requestAnimationFrame(loop);
+    };
+    visible(cvx, (v) => { on = v; if (v) { size(); requestAnimationFrame(loop); } });
+    setInterval(() => { if (on && !user && !document.hidden) select(pick % (EFFECTS.length - 1) + 1); }, 2400);
+  })();
+
+  // ---------------------------------------------------------- audio drama: room & distance
+  (() => {
+    const c = $('#room-cv');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const PLACES = [['Stairwell', 0.7], ['Living room', 0.35], ['Cave', 1], ['Forest', 0.15], ['Church', 0.95], ['Car', 0.1]];
+    let W = 0, H = 0;
+    const size = () => {
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      W = c.clientWidth; H = c.clientHeight;
+      c.width = W * dpr; c.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    const draw = (t) => {
+      ctx.clearRect(0, 0, W, H);
+      const cyc = 7000, k = Math.floor(t / cyc), p = (t % cyc) / cyc;
+      const [place, size_] = PLACES[k % PLACES.length];
+      // distance: walks away and back, 0.5 … 12 m
+      const walk = p < 0.45 ? p / 0.45 : p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4;
+      const ease = walk * walk * (3 - 2 * walk);
+      const dist = 0.5 + ease * 11.5;
+      const micX = 40, y = H / 2, far = W - 70;
+      const sx = micX + 30 + ease * (far - micX - 30);
+      // room walls
+      const pad = 10 + (1 - size_) * 22;
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1;
+      ctx.setLineDash([4, 5]); ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2); ctx.setLineDash([]);
+      // reflections: rings from the speaker, more and stronger with distance and room size
+      const rings = 3 + Math.round(size_ * 3);
+      for (let r = 0; r < rings; r++) {
+        const ph = ((t / 900) + r / rings) % 1;
+        const rad = 8 + ph * (60 + size_ * 140);
+        ctx.strokeStyle = `rgba(255,160,110,${(1 - ph) * (0.15 + 0.5 * ease) * (0.5 + size_ * 0.5)})`;
+        ctx.beginPath(); ctx.arc(sx, y, rad, 0, Math.PI * 2); ctx.stroke();
+      }
+      // direct sound: line from speaker to mic, fading with distance
+      const gl = ctx.createLinearGradient(micX, 0, sx, 0);
+      gl.addColorStop(0, `rgba(255,210,122,${0.9 - ease * 0.6})`); gl.addColorStop(1, 'rgba(255,210,122,0.1)');
+      ctx.strokeStyle = gl; ctx.lineWidth = 2 - ease; ctx.beginPath(); ctx.moveTo(micX + 10, y); ctx.lineTo(sx - 8, y); ctx.stroke();
+      // mic
+      ctx.fillStyle = '#eef0f6';
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(micX - 6, y - 14, 12, 20, 6) : ctx.rect(micX - 6, y - 14, 12, 20); ctx.fill();
+      ctx.fillRect(micX - 1, y + 6, 2, 8); ctx.fillRect(micX - 6, y + 14, 12, 2);
+      // speaker
+      ctx.fillStyle = '#ffb347'; ctx.shadowColor = '#ff7a3d'; ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.arc(sx, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      // labels
+      ctx.font = '600 11px "JetBrains Mono", monospace'; ctx.fillStyle = '#9aa1b4'; ctx.textBaseline = 'top';
+      ctx.fillText(`ROOM & DISTANCE · ${place.toUpperCase()}`, pad + 8, pad + 7);
+      ctx.textAlign = 'right'; ctx.fillStyle = '#ffd27a'; ctx.font = '700 20px "Space Grotesk", sans-serif';
+      ctx.fillText(`${dist.toFixed(1)} m`, W - pad - 8, H - pad - 28);
+      ctx.textAlign = 'left';
+    };
+    size();
+    addEventListener('resize', () => { size(); draw(reduce ? 2500 : performance.now()); });
+    onMode(() => requestAnimationFrame(() => { size(); draw(reduce ? 2500 : performance.now()); }));
+    if (reduce) { draw(2500); return; }
+    let on = false;
+    const loop = (t) => { draw(t); if (on) requestAnimationFrame(loop); };
+    visible(c, (v) => { on = v; if (v) { size(); requestAnimationFrame(loop); } });
+  })();
+
+  // ---------------------------------------------------------- audio drama: sound library search
+  (() => {
+    const q = $('#lib-q'), list = $('#lib-list');
+    if (!q) return;
+    const SOUNDS = [
+      ['door-creak-old-wood', 'Doors', '3.1 s'], ['door-slam-heavy', 'Doors', '1.4 s'], ['door-knock-three-times', 'Doors', '1.8 s'],
+      ['footsteps-gravel', 'Footsteps', '11.5 s'], ['footsteps-wooden-floor', 'Footsteps', '7.6 s'],
+      ['rain-on-window', 'Atmo', '14 s'], ['forest-wind-birds', 'Atmo', '14 s'], ['thunder-distant', 'Atmo', '6 s'],
+      ['phone-ring-old', 'Props', '5 s'], ['clock-ticking', 'Props', '10 s'],
+    ];
+    const QUERIES = ['door creak', 'rain', 'footsteps', 'thunder', 'door'];
+    const render = (text, on) => {
+      q.textContent = text;
+      const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+      const hits = SOUNDS.filter(([n]) => words.every((w) => n.split('-').some((p) => p.startsWith(w)))).slice(0, 3);
+      list.innerHTML = '';
+      hits.forEach(([n, f, d], i) => {
+        const li = document.createElement('li');
+        if (i === on) li.className = 'on';
+        const name = n.split('-').map((p) => (words.some((w) => p.startsWith(w)) ? `<b>${p}</b>` : p)).join('-');
+        li.innerHTML = `<i class="play"></i><span>${name}</span><small>${f} · ${d}</small>`;
+        list.appendChild(li);
+      });
+    };
+    if (reduce) { render('door creak', 0); return; }
+    let qi = 0, started = false;
+    const run = async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      for (;;) {
+        const text = QUERIES[qi++ % QUERIES.length];
+        for (let i = 1; i <= text.length; i++) { render(text.slice(0, i), -1); await wait(90 + Math.random() * 70); }
+        await wait(350); render(text, 0); await wait(1100); render(text, 1); await wait(1100);
+        for (let i = text.length; i >= 0; i--) { render(text.slice(0, i), -1); await wait(30); }
+        await wait(300);
+      }
+    };
+    render('', -1);
+    whenSeen(list.parentElement, () => { if (!started) { started = true; run(); } });
+  })();
+
   // ---------------------------------------------------------- live studio demo
   const cv = $('#studio');
   if (!cv) return;
   const ctx = cv.getContext('2d');
-  const TRACKS = [
-    { name: 'Host', input: '3: Combo 1', color: '#4fc3f7' },
-    { name: 'Guest', input: '4: Combo 2', color: '#ffb74d' },
-    { name: 'Co-host', input: '5: Combo 3', color: '#81c784' },
-    { name: 'Soundboard', input: 'Jingles', color: '#ba68c8' },
-  ];
-  const TITLES = ['Welcome', 'Listener mail', 'News of the week', 'Interview', 'Tools & tips', 'Picks', 'Goodbye'];
+  const MODES = {
+    podcast: {
+      tracks: [
+        { name: 'Host', input: '3: Combo 1', color: '#4fc3f7' },
+        { name: 'Guest', input: '4: Combo 2', color: '#ffb74d' },
+        { name: 'Co-host', input: '5: Combo 3', color: '#81c784' },
+        { name: 'Soundboard', input: 'Jingles', color: '#ba68c8' },
+      ],
+      titles: ['Welcome', 'Listener mail', 'News of the week', 'Interview', 'Tools & tips', 'Picks', 'Goodbye'],
+      armed: 3, info: '48 kHz · 24-bit · 4 armed', file: (tr) => `${tr.name}-001.wav`,
+    },
+    drama: {
+      tracks: [
+        { name: 'Narrator', input: '3: Combo 1', color: '#4fc3f7', fx: 'Close to the mic' },
+        { name: 'Mara', input: '4: Combo 2', color: '#ba68c8', fx: 'Telephone' },
+        { name: 'Rain', input: 'Atmo', color: '#81c784', fx: 'Loop' },
+        { name: 'Footsteps', input: 'SFX', color: '#ffb74d', fx: 'Pan automation' },
+      ],
+      titles: ['Scene 1 · Night train', 'Scene 2 · The call', 'Scene 3 · Platform', 'Scene 4 · The tunnel', 'Scene 5 · Back on board', 'Scene 6 · Morning'],
+      armed: 2, info: '48 kHz · 24-bit · 2 armed', file: (tr, i) => ['Narrator-001.wav', 'Mara-001.wav', 'rain-on-window.wav', 'footsteps-gravel.wav'][i],
+    },
+  };
+  let MODE = MODES[modeNow()];
+  let TRACKS = MODE.tracks, TITLES = MODE.titles;
+  // Footsteps walk past in bursts; pan follows them from left to right.
+  const stepBurst = (s) => { const k = Math.floor(s / 13), p = s - k * 13; return p < 6 ? p / 6 : -1; };
+  const panAt = (s) => {
+    const b = stepBurst(s);
+    if (b >= 0) return -0.9 + 1.8 * (b * b * (3 - 2 * b));
+    const k = Math.floor(s / 13);
+    return k % 2 ? -0.9 : 0.9;
+  };
   const COLS_PER_SEC = 24;   // waveform columns per second of audio
   const PX_PER_SEC = 64;     // timeline zoom
   const hash = (n) => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 0x27d4eb2d); n ^= n >>> 15; return (n >>> 0) / 4294967296; };
@@ -370,6 +654,23 @@
         return (0.55 + 0.25 * Math.sin(s * 12)) * Math.min(1, p * 8) * Math.min(1, (1 - p) * 3);
       }
       return 0.01 * hash(col);
+    }
+    if (MODE === MODES.drama) {
+      if (track === 2) return (0.2 + 0.13 * hash(col * 5 + 9)) * (0.85 + 0.15 * Math.sin(s * 0.8));
+      if (track === 3) {
+        if (stepBurst(s) < 0) return 0.008 * hash(col);
+        const ph = (s * 1.9) % 1;
+        return ph < 0.14 ? (0.75 - ph * 4) * (0.8 + 0.2 * hash(Math.floor(s * 1.9))) : 0.01 * hash(col);
+      }
+      const t = turnAt(s);
+      const who = t.who === 2 ? 0 : t.who;
+      const syl = Math.floor(col / 4);
+      const env = Math.sin(((col % 4) + 0.5) / 4 * Math.PI);
+      const edge = Math.min(1, (s - t.start) * 4, (t.end - s) * 4);
+      if (who !== track) return 0.02 * hash(col * 3 + track);
+      const gap = hash(syl * 31 + track * 101) < 0.13;
+      const v = (gap ? 0.05 : 0.35 + 0.6 * hash(syl * 17 + track)) * env * edge;
+      return track === 1 ? Math.min(0.42, v * 1.2) + 0.04 : v; // the phone: narrow and squashed
     }
     for (const [a, b] of mutes[track]) if (s >= a && (b === null || s < b)) return 0;
     const t = turnAt(s);
@@ -410,9 +711,19 @@
     markers.push({ t: now, title: title || TITLES[markers.length % TITLES.length], born: performance.now() });
     jingleAt.push(now);
   };
-  markers.push({ t: 0.3, title: 'Welcome', born: -1e9 });
-  markers.push({ t: startOffset - 9, title: 'Listener mail', born: -1e9 });
-  jingleAt.push(startOffset - 9);
+  const seedMarkers = () => {
+    markers.length = 0;
+    markers.push({ t: 0.3, title: TITLES[0], born: -1e9 });
+    markers.push({ t: now - 9, title: TITLES[1], born: -1e9 });
+    jingleAt.push(now - 9);
+  };
+  seedMarkers();
+  onMode((m) => {
+    MODE = MODES[m]; TRACKS = MODE.tracks; TITLES = MODE.titles;
+    mutes.forEach((x) => (x.length = 0));
+    seedMarkers();
+    if (reduce) frameDraw(0);
+  });
 
   let inView = false;
   visible(cv, (v) => { inView = v; });
@@ -420,6 +731,7 @@
     if (!inView || e.target.closest?.('input, textarea')) return;
     if (e.key === 'm' || e.key === 'M') { addMarker(); e.preventDefault(); }
     const n = Number(e.key);
+    if (MODE !== MODES.podcast) return;
     if (n >= 1 && n <= 3 && !e.repeat) { const m = mutes[n - 1]; if (!m.length || m[m.length - 1][1] !== null) m.push([now, null]); }
   });
   addEventListener('keyup', (e) => {
@@ -464,7 +776,7 @@
         ctx.fillText(g, bx + i * 40 + 16, 24);
       });
       ctx.textAlign = 'right'; ctx.fillStyle = '#7d8496'; ctx.font = '500 12px Inter, sans-serif';
-      ctx.fillText('48 kHz · 24-bit · 4 armed', W - 16, 24);
+      ctx.fillText(MODE.info, W - 16, 24);
       ctx.textAlign = 'left';
     }
 
@@ -496,7 +808,13 @@
       if (headW > 120) {
         ctx.fillStyle = '#8b92a4'; ctx.font = '500 11px Inter, sans-serif';
         ctx.fillText(tr.input, 14, y + 36);
-        if (i < 3) { // armed + cough indicators
+        if (tr.fx && trackH > 70) { // the track's effect
+          ctx.font = '600 10px Inter, sans-serif';
+          const tw = Math.min(headW - 28, ctx.measureText(tr.fx).width + 12);
+          roundRect(14, y + 44, tw, 16, 4); ctx.fillStyle = tr.color + '30'; ctx.fill();
+          ctx.fillStyle = tr.color; ctx.fillText(tr.fx, 20, y + 52.5, tw - 12);
+        }
+        if (i < MODE.armed) { // armed + cough indicators
           roundRect(headW - 34, y + 8, 22, 20, 5); ctx.fillStyle = '#e5394a'; ctx.fill();
           ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(headW - 23, y + 18, 4, 0, 7); ctx.fill();
           const coughing = mutes[i].length && mutes[i][mutes[i].length - 1][1] === null;
@@ -523,7 +841,7 @@
       if (clipEnd > laneX) {
         ctx.fillStyle = tr.color + '1c'; ctx.fillRect(clipStart, y + 2, clipEnd - clipStart, trackH - 6);
         ctx.fillStyle = tr.color; ctx.fillRect(clipStart, y + 2, clipEnd - clipStart, 2);
-        if (clipStart > laneX) { ctx.font = '500 10px Inter, sans-serif'; ctx.fillStyle = '#c9cdd8'; ctx.fillText(`${tr.name}-001.wav`, clipStart + 5, y + 14); }
+        if (clipStart > laneX) { ctx.font = '500 10px Inter, sans-serif'; ctx.fillStyle = '#c9cdd8'; ctx.fillText(MODE.file(tr, i), clipStart + 5, y + 14); }
       }
       // waveform
       const mid = y + trackH / 2 + 4, half = trackH / 2 - 12;
@@ -545,6 +863,33 @@
         ctx.beginPath();
         for (let c = c0; c <= c1; c++) { const x = xOf(c / COLS_PER_SEC); if (x < hover - 40 || x > hover + 40) continue; const a = amp(i, c) * half; ctx.rect(x, mid - a, colW * 0.72, Math.max(1, a * 2)); }
         ctx.fill(); ctx.restore();
+      }
+      // pan automation lane on the footsteps
+      if (MODE === MODES.drama && i === 3) {
+        const top = y + 12, span = trackH - 26, yOf = (v) => top + (v + 1) / 2 * span;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(laneX, y, laneW, trackH); ctx.clip();
+        ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 1.6; ctx.shadowColor = '#ffb74d'; ctx.shadowBlur = 6;
+        ctx.beginPath();
+        for (let x = laneX; x <= xOf(now); x += 3) { const v = panAt(viewStart + (x - laneX) / PX_PER_SEC); x === laneX ? ctx.moveTo(x, yOf(v)) : ctx.lineTo(x, yOf(v)); }
+        ctx.stroke(); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffd27a';
+        for (let k = Math.floor(viewStart / 13); k <= Math.floor(now / 13); k++) for (const ts of [k * 13, k * 13 + 6]) {
+          if (ts > now) continue; const x = xOf(ts); if (x < laneX) continue;
+          ctx.beginPath(); ctx.arc(x, yOf(panAt(ts + (ts === k * 13 ? 0.001 : -0.001))), 3, 0, 7); ctx.fill();
+        }
+        ctx.font = '600 9px "JetBrains Mono", monospace'; ctx.fillStyle = '#8b92a4';
+        ctx.fillText('L', laneX + 4, top + 3); ctx.fillText('R', laneX + 4, top + span - 1);
+        ctx.restore();
+      }
+      // the rain is a looped clip: dashed lines where each repeat starts
+      if (MODE === MODES.drama && i === 2) {
+        ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([3, 3]);
+        for (let k = Math.max(1, Math.ceil(viewStart / 14)); k * 14 < now; k++) {
+          const x = Math.round(xOf(k * 14)) + 0.5;
+          if (x > laneX + 4) { ctx.beginPath(); ctx.moveTo(x, y + 16); ctx.lineTo(x, y + trackH - 6); ctx.stroke(); }
+        }
+        ctx.restore();
       }
       // cough-muted regions
       if (i < 3) for (const [a, b] of mutes[i]) {
@@ -626,14 +971,31 @@
     const demo = $('#te-demo');
     if (!demo) return;
     const textEl = $('#te-text'), waveEl = $('#te-wave'), statusEl = $('#te-status');
-    const SPK = { Anna: 'var(--cyan)', Ben: 'var(--amber)' };
-    const SCRIPT = [
-      ['Anna', 'Welcome back! Today we edit a podcast like a document.'],
-      ['Ben', 'Um, that sounds, uh, too good to be true.'],
-      ['Anna', 'Delete a sentence in the text, you know, like this one, and it is cut from every track.', 4.3],
-      ['Ben', 'And the, um, hesitations?'],
-      ['Anna', 'One click. And if I misspeak, I type the fix. It is a lot of fun.'],
-    ];
+    const SCRIPTS = {
+      podcast: {
+        spk: { Anna: 'var(--cyan)', Ben: 'var(--amber)' },
+        lines: [
+          ['Anna', 'Welcome back! Today we edit a podcast like a document.'],
+          ['Ben', 'Um, that sounds, uh, too good to be true.'],
+          ['Anna', 'Delete a sentence in the text, you know, like this one, and it is cut from every track.', 4.3],
+          ['Ben', 'And the, um, hesitations?'],
+          ['Anna', 'One click. And if I misspeak, I type the fix. It is a lot of fun.'],
+        ],
+        cut: ['you', 'one,'], target: 'fun.', fix: 'fun to work with.', voice: 'Anna', what: 'episode',
+      },
+      drama: {
+        spk: { Hale: 'var(--cyan)', Mara: 'var(--pink)' },
+        lines: [
+          ['Hale', 'Where were you last night, Mara?'],
+          ['Mara', 'Um, on the train. The, uh, night train to the coast.'],
+          ['Hale', 'The conductor says, and I quote, sorry, let me take that again, you were never on it.', 4.3],
+          ['Mara', 'Then he, um, is lying.'],
+          ['Hale', 'One of you is lying. And I will find out who tonight.'],
+        ],
+        cut: ['sorry,', 'again,'], target: 'tonight.', fix: 'before we reach the coast.', voice: 'Hale', what: 'scene',
+      },
+    };
+    let SC = SCRIPTS[modeNow()], SPK = SC.spk;
     const FILLER = /^(um|uh|ähm|äh)\W*$/i;
     let words = [], pxPerSec = 10, busy = false, user = false, timers = [];
 
@@ -649,7 +1011,7 @@
         if (!w.cut) t += w.dur;
       }
     };
-    const lengthLine = () => { times(); return `Episode length <b>${fmt(length())}</b>`; };
+    const lengthLine = () => { times(); return `${SC.what === 'scene' ? 'Scene' : 'Episode'} length <b>${fmt(length())}</b>`; };
 
     const segFor = (w) => {
       const seg = document.createElement('span');
@@ -675,7 +1037,7 @@
     const build = () => {
       textEl.innerHTML = ''; words = [];
       let t = 0;
-      for (const [who, line, pause] of SCRIPT) {
+      for (const [who, line, pause] of SC.lines) {
         const para = document.createElement('div');
         para.className = 'te-para'; para.style.setProperty('--c', SPK[who]);
         para.innerHTML = `<small>${who}<time></time></small>`;
@@ -762,28 +1124,28 @@
     };
     const speak = async () => {
       if (busy) return;
-      const target = words.find((w) => w.text === 'fun.' && !w.cut && !w.isNew);
+      const target = words.find((w) => w.text === SC.target && !w.cut && !w.isNew);
       if (!target) { say('Already changed. Press ↺ to start over.'); return; }
       busy = true;
       target.el.classList.add('sel'); target.seg.classList.add('sel');
-      say('Double-click “fun.”, type the new words…');
+      say(`Double-click “${SC.target}”, type the new words…`);
       await later(450);
       cut([target]);
       const el = document.createElement('span');
       el.className = 'tw new typing';
       target.el.after(el);
-      const text = 'fun to work with.';
+      const text = SC.fix;
       for (let k = 1; k <= text.length; k++) { el.textContent = text.slice(0, k); await later(45); }
       el.textContent = text + ' '; el.classList.remove('typing');
-      say('Saying it in Anna’s cloned voice…');
+      say(`Saying it in ${SC.voice}’s cloned voice…`);
       await later(700);
-      const w = { el, text, who: 'Anna', dur: 1.1, isNew: true, cut: false, para: target.para };
+      const w = { el, text, who: SC.voice, dur: 1.1, isNew: true, cut: false, para: target.para };
       w.seg = segFor(w); w.seg.style.width = '0px';
       target.seg.after(w.seg);
       words.splice(words.indexOf(target) + 1, 0, w);
       words.forEach((x, i) => { x.el.dataset.i = i; });
       requestAnimationFrame(() => requestAnimationFrame(() => sizeSeg(w)));
-      say(`Replaced “fun.” in Anna’s voice <span class="badge-exp">Experimental</span> ${lengthLine()}`);
+      say(`Replaced “${SC.target}” in ${SC.voice}’s voice <span class="badge-exp">Experimental</span> ${lengthLine()}`);
       busy = false;
     };
     const acts = { clean, speak, reset: () => { busy = false; build(); } };
@@ -802,7 +1164,7 @@
       while (alive()) {
         build();
         await later(1600); if (!alive()) return;
-        const from = words.findIndex((w) => w.text === 'you'), to = words.findIndex((w) => w.text === 'one,');
+        const from = words.findIndex((w) => w.text === SC.cut[0]), to = words.findIndex((w) => w.text === SC.cut[1]);
         for (let i = from; i <= to; i++) { select(from, i); await later(140); if (!alive()) return; }
         await cutSelection(); await later(2200); if (!alive()) return;
         await clean(); await later(2600); if (!alive()) return;
@@ -811,10 +1173,21 @@
     };
     build(); lastW = waveEl.clientWidth;
     document.fonts?.ready.then(() => { if (!user && !playing) layout(); });
+    let inView = false;
     if (!reduce) visible(demo, (v) => {
+      inView = v;
       if (user) return;
       if (v && !playing) { playing = true; void auto(); }
       else if (!v && playing) { playing = false; halt(); }
+    });
+    // A podcast conversation or a scene from the drama, whichever the visitor is here for.
+    onMode((m) => {
+      SC = SCRIPTS[m]; SPK = SC.spk;
+      halt(); playing = false;
+      requestAnimationFrame(() => {
+        build(); lastW = waveEl.clientWidth;
+        if (!reduce && !user && inView) { playing = true; void auto(); }
+      });
     });
   })();
 })();

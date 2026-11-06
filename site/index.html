@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WavePod</title>
-  <meta name="description" content="WavePod is a free, Open Source multitrack recorder and editor for podcasts, for Linux, Windows and macOS.">
+  <meta name="description" content="WavePod is a free, Open Source multitrack recorder and editor for podcasts and audio dramas, for Linux, Windows and macOS.">
   <meta name="theme-color" content="#07080c">
   <meta property="og:title" content="WavePod">
-  <meta property="og:description" content="A free, Open Source multitrack recorder and editor for podcasts, for Linux, Windows and macOS.">
+  <meta property="og:description" content="A free, Open Source multitrack recorder and editor for podcasts and audio dramas, for Linux, Windows and macOS.">
   <meta property="og:image" content="img/timeline.png">
   <link rel="icon" href="img/icon.svg" type="image/svg+xml">
   <link rel="icon" href="img/icon-32.png" type="image/png" sizes="32x32">
@@ -15,11 +15,24 @@
   <link rel="preload" href="fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
-  <script>document.documentElement.classList.add('js');</script>
+  <script>
+    // Podcast or audio drama: #audio-drama / #podcast (or ?for=…) wins, then the visitor's last choice.
+    (function () {
+      var d = document.documentElement, m = null;
+      d.classList.add('js');
+      var want = (location.hash.slice(1) + ' ' + (new URLSearchParams(location.search).get('for') || '')).toLowerCase();
+      if (/(^|\s)(audio-?drama|drama|audio-?play|hoerspiel|hörspiel|fiction)(\s|$)/.test(want)) m = 'drama';
+      else if (/(^|\s)podcasts?(\s|$)/.test(want)) m = 'podcast';
+      if (!m) { try { m = localStorage.getItem('wavepod-mode'); } catch (e) {} }
+      if (!m) d.setAttribute('data-first-visit', '');
+      d.setAttribute('data-mode', m === 'drama' ? 'drama' : 'podcast');
+    })();
+  </script>
 </head>
 <body>
   <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="grain" aria-hidden="true"></div>
+  <div class="spots" aria-hidden="true"><i></i><i></i></div>
   <div class="cursor-glow" aria-hidden="true"></div>
 
   <header class="top">
@@ -29,6 +42,10 @@
       <a href="#features">Features</a>
       <a href="#tour">Tour</a>
       <a href="#open-source">Open Source</a>
+      <span class="mode-mini" role="radiogroup" aria-label="Show WavePod for">
+        <button type="button" role="radio" data-set-mode="podcast" title="Show WavePod for podcasts"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path d="M5 11.5a7 7 0 0 0 14 0M12 18.5v3M8.5 21.5h7"/></svg><span>Podcast</span></button>
+        <button type="button" role="radio" data-set-mode="drama" title="Show WavePod for audio dramas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4.2c2.6-1.3 6-1.3 8.6 0v5.6c0 3.3-1.9 5.6-4.3 5.6S2.5 13.1 2.5 9.8z"/><path d="M5 7.6h.9M8.1 7.6h.9M5 11.4c1.1-1 2.8-1 4 0" /><path d="M12.9 8.6c2.6-1.3 6-1.3 8.6 0v5.6c0 3.3-1.9 5.6-4.3 5.6s-4.3-2.3-4.3-5.6z"/><path d="M15.4 12h.9M18.5 12h.9M15.4 16.4c1.1-1 2.8-1 4 0"/></svg><span>Audio drama</span></button>
+      </span>
       <a class="nav-cta" href="#download">Download</a>
     </nav>
   </header>
@@ -41,11 +58,31 @@
         <span id="pill-text">Free &amp; Open Source</span>
         <span class="pill-arrow">→</span>
       </a>
-      <h1 class="reveal">
+      <div class="mode-switch reveal" role="radiogroup" aria-label="What are you making?">
+        <span class="ms-ask">What are you making?</span>
+        <div class="ms-track">
+          <span class="ms-thumb" aria-hidden="true"></span>
+          <button type="button" role="radio" data-set-mode="podcast"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path d="M5 11.5a7 7 0 0 0 14 0M12 18.5v3M8.5 21.5h7"/></svg><span>A podcast</span></button>
+          <button type="button" role="radio" data-set-mode="drama"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4.2c2.6-1.3 6-1.3 8.6 0v5.6c0 3.3-1.9 5.6-4.3 5.6S2.5 13.1 2.5 9.8z"/><path d="M5 7.6h.9M8.1 7.6h.9M5 11.4c1.1-1 2.8-1 4 0" /><path d="M12.9 8.6c2.6-1.3 6-1.3 8.6 0v5.6c0 3.3-1.9 5.6-4.3 5.6s-4.3-2.3-4.3-5.6z"/><path d="M15.4 12h.9M18.5 12h.9M15.4 16.4c1.1-1 2.8-1 4 0"/></svg><span>An audio drama</span></button>
+        </div>
+      </div>
+
+      <h1 class="reveal" data-only="podcast">
         <span class="line">Record your podcast.</span>
         <span class="line shine">One track per voice.</span>
       </h1>
-      <p class="lead reveal">
+      <h1 class="reveal" data-only="drama">
+        <span class="line">Stage your audio drama.</span>
+        <span class="line shine">Every voice, every room.</span>
+      </h1>
+      <p class="lead reveal" data-only="drama">
+        WavePod is a free studio for fiction. Record your cast, turn a voice into
+        a phone call, a robot or a ghost in one click, put it in a stairwell six
+        metres away, walk the footsteps from left to right, lay rain from your
+        sound library and deliver dialogue, music and effects stems. Fully Open
+        Source, on Linux, Windows and macOS.
+      </p>
+      <p class="lead reveal" data-only="podcast">
         WavePod is the multitrack studio made for talking. Plug in your
         RØDECaster or USB interface, get a track for every speaker in one
         click, edit the episode by editing its transcript, and go from first
@@ -61,12 +98,16 @@
         <div class="studio-frame">
           <div class="studio-bar">
             <span class="dots"><i></i><i></i><i></i></span>
-            <span class="studio-title">WavePod · Episode 42</span>
+            <span class="studio-title"><span data-only="podcast">WavePod · Episode 42</span><span data-only="drama">WavePod · The Night Train</span></span>
             <span class="rec-badge"><i></i>REC</span>
           </div>
-          <canvas id="studio" aria-label="Animated demo: four tracks recording live, with level meters and chapter markers" role="img"></canvas>
+          <canvas id="studio" aria-label="Animated demo: four tracks recording live, with level meters and markers" role="img"></canvas>
         </div>
-        <p class="studio-hint">
+        <p class="studio-hint" data-only="drama">
+          This is a live demo. Mara is on the phone, rain loops on the Atmo track and the footsteps
+          pan from left to right. Press <kbd>M</kbd> or click to mark a new scene, and move over the tracks to scrub.
+        </p>
+        <p class="studio-hint" data-only="podcast">
           This is a live demo. Press <kbd>M</kbd> or click to drop a chapter marker,
           hold <kbd>1</kbd>–<kbd>3</kbd> for a cough button, and move over the tracks to scrub.
         </p>
@@ -75,8 +116,18 @@
 
     <!-- ============================================================ MARQUEE -->
     <section class="marquee-sec" aria-label="Works with">
-      <p class="eyebrow center">Works with the gear podcasters actually use</p>
-      <div class="marquee">
+      <p class="eyebrow center" data-only="podcast">Works with the gear podcasters actually use</p>
+      <p class="eyebrow center" data-only="drama">25 voice effects and 18 places, one click each</p>
+      <div class="marquee" data-only="drama">
+        <div class="marquee-track drama-track">
+          <span>Telephone</span><span>Old radio</span><span>Walkie-talkie</span><span>Megaphone</span>
+          <span>Next room</span><span>Church</span><span>Cave</span><span>Underwater</span>
+          <span>Robot</span><span>Alien</span><span>Giant / monster</span><span>Demon</span>
+          <span>Ghost</span><span>Magic / spirit</span><span>Flashback / dream</span><span>Time travel</span>
+          <span>Forest</span><span>Stairwell</span><span>Car</span><span>Street</span>
+        </div>
+      </div>
+      <div class="marquee" data-only="podcast">
         <div class="marquee-track">
           <span>RØDECaster Pro II</span><span>RØDECaster Duo</span><span>Zoom PodTrak</span>
           <span>Focusrite Scarlett</span><span>Class-compliant USB</span><span>VST3 plug-ins</span>
@@ -87,7 +138,13 @@
     </section>
 
     <!-- ============================================================ STATS -->
-    <section class="stats">
+    <section class="stats" data-only="drama">
+      <div class="stat reveal"><b data-count="25">25</b><span>voice effects, from phone to ghost</span></div>
+      <div class="stat reveal"><b data-count="18">18</b><span>places with real distance</span></div>
+      <div class="stat reveal"><b data-count="-23" data-suffix=" LUFS">−23 LUFS</b><span>EBU R128, ready for radio</span></div>
+      <div class="stat reveal"><b data-count="0" data-prefix="€">€0</b><span>forever, MIT licensed</span></div>
+    </section>
+    <section class="stats" data-only="podcast">
       <div class="stat reveal"><b data-count="16">16</b><span>input channels at once</span></div>
       <div class="stat reveal"><b data-count="3">3</b><span>platforms, one app</span></div>
       <div class="stat reveal"><b data-count="-16" data-suffix=" LUFS">−16 LUFS</b><span>loudness, on target</span></div>
@@ -96,6 +153,123 @@
 
     <!-- ============================================================ FEATURES -->
     <section id="features" class="features">
+      <div data-only="drama">
+      <p class="eyebrow center reveal">Made for fiction</p>
+      <h2 class="reveal">Sound design for stories.<br><span class="dim">Without a music DAW.</span></h2>
+
+      <div class="bento drama-bento">
+        <article class="card span-3 wide vfx-card reveal">
+          <div class="viz viz-vfx">
+            <canvas id="vfx-wave" aria-hidden="true"></canvas>
+            <div class="vfx-chips" id="vfx-chips" role="group" aria-label="Pick a voice effect"></div>
+            <p class="vfx-chain" id="vfx-chain" aria-live="polite"></p>
+          </div>
+          <h3>A phone call, a robot, a ghost. One click.</h3>
+          <p>25 ready-made voice effects: telephone, mobile, old radio, walkie-talkie,
+          megaphone, next room, underwater, robot, alien, giant, demon, chipmunk, ghost,
+          flashback and more. Each one is a stack of ordinary filters, so every value stays
+          editable. Put it on a whole character's track or on <em>a single line</em>
+          with clip filters. Pick one above to see what it does.</p>
+        </article>
+
+        <article class="card span-2 reveal">
+          <div class="viz viz-room" aria-hidden="true"><canvas id="room-cv"></canvas></div>
+          <h3>Rooms you can walk away in</h3>
+          <p><em>Room &amp; distance</em> puts a voice into one of 18 places, from close to
+          the mic, car and stairwell to cave, forest and street. Turn up the
+          <em>Distance</em> in metres and the voice gets quieter, loses highs and bass,
+          and the room takes over, as if the speaker walked away.</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="viz viz-lib" aria-hidden="true">
+            <div class="lib-search"><span class="lib-q" id="lib-q"></span><span class="caret"></span></div>
+            <ul class="lib-list" id="lib-list"></ul>
+          </div>
+          <h3>Your sound library, searchable</h3>
+          <p>Point WavePod at your sound effects folder, type <em>door creak</em>, pre-listen
+          with the arrow keys and drop it on a track. Atmospheres loop to fill a scene.</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="viz viz-pan" aria-hidden="true">
+            <svg viewBox="0 0 200 100" preserveAspectRatio="none">
+              <line class="mid" x1="0" y1="50" x2="200" y2="50"/>
+              <path class="curve" d="M0 18 L46 18 C86 18 100 82 140 82 L200 82"/>
+              <circle class="pt" cx="46" cy="18" r="3.5"/><circle class="pt" cx="140" cy="82" r="3.5"/>
+            </svg>
+            <span class="pan-l">L</span><span class="pan-r">R</span>
+            <div class="stage-line"><i class="walker"></i></div>
+          </div>
+          <h3>Pan &amp; volume automation</h3>
+          <p>Draw lanes on any track to walk footsteps past the listener, pull an
+          atmosphere down under a scene or swell the music for the cliffhanger.</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="viz viz-folders" aria-hidden="true">
+            <div class="fold f-d"><b>▾ Dialogue</b><i></i><i></i><i></i></div>
+            <div class="fold f-s"><b>▾ SFX</b><i></i><i></i></div>
+            <div class="fold f-a"><b>▸ Atmo</b></div>
+            <div class="fold f-m"><b>▸ Music</b></div>
+          </div>
+          <h3>Track folders</h3>
+          <p>Dialogue, SFX, Atmo and Music in one click, each with its own mute, solo and
+          volume. Fold away what you're not working on.</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="viz viz-clipfx" aria-hidden="true">
+            <div class="cf cf-rev"><span>Reverse</span><i></i></div>
+            <div class="cf cf-speed"><span>Speed 0.75×</span><i></i></div>
+            <div class="cf cf-loop"><span>Loop</span><i></i><i></i><i></i></div>
+          </div>
+          <h3>Sound design on clips</h3>
+          <p>Reverse a swell, slow a door down like tape, loop rain or room tone over a
+          whole scene. Right-click a clip, done.</p>
+        </article>
+
+        <article class="card span-2 reveal">
+          <div class="viz viz-stems" aria-hidden="true">
+            <div class="mixbar"><span>Mix</span></div>
+            <div class="stem s-d"><b>D</b><span>Dialogue</span></div>
+            <div class="stem s-m"><b>M</b><span>Music</span></div>
+            <div class="stem s-e"><b>E</b><span>Effects</span></div>
+            <div class="stem s-me"><b>M&amp;E</b><span>For other languages</span></div>
+          </div>
+          <h3>Stems for broadcasters and festivals</h3>
+          <p>Export dialogue, music and effects as separate files in one pass, plus an
+          M&amp;E mix for versions in other languages. They add up exactly to your mix,
+          ducking included, and the mix lands on −23 LUFS for radio or −16 for podcast apps.</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="viz viz-duck" aria-hidden="true">
+            <div class="duck-row dlg"><span>Dialogue</span><i></i><i></i></div>
+            <div class="duck-row mus"><span>Music</span><b></b></div>
+          </div>
+          <h3>Music that makes room</h3>
+          <p>Tick <em>Duck under the other tracks</em> on the score and it dips while
+          anyone speaks, then swells back in the pauses. Live and in the export.</p>
+        </article>
+
+        <article class="card span-3 wide studio-too reveal">
+          <div class="viz viz-chips" aria-hidden="true">
+            <span>16 inputs at once</span><span>Crash-safe takes</span><span>Music ducking</span>
+            <span>Noise reduction</span><span>De-esser</span><span>VST3 plug-ins</span>
+            <span>Edit by transcript</span><span>Scene &amp; chapter markers</span><span>Tape scrubbing</span>
+            <span>WAV · FLAC · MP3 · Opus</span><span>AI agents via MCP</span>
+          </div>
+          <h3>And the whole studio under it</h3>
+          <p>Record a full cast at once on a RØDECaster or any USB interface, one
+          crash-safe track per actor. Clean up with noise reduction and a leveler,
+          cut dialogue in the transcript, mark scenes while you record and play your
+          VST3 plug-ins in the same filter stack.</p>
+        </article>
+      </div>
+      </div>
+
+      <div data-only="podcast">
       <p class="eyebrow center reveal">Made for talking, not for music</p>
       <h2 class="reveal">Everything a podcast needs.<br><span class="dim">Nothing it doesn't.</span></h2>
 
@@ -199,12 +373,14 @@
           default, and it only listens on your own machine.</p>
         </article>
       </div>
+      </div>
     </section>
 
     <!-- ============================================================ TEXT EDITING -->
     <section id="text-editing" class="textedit">
       <p class="eyebrow center reveal">Text-based editing</p>
-      <h2 class="reveal">Edit your podcast<br><span class="dim">like a document.</span></h2>
+      <h2 class="reveal" data-only="podcast">Edit your podcast<br><span class="dim">like a document.</span></h2>
+      <h2 class="reveal" data-only="drama">Cut your takes<br><span class="dim">like a script.</span></h2>
 
       <div class="te-grid">
         <div class="te-demo reveal" id="te-demo">
@@ -274,7 +450,32 @@
     <!-- ============================================================ TOUR -->
     <section id="tour" class="tour">
       <p class="eyebrow center reveal">Take the tour</p>
-      <h2 class="reveal">From soundcheck to export</h2>
+      <h2 class="reveal" data-only="podcast">From soundcheck to export</h2>
+      <h2 class="reveal" data-only="drama">From first take to stems</h2>
+      <div class="tour-set" data-only="drama">
+      <div class="tabs reveal" role="tablist" aria-label="Audio drama screenshots">
+        <button role="tab" aria-selected="true">Timeline</button>
+        <button role="tab" aria-selected="false">Voice effects</button>
+        <button role="tab" aria-selected="false">Room &amp; distance</button>
+        <button role="tab" aria-selected="false">Sound library</button>
+        <button role="tab" aria-selected="false">Clips</button>
+        <button role="tab" aria-selected="false">Stems</button>
+        <span class="tab-ink" aria-hidden="true"></span>
+      </div>
+      <div class="tilt reveal">
+        <div class="tilt-inner">
+          <figure class="shot active" data-caption="Dialogue, SFX, Atmo and Music folders, scene markers, and footsteps panned across with an automation lane."><img src="img/drama-timeline.png" width="1440" height="1040" loading="lazy" alt="WavePod timeline of an audio drama with Dialogue, SFX, Atmo and Music track folders, scene markers and a pan automation lane on the footsteps track"></figure>
+          <figure class="shot" data-caption="Mara is on the phone: the Telephone voice effect is band-pass, distortion and compressor, all editable."><img src="img/drama-voice.png" width="1440" height="1040" loading="lazy" alt="Filter panel for the track Mara (phone) with Band-pass set to Telephone and Distortion set to Phone grit, with live meters during playback"></figure>
+          <figure class="shot" data-caption="Inspector Hale shouts down a stairwell, six and a half metres from the mic."><img src="img/drama-room.png" width="1440" height="1040" loading="lazy" alt="Room and distance filter on Inspector Hale's track, set to Stairwell with a distance of 6.5 metres"></figure>
+          <figure class="shot" data-caption="Search your own sound effects folder, pre-listen and drop sounds on the timeline."><img src="img/drama-library.png" width="1440" height="1040" loading="lazy" alt="Sound library panel searching for door, with door sounds from the Doors folder listed"></figure>
+          <figure class="shot" data-caption="Reverse, varispeed and loops straight from the clip menu; the rain loops over the whole scene."><img src="img/drama-sound-design.png" width="1440" height="1040" loading="lazy" alt="Clip menu on a looped rain clip with the Sound design options Reverse, Speed, Loop, Loop to next clip and Play as recorded"></figure>
+          <figure class="shot" data-caption="Dialogue, music and effects stems plus an M&amp;E mix, at EBU R128 loudness."><img class="natural" src="img/drama-stems.png" width="760" height="763" loading="lazy" alt="Export dialog with stems split into dialogue, music and effects, a music and effects mix and the EBU R128 broadcast loudness target"></figure>
+          <span class="glare" aria-hidden="true"></span>
+        </div>
+      </div>
+      <p class="tour-caption" aria-live="polite">Dialogue, SFX, Atmo and Music folders, scene markers, and footsteps panned across with an automation lane.</p>
+      </div>
+      <div class="tour-set" data-only="podcast">
       <div class="tabs reveal" role="tablist" aria-label="Screenshots">
         <button role="tab" aria-selected="true" data-shot="0">Timeline</button>
         <button role="tab" aria-selected="false" data-shot="1">Setup</button>
@@ -283,17 +484,18 @@
         <button role="tab" aria-selected="false" data-shot="4">Chapters</button>
         <span class="tab-ink" aria-hidden="true"></span>
       </div>
-      <div class="tilt reveal" id="tilt">
+      <div class="tilt reveal">
         <div class="tilt-inner">
-          <figure class="shot active"><img src="img/timeline.png" width="1400" height="640" alt="WavePod timeline with Host, Guest and Co-host tracks, chapter markers and a soundboard jingle"></figure>
-          <figure class="shot"><img src="img/setup.png" width="1280" height="820" loading="lazy" alt="Setup view with level meters for all 16 RØDECaster inputs and a Create 8 speaker tracks button"></figure>
-          <figure class="shot"><img src="img/filters.png" width="1400" height="850" loading="lazy" alt="Filter panel with high-pass, de-esser and Dynamics filters on a track"></figure>
-          <figure class="shot"><img src="img/export.png" width="1280" height="833" loading="lazy" alt="Export dialog with MP3 and WAV formats, loudness target and the measured loudness of the mix"></figure>
-          <figure class="shot"><img src="img/chapters.png" width="1644" height="638" loading="lazy" alt="Chapter list with start times, titles, links and image buttons"></figure>
+          <figure class="shot active" data-caption="Every speaker on a track of their own, with chapters, edit marks and the soundboard."><img src="img/timeline.png" width="1400" height="640" alt="WavePod timeline with Host, Guest and Co-host tracks, chapter markers and a soundboard jingle"></figure>
+          <figure class="shot" data-caption="Check every input level and create a track per microphone in one click."><img src="img/setup.png" width="1280" height="820" loading="lazy" alt="Setup view with level meters for all 16 RØDECaster inputs and a Create 8 speaker tracks button"></figure>
+          <figure class="shot" data-caption="Stack filters per track, see what each one does live, and save your own presets."><img src="img/filters.png" width="1400" height="850" loading="lazy" alt="Filter panel with high-pass, de-esser and Dynamics filters on a track"></figure>
+          <figure class="shot" data-caption="Export MP3, WAV and chapter files, normalised to your loudness target."><img src="img/export.png" width="1280" height="833" loading="lazy" alt="Export dialog with MP3 and WAV formats, loudness target and the measured loudness of the mix"></figure>
+          <figure class="shot" data-caption="Titles, links and images for every chapter, ready for Podlove and Podcasting 2.0."><img src="img/chapters.png" width="1644" height="638" loading="lazy" alt="Chapter list with start times, titles, links and image buttons"></figure>
           <span class="glare" aria-hidden="true"></span>
         </div>
       </div>
-      <p class="tour-caption" id="tour-caption" aria-live="polite">Every speaker on a track of their own, with chapters, edit marks and the soundboard.</p>
+      <p class="tour-caption" aria-live="polite">Every speaker on a track of their own, with chapters, edit marks and the soundboard.</p>
+      </div>
     </section>
 
     <!-- ============================================================ OPEN SOURCE -->
@@ -322,7 +524,8 @@
     <!-- ============================================================ DOWNLOAD -->
     <section id="download" class="download">
       <p class="eyebrow center reveal">Download</p>
-      <h2 class="reveal">Start your next episode today</h2>
+      <h2 class="reveal" data-only="podcast">Start your next episode today</h2>
+      <h2 class="reveal" data-only="drama">Start your next production today</h2>
       <p class="muted reveal" id="release-line">Free builds of every release are on GitHub.</p>
       <div class="platforms">
         <a class="platform reveal" data-os="linux" data-ext=".AppImage" href="https://github.com/michaelkleinhenz/wavepod/releases/latest">
