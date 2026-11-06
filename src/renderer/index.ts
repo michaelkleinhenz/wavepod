@@ -179,6 +179,11 @@ async function main(): Promise<void> {
     'Master FX',
   );
   const transcriptBtn = h('button', { class: 'fx-btn transcript-btn', title: 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)', onclick: () => openTranscript() }, 'Transcript');
+  // transcribing goes on with the panel closed: the button spins meanwhile
+  transcripts().subscribe(() => {
+    transcriptBtn.classList.toggle('busy', transcripts().busy);
+    transcriptBtn.title = transcripts().busy ? 'Transcribing… (it goes on with the transcript closed)' : 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)';
+  });
   const libraryBtn = h('button', { class: 'fx-btn library-btn', title: 'Sound library: search your sound effects, listen and insert them (Shift+Ctrl+B)', onclick: () => openLibrary() }, 'Sounds');
   const preShowBtn = h(
     'button',
