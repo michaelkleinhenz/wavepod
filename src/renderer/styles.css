@@ -690,6 +690,23 @@ body.library-open .library-btn { background: var(--panel-2); color: var(--text);
 button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; font: inherit; }
 button.link:hover:not(:disabled) { background: none; border: none; }
 
+/* Help › About WavePod */
+.dialog.about-dialog { width: min(420px, 92vw); padding: 0 0 16px; overflow: hidden; position: relative; }
+.about-dialog::before { content: ''; display: block; height: 3px; background: linear-gradient(90deg, #4fc3f7, #5c8dff 35%, #ba68c8 65%, #f06292 85%, #ffb74d); }
+.about-hero { text-align: center; padding: 26px 24px 14px; background: radial-gradient(ellipse 70% 90% at 50% 0%, rgba(92, 141, 255, 0.22), transparent 70%); }
+.about-icon { width: 104px; height: 104px; display: block; margin: 0 auto 12px; filter: drop-shadow(0 8px 24px rgba(92, 141, 255, 0.35)); }
+.about-dialog .about-hero h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.2px; }
+.about-version { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-variant-numeric: tabular-nums; border: 1px solid rgba(92, 141, 255, 0.45); background: rgba(92, 141, 255, 0.12); color: #c7d5ff; user-select: text; }
+.about-tagline { margin: 12px 0 0; color: var(--muted); }
+.about-details { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 6px 28px 0; padding: 12px 14px; border-radius: 8px; background: rgba(0, 0, 0, 0.18); border: 1px solid var(--border); font-size: 12px; user-select: text; }
+.about-details dt { color: var(--muted); }
+.about-details dd { margin: 0; font-variant-numeric: tabular-nums; }
+.about-links { display: flex; justify-content: center; gap: 18px; margin: 14px 0 0; font-size: 13px; }
+.about-copyright { text-align: center; color: var(--muted); font-size: 12px; margin: 10px 0 14px; }
+.about-dialog .row.end { padding: 0 20px; }
+.about-links a { color: #8fb0ff; text-decoration: none; }
+.about-links a:hover { text-decoration: underline; }
+
 /* Recording emergency (device lost, take not written): above every other dialog. */
 .overlay.emergency-overlay { z-index: 1000; background: rgba(60, 0, 0, 0.6); }
 .dialog.emergency { border: 2px solid var(--rec); box-shadow: 0 0 0 4px rgba(229, 57, 53, 0.25), 0 20px 60px rgba(0, 0, 0, 0.6); text-align: center; animation: emergency-pulse 1.2s ease-in-out infinite; }
