@@ -1,6 +1,7 @@
 // Ripple moves: drag a clip and everything after it moves along (Ctrl-drag: on its track,
 // Ctrl+Shift-drag: on all tracks, with markers and mute regions).
 import type { Frames, Project } from '../shared/types';
+import { mapTrackAutomation, shiftAutomation } from './automation';
 
 export type RippleScope = 'track' | 'all';
 
@@ -55,6 +56,7 @@ export function rippleMove(project: Project, set: RippleSet, delta: Frames): Pro
     if (from !== undefined && t.muteRegions?.length) {
       t.muteRegions = t.muteRegions.map(([a, b]) => (a >= from ? [Math.max(0, a + d), Math.max(0, b + d)] : [a, b]));
     }
+    if (from !== undefined) mapTrackAutomation(t, (pts) => shiftAutomation(pts, from, d));
   }
   for (const m of p.markers) if (set.markerIds.has(m.id)) m.position += d;
   if (set.all) {

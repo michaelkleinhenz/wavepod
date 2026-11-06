@@ -9,6 +9,7 @@ import type { FxPresetLibrary } from '../fx/presetLibrary';
 import { createVstFx, visibleVstParams, vstFailures } from '../fx/vst';
 import { projectLength, updateTrack } from '../project';
 import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
+import { setTrackAutomation, showTrackAutomation } from '../automation';
 import { paragraphs, timelineWords } from '../transcript';
 import { formatTimestamp, uid } from '../../shared/time';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
@@ -48,7 +49,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -323,6 +324,15 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             filters: (t.fx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`),
             ...(t.automix?.enabled ? { automix: { depthDb: t.automix.depth } } : {}),
             ...(t.duck?.enabled ? { duck: { depthDb: t.duck.depth } } : {}),
+            ...(t.automation?.volume?.length || t.automation?.pan?.length
+              ? {
+                  automation: Object.fromEntries(
+                    (['volume', 'pan'] as const)
+                      .filter((lane) => t.automation?.[lane]?.length)
+                      .map((lane) => [lane, t.automation![lane]!.map((q) => ({ seconds: round(q.pos / p.sampleRate, 3), value: round(q.value, 2) }))]),
+                  ),
+                }
+              : {}),
           })),
           master: { id: MASTER, name: 'Master', gainDb: p.masterGain, filters: (p.masterFx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`) },
         };
@@ -364,6 +374,46 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
           automixed: on.map((t) => ({ id: t.id, name: t.name, depthDb: t.automix!.depth })),
           ...(on.length === 1 ? { note: 'Only one track is automixed; it has no effect until a second track takes part.' } : {}),
         };
+      },
+    },
+    {
+      name: 'set_track_automation',
+      description:
+        'Sets a track\'s volume or pan automation: breakpoints over the timeline that the track follows in playback and export, e.g. to move a voice across the stage or fade music under a scene. ' +
+        'Volume values are dB relative to the track gain (-60 = silent, 0 = unchanged, up to +6); pan values are -1 (left) .. 1 (right) and replace the track\'s fixed pan while there are points. ' +
+        'Between points the value moves smoothly; before the first and after the last point it holds. Two points at the same time make a jump. An empty list clears the lane.',
+      inputSchema: obj(
+        {
+          track: { type: 'string', description: 'Track id or name.' },
+          lane: { type: 'string', enum: ['volume', 'pan'] },
+          points: {
+            type: 'array',
+            items: obj({ seconds: { type: 'number', minimum: 0 }, value: { type: 'number' } }, ['seconds', 'value']),
+            description: 'Breakpoints, by time from the start of the episode.',
+          },
+          show: { type: 'boolean', description: 'Also show this lane on the track in the timeline (default true).' },
+        },
+        ['track', 'lane', 'points'],
+      ),
+      annotations: { title: 'Set track automation', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const { target, name } = resolveTarget(project, str(args, 'track', true));
+        if (target === MASTER) throw new ToolError('The master bus has no automation; use a track.');
+        const lane = str(args, 'lane', true);
+        if (lane !== 'volume' && lane !== 'pan') throw new ToolError('"lane" must be "volume" or "pan".');
+        if (!Array.isArray(args.points)) throw new ToolError('"points" must be a list.');
+        const points = (args.points as Array<Record<string, unknown>>).map((q, i) => {
+          const sec = Number(q?.seconds);
+          const value = Number(q?.value);
+          if (!(sec >= 0) || !Number.isFinite(value)) throw new ToolError(`Point ${i + 1} needs "seconds" (0 or more) and a numeric "value".`);
+          return { pos: Math.round(sec * project.sampleRate), value };
+        });
+        project = setTrackAutomation(project, target, lane, points);
+        if (bool(args, 'show') !== false && points.length) project = showTrackAutomation(project, target, lane);
+        host.apply(project, points.length ? `${lane === 'volume' ? 'Volume' : 'Pan'} automation on ${name}` : `Cleared ${lane} automation on ${name}`);
+        const t = host.project().tracks.find((x) => x.id === target);
+        return { track: name, lane, points: (t?.automation?.[lane] ?? []).map((q) => ({ seconds: round(q.pos / project.sampleRate, 3), value: round(q.value, 2) })) };
       },
     },
     {

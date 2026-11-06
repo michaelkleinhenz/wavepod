@@ -10,6 +10,7 @@ import { WavReader } from './wav';
 import { MUTE_RAMP_SECONDS, muteGainAt, regionsOverlap } from './muteRegions';
 import { FxChain } from './fx/chain';
 import { fillEnvelope, isUnityEnvelope } from './envelope';
+import { fillAutomation, volumeAmp } from './automation';
 import { audibleTracks, projectLength } from './project';
 
 export class ReaderCache {
@@ -73,6 +74,9 @@ const hasActiveFx = (list: Fx[] | undefined): boolean => !!list?.some((f) => f.e
 export class Mixer {
   private scratch: Float32Array[] = [];
   private envBuf = new Float32Array(0);
+  /** Per-sample track volume (linear) and pan of the block, when the track is automated. */
+  private autoVol = new Float32Array(0);
+  private autoPan = new Float32Array(0);
   private pre: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private trackChains = new Map<string, ChainState>();
   /** Chains of clips with their own filters (track filters, then clip filters), by clip id. */
@@ -346,7 +350,7 @@ export class Mixer {
     return s;
   }
 
-  /** Adds one track (ignoring mute/solo) into `out`: clips, mute regions, volume line, filter stacks, gain and pan. */
+  /** Adds one track (ignoring mute/solo) into `out`: clips, mute regions, volume line, filter stacks, gain and pan (automated or fixed). */
   renderTrackInto(track: Track, position: number, frames: number, out: Float32Array[]): void {
     const state = this.chainState(this.trackChains.get(track.id), track.fx);
     if (state) this.trackChains.set(track.id, state);
@@ -380,18 +384,49 @@ export class Mixer {
       }
     }
     const g = dbToGain(track.gain);
-    const [panL, panR] = panGains(track.pan);
-    // balance for stereo sources, pan law for mono ones
-    const gl = g * (stereo ? Math.min(1, 1 - track.pan) : panL);
-    const gr = g * (stereo ? Math.min(1, 1 + track.pan) : panR);
+    const volPts = track.automation?.volume;
+    const panPts = track.automation?.pan;
     const [ol, or] = out;
     let peak = 0;
-    for (let i = 0; i < frames; i++) {
-      const l = pl[i] * gl;
-      const r = (stereo ? pr[i] : pl[i]) * gr;
-      ol[i] += l;
-      or[i] += r;
-      if (this.metering) peak = Math.max(peak, Math.abs(l), Math.abs(r));
+    if (volPts?.length || panPts?.length) {
+      // automated: gain and pan follow the lanes sample by sample
+      if (this.autoVol.length < frames) {
+        this.autoVol = new Float32Array(frames);
+        this.autoPan = new Float32Array(frames);
+      }
+      const vol = this.autoVol;
+      const pan = this.autoPan;
+      if (volPts?.length) fillAutomation(volPts, position, frames, vol, volumeAmp);
+      else vol.fill(1, 0, frames);
+      if (panPts?.length) fillAutomation(panPts, position, frames, pan);
+      else pan.fill(track.pan, 0, frames);
+      let lastPan = NaN;
+      let pg: [number, number] = [1, 1];
+      for (let i = 0; i < frames; i++) {
+        const p = pan[i];
+        if (p !== lastPan) {
+          lastPan = p;
+          pg = stereo ? [Math.min(1, 1 - p), Math.min(1, 1 + p)] : panGains(p);
+        }
+        const gi = g * vol[i];
+        const l = pl[i] * gi * pg[0];
+        const r = (stereo ? pr[i] : pl[i]) * gi * pg[1];
+        ol[i] += l;
+        or[i] += r;
+        if (this.metering) peak = Math.max(peak, Math.abs(l), Math.abs(r));
+      }
+    } else {
+      const [panL, panR] = panGains(track.pan);
+      // balance for stereo sources, pan law for mono ones
+      const gl = g * (stereo ? Math.min(1, 1 - track.pan) : panL);
+      const gr = g * (stereo ? Math.min(1, 1 + track.pan) : panR);
+      for (let i = 0; i < frames; i++) {
+        const l = pl[i] * gl;
+        const r = (stereo ? pr[i] : pl[i]) * gr;
+        ol[i] += l;
+        or[i] += r;
+        if (this.metering) peak = Math.max(peak, Math.abs(l), Math.abs(r));
+      }
     }
     if (this.metering) this.trackPeaks.set(track.id, Math.max(peak, this.trackPeaks.get(track.id) ?? 0));
   }
