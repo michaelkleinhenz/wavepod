@@ -2,7 +2,7 @@
 import { LevelMeter } from './levelMeter';
 import { clipsInRect, selectionSpan } from '../core/navigation';
 import type { Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
-import { dbToGain, formatTick } from '../shared/time';
+import { dbToGain, formatTick, formatTimestamp } from '../shared/time';
 import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
@@ -124,6 +124,10 @@ export class TimelineView {
   private snapping = readSnapSetting();
   /** Position the current drag snapped to, drawn as a guide line. */
   private snapLine: number | null = null;
+  /** Where files dragged over the timeline would land (track null: new tracks below). */
+  private dropHint: { frame: number; trackIndex: number | null } | null = null;
+  /** Label next to the mouse while dragging files: which track and time they land on. */
+  private dropTag = h('div', { class: 'drop-tag' });
   /** Clip under the mouse, whose fade handles are shown. */
   private hoverClipId: string | null = null;
   private snapBtn = iconButton('snap', { label: 'Snapping' }, null, 'snap-btn');
@@ -858,6 +862,7 @@ export class TimelineView {
     }
     this.drawPlayhead(ctx, height);
     this.drawSnapLine(ctx, height);
+    this.drawDropHint(ctx, height);
   }
 
   /** A marker's position, following a marker drag or a ripple move across all tracks. */
@@ -1424,6 +1429,60 @@ export class TimelineView {
     return d0 <= d1 ? { fixed: r[1], edge: r[0] } : { fixed: r[0], edge: r[1] };
   }
 
+  /**
+   * Where a drag-and-drop lands: the track under the mouse (null below the tracks, for new tracks)
+   * and the time under the mouse, snapped to clip edges, markers and the playhead unless Alt is held.
+   * Over the track headers the clip starts at the left edge of the view.
+   */
+  private dropTarget(e: DragEvent): { at: number; trackId: string | null; trackIndex: number | null } {
+    const r = this.canvas.getBoundingClientRect();
+    const ti = Math.floor((e.clientY - r.top) / TRACK_H);
+    const track = ti >= 0 ? store.project.tracks[ti] : undefined;
+    const x = e.clientX - r.left;
+    const at = x <= 0 ? this.frameOf(0) : this.snappedFrame(x, e);
+    return { at, trackId: track?.id ?? null, trackIndex: track ? ti : null };
+  }
+
+  private showDropHint(t: { at: number; trackIndex: number | null }, count: number, e: DragEvent): void {
+    const prev = this.dropHint;
+    this.dropHint = { frame: t.at, trackIndex: t.trackIndex };
+    if (!prev || prev.frame !== t.at || prev.trackIndex !== t.trackIndex) this.draw();
+    const track = t.trackIndex === null ? null : store.project.tracks[t.trackIndex];
+    const what = count > 1 ? `${count} files` : 'Clip';
+    const where = track ? `on ${track.name}` : count > 1 ? 'on new tracks' : 'on a new track';
+    this.dropTag.textContent = `${what} ${where} at ${formatTimestamp(t.at / this.sr, false)}`;
+    this.dropTag.style.left = `${e.clientX + 14}px`;
+    this.dropTag.style.top = `${e.clientY + 16}px`;
+    if (!this.dropTag.isConnected) document.body.append(this.dropTag);
+  }
+
+  private clearDropHint(): void {
+    this.scroll.classList.remove('drop-target');
+    this.dropTag.remove();
+    if (!this.dropHint) return;
+    this.dropHint = null;
+    this.snapLine = null;
+    this.draw();
+  }
+
+  /** The drop position while files are dragged over the tracks: a line, and the target track lit up. */
+  private drawDropHint(ctx: CanvasRenderingContext2D, height: number): void {
+    const d = this.dropHint;
+    if (!d) return;
+    if (d.trackIndex !== null) {
+      ctx.fillStyle = 'rgba(120,160,255,0.16)';
+      ctx.fillRect(0, d.trackIndex * TRACK_H, this.width, TRACK_H - 2);
+    }
+    const x = Math.round(this.xOf(d.frame)) + 0.5;
+    ctx.strokeStyle = this.snapLine === d.frame ? '#ffd54f' : '#9ab8ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, d.trackIndex === null ? 0 : d.trackIndex * TRACK_H);
+    ctx.lineTo(x, d.trackIndex === null ? height : (d.trackIndex + 1) * TRACK_H - 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+
   /** Snaps candidate positions (frames) to nearby edges; returns the offset to apply. */
   private snapDelta(candidates: number[], exclude: ReadonlySet<string>, e: MouseEvent, extra: number[] = []): number {
     this.snapLine = null;
@@ -1548,30 +1607,45 @@ export class TimelineView {
       }
     };
     this.canvas.addEventListener('wheel', (e) => onWheel(e, this.canvas), { passive: false });
-    // drag-and-drop audio files: onto a track to add them there, below the tracks for new tracks
-    const hasFiles = (e: DragEvent) => !!e.dataTransfer && (Array.from(e.dataTransfer.types).includes('Files') || Array.from(e.dataTransfer.types).includes(LIBRARY_DRAG_TYPE));
+    // drag-and-drop audio files (from the file manager or the sound library): onto a track to add
+    // them there at the drop position, below the tracks for new tracks
+    const dragTypes = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []);
+    const hasFiles = (e: DragEvent) => dragTypes(e).includes('Files') || dragTypes(e).includes(LIBRARY_DRAG_TYPE);
     this.scroll.addEventListener('dragover', (e) => {
       if (!hasFiles(e) || !store.project) return;
       e.preventDefault();
       e.dataTransfer!.dropEffect = 'copy';
       this.scroll.classList.add('drop-target');
+      const hint = this.dropTarget(e);
+      const count = dragTypes(e).includes(LIBRARY_DRAG_TYPE) ? 1 : Array.from(e.dataTransfer!.items).filter((i) => i.kind === 'file').length;
+      this.showDropHint(hint, count, e);
     });
-    this.scroll.addEventListener('dragleave', () => this.scroll.classList.remove('drop-target'));
+    this.scroll.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget instanceof Node && this.scroll.contains(e.relatedTarget)) return;
+      this.clearDropHint();
+    });
     this.scroll.addEventListener('drop', (e) => {
-      this.scroll.classList.remove('drop-target');
+      this.clearDropHint();
       if (!hasFiles(e) || !store.project) return;
       e.preventDefault();
-      const r = this.canvas.getBoundingClientRect();
-      const x = Math.max(0, e.clientX - r.left);
-      const ti = Math.floor((e.clientY - r.top) / TRACK_H);
-      const track = ti >= 0 ? store.project.tracks[ti] : undefined;
+      const { at, trackId } = this.dropTarget(e);
       // a sound dragged from the sound library
       const sound = e.dataTransfer!.getData(LIBRARY_DRAG_TYPE);
-      if (sound) return void insertLibrarySound(sound, { at: this.frameOf(x), trackId: track?.id ?? null });
+      if (sound) return void insertLibrarySound(sound, { at, trackId });
       const files = Array.from(e.dataTransfer!.files);
       if (!files.length) return;
-      void importDroppedFiles(files, this.frameOf(x), track?.id ?? null);
+      void importDroppedFiles(files, at, trackId);
     });
+    // a file dropped anywhere else must not replace the app with the file (Chromium opens it)
+    window.addEventListener('dragover', (e) => {
+      if (e.defaultPrevented || !dragTypes(e).includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'none';
+    });
+    window.addEventListener('drop', (e) => {
+      if (dragTypes(e).includes('Files')) e.preventDefault();
+    });
+    window.addEventListener('dragend', () => this.clearDropHint());
 
     this.rulerCanvas.addEventListener('wheel', (e) => onWheel(e, this.rulerCanvas), { passive: false });
 
