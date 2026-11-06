@@ -579,6 +579,14 @@ body.transcript-open .transcript-btn { background: var(--panel-2); color: var(--
 .settings-key { flex: 1; min-width: 0; }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .settings-dialog .field textarea { min-height: 48px; }
+.settings-dialog { width: min(760px, 92vw); height: min(720px, 90vh); display: flex; flex-direction: column; padding-top: 0; padding-bottom: 0; }
+.settings-head { position: sticky; top: 0; z-index: 2; background: var(--panel); padding-top: 16px; }
+.settings-head h2 { margin-bottom: 10px; }
+.settings-tabs { position: static; margin: 0 -20px 12px; padding: 0 20px; background: var(--panel); }
+.settings-tabs .setup-tab.active { background: var(--bg); }
+.settings-page { flex: 1; }
+.settings-page > .card { background: var(--bg); }
+.settings-foot { position: sticky; bottom: 0; background: var(--panel); padding: 12px 0 16px; margin-top: 8px; border-top: 1px solid var(--border); }
 .ok-text { color: #81c784; font-size: 12px; margin: 0 0 8px; }
 .cleanup-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .cleanup-seconds { width: 60px; }

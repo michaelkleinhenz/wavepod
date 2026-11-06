@@ -1,4 +1,4 @@
-// Starts and stops the local MCP server as the user switches it on and off in Setup.
+// Starts and stops the local MCP server as the user switches it on and off in Settings › AI agents.
 import type { McpServer } from '../../core/mcp/protocol';
 import { startMcpHttpServer, type McpHttpServer } from './httpServer';
 import type { McpSettings, McpStatus } from '../../shared/types';

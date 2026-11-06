@@ -116,9 +116,8 @@ async function main(): Promise<void> {
       store.setView('edit');
     } else transcriptPanel.toggle();
   };
-  setup.onTemplates = { start: () => void templates.openNew(), save: () => void templates.openSave() };
   // An empty episode needs its speakers set up next; an opened one or a template is ready to record.
-  setup.onEpisodeChosen = (how) => (how === 'blank' ? setup.showTab('inputs') : store.setView('edit'));
+  setup.onEpisodeChosen = (how) => (how === 'blank' ? setup.showTab('audio') : store.setView('edit'));
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
   timeline.onOpenClipFx = (clipId) => fxPanel.toggle(clipTarget(clipId));
   timeline.isClipFxOpen = (clipId) => fxPanel.target === clipTarget(clipId);

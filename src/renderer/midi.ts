@@ -1,5 +1,5 @@
 // MIDI controller input: listens to every connected MIDI device (Web MIDI), runs learned mappings and
-// handles "learn" mode in Setup. Mappings live in the app settings via the main process.
+// handles "learn" mode in Settings › Controllers. Mappings live in the app settings via the main process.
 import type { MidiAction, MidiButtonMode, MidiSettings, MidiTrigger } from '../shared/types';
 import {
   MIDI_ACTIONS,

@@ -1,4 +1,4 @@
-// Setup card for the local MCP server: lets AI agents (Claude Desktop, Claude Code, …) read the
+// Settings › AI agents card for the local MCP server: lets AI agents (Claude Desktop, Claude Code, …) read the
 // episode and edit filter stacks. Off by default; only programs on this computer can connect.
 import type { McpSettings, McpStatus } from '../shared/types';
 import { disclosure, errorMessage, h, toast } from './dom';
@@ -52,7 +52,7 @@ function copyRow(label: string, text: string): HTMLElement {
   );
 }
 
-/** True while the MCP server is switched on (for the Setup tab's indicator). */
+/** True while the MCP server is switched on (for the Settings tab's indicator). */
 export function isMcpOn(): boolean {
   return !!status?.enabled;
 }

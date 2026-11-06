@@ -174,7 +174,7 @@ only touches `productName`, `desktopName` and the `.desktop` file.
    and connect it over USB.
 2. In WavePod's **Setup** view, on the **Audio** tab, pick the RØDECaster
    under **Record from**.
-3. On the **Microphones** tab the 16 channels appear with their names and
+3. Further down the **Audio** tab the 16 channels appear with their names and
    live meters. Click **Create speaker tracks**: each mic and remote source
    gets its own armed track.
 4. Switch to **Record & Edit** and press `R`.
@@ -218,7 +218,7 @@ Any class-compliant USB MIDI controller (pad controller, keyboard, foot
 switch, a mixer's MIDI out) can start and stop recording and drop chapter
 and edit markers; play/pause, stop, record on/off, the cough buttons of
 speakers 1–6 (muted while held) and soundboard slots 1–9 can be mapped too.
-In **Setup → Controllers → MIDI controller**, click *Learn* next to a function and press
+In **Edit → Settings… → Controllers → MIDI controller**, click *Learn* next to a function and press
 the pad, key or button. Notes fire on note-on, controllers when they go
 to 64 or above (once per press, so a fader doesn't repeat), program
 changes always. A mapping listens to the device it was learned from;
@@ -230,7 +230,7 @@ the app settings, not in the episode, so they work in every project.
 
 For a Stream Deck through [Bitfocus Companion](https://bitfocus.io/companion)
 (a *Generic OSC* connection), TouchOSC or anything else that sends OSC over
-UDP, switch on **Setup → Controllers → Stream Deck and OSC remotes**. WavePod
+UDP, switch on **Edit → Settings… → Controllers → Stream Deck and OSC remotes**. WavePod
 listens on port 9000 (changeable under *Connection details and addresses*), only for this computer unless *Accept from other computers*
 is ticked. Addresses:
 
@@ -322,7 +322,7 @@ stacks: "give every speaker the voice chain, put a gentle compressor after
 the de-esser on the guest and a limiter at −1 dB on the master, then check
 the loudness".
 
-It is off by default. Switch it on in **Setup → AI agents**. The
+It is off by default. Switch it on in **Edit → Settings… → AI agents**. The
 server listens on `http://127.0.0.1:47474/mcp` (the port can be changed
 under *Connection details*) and only accepts connections from this computer; requests from web
 pages are refused. Any program on your computer can connect while it is on,
