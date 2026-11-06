@@ -715,6 +715,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   measureLoudness: (mixOnly?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly }),
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
   revealFile: (p: string) => shell.showItemInFolder(p),
+  openHelp: (topic?: string) => openHelp(topic),
   alignClip: (clipId: string, refTrackId: string) =>
     runWorker({ kind: 'align', project: current.project, dir: current.dir, clipIds: [clipId], refTrackId }),
 
@@ -1007,7 +1008,13 @@ function buildMenu(): void {
     {
       role: 'help',
       submenu: [
+        // the renderer picks the page that fits the open view or dialog
+        { label: 'WavePod Help', accelerator: 'F1', click: menuSend('help') },
+        { label: 'Getting Started', click: () => openHelp('getting-started') },
         { label: 'Keyboard Shortcuts', click: menuSend('shortcuts') },
+        { label: 'Troubleshooting', click: () => openHelp('troubleshooting') },
+        { type: 'separator' },
+        { label: 'Report a Problem…', click: () => void shell.openExternal('https://github.com/michaelkleinhenz/wavepod/issues') },
         ...(isMac ? [] : [{ type: 'separator' as const }, { label: 'About WavePod', click: menuSend('about') }]),
       ],
     },
@@ -1015,6 +1022,48 @@ function buildMenu(): void {
   appMenu = Menu.buildFromTemplate(template);
   // Still set on Linux and Windows (hidden there), so its accelerators and roles keep working.
   Menu.setApplicationMenu(appMenu);
+}
+
+let helpWin: BrowserWindow | null = null;
+
+/** Help pages are addressed as `topic` or `topic/anchor`, e.g. `export/stems`. */
+const HELP_ADDRESS = /^[a-z0-9-]+(\/[a-z0-9-]+)?$/;
+
+/** Opens the user guide in its own window (or brings it forward) at `topic`. */
+function openHelp(topic?: string): void {
+  const hash = topic && HELP_ADDRESS.test(topic) ? topic : '';
+  if (helpWin && !helpWin.isDestroyed()) {
+    if (hash) void helpWin.webContents.executeJavaScript(`location.hash = ${JSON.stringify(hash)}`);
+    if (helpWin.isMinimized()) helpWin.restore();
+    helpWin.focus();
+    return;
+  }
+  const bounds = win?.getBounds();
+  helpWin = new BrowserWindow({
+    width: 1040,
+    height: 760,
+    minWidth: 560,
+    minHeight: 400,
+    ...(bounds ? { x: bounds.x + Math.max(0, bounds.width - 1080), y: bounds.y + 40 } : {}),
+    backgroundColor: '#15171c',
+    title: 'WavePod Help',
+    ...(process.platform === 'darwin' ? {} : { icon: path.join(__dirname, '..', 'icon.png') }),
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  // The guide has its own keys (search, back, close); the app's menu belongs to the main window.
+  if (process.platform !== 'darwin') helpWin.removeMenu();
+  // links out of the guide open in the browser; the window itself only ever shows the guide
+  helpWin.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  helpWin.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith('file:') && url.includes('/help/help.html')) return;
+    e.preventDefault();
+    if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url);
+  });
+  helpWin.on('closed', () => (helpWin = null));
+  void helpWin.loadFile(path.join(__dirname, '..', 'help', 'help.html'), hash ? { hash } : undefined);
 }
 
 function createWindow(): void {
@@ -1074,6 +1123,8 @@ function createWindow(): void {
   });
   win.on('closed', () => {
     win = null;
+    // the help window belongs to the app window; left open alone it would keep the app running
+    if (helpWin && !helpWin.isDestroyed()) helpWin.close();
   });
 }
 

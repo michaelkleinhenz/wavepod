@@ -1,4 +1,5 @@
-// The keyboard shortcut overlay (`?` or Help › Keyboard Shortcuts).
+// The keyboard shortcut overlay (`?` or Help › Keyboard Shortcuts). The same list is a page of the
+// user guide (src/help/topics.ts), so keep the descriptions self-explanatory.
 import { h } from './dom';
 
 const mod = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl';
@@ -36,7 +37,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
     [
       ['S', 'Split at the playhead'],
       ['F', 'Fade the selected clips'],
-      ['P', 'Preview: play across the selection as if it were cut'],
+      ['P', 'Preview: play 2 s around the playhead, then go back (check a cut)'],
       ['L', 'Repeat: loop playback of the selection'],
       [`Shift+${mod}+T`, 'Transcript: click a word to jump, drag to select, Delete cuts, Enter or double-click changes the words (experimental)'],
       [`Shift+${mod}+B`, 'Sound library: type to search, ↑/↓ listen, Enter inserts at the playhead'],
@@ -100,7 +101,12 @@ export function showShortcuts(): void {
           h('section', null, h('h3', null, group), h('dl', null, ...keys.flatMap(([k, what]) => [h('dt', null, h('kbd', null, k)), h('dd', null, what)]))),
         ),
       ),
-      h('div', { class: 'row end' }, h('button', { onclick: close }, 'Close')),
+      h(
+        'div',
+        { class: 'row end' },
+        h('button', { title: 'Everything WavePod does, explained (F1)', onclick: () => void window.wavepod?.openHelp('getting-started') }, 'User guide…'),
+        h('button', { onclick: close }, 'Close'),
+      ),
     ),
   );
   document.body.append(overlay);
