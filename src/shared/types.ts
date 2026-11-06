@@ -367,6 +367,8 @@ export interface TransportUpdate {
   recordingPeaks?: LivePeaks[];
   /** Jingles currently playing. */
   jingles?: PlayingJingle[];
+  /** Sound library preview playing: frames played and its length. */
+  preview?: { pos: Frames; length: Frames };
   /** While recording: jingles of this take that have finished (they become clips when recording stops). */
   recordedJingles?: Array<{ slotId: string; start: Frames; length: Frames }>;
   /** While playing: what each active filter did since the previous update, by filter id. */

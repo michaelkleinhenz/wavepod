@@ -60,6 +60,7 @@ import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
 import { SettingsDialog } from './settingsDialog';
 import { TranscriptPanel } from './transcriptPanel';
+import { SoundLibraryPanel } from './soundLibraryPanel';
 import { CleanupDialog } from './cleanupDialog';
 import { transcripts } from './transcripts';
 
@@ -97,9 +98,19 @@ async function main(): Promise<void> {
   const transcriptPanel = new TranscriptPanel();
   const cleanupDialog = new CleanupDialog();
   transcriptPanel.onCleanup = () => cleanupDialog.open();
+  const libraryPanel = new SoundLibraryPanel();
+  // the library and the transcript share the right side: one at a time
+  libraryPanel.onOpen = () => transcriptPanel.isOpen && transcriptPanel.close();
+  const openLibrary = () => {
+    if (store.view !== 'edit') {
+      if (!libraryPanel.isOpen) libraryPanel.toggle();
+      store.setView('edit');
+    } else libraryPanel.toggle();
+  };
   window.addEventListener('wavepod:open-settings', () => void settingsDialog.open());
   // the transcript panel only shows in the edit view; from another view its button takes the user there
   const openTranscript = () => {
+    if (!transcriptPanel.isOpen && libraryPanel.isOpen) libraryPanel.close();
     if (store.view !== 'edit') {
       if (!transcriptPanel.isOpen) transcriptPanel.toggle();
       store.setView('edit');
@@ -169,6 +180,7 @@ async function main(): Promise<void> {
     'Master FX',
   );
   const transcriptBtn = h('button', { class: 'fx-btn transcript-btn', title: 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)', onclick: () => openTranscript() }, 'Transcript');
+  const libraryBtn = h('button', { class: 'fx-btn library-btn', title: 'Sound library: search your sound effects, listen and insert them (Shift+Ctrl+B)', onclick: () => openLibrary() }, 'Sounds');
   const preShowBtn = h(
     'button',
     {
@@ -202,6 +214,7 @@ async function main(): Promise<void> {
     ),
     masterFxBtn,
     transcriptBtn,
+    libraryBtn,
     preShowBtn,
     h('div', { class: 'spacer' }),
     projectName,
@@ -213,6 +226,12 @@ async function main(): Promise<void> {
   const healthBar = h('div', { class: 'rec-health', role: 'status', 'aria-live': 'polite' });
   const main = h('main');
   root.append(new MenuBar().el, header, healthBar, main, statusBar);
+  // side panels (FX, transcript, sound library) start below the menu bar and header, whatever their height
+  const placePanels = () => document.documentElement.style.setProperty('--panel-top', `${Math.round(main.getBoundingClientRect().top)}px`);
+  new ResizeObserver(placePanels).observe(header);
+  new ResizeObserver(placePanels).observe(healthBar);
+  window.addEventListener('resize', placePanels);
+  placePanels();
   let healthShown = '';
   const renderHealth = () => {
     const t = store.transport;
@@ -237,6 +256,7 @@ async function main(): Promise<void> {
     if (store.view === 'edit') timeline.renderHeaders();
     fxPanel.setHidden(store.view !== 'edit');
     transcriptPanel.setHidden(store.view !== 'edit');
+    libraryPanel.setHidden(store.view !== 'edit');
   };
 
   const renderStatus = () => {
@@ -289,6 +309,7 @@ async function main(): Promise<void> {
     if (kinds.has('save') || kinds.has('project')) renderSaveDot();
     if (kinds.has('save') && store.view === 'setup') setup.render();
     if (kinds.has('project') || kinds.has('selection')) transcriptPanel.refresh();
+    if (kinds.has('project')) libraryPanel.refresh();
     if (kinds.has('project')) {
       void transcripts().ensureLoaded();
       fxPanel.refresh();
@@ -316,6 +337,7 @@ async function main(): Promise<void> {
       soundboard.updatePlaying(store.transport.jingles);
       fxPanel.updateMeters(store.transport.fxMeters);
       transcriptPanel.updatePosition();
+      libraryPanel.updatePreview();
       if (store.view === 'setup') setup.updateMeters();
     }
     if (store.view === 'edit') timeline.draw();
@@ -425,6 +447,7 @@ async function main(): Promise<void> {
       case 'auphonic': return void auphonic.open();
       case 'settings': return void settingsDialog.open();
       case 'transcript': return openTranscript();
+      case 'sound-library': return openLibrary();
       case 'transcribe':
         if (!transcriptPanel.isOpen) openTranscript();
         return void transcripts().transcribe();

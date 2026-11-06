@@ -11,6 +11,7 @@ import { fadesAt, overlapSpans, trackFades, type EffectiveFades } from '../core/
 import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
+import { LIBRARY_DRAG_TYPE, insertLibrarySound } from './soundLibraryPanel';
 import { regionFromSelection, alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, scrub, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
@@ -1548,7 +1549,7 @@ export class TimelineView {
     };
     this.canvas.addEventListener('wheel', (e) => onWheel(e, this.canvas), { passive: false });
     // drag-and-drop audio files: onto a track to add them there, below the tracks for new tracks
-    const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && (Array.from(e.dataTransfer.types).includes('Files') || Array.from(e.dataTransfer.types).includes(LIBRARY_DRAG_TYPE));
     this.scroll.addEventListener('dragover', (e) => {
       if (!hasFiles(e) || !store.project) return;
       e.preventDefault();
@@ -1560,12 +1561,15 @@ export class TimelineView {
       this.scroll.classList.remove('drop-target');
       if (!hasFiles(e) || !store.project) return;
       e.preventDefault();
-      const files = Array.from(e.dataTransfer!.files);
-      if (!files.length) return;
       const r = this.canvas.getBoundingClientRect();
       const x = Math.max(0, e.clientX - r.left);
       const ti = Math.floor((e.clientY - r.top) / TRACK_H);
       const track = ti >= 0 ? store.project.tracks[ti] : undefined;
+      // a sound dragged from the sound library
+      const sound = e.dataTransfer!.getData(LIBRARY_DRAG_TYPE);
+      if (sound) return void insertLibrarySound(sound, { at: this.frameOf(x), trackId: track?.id ?? null });
+      const files = Array.from(e.dataTransfer!.files);
+      if (!files.length) return;
       void importDroppedFiles(files, this.frameOf(x), track?.id ?? null);
     });
 

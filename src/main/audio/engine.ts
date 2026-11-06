@@ -187,6 +187,9 @@ export class AudioEngine extends EventEmitter {
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
   private voices: Voice[] = [];
+  /** Sound library preview: heard on the main output only, never recorded or exported. */
+  private preview: { data: Float32Array[]; pos: number; stop: number } | null = null;
+  private previewBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   /** Marker ping on/off, and the pings sounding now. */
   private markerPing = false;
   private pings: Array<{ tone: Float32Array; pos: number }> = [];
@@ -816,6 +819,21 @@ export class AudioEngine extends EventEmitter {
     });
   }
 
+  /** Plays a sound from the library on the main output (stops the previous one); null stops. */
+  previewSound(channels: Float32Array[] | null): boolean {
+    if (!channels?.length || !channels[0].length) {
+      // a short fade, so stopping mid-sound doesn't click
+      if (this.preview) this.preview.stop = Math.min(this.preview.stop, Math.round(0.02 * this.project.sampleRate));
+      return false;
+    }
+    if (!this.output) {
+      this.reportError('No output device is open, the preview is silent.');
+      return false;
+    }
+    this.preview = { data: channels, pos: 0, stop: Infinity };
+    return true;
+  }
+
   stopSounds(): void {
     for (const v of this.voices) if (!v.stop) this.stopVoice(v, JINGLE_PANIC_SECONDS);
   }
@@ -892,6 +910,7 @@ export class AudioEngine extends EventEmitter {
     SR.fill(0);
     this.renderTimeline(frames);
     this.renderVoices(frames);
+    const pv = this.renderPreview(frames);
     const out = this.outBuf;
     out.fill(0);
     // gains of the timeline (episode) and the live jingles on the main and the second pair
@@ -903,8 +922,8 @@ export class AudioEngine extends EventEmitter {
     const second = this.config.output2FirstChannel;
     const has2 = second !== null && second !== undefined && second + 1 < nch && second !== first;
     for (let i = 0; i < frames; i++) {
-      const l = L[i] * tlMain + SL[i];
-      const r = R[i] * tlMain + SR[i];
+      const l = L[i] * tlMain + SL[i] + (pv ? pv[0][i] : 0);
+      const r = R[i] * tlMain + SR[i] + (pv ? pv[1][i] : 0);
       if (Math.abs(l) > this.outputPeaks[0]) this.outputPeaks[0] = Math.abs(l);
       if (Math.abs(r) > this.outputPeaks[1]) this.outputPeaks[1] = Math.abs(r);
       out[i * nch + first] = l;
@@ -1019,6 +1038,25 @@ export class AudioEngine extends EventEmitter {
     }
   }
 
+  private renderPreview(frames: number): Float32Array[] | null {
+    const p = this.preview;
+    if (!p) return null;
+    if (this.previewBuf[0].length < frames) this.previewBuf = [new Float32Array(frames), new Float32Array(frames)];
+    const [L, R] = this.previewBuf;
+    L.fill(0);
+    R.fill(0);
+    const l = p.data[0];
+    const r = p.data[1] ?? l;
+    const fade = Math.round(0.02 * this.project.sampleRate);
+    for (let i = 0; i < frames && p.pos < l.length && p.stop > 0; i++, p.pos++) {
+      const g = p.stop < fade ? p.stop-- / fade : 1;
+      L[i] = l[p.pos] * g;
+      R[i] = r[p.pos] * g;
+    }
+    if (p.pos >= l.length || p.stop <= 0) this.preview = null;
+    return this.previewBuf;
+  }
+
   private renderVoices(frames: number): void {
     if (this.voices.length === 0) return;
     const [L, R] = this.sbBuf;
@@ -1095,6 +1133,7 @@ export class AudioEngine extends EventEmitter {
       if (Object.keys(meters).length) update.fxMeters = meters;
       update.trackPeaks = this.mixer.takeTrackPeaks();
     }
+    if (this.preview) update.preview = { pos: this.preview.pos, length: this.preview.data[0].length };
     if (this.voices.length) update.jingles = this.voices.map((v): PlayingJingle => ({
       slotId: v.slotId,
       remaining: Math.max(0, v.sound.data[0].length - v.pos),
