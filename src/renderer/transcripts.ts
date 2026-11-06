@@ -1,7 +1,8 @@
 // The episode's transcripts in the renderer: loaded per episode, updated as files finish,
 // and turned into timeline words (cached until the project or a transcript changes).
 import type { FileTranscript, Project, TimelineWord, TranscribeProgress } from '../shared/types';
-import { timelineWords } from '../core/transcript';
+import { allTimelineWords } from '../core/transcript';
+import { filterQuietWords, type WordFilter } from '../core/wordLevels';
 import { errorMessage, toast } from './dom';
 import { api, store } from './store';
 
@@ -10,7 +11,9 @@ type Listener = () => void;
 class Transcripts {
   private files = new Map<string, FileTranscript>();
   private dir = '';
-  private cache: { project: Project; version: number; words: TimelineWord[] } | null = null;
+  private cache: { project: Project; version: number; words: TimelineWord[]; hidden: number } | null = null;
+  /** Which quiet words to leave out (Settings › Transcription); null until loaded. */
+  private filter: WordFilter | null = null;
   private version = 0;
   private listeners = new Set<Listener>();
   progress: TranscribeProgress | null = null;
@@ -47,11 +50,19 @@ class Transcripts {
     if (!force && this.dir === store.dir) return;
     this.dir = store.dir;
     try {
-      const all = await api().loadTranscripts();
+      const [all, info] = await Promise.all([api().loadTranscripts(), api().getTranscriptionInfo()]);
       this.files = new Map(Object.entries(all));
+      this.filter = info.settings;
     } catch {
       this.files.clear();
     }
+    this.changed();
+  }
+
+  /** The crosstalk/level settings changed: words are filtered again. */
+  setFilter(filter: WordFilter): void {
+    if (this.filter && this.filter.crosstalkDb === filter.crosstalkDb && this.filter.minLevelDb === filter.minLevelDb) return;
+    this.filter = { crosstalkDb: filter.crosstalkDb, minLevelDb: filter.minLevelDb };
     this.changed();
   }
 
@@ -65,11 +76,20 @@ class Transcripts {
   }
 
   words(): TimelineWord[] {
+    return this.compute().words;
+  }
+
+  /** How many words are left out as crosstalk or too quiet. */
+  hidden(): number {
+    return this.compute().hidden;
+  }
+
+  private compute(): { words: TimelineWord[]; hidden: number } {
     const p = store.project;
-    if (this.cache && this.cache.project === p && this.cache.version === this.version) return this.cache.words;
-    const words = timelineWords(p, this.files);
-    this.cache = { project: p, version: this.version, words };
-    return words;
+    if (this.cache && this.cache.project === p && this.cache.version === this.version) return this.cache;
+    const { words, hidden } = filterQuietWords(p, this.files, allTimelineWords(p, this.files), this.filter);
+    this.cache = { project: p, version: this.version, words, hidden };
+    return this.cache;
   }
 
   /** Transcribes what's missing (or everything again with redo). */
