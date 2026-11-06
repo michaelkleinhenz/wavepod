@@ -26,7 +26,8 @@ Because each track is transcribed on its own, speech-to-text also writes down th
 
 Set this in **Edit › Settings… › General › Transcription › Crosstalk**:
 
-- **Leave out words when another track is louder by**: 15 dB by default. Pick a smaller value if bleed still gets through, or a larger one if quiet words said over someone else go missing. **Off** keeps every word.
+- **Leave out words when another track is louder by**: 15 dB by default. This only counts while the louder track is speaking, so laughing, coughing or a bump of the microphone doesn't take the other person's words away. Pick a smaller value if bleed still gets through, or a larger one if quiet words said over someone else go missing. **Off** keeps every word.
+- **Leave out words another track says at the same time, louder** (on by default): the bleed is written down as a quieter copy of what the other person said, so when the same word shows up on two tracks at once, the quieter one is left out. This works even when the microphones are close and the bleed is only a few dB down. A misheard word between two such copies goes too. Who said a sentence is decided by most of its words, so the other person laughing or coughing over part of it doesn't swap the speaker.
 - **Leave out words quieter than**: an optional fixed level, from −40 to −60 dBFS, for noise and very quiet background talk. It's off by default.
 
 Changes apply right away; nothing is uploaded again. Track and clip gain are taken into account when tracks are compared.

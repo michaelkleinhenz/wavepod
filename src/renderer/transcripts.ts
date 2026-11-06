@@ -61,8 +61,9 @@ class Transcripts {
 
   /** The crosstalk/level settings changed: words are filtered again. */
   setFilter(filter: WordFilter): void {
-    if (this.filter && this.filter.crosstalkDb === filter.crosstalkDb && this.filter.minLevelDb === filter.minLevelDb) return;
-    this.filter = { crosstalkDb: filter.crosstalkDb, minLevelDb: filter.minLevelDb };
+    const f = this.filter;
+    if (f && f.crosstalkDb === filter.crosstalkDb && f.minLevelDb === filter.minLevelDb && !!f.matchWords === !!filter.matchWords) return;
+    this.filter = { crosstalkDb: filter.crosstalkDb, minLevelDb: filter.minLevelDb, matchWords: !!filter.matchWords };
     this.changed();
   }
 
