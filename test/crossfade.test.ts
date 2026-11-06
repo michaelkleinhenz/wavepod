@@ -1,10 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fadesAt, overlapSpans, trackFades } from '../src/core/crossfade';
+import { DECLICK_SECONDS, fadesAt, overlapSpans, trackFades } from '../src/core/crossfade';
 import { fadeCurve, fadeGain } from '../src/core/dsp';
 import { Mixer, ReaderCache } from '../src/core/mixer';
-import { addTrack, createProject } from '../src/core/project';
+import { addTrack, createProject, rippleDelete, splitAt } from '../src/core/project';
 import { writeWavFile } from '../src/core/wav';
 import type { Clip, Track } from '../src/shared/types';
 import { tmpDir } from './helpers';
@@ -78,6 +78,80 @@ describe('automatic crossfades', () => {
     mixer.dispose();
     readers.closeAll();
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('declicking hard cuts', () => {
+  const sr = 48000;
+  const n = sr * 2;
+  // a 220 Hz tone: any cut lands somewhere on the wave, not at a zero crossing
+  const tone = new Float32Array(n).map((_, i) => 0.5 * Math.sin((2 * Math.PI * 220 * i) / sr));
+  const largestStep = (x: Float32Array, a: number, b: number) => {
+    let m = 0;
+    for (let i = a + 1; i < b; i++) m = Math.max(m, Math.abs(x[i] - x[i - 1]));
+    return m;
+  };
+  const renderCut = (cutFrom: number, cutTo: number) => {
+    const dir = tmpDir();
+    writeWavFile(path.join(dir, 'tone.wav'), [tone], sr, 32);
+    let p = createProject('X', sr);
+    p = addTrack(p, { name: 'T', pan: 0 });
+    p.tracks[0].clips.push(clip('a', 0, n, { file: 'tone.wav' }));
+    // what deleting a transcript word does
+    p = rippleDelete(p, cutFrom, cutTo);
+    const readers = new ReaderCache(dir);
+    const mixer = new Mixer(p, readers);
+    const out = [new Float32Array(sr), new Float32Array(sr)];
+    // render in playback-sized blocks, so block edges are covered too
+    for (let pos = 0; pos < sr; pos += 512) {
+      const m = Math.min(512, sr - pos);
+      const blk = [new Float32Array(m), new Float32Array(m)];
+      mixer.render(pos, m, blk);
+      out[0].set(blk[0], pos);
+    }
+    mixer.dispose();
+    readers.closeAll();
+    fs.rmSync(dir, { recursive: true, force: true });
+    return out[0];
+  };
+
+  it('leaves no step in the waveform where a word was cut out', () => {
+    // cut at a quarter period in (wave at its top) to a point half a period later (wave at its bottom)
+    const from = 24000 + Math.round(sr / 220 / 4);
+    const out = renderCut(from, from + 4321 + Math.round(sr / 220 / 2));
+    const normal = largestStep(out, 1000, 20000);
+    // without the declick the joint jumps by ~1.0 (top to bottom of the wave); now it stays as smooth as the tone
+    expect(largestStep(out, from - 2000, from + 2000)).toBeLessThan(normal * 1.6);
+  });
+
+  it('crossfades a butt joint instead of dipping to silence', () => {
+    const from = 24000 + 37;
+    const out = renderCut(from, from + 9000);
+    const d = Math.round(DECLICK_SECONDS * sr);
+    const rms = (a: number, b: number) => Math.sqrt(out.slice(a, b).reduce((s, v) => s + v * v, 0) / (b - a));
+    // the level across the joint stays within 1.5 dB of the tone
+    expect(Math.abs(20 * Math.log10(rms(from, from + d) / rms(1000, 1000 + d)))).toBeLessThan(1.5);
+  });
+
+  it('does not touch a split that simply continues the same audio', () => {
+    let p = createProject('X', sr);
+    p = addTrack(p, { name: 'T', pan: 0 });
+    p.tracks[0].clips.push(clip('a', 0, n));
+    p = splitAt(p, 12345);
+    const f = trackFades(p.tracks[0], 240);
+    const [a, b] = p.tracks[0].clips;
+    // the start of the file was never cut, so it stays as it is
+    expect(f.get(a.id)).toMatchObject({ declickOut: 0, tail: 0, declickIn: 0 });
+    expect(f.get(b.id)).toMatchObject({ declickIn: 0, declickOut: 240, tail: 0 });
+    // and the drawn fades stay what the user set
+    expect(f.get(a.id)).toMatchObject({ fadeIn: 0, fadeOut: 0 });
+  });
+
+  it('keeps clips with their own fades and crossfades as they are', () => {
+    const f = trackFades(track([clip('a', 0, 1000, { fadeOut: 50 }), clip('b', 800, 1000), clip('c', 1800, 500, { offset: 7000 })]), 240);
+    expect(f.get('a')).toMatchObject({ declickOut: 0, tail: 0 });
+    expect(f.get('b')).toMatchObject({ declickIn: 0, tail: 240, declickOut: 0 });
+    expect(f.get('c')).toMatchObject({ declickIn: 240 });
   });
 });
 

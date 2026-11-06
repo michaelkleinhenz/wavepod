@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import type { Clip, Fx, FxMeter, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { panGains } from './dsp';
-import { fadesAt, trackFades } from './crossfade';
+import { DECLICK_SECONDS, fadesAt, trackFades } from './crossfade';
 import { Ducker, isDucked } from './ducking';
 import { Automix, AUTOMIX_DEFAULT_DEPTH, isAutomixed } from './automix';
 import { WavReader } from './wav';
@@ -485,15 +485,18 @@ export class Mixer {
     const ramp = Math.round(MUTE_RAMP_SECONDS * this.project.sampleRate);
     // only the mute regions touching this block, so the per-sample lookup stays short
     const muted = regionsOverlap(track, position, end) ? track.muteRegions!.filter(([a, b]) => a < end && b > position) : null;
-    const fades = trackFades(track);
+    // declick every hard clip edge; a clip may play a few ms past its end to crossfade into the next one
+    const declick = Math.round(DECLICK_SECONDS * this.project.sampleRate);
+    const fades = trackFades(track, declick, (c) => this.readers.get(c.file)?.info.frames ?? 0);
     for (const clip of track.clips) {
       const reader = this.readers.get(clip.file);
       if (!reader) continue;
       const stereo = reader.info.channels >= 2;
       if (stereo) stereoTrack = true;
       if (include && !include(clip)) continue;
+      const fade = fades.get(clip.id)!;
       const cStart = clip.start;
-      const cEnd = clip.start + clip.length;
+      const cEnd = clip.start + clip.length + fade.tail;
       if (cEnd <= position || cStart >= end) continue;
       const from = Math.max(position, cStart);
       const to = Math.min(end, cEnd);
@@ -504,7 +507,6 @@ export class Mixer {
       }
       const src = readClip(reader, clip, from - cStart, n, this.scratch);
       const g = dbToGain(clip.gain);
-      const fade = fades.get(clip.id)!;
       const outOffset = from - position;
       // the clip's volume line, evaluated once per block in source frames
       let env: Float32Array | null = null;
