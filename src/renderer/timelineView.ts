@@ -4,6 +4,7 @@ import { clipsInRect, selectionSpan } from '../core/navigation';
 import type { Clip, EnvelopePoint, Marker, PeakLevel, Track } from '../shared/types';
 import { dbToGain, formatTick, formatTimestamp } from '../shared/time';
 import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
+import { fitText, layoutMarkerLabels, type LabelLayout } from '../core/markerLabels';
 import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
 import { FADE_SHAPES, fadeCurve, type FadeShape } from '../core/dsp';
@@ -130,6 +131,8 @@ export class TimelineView {
   private dropTag = h('div', { class: 'drop-tag' });
   /** Clip under the mouse, whose fade handles are shown. */
   private hoverClipId: string | null = null;
+  /** Marker labels as last drawn in the ruler, for hover text. */
+  private markerLabels: (LabelLayout & { title: string })[] = [];
   private snapBtn = iconButton('snap', { label: 'Snapping' }, null, 'snap-btn');
   /** Opens the filter stack of a track. */
   onOpenFx: (trackId: string) => void = () => {};
@@ -629,6 +632,13 @@ export class TimelineView {
       ctx.fillStyle = '#9ab8ff';
       for (const f of r) ctx.fillRect(Math.round(this.cx(this.xOf(f))) - 1, 0, 2, RULER_H);
     }
+    // markers: each label gets the room up to the next marker and is shortened with an ellipsis past that
+    const LABEL_FONT = '11px system-ui, sans-serif';
+    ctx.font = LABEL_FONT;
+    const markerXs = store.project.markers.map((m) => ({ id: m.id, x: Math.round(this.xOf(this.markerPos(m))) + 0.5, title: m.title }));
+    const titles = new Map(store.project.markers.map((m) => [m.id, m.title]));
+    const measure = (t: string) => ctx.measureText(t).width;
+    this.markerLabels = layoutMarkerLabels(markerXs, measure, { offset: 11, gap: 4 }).map((l) => ({ ...l, title: titles.get(l.id) ?? '' }));
     // regions: bands in the marker lane, behind the markers
     ctx.textBaseline = 'middle';
     for (const r of store.project.regions ?? []) {
@@ -645,19 +655,19 @@ export class TimelineView {
       ctx.font = '10px system-ui, sans-serif';
       const label = `▭ ${r.title}`;
       const lx = Math.max(0, x0) + 5;
-      // keep the title clear of a marker flag and title at the region start
-      const atStart = store.project.markers.find((m) => Math.abs(this.xOf(m.position) - x0) < 6);
-      const tx = atStart ? lx + Math.min(160, ctx.measureText(atStart.title).width + 24) : lx;
-      if (x1 - tx > 30) ctx.fillText(label, tx, RULER_H + MARKER_H / 2 - 1, Math.max(10, x1 - tx - 6));
+      // keep the title clear of a marker flag and label at the region start, and stop before the next marker
+      const atStart = this.markerLabels.find((l) => Math.abs(l.x - 11 - x0) < 6);
+      const tx = atStart ? Math.max(lx, atStart.x + atStart.width + 8) : lx;
+      const nextMarker = this.markerLabels.find((l) => l.x - 11 > tx);
+      const room = Math.min(x1, nextMarker ? nextMarker.x - 11 : Infinity) - tx - 6;
+      const text = room > 20 ? fitText(label, room, (t) => ctx.measureText(t).width) : '';
+      if (text) ctx.fillText(text, tx, RULER_H + MARKER_H / 2 - 1);
     }
     // markers
     for (const m of store.project.markers) {
-      const pos = this.markerPos(m);
-      const x = Math.round(this.xOf(pos)) + 0.5;
+      const x = markerXs.find((p) => p.id === m.id)!.x;
       if (x < -200 || x > w + 2) continue;
-      const color = m.kind === 'chapter' ? '#ffca28' : '#ef5350';
-      const selected = store.selection.markerId === m.id;
-      ctx.fillStyle = color;
+      ctx.fillStyle = m.kind === 'chapter' ? '#ffca28' : '#ef5350';
       ctx.beginPath();
       ctx.moveTo(x, RULER_H + 2);
       ctx.lineTo(x + 8, RULER_H + 2);
@@ -665,10 +675,22 @@ export class TimelineView {
       ctx.lineTo(x, RULER_H + MARKER_H - 2);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = selected ? '#fff' : '#d8dbe2';
-      ctx.font = `${selected ? 'bold ' : ''}11px system-ui, sans-serif`;
-      ctx.fillText(m.title, x + 11, RULER_H + MARKER_H / 2);
     }
+    for (const l of this.markerLabels) {
+      if (!l.text || l.x > w + 2) continue;
+      const selected = store.selection.markerId === l.id;
+      ctx.fillStyle = selected ? '#fff' : '#d8dbe2';
+      ctx.font = `${selected ? 'bold ' : ''}${LABEL_FONT}`;
+      // bold is wider: fit the selected label again in its own room
+      const text = selected ? fitText(l.title, l.room, measure) : l.text;
+      if (selected) {
+        l.text = text;
+        l.width = measure(text);
+        l.truncated = text !== l.title;
+      }
+      if (text && l.x + l.width > -2) ctx.fillText(text, l.x, RULER_H + MARKER_H / 2);
+    }
+    ctx.font = LABEL_FONT;
     this.drawPlayhead(ctx, RULER_H + MARKER_H, true);
     this.drawSnapLine(ctx, RULER_H + MARKER_H);
   }
@@ -1713,7 +1735,8 @@ export class TimelineView {
       const onPlayhead = !onMarker && this.hitPlayhead(x, this.playheadTolerance(y));
       const onEdge = !onMarker && this.hitRangeEdge(x, null);
       this.rulerCanvas.style.cursor = onPlayhead || onEdge ? 'ew-resize' : '';
-      this.rulerCanvas.title = onPlayhead ? 'Drag to move the playhead' : '';
+      const label = y >= RULER_H && !onPlayhead ? this.markerLabelAt(x) : null;
+      this.rulerCanvas.title = onPlayhead ? 'Drag to move the playhead' : label ? label.title : '';
     });
     this.rulerCanvas.addEventListener('dblclick', (e) => {
       const { x, y } = local(e, this.rulerCanvas);
@@ -2143,6 +2166,13 @@ export class TimelineView {
       }
       this.draw();
     });
+  }
+
+  /** The marker whose flag or label is under `x` in the marker lane. */
+  private markerLabelAt(x: number) {
+    const flag = this.hitMarker(x);
+    if (flag) return this.markerLabels.find((l) => l.id === flag.id) ?? null;
+    return this.markerLabels.find((l) => l.text && x >= l.x && x <= l.x + l.width) ?? null;
   }
 
   private hitMarker(x: number) {
