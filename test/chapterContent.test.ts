@@ -63,6 +63,24 @@ describe('chapter content import (title;link)', () => {
     ]);
   });
 
+  it('parses an optional image as third field, old formats unchanged', () => {
+    expect(parseChapterContent('Intro;https://a.example;intro.png\nNews;;news photo.JPG\nOutro;example.com;\nShop;example.com/logo.png\nMail;https://b.example/x?a=1;b=2;mail.jpeg\nQ; A;\nCover;;\n')).toEqual([
+      { title: 'Intro', url: 'https://a.example', image: 'intro.png' },
+      { title: 'News', image: 'news photo.JPG' },
+      { title: 'Outro', url: 'example.com' },
+      { title: 'Shop', url: 'example.com/logo.png' },
+      { title: 'Mail', url: 'https://b.example/x?a=1;b=2', image: 'mail.jpeg' },
+      { title: 'Q; A' },
+      { title: 'Cover' },
+    ]);
+  });
+
+  it('sets images given in the list, keeps others', () => {
+    const { p } = setup();
+    const out = applyChapterContent(p, [{ title: 'One', image: 'images/one.png' }, { title: 'Two' }, { title: 'Three' }]);
+    expect(content(out).map((c) => c.image)).toEqual(['images/one.png', undefined, 'images/c.png', undefined]);
+  });
+
   it('fills existing chapters in order, keeps times and images', () => {
     const { p, ids } = setup();
     const out = applyChapterContent(p, [{ title: 'One' }, { title: 'Two', url: 'https://two.example' }, { title: 'Three' }]);

@@ -160,23 +160,39 @@ function parseAttrs(s: string): Record<string, string> {
   return out;
 }
 
-/** Title and optional link for one chapter, without a start time. */
+/** Title, optional link and optional image file name for one chapter, without a start time. */
 export interface ChapterContent {
   title: string;
   url?: string;
+  /** Image file name as written in the list, relative to the list's folder. */
+  image?: string;
 }
 
+/** A third field counts as an image when it names a JPEG or PNG file (not a link). */
+const IMAGE_FIELD = /^[^;]*\.(jpe?g|png)$/i;
+
 /**
- * Parses chapter content without times, one chapter per line as "title;link" (the link is
- * optional). The split is at the first ";" followed by something that looks like a link (no
- * spaces, with "://" or a dot) or by nothing, so titles with a ";" and links with a ";" both
- * work. Blank lines are skipped.
+ * Parses chapter content without times, one chapter per line as "title;link;image" (link and
+ * image are optional, so "title" and "title;link" work too, and "title;;image" skips the link).
+ * The image is the last field when the line has at least two ";" and that field is a JPEG/PNG
+ * file name (or empty). The title/link split is at the first ";" followed by something that
+ * looks like a link (no spaces, with "://" or a dot) or by nothing, so titles with a ";" and
+ * links with a ";" both work. Blank lines are skipped.
  */
 export function parseChapterContent(text: string): ChapterContent[] {
   const out: ChapterContent[] = [];
   for (const raw of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
-    const line = raw.trim();
+    let line = raw.trim();
     if (!line) continue;
+    let image: string | undefined;
+    const last = line.lastIndexOf(';');
+    if (last > 0 && line.lastIndexOf(';', last - 1) >= 0) {
+      const field = line.slice(last + 1).trim();
+      if (field === '' || (IMAGE_FIELD.test(field) && !field.includes('://'))) {
+        if (field) image = field;
+        line = line.slice(0, last).trim();
+      }
+    }
     let entry: ChapterContent = { title: line };
     for (let i = line.indexOf(';'); i >= 0; i = line.indexOf(';', i + 1)) {
       const rest = line.slice(i + 1).trim();
@@ -185,6 +201,7 @@ export function parseChapterContent(text: string): ChapterContent[] {
         break;
       }
     }
+    if (image) entry.image = image;
     out.push(entry);
   }
   return out;

@@ -76,6 +76,8 @@ interface Settings {
   elevenLabsKey: string;
   /** Sound effects library folder ('' = none). */
   soundLibraryFolder: string;
+  /** Folder the chapter image picker opens in: where the last chapter image came from ('' = none yet). */
+  chapterImageFolder: string;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -96,10 +98,18 @@ function loadSettings(): Settings {
       transcription: normalizeTranscriptionSettings(raw.transcription),
       elevenLabsKey: typeof raw.elevenLabsKey === 'string' ? raw.elevenLabsKey : '',
       soundLibraryFolder: typeof raw.soundLibraryFolder === 'string' ? raw.soundLibraryFolder : '',
+      chapterImageFolder: typeof raw.chapterImageFolder === 'string' ? raw.chapterImageFolder : '',
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', soundLibraryFolder: '' };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', soundLibraryFolder: '', chapterImageFolder: '' };
   }
+}
+
+/** The chapter image picker opens in this folder from now on. */
+function rememberChapterImageFolder(dir: string): void {
+  if (settings.chapterImageFolder === dir) return;
+  settings.chapterImageFolder = dir;
+  saveSettings();
 }
 
 function saveSettings(): void {
@@ -588,15 +598,30 @@ const handlers: Record<InvokeMethod, Handler> = {
     return res.filePath;
   },
 
-  pickImage: async (title: string) => {
+  pickImage: async (title: string, kind?: 'chapter') => {
+    const remembered = kind === 'chapter' ? settings.chapterImageFolder : '';
     const res = await dialog.showOpenDialog(win!, {
       title,
+      ...(remembered && fs.existsSync(remembered) ? { defaultPath: remembered } : {}),
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }],
     });
     const src = res.filePaths[0];
     if (res.canceled || !src) return null;
-    return importImage(current.dir, src);
+    const rel = importImage(current.dir, src);
+    if (kind === 'chapter') rememberChapterImageFolder(path.dirname(src));
+    return rel;
+  },
+  importChapterImage: (listPath: string, name: string) => {
+    const src = path.resolve(path.dirname(listPath), name);
+    try {
+      if (!fs.statSync(src).isFile()) return null;
+      const rel = importImage(current.dir, src);
+      rememberChapterImageFolder(path.dirname(src));
+      return rel;
+    } catch {
+      return null;
+    }
   },
 
   loadSound: (id: string, channels: Float32Array[]) => engine.loadSound(id, channels),

@@ -228,8 +228,16 @@ export interface WavePodApi {
   importAudio(name: string, channels: Float32Array[], sampleRate: number): Promise<ImportedAudio>;
   openTextFile(title: string, extensions: string[]): Promise<{ path: string; text: string } | null>;
   saveTextFile(defaultName: string, text: string): Promise<string | null>;
-  /** Lets the user choose a JPEG or PNG and copies it into the project's images folder; returns its relative path. */
-  pickImage(title: string): Promise<string | null>;
+  /**
+   * Lets the user choose a JPEG or PNG and copies it into the project's images folder; returns its
+   * relative path. With kind 'chapter' the dialog opens in the folder of the last chapter image.
+   */
+  pickImage(title: string, kind?: 'chapter'): Promise<string | null>;
+  /**
+   * Copies an image named in a chapter list (relative to the list file's folder) into the project;
+   * returns its relative path, or null if the file is missing or not a JPEG/PNG.
+   */
+  importChapterImage(listPath: string, name: string): Promise<string | null>;
 
   // soundboard
   loadSound(id: string, channels: Float32Array[]): Promise<void>;
@@ -390,6 +398,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'openTextFile',
   'saveTextFile',
   'pickImage',
+  'importChapterImage',
   'loadSound',
   'playSound',
   'stopSounds',
