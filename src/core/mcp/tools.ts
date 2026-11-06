@@ -9,6 +9,7 @@ import type { FxPresetLibrary } from '../fx/presetLibrary';
 import { createVstFx, visibleVstParams, vstFailures } from '../fx/vst';
 import { projectLength, updateTrack } from '../project';
 import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
+import { STEM_CHOICES, trackStem } from '../stems';
 import { setTrackAutomation, showTrackAutomation } from '../automation';
 import { paragraphs, timelineWords } from '../transcript';
 import { formatTimestamp, uid } from '../../shared/time';
@@ -49,7 +50,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -324,6 +325,8 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             filters: (t.fx ?? []).map((f) => `${filterName(f)}${f.enabled ? '' : ' (bypassed)'}`),
             ...(t.automix?.enabled ? { automix: { depthDb: t.automix.depth } } : {}),
             ...(t.duck?.enabled ? { duck: { depthDb: t.duck.depth } } : {}),
+            stem: trackStem(t),
+            ...(t.stem ? {} : { stemGuessed: true }),
             ...(t.automation?.volume?.length || t.automation?.pan?.length
               ? {
                   automation: Object.fromEntries(
@@ -374,6 +377,37 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
           automixed: on.map((t) => ({ id: t.id, name: t.name, depthDb: t.automix!.depth })),
           ...(on.length === 1 ? { note: 'Only one track is automixed; it has no effect until a second track takes part.' } : {}),
         };
+      },
+    },
+    {
+      name: 'set_track_stem',
+      description:
+        'Sets which stem tracks go to when the user exports dialogue, music and effects stems (DME, as broadcasters and festivals ask for): ' +
+        '"dialogue", "music", "effects", or "none" to leave a track out. Tracks without a choice are guessed from their name and settings (list_tracks shows stem and stemGuessed).',
+      inputSchema: obj(
+        {
+          tracks: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Track ids or names.' },
+          stem: { type: 'string', enum: STEM_CHOICES.map((c) => c.id) },
+        },
+        ['tracks', 'stem'],
+      ),
+      annotations: { title: 'Set track stem', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const refs = args.tracks;
+        if (!Array.isArray(refs) || !refs.length) throw new ToolError('"tracks" must list at least one track.');
+        const stem = str(args, 'stem', true);
+        const choice = STEM_CHOICES.find((c) => c.id === stem);
+        if (!choice) throw new ToolError(`"stem" must be one of ${STEM_CHOICES.map((c) => c.id).join(', ')}.`);
+        const names: string[] = [];
+        for (const ref of refs) {
+          const { target, name } = resolveTarget(project, String(ref));
+          if (target === MASTER) throw new ToolError('The master bus is not a track; stems are made of tracks.');
+          project = updateTrack(project, target, { stem: choice.id });
+          names.push(name);
+        }
+        host.apply(project, `${names.join(', ')} → ${choice.label} stem`);
+        return { stems: host.project().tracks.map((t) => ({ id: t.id, name: t.name, stem: trackStem(t), ...(t.stem ? {} : { guessed: true }) })) };
       },
     },
     {

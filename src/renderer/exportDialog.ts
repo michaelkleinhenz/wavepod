@@ -6,8 +6,14 @@ import { LOUDNESS_PRESETS, loudnessTiles } from './loudnessDialog';
 import { api, store } from './store';
 import { regionOutputBase } from '../core/regions';
 import { chapterWarningList } from './chaptersView';
+import { audibleTracks, updateTrack } from '../core/project';
+import { STEM_CHOICES, STEM_GROUPS, trackStem } from '../core/stems';
+import type { StemGroup } from '../shared/types';
 
 const PRESETS = LOUDNESS_PRESETS;
+
+const checkbox = (label: string, checked: boolean, onChange: (v: boolean) => void, disabled = false) =>
+  h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, disabled, onchange: (e: Event) => onChange((e.target as HTMLInputElement).checked) }), label);
 const WAVE_HEIGHT = 72;
 
 const fmtLive = (v: number, unit = 'LUFS') => (Number.isFinite(v) ? `${v.toFixed(1)} ${unit}` : '—');
@@ -171,8 +177,7 @@ export class ExportDialog {
     const o = this.opts;
     const range = store.selection.range;
     const regions = store.project.regions ?? [];
-    const check = (label: string, checked: boolean, onChange: (v: boolean) => void, disabled = false) =>
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, disabled, onchange: (e: Event) => onChange((e.target as HTMLInputElement).checked) }), label);
+    const check = checkbox;
     const fmt = (f: 'mp3' | 'wav' | 'flac' | 'opus', label: string) =>
       check(label, o.formats.includes(f), (v) => {
         o.formats = v ? [...new Set([...o.formats, f])] : o.formats.filter((x) => x !== f);
@@ -196,7 +201,7 @@ export class ExportDialog {
                   ...[32, 48, 64, 96, 128].map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 ? ' (like MP3 at 128)' : ''}`))))
             : null,
           check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }),
-          check('Stems (one WAV per track)', o.stems, (v) => (o.stems = v)),
+          check('Stems (separate files for editing or delivery)', o.stems, (v) => { o.stems = v; this.render(); }),
           check(range ? `Only the selected range` : 'Only the selected range (none selected)', this.useRange && !!range && !this.perRegion, (v) => { this.useRange = v; this.render(); }, !range || this.perRegion),
           check(regions.length ? `Each region as its own file (${regions.length})` : 'Each region as its own file (no regions)', this.perRegion && regions.length > 0, (v) => { this.perRegion = v; this.render(); }, !regions.length),
         ),
@@ -211,6 +216,7 @@ export class ExportDialog {
           h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.mix ? 'Analyse again' : 'Analyse loudness'),
         ),
       ),
+      this.stemSection(),
       this.chapterNotes(range),
       // only the mix matters for the export; per-track figures are in the Loudness dialog
       this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target, o.normalize)) : null,
@@ -218,11 +224,55 @@ export class ExportDialog {
       h('div', { class: 'row' }, this.progressLabel),
       h('div', { class: 'row end' },
         h('button', { disabled: this.busy, onclick: () => this.close() }, 'Close'),
-        h('button', { class: 'primary', disabled: this.busy || o.formats.length === 0, onclick: () => void this.run() }, this.busy ? 'Exporting…' : 'Export…'),
+        h('button', { class: 'primary', disabled: this.busy || (o.formats.length === 0 && !o.stems), onclick: () => void this.run() }, this.busy ? 'Exporting…' : 'Export…'),
       ),
     );
     this.overlay.append(dialog);
     if (this.exported) this.wave.draw();
+  }
+
+  /** Stem options; for dialogue / music / effects, the stem each track goes to (saved with the episode). */
+  private stemSection(): HTMLElement | null {
+    const o = this.opts;
+    if (!o.stems) return null;
+    const dme = o.stemMode === 'dme';
+    const select = <T extends string>(value: T, options: ReadonlyArray<{ id: T; label: string }>, onChange: (v: T) => void) =>
+      h('select', { onchange: (e: Event) => onChange((e.target as HTMLSelectElement).value as T) },
+        ...options.map((x) => h('option', { value: x.id, selected: x.id === value }, x.label)));
+    const head = h('div', { class: 'stem-options' },
+      h('label', { class: 'field' }, h('span', null, 'Split'),
+        select(o.stemMode ?? 'tracks', [{ id: 'tracks', label: 'One file per track' }, { id: 'dme', label: 'Dialogue, music and effects' }], (v) => { o.stemMode = v; this.render(); })),
+      h('label', { class: 'field' }, h('span', null, 'Stem format'),
+        select(o.stemFormat ?? 'wav', [{ id: 'wav', label: 'WAV 24-bit' }, { id: 'flac', label: 'FLAC 24-bit' }], (v) => (o.stemFormat = v))),
+    );
+    if (!dme) return h('div', { class: 'export-stems' }, h('h3', null, 'Stems'), head, h('p', { class: 'muted' }, 'Every track with clips on its own, at the same gain as the mix.'));
+    const tracks = audibleTracks(store.project).filter((t) => t.clips.length > 0);
+    const counts = new Map<StemGroup, number>();
+    for (const t of tracks) counts.set(trackStem(t), (counts.get(trackStem(t)) ?? 0) + 1);
+    const empty = STEM_GROUPS.filter((g) => !counts.get(g.id)).map((g) => g.label.toLowerCase());
+    const masterFx = (store.project.masterFx ?? []).some((f) => f.enabled);
+    return h('div', { class: 'export-stems' },
+      h('h3', null, 'Stems'),
+      head,
+      h('p', { class: 'muted' },
+        'One file each for dialogue, music and effects, at the same gain as the mix and with ducking and automix as you hear them, so together they add up to the mix. Muted tracks stay out. Your choices are saved with the episode.'),
+      h('div', { class: 'stem-tracks' },
+        ...tracks.map((t) =>
+          h('div', { class: 'stem-track' },
+            h('span', { class: 'stem-swatch', style: `background:${t.color}` }),
+            h('span', { class: 'stem-name', title: t.name }, t.name),
+            t.stem ? null : h('span', { class: 'muted stem-guess', title: 'Guessed from the track name and settings; pick one to keep it' }, 'guessed'),
+            select(trackStem(t), STEM_CHOICES, (v) => {
+              store.edit((p) => updateTrack(p, t.id, { stem: v }));
+              this.render();
+            }),
+          ),
+        ),
+      ),
+      checkbox('Also a music & effects mix (M&E, for versions in other languages)', !!o.stemMe, (v) => (o.stemMe = v)),
+      empty.length ? h('p', { class: 'muted' }, `No tracks for ${empty.join(' and ')}: ${empty.length > 1 ? 'those files stay' : 'that file stays'} silent.`) : null,
+      masterFx ? h('p', { class: 'muted' }, 'The master filters are not applied to stems, so they add up to the mix before the master filters.') : null,
+    );
   }
 
   /** Chapter problems and a missing cover, checked before the MP3 is written (Ultraschall warns about these too). */

@@ -74,6 +74,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     ...(t.duck ? { duck: { enabled: !!t.duck.enabled, depth: Number.isFinite(t.duck.depth) ? Math.min(40, Math.max(1, Math.abs(t.duck.depth))) : 12 } } : {}),
     ...(t.automix ? { automix: { enabled: !!t.automix.enabled, depth: Number.isFinite(t.automix.depth) ? Math.min(60, Math.max(1, Math.abs(t.automix.depth))) : 18 } } : {}),
     ...(t.voice && typeof t.voice.id === 'string' && t.voice.id ? { voice: { id: t.voice.id, name: String(t.voice.name ?? ''), ...(t.voice.cloned ? { cloned: true } : {}) } } : {}),
+    ...(t.stem === 'dialogue' || t.stem === 'music' || t.stem === 'effects' || t.stem === 'none' ? { stem: t.stem } : {}),
     clips: (t.clips ?? []).map((c) => ({
       ...c,
       gain: c.gain ?? 0,

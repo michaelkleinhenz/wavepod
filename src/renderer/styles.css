@@ -429,6 +429,15 @@ ul.chapter-warnings { margin: 8px 0 0; padding-left: 18px; }
 ul.chapter-warnings li { margin: 4px 0; }
 ul.chapter-warnings button { margin-left: 8px; }
 .export-notes { margin-top: 8px; }
+.export-stems { margin-top: 8px; }
+.export-stems p { margin: 4px 0; font-size: 12px; }
+.stem-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.stem-tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 4px 16px; margin: 6px 0; }
+.stem-track { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.stem-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.stem-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stem-guess { font-size: 11px; }
+.stem-track select { flex: none; width: 110px; }
 /* soundcheck and stop confirmation */
 .dialog.narrow { width: min(520px, 92vw); }
 ul.soundcheck { margin: 0 0 12px; padding-left: 18px; }
