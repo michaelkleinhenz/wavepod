@@ -60,4 +60,4 @@ When running from source, Electron's sandbox may need extra permissions on Ubunt
 
 ## Reporting a problem
 
-Use **Help › Report a Problem…** (or go to [github.com/michaelkleinhenz/wavepod/issues](https://github.com/michaelkleinhenz/wavepod/issues)) to report bugs and ideas. Mention your operating system, your audio interface and what you did just before the problem. **View › Toggle Developer Tools** shows error messages that help.
+Use **Help › Report a Problem…** (or go to [github.com/michaelkleinhenz/wavepod/issues](https://github.com/michaelkleinhenz/wavepod/issues)) to report bugs and ideas. Mention your operating system, your audio interface and what you did just before the problem, and paste the version details from **Help › About WavePod › Copy version info**. **View › Toggle Developer Tools** shows error messages that help.

@@ -93,3 +93,11 @@ While recording, a bar below the header warns about problems as they happen:
 - a **slow or nearly full disk**, and write errors.
 
 When the take stops, every problem spot gets a ⚠ edit marker so you can listen to it, and the message after the take says how many there are.
+
+### Recording alerts
+
+When the input device stops delivering audio mid-take (unplugged, reset, or lost by the sound server) or the take can't be written to disk, WavePod raises the alarm so you notice even with the window in the background: a red dialog with a repeating alarm sound, a system notification, a flashing taskbar entry (a bouncing dock icon on macOS) and "RECORDING PROBLEM" in the window title. WavePod never takes the keyboard focus away from what you are doing. The recording keeps running and the spot gets an edit marker; check your interface, then click **Got it, silence the alarm**.
+
+Dropouts, crackle and clipping only appear in the warning bar, not as an alarm.
+
+To see what the alarm looks like before a show, use **Test emergency notification** in **Edit › Settings… › General › Recording alerts**. It fires after 5 seconds, so you can switch to another window first.

@@ -1,5 +1,6 @@
 // The API the preload script exposes to the renderer as `window.wavepod`.
 import type {
+  RecordingAlert,
   AudioDevice,
   DeviceConfig,
   DeviceProfile,
@@ -105,6 +106,7 @@ export type MenuCommand =
   | 'restore-backup'
   | 'shortcuts'
   | 'help'
+  | 'about'
   | 'speed-up'
   | 'speed-down'
   | 'speed-normal'
@@ -167,6 +169,8 @@ export interface WavePodApi {
   soundcheckInfo(): Promise<{ inputDeviceName?: string; freeBytes: number | null }>;
   /** Ask before stopping a recording (Edit menu setting, on by default). */
   confirmStopRecording(): Promise<boolean>;
+  /** Fires a test of the recording emergency alert after `delaySeconds`, so the window can be put in the background first. */
+  testRecordingAlert(delaySeconds: number): Promise<void>;
   /** Lets the user pick one of the project's backups; returns it, or null if cancelled. */
   restoreBackup(): Promise<Project | null>;
 
@@ -219,6 +223,10 @@ export interface WavePodApi {
   /** Removes the temporary folder of the last Zencastr import. */
   finishZencastrImport(): Promise<void>;
   showTemplatesFolder(): Promise<void>;
+  /** Version and runtime details for Help › About WavePod. */
+  getAppInfo(): Promise<AppInfo>;
+  /** Opens one of the About dialog's links (website, source code, licences). */
+  openAboutLink(which: AboutLink): Promise<void>;
   showProjectFolder(): Promise<void>;
 
   // app menu, drawn by the renderer where the native menu bar can't follow the app's theme
@@ -338,9 +346,23 @@ export interface WavePodApi {
   onTranscribeProgress(cb: (p: TranscribeProgress) => void): () => void;
   /** A file's transcript was made (or removed: null). */
   onTranscript(cb: (u: { file: string; transcript: FileTranscript | null }) => void): () => void;
+  /** An emergency during a recording (device lost, take not written), or a test of it. */
+  onRecordingAlert(cb: (a: RecordingAlert) => void): () => void;
 
   platform: string;
 }
+
+export interface AppInfo {
+  name: string;
+  version: string;
+  electron: string;
+  chrome: string;
+  node: string;
+  platform: string;
+  arch: string;
+}
+
+export type AboutLink = 'website' | 'source' | 'licenses';
 
 export const IPC = {
   invoke: 'wavepod:invoke',
@@ -354,12 +376,13 @@ export const IPC = {
   saveState: 'wavepod:saveState',
   transcribeProgress: 'wavepod:transcribeProgress',
   transcript: 'wavepod:transcript',
+  recordingAlert: 'wavepod:recordingAlert',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'onTranscribeProgress' | 'onTranscript' | 'platform'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'onTranscribeProgress' | 'onTranscript' | 'onRecordingAlert' | 'platform'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
@@ -380,6 +403,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'setOscSettings',
   'soundcheckInfo',
   'confirmStopRecording',
+  'testRecordingAlert',
   'restoreBackup',
   'play',
   'stop',
@@ -409,6 +433,8 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'importZencastr',
   'finishZencastrImport',
   'showTemplatesFolder',
+  'getAppInfo',
+  'openAboutLink',
   'showProjectFolder',
   'getMenu',
   'menuClick',

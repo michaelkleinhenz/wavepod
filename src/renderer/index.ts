@@ -56,6 +56,7 @@ import { Soundboard } from './soundboard';
 import { api, store, type View } from './store';
 import { showShortcuts } from './shortcuts';
 import { openContextHelp } from './help';
+import { showAbout } from './aboutDialog';
 import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
@@ -64,6 +65,7 @@ import { TranscriptPanel } from './transcriptPanel';
 import { SoundLibraryPanel } from './soundLibraryPanel';
 import { CleanupDialog } from './cleanupDialog';
 import { transcripts } from './transcripts';
+import { RecordingAlertModal } from './recordingAlert';
 
 function formatDuration(seconds: number): string {
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
@@ -96,6 +98,7 @@ async function main(): Promise<void> {
   const templates = new TemplateDialog();
   const auphonic = new AuphonicDialog();
   const settingsDialog = new SettingsDialog();
+  new RecordingAlertModal();
   const transcriptPanel = new TranscriptPanel();
   const cleanupDialog = new CleanupDialog();
   transcriptPanel.onCleanup = () => cleanupDialog.open();
@@ -447,6 +450,7 @@ async function main(): Promise<void> {
       case 'restore-backup': return void restoreBackup();
       case 'shortcuts': return showShortcuts();
       case 'help': return openContextHelp();
+      case 'about': return void showAbout();
       case 'speed-up': return stepPlaybackSpeed(1);
       case 'speed-down': return stepPlaybackSpeed(-1);
       case 'speed-normal': return setSpeed(1, true);

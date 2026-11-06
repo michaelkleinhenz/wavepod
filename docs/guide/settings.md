@@ -11,6 +11,7 @@ The settings dialog has three tabs. A dot on a tab means something there is swit
 
 ### General
 
+- **Recording alerts**: **Test emergency notification** shows the alarm WavePod raises when a recording loses its input. See [Recording](recording.md#recording-alerts).
 - **Sound library**: the folder with your sound effects. See [Audio drama](audio-drama.md#sound-library).
 - **Transcription**: the ElevenLabs API key, model, language and the names and terms to get right. See [Transcript and text editing](transcript.md#set-up-transcription).
 

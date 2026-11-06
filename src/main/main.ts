@@ -2,7 +2,8 @@ import { BrowserWindow, Menu, MenuItem, app, dialog, ipcMain, shell, type MenuIt
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { IPC, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject, type SaveState } from '../shared/api';
+import { RecordingAlerter, withAlertMark } from './recordingAlert';
+import { IPC, type AboutLink, type AppInfo, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject, type SaveState } from '../shared/api';
 import { acceleratorLabel, menuLabel } from '../core/menuText';
 import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
 import { addClip, prepareForEditing } from '../core/project';
@@ -169,6 +170,8 @@ let saveTimer: NodeJS.Timeout | null = null;
 let mcp: McpController;
 let osc: OscServer;
 let recordWorker: RecordWorker | null = null;
+/** Gets emergencies during a recording to the user, even with the window in the background. */
+let alerter: RecordingAlerter;
 /** A recovery to tell the user about once the window is there. */
 let recoveryNotice: string | null = null;
 /** Temporary folder of the Zencastr import in progress. */
@@ -241,7 +244,7 @@ function openProjectDir(dir: string): OpenedProject {
   engine.setProject(project, dir);
   settings.lastProject = dir;
   saveSettings();
-  win?.setTitle(`${project.name} — WavePod`);
+  if (win) win.setTitle(withAlertMark(win, `${project.name} — WavePod`));
   return current;
 }
 
@@ -324,7 +327,7 @@ function backupNow(reason = ''): void {
 function setCurrentProject(project: Project): void {
   current.project = project;
   engine.setProject(project);
-  win?.setTitle(`${project.name} — WavePod`);
+  if (win) win.setTitle(withAlertMark(win, `${project.name} — WavePod`));
   // a failed save stays red until a save works
   if (saveState.state !== 'error') setSaveState({ state: 'unsaved' });
   if (saveTimer) clearTimeout(saveTimer);
@@ -403,6 +406,12 @@ function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise
 
 type Handler = (...args: never[]) => unknown;
 
+const ABOUT_LINKS: Record<AboutLink, string> = {
+  website: 'https://michaelkleinhenz.github.io/wavepod/',
+  source: 'https://github.com/michaelkleinhenz/wavepod',
+  licenses: 'https://github.com/michaelkleinhenz/wavepod/blob/main/THIRD_PARTY_NOTICES.md',
+};
+
 const handlers: Record<InvokeMethod, Handler> = {
   getStatus: () => engine.status(),
   listDevices: () => engine.listDevices(),
@@ -470,6 +479,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     return { inputDeviceName: inputDeviceName(), freeBytes };
   },
   confirmStopRecording: () => settings.confirmStopRecording,
+  testRecordingAlert: (delaySeconds: number) => alerter.test(delaySeconds),
   restoreBackup: async () => {
     const res = await dialog.showOpenDialog(win!, {
       title: 'Restore backup',
@@ -577,6 +587,28 @@ const handlers: Record<InvokeMethod, Handler> = {
   getPeaks: (file: string) => engine.getPeaks(file),
   getPeakTile: (file: string, samplesPerPeak: number, tile: number) => engine.getPeakTile(file, samplesPerPeak, tile),
   getSampleTile: (file: string, tile: number) => engine.getSampleTile(file, tile),
+  getAppInfo: (): AppInfo => ({
+    name: app.getName(),
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: process.platform,
+    arch: process.arch,
+  }),
+  openAboutLink: async (which: AboutLink) => {
+    if (which === 'licenses') {
+      // Release builds ship LICENSE and THIRD_PARTY_NOTICES.md in resources/licenses.
+      const dir = path.join(process.resourcesPath, 'licenses');
+      if (app.isPackaged && fs.existsSync(dir)) {
+        await shell.openPath(dir);
+        return;
+      }
+    }
+    const url = ABOUT_LINKS[which];
+    if (!url) throw new Error('Unknown link');
+    await shell.openExternal(url);
+  },
   showProjectFolder: () => shell.openPath(current.dir).then(() => undefined),
   getMenu: () => menuModel(),
   menuClick: (id: string) => {
@@ -856,7 +888,24 @@ function menuModel(): MenuModelTop[] {
 function buildMenu(): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { label: `About ${app.name}`, click: menuSend('about') },
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' },
+            ] as MenuItemConstructorOptions[],
+          },
+        ]
+      : []),
     {
       label: 'File',
       submenu: [
@@ -966,6 +1015,7 @@ function buildMenu(): void {
         { label: 'Troubleshooting', click: () => openHelp('troubleshooting') },
         { type: 'separator' },
         { label: 'Report a Problem…', click: () => void shell.openExternal('https://github.com/michaelkleinhenz/wavepod/issues') },
+        ...(isMac ? [] : [{ type: 'separator' as const }, { label: 'About WavePod', click: menuSend('about') }]),
       ],
     },
   ];
@@ -1079,6 +1129,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Windows shows notifications only for an app with an id (the installer uses the same one).
+  if (process.platform === 'win32') app.setAppUserModelId('net.kleinhenz.wavepod');
   settings = loadSettings();
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
@@ -1100,7 +1152,14 @@ app.whenReady().then(() => {
     vstHost = new VstHostProcess(vstExe, path.join(__dirname, 'vstBridge.js'));
     setVstHost(vstHost, (_id, message) => engine.reportError(message));
   }
-  engine.on('transport', (u) => send(IPC.transport, u));
+  alerter = new RecordingAlerter(
+    () => win,
+    (alert) => send(IPC.recordingAlert, alert),
+  );
+  engine.on('transport', (u) => {
+    send(IPC.transport, u);
+    alerter.transport(u);
+  });
   let loggedEngineError: string | null = null;
   engine.on('status', (s) => {
     // Every audio engine error also goes to the terminal, once per change.

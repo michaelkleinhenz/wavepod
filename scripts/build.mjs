@@ -35,6 +35,8 @@ const configs = [
     outdir: 'dist/renderer',
     platform: 'browser',
     format: 'iife',
+    // The About dialog shows the app icon; the page's CSP allows data: images.
+    loader: { '.svg': 'dataurl' },
   },
   {
     // the help window: the user guide in docs/guide/, bundled as text

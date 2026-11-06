@@ -49,3 +49,4 @@ On macOS, read `Ctrl` as `⌘` (Command) throughout this guide. The help window 
 - Most buttons explain themselves when you hold the mouse over them.
 - Something not working? See [Troubleshooting](troubleshooting.md), also under **Help › Troubleshooting**.
 - **Help › Report a Problem…** opens WavePod's issue tracker on GitHub in your browser.
+- **Help › About WavePod** (on macOS: **WavePod › About WavePod**) shows the version and the runtime details. **Copy version info** copies them for a bug report.

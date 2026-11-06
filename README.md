@@ -477,6 +477,11 @@ builds a Linux AppImage, a Windows NSIS installer and a macOS DMG and
 attaches them to a GitHub release. Builds are unsigned until signing
 certificates are configured as repository secrets.
 
+The app version comes from the tag: the workflow sets `package.json`'s
+`version` to the tag without its `v` before packaging, so tagging `v0.7.0`
+builds an app whose Help › About shows 0.7.0. There is no need to edit
+`package.json` for a release; the version there only shows in local builds.
+
 ## Third-party components
 
 - [audify](https://github.com/almoghamdani/audify) (RtAudio bindings, MIT)
