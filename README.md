@@ -83,7 +83,8 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   target. **Normalise** (`Alt+Shift+N`) sets the clip gain of the selected
   clips so each reaches the target (−16 LUFS by default) without the true
   peak going over the ceiling. The export normalises the mix to −16 / −19 /
-  −23 LUFS with a peak ceiling.
+  −23 LUFS; where the peaks would go over the ceiling, a look-ahead
+  true-peak limiter holds them so the target is still reached.
 - **AI agents** (opt-in): a local MCP server lets Claude Desktop, Claude
   Code and other MCP clients build and tweak filter stacks, apply the voice
   chain and read tracks, markers and loudness.

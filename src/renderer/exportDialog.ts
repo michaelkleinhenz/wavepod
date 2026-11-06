@@ -1,6 +1,6 @@
 // Export dialog: formats, loudness target, stems, chapter files, range, progress.
 // While the mix renders, the progress bar is its waveform and the loudness so far runs beside it.
-import type { ExportOptions, ExportProgress, LiveLoudness, LoudnessReport } from '../shared/types';
+import type { ExportOptions, ExportProgress, ExportResult, LiveLoudness, LoudnessReport } from '../shared/types';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { LOUDNESS_PRESETS, loudnessTiles } from './loudnessDialog';
 import { api, store } from './store';
@@ -93,6 +93,14 @@ class WaveProgress {
       ctx.fillRect(done, 0, 1, WAVE_HEIGHT);
     }
   }
+}
+
+/** "−18.9 LUFS → −16.0 LUFS, peaks limited by up to 3.2 dB": what normalisation did to the mix. */
+export function exportSummary(res: ExportResult): string {
+  if (!Number.isFinite(res.loudness)) return 'silent';
+  const out = res.outputLoudness !== undefined && Number.isFinite(res.outputLoudness) ? res.outputLoudness : res.loudness + res.appliedGainDb;
+  const limited = (res.limiterReductionDb ?? 0) < -0.05 ? `, peaks limited by up to ${(-res.limiterReductionDb!).toFixed(1)} dB` : '';
+  return `${res.loudness.toFixed(1)} LUFS → ${out.toFixed(1)} LUFS${limited}`;
 }
 
 export class ExportDialog {
@@ -205,7 +213,7 @@ export class ExportDialog {
       ),
       this.chapterNotes(range),
       // only the mix matters for the export; per-track figures are in the Loudness dialog
-      this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target)) : null,
+      this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target, o.normalize)) : null,
       this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
       h('div', { class: 'row' }, this.progressLabel),
       h('div', { class: 'row end' },
@@ -307,7 +315,7 @@ export class ExportDialog {
         if (files[0]) void api().revealFile(files[0]);
       } else {
         const res = await api().exportProject({ ...this.opts, outputBase: base, ...(range ? { start: range[0], end: range[1] } : {}) });
-        this.progressLabel.textContent = `Done: ${res.files.length} files · ${Number.isFinite(res.loudness) ? `${res.loudness.toFixed(1)} LUFS → ${(res.loudness + res.appliedGainDb).toFixed(1)} LUFS` : 'silent'}`;
+        this.progressLabel.textContent = `Done: ${res.files.length} files · ${exportSummary(res)}`;
         toast('Export finished');
         if (res.files[0]) void api().revealFile(res.files[0]);
       }

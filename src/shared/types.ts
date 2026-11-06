@@ -483,6 +483,12 @@ export interface ExportResult {
   loudness: number;
   peakDb: number;
   appliedGainDb: number;
+  /** Integrated loudness of the written mix (after gain and limiting), when a mix file was written. */
+  outputLoudness?: number;
+  /** True peak of the written mix, dBTP. */
+  outputTruePeakDb?: number;
+  /** Most the peak limiter turned down (dB, 0 or negative); 0 when the gain alone reached the target. */
+  limiterReductionDb?: number;
 }
 
 export interface ExportProgress {
