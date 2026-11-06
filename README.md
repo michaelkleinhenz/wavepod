@@ -108,7 +108,9 @@ A simple multitrack DAW for podcasting, built with Electron. It covers what
   chain and read tracks, markers and loudness.
 - **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter
   files (Podlove Simple Chapters, Podcasting 2.0 JSON, mp4chaps, Audacity
-  labels).
+  labels). Stems come one per track, or as dialogue, music and effects
+  (plus an optional M&E mix) for broadcasters and festivals; each track's
+  stem is picked in the export dialog and saved with the episode.
 
 See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.
 

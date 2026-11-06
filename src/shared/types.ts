@@ -82,6 +82,8 @@ export interface Track {
   automix?: { enabled: boolean; depth: number };
   /** ElevenLabs voice for speech synthesis (experimental): cloned from this track, or chosen. */
   voice?: TrackVoice;
+  /** Stem the track goes to in a dialogue / music / effects export; guessed from the track when unset. */
+  stem?: StemGroup;
   /** The track folder (group) this track belongs to; its members sit next to each other in the track list. */
   folderId?: string;
 }
@@ -101,6 +103,8 @@ export interface TrackFolder {
   /** Members hidden in the timeline; the folder row stands in for them. */
   collapsed?: boolean;
 }
+
+export type StemGroup = 'dialogue' | 'music' | 'effects' | 'none';
 
 export interface TrackVoice {
   id: string;
@@ -571,6 +575,10 @@ export interface ExportOptions {
   stems: boolean;
   /** Stem files as WAV (default) or FLAC (half the size, e.g. for uploading). */
   stemFormat?: 'wav' | 'flac';
+  /** One stem per track (default), or one each for dialogue, music and effects (Track.stem). */
+  stemMode?: 'tracks' | 'dme';
+  /** With DME stems: also a music & effects mix (M&E), the international version without dialogue. */
+  stemMe?: boolean;
   chapterFiles: boolean;
   start?: Frames;
   end?: Frames;

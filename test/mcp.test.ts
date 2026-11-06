@@ -250,6 +250,24 @@ describe('MCP automix', () => {
   });
 });
 
+describe('MCP stems', () => {
+  it('sorts tracks into dialogue, music and effects stems', async () => {
+    const fake = fakeHost();
+    const server = createWavePodServer(fake.host, '1');
+    let r = await call(server, 'list_tracks');
+    expect(r.data.tracks[0]).toMatchObject({ stem: 'dialogue', stemGuessed: true });
+    r = await call(server, 'set_track_stem', { tracks: ['Guest'], stem: 'effects' });
+    expect(r.isError).toBe(false);
+    expect(fake.project.tracks[1].stem).toBe('effects');
+    expect(r.data.stems[1]).toEqual({ id: fake.project.tracks[1].id, name: 'Guest', stem: 'effects' });
+    expect(fake.summaries.at(-1)).toBe('Guest → Effects stem');
+    r = await call(server, 'set_track_stem', { tracks: ['Guest'], stem: 'voices' });
+    expect(r.isError).toBe(true);
+    r = await call(server, 'set_track_stem', { tracks: ['master'], stem: 'music' });
+    expect(r.isError).toBe(true);
+  });
+});
+
 describe('MCP track automation', () => {
   it('sets, shows and clears a pan lane', async () => {
     const fake = fakeHost();

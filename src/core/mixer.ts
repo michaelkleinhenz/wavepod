@@ -176,11 +176,38 @@ export class Mixer {
   }
 
   private renderBus(position: number, frames: number, out: Float32Array[], tracks: Track[]): void {
-    out[0].fill(0, 0, frames);
-    out[1].fill(0, 0, frames);
+    this.renderRouted(position, frames, [out], tracks, () => 0);
+  }
+
+  /**
+   * Mixes the audible tracks split into `outs` (each overwritten): every track goes into
+   * `outs[route(track)]`, so the buffers add up to what render() puts on the bus before the
+   * master filters. Ducking and the automix still follow the whole bus, as in the mix; a buffer
+   * the caller ignores leaves tracks out. The master gain applies to every buffer. Used for
+   * dialogue / music / effects stems.
+   */
+  renderSplit(position: number, frames: number, outs: Float32Array[][], route: (track: Track) => number): Float32Array[][] {
+    this.renderRouted(position, frames, outs, audibleTracks(this.project), route);
+    const master = dbToGain(this.project.masterGain);
+    if (master !== 1) {
+      for (const o of outs) {
+        for (let i = 0; i < frames; i++) {
+          o[0][i] *= master;
+          o[1][i] *= master;
+        }
+      }
+    }
+    return outs;
+  }
+
+  private renderRouted(position: number, frames: number, outs: Float32Array[][], tracks: Track[], route: (track: Track) => number): void {
+    for (const o of outs) {
+      o[0].fill(0, 0, frames);
+      o[1].fill(0, 0, frames);
+    }
     const ducked = tracks.filter(isDucked);
     // the other tracks first: their sum is what the ducked tracks duck under
-    this.renderAutomixed(tracks.filter((t) => !isDucked(t)), position, frames, out);
+    this.renderAutomixed(tracks.filter((t) => !isDucked(t)), position, frames, (t) => outs[route(t)]);
     if (!ducked.length) return;
     if (this.duckBuf[0].length < frames) {
       this.duckBuf = [new Float32Array(frames), new Float32Array(frames)];
@@ -188,9 +215,17 @@ export class Mixer {
       this.duckGains = new Float32Array(frames);
     }
     const [dl, dr] = this.duckBuf;
-    const [al, ar] = this.duckAcc;
-    al.fill(0, 0, frames);
-    ar.fill(0, 0, frames);
+    // the sidechain: everything that is not ducked, taken before any ducked track is added,
+    // so one ducked track never ducks another
+    const side = this.duckAcc;
+    side[0].set(outs[0][0].subarray(0, frames));
+    side[1].set(outs[0][1].subarray(0, frames));
+    for (let k = 1; k < outs.length; k++) {
+      for (let i = 0; i < frames; i++) {
+        side[0][i] += outs[k][0][i];
+        side[1][i] += outs[k][1][i];
+      }
+    }
     for (const track of ducked) {
       let d = this.duckers.get(track.id);
       if (!d) {
@@ -198,21 +233,17 @@ export class Mixer {
         this.duckers.set(track.id, d);
       }
       if (d.next !== position) d.reset();
-      d.process(out, frames, track.duck!.depth, this.duckGains);
+      d.process(side, frames, track.duck!.depth, this.duckGains);
       d.next = position + frames;
       dl.fill(0, 0, frames);
       dr.fill(0, 0, frames);
       this.renderTrackInto(track, position, frames, this.duckBuf);
+      const [ol, or] = outs[route(track)];
       for (let i = 0; i < frames; i++) {
         const g = this.duckGains[i];
-        al[i] += dl[i] * g;
-        ar[i] += dr[i] * g;
+        ol[i] += dl[i] * g;
+        or[i] += dr[i] * g;
       }
-    }
-    // added last, so one ducked track never ducks another
-    for (let i = 0; i < frames; i++) {
-      out[0][i] += al[i];
-      out[1][i] += ar[i];
     }
   }
 
@@ -232,15 +263,21 @@ export class Mixer {
     }
     const others = stems.filter((t) => !automixed.includes(t));
     for (const t of others) this.renderTrackInto(t, position, frames, out);
-    this.renderAutomixed(audible.filter(isAutomixed), position, frames, out, ids);
+    this.renderAutomixed(audible.filter(isAutomixed), position, frames, (t) => (ids.has(t.id) ? out : null));
     return out;
   }
 
-  /** Adds `tracks` into `out`; the automixed ones among them first share their gain (crosstalk removal). */
-  private renderAutomixed(tracks: Track[], position: number, frames: number, out: Float32Array[], only?: Set<string>): void {
+  /**
+   * Adds each of `tracks` into the buffer `sink` gives it (null: not wanted); the automixed ones
+   * among them first share their gain (crosstalk removal).
+   */
+  private renderAutomixed(tracks: Track[], position: number, frames: number, sink: (track: Track) => Float32Array[] | null): void {
     const mixed = tracks.filter(isAutomixed);
-    const wanted = (t: Track) => !only || only.has(t.id);
-    for (const track of tracks) if ((mixed.length < 2 || !isAutomixed(track)) && wanted(track)) this.renderTrackInto(track, position, frames, out);
+    for (const track of tracks) {
+      if (mixed.length >= 2 && isAutomixed(track)) continue;
+      const out = sink(track);
+      if (out) this.renderTrackInto(track, position, frames, out);
+    }
     if (mixed.length < 2) {
       this.automix = null;
       return;
@@ -267,7 +304,8 @@ export class Mixer {
     mixed.forEach((track, t) => {
       const [bl, br] = bufs[t];
       const g = this.amGains[t];
-      if (!wanted(track)) return;
+      const out = sink(track);
+      if (!out) return;
       let peak = 0;
       for (let i = 0; i < frames; i++) {
         const l = bl[i] * g[i];

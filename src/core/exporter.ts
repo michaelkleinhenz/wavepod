@@ -13,6 +13,8 @@ import { WavWriter } from './wav';
 import { FlacWriter } from './flac';
 import { OpusWriter } from './opus';
 import { TruePeakLimiter } from './truePeakLimiter';
+import { STEM_GROUPS, stemFilePath, stemIndex } from './stems';
+import { folderOf } from './folders';
 
 const BLOCK = 4096;
 /** Width of the export waveform in columns, whatever the length of the export. */
@@ -180,6 +182,61 @@ function limitedLoudness(mixer: Mixer, start: number, end: number, sampleRate: n
   return meter.integrated();
 }
 
+/**
+ * Writes the dialogue, music and effects stems (and the M&E mix when asked) in one pass over the
+ * timeline: every audible track goes to the stem of its Track.stem, with ducking and the automix
+ * working as in the mix, so the stems add up to the mix before the master filters and the limiter.
+ * All three files are written even when a stem has no tracks, as delivery specs expect a full set.
+ */
+const MUSIC = STEM_GROUPS.findIndex((g) => g.id === 'music');
+const EFFECTS = STEM_GROUPS.findIndex((g) => g.id === 'effects');
+
+function writeDmeStems(mixer: Mixer, project: Project, opts: ExportOptions, start: number, end: number, gain: number, files: string[], progress: ProgressFn): void {
+  const flacStem = opts.stemFormat === 'flac';
+  const ext = flacStem ? 'flac' : 'wav';
+  const open = (p: string, title: string) => (flacStem ? new FlacWriter(p, 2, project.sampleRate, 24, { title }) : new WavWriter(p, 2, project.sampleRate, 24, 1 << 20));
+  const title = project.metadata.title || project.name;
+  const writers = STEM_GROUPS.map((g) => open(stemFilePath(opts.outputBase, g.id, ext), `${title} (${g.label})`));
+  const me = opts.stemMe ? open(stemFilePath(opts.outputBase, 'me', ext), `${title} (Music & effects)`) : null;
+  // one buffer per stem, plus one for the tracks left out (they still drive ducking and the automix)
+  const bufs = [...STEM_GROUPS, null].map(() => [new Float32Array(BLOCK), new Float32Array(BLOCK)]);
+  const drop = STEM_GROUPS.length;
+  const route = (t: Track) => {
+    const i = stemIndex(t, folderOf(project, t)?.name);
+    return i < 0 ? drop : i;
+  };
+  const mix = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+  const total = Math.max(1, end - start);
+  let lastTime = Date.now();
+  for (let pos = start; pos < end; pos += BLOCK) {
+    const n = Math.min(BLOCK, end - pos);
+    mixer.renderSplit(pos, n, bufs, route);
+    writers.forEach((w, k) => {
+      const [l, r] = bufs[k];
+      for (let i = 0; i < n; i++) {
+        l[i] *= gain;
+        r[i] *= gain;
+      }
+      w.write(bufs[k], n);
+    });
+    if (me) {
+      const music = bufs[MUSIC];
+      const fx = bufs[EFFECTS];
+      for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) mix[c][i] = music[c][i] + fx[c][i];
+      me.write(mix, n);
+    }
+    const f = (pos - start + n) / total;
+    if (f >= 1 || Date.now() - lastTime >= REPORT_INTERVAL) {
+      lastTime = Date.now();
+      progress({ phase: 'Stems (dialogue, music, effects)', fraction: f });
+    }
+  }
+  for (const w of [...writers, ...(me ? [me] : [])]) {
+    w.close();
+    files.push(w.path);
+  }
+}
+
 export function exportProject(project: Project, projectDir: string, opts: ExportOptions, progress: ProgressFn = () => {}): ExportResult {
   const readers = new ReaderCache(projectDir);
   const files: string[] = [];
@@ -331,8 +388,11 @@ export function exportProject(project: Project, projectDir: string, opts: Export
       files.push(`${opts.outputBase}.mp3`);
     }
 
-    // Stems: each track on its own, same gain, unnormalised relative balance preserved.
-    if (opts.stems) {
+    // Stems: same gain as the mix (no limiter), so their unnormalised balance is preserved.
+    if (opts.stems && opts.stemMode === 'dme') {
+      writeDmeStems(mixer, project, opts, start, end, gain, files, progress);
+    } else if (opts.stems) {
+      // each track on its own
       const tracks = project.tracks.filter((t) => t.clips.length > 0);
       tracks.forEach((track, idx) => {
         const flacStem = opts.stemFormat === 'flac';
