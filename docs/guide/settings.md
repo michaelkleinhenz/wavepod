@@ -35,6 +35,7 @@ These options are checkboxes in the menus and are remembered:
 | --- | --- |
 | **Edit › Prepare for Editing When Recording Stops** | Unarms all tracks after every take. Off by default. |
 | **Edit › Confirm Before Stopping a Recording** | Asks before a take stops. On by default. |
+| **Edit › Beep When a New Take Starts** | Beeps on the headphones at the start of each loop-recording pass and at the punch-in point. Not recorded, not in the mix-minus feed. On by default. |
 | **View › Ping at Markers During Playback** | Beeps when playback passes a marker. Off by default. |
 
 The playback speed, Repeat, the open Setup and Settings tab, which filter cards are folded, the loudness target of **Loudness analysis**, the open sound library tab and the export settings of your last export (the start for episodes that were never exported, see [Exporting](export.md#your-export-settings-are-remembered)) are remembered too.

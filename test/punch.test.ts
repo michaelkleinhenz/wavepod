@@ -168,6 +168,7 @@ describe('punch-in recording in the engine', () => {
 
   it('plays the pre-roll with the armed track audible, mutes it inside the range and stops after the post-roll', () => {
     const { dir, p, run, takes } = setup();
+    engine.setTakeBeep(false); // this checks the playback only; the beep has its own test in takes.test.ts
     engine.seek(40000);
     engine.record({ punch: { start: 24000, end: 33600, preRoll: 9600, postRoll: 4800 } });
     expect(engine.transportState).toBe('recording');

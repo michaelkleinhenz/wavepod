@@ -83,6 +83,8 @@ interface Settings {
   confirmStopRecording: boolean;
   /** Beep when playback passes a marker. */
   markerPing: boolean;
+  /** Beep on the monitor output when a loop-recording pass (a new take) starts; on by default. */
+  takeBeep: boolean;
   /** Local MCP server for AI agents; off unless the user switches it on in Settings › AI agents. */
   mcp: McpSettings;
   /** OSC remote control; off unless switched on in Settings › Controllers. */
@@ -125,6 +127,7 @@ function loadSettings(): Settings {
       prepareForEditingAfterRecording: raw.prepareForEditingAfterRecording === true,
       confirmStopRecording: raw.confirmStopRecording !== false,
       markerPing: raw.markerPing === true,
+      takeBeep: raw.takeBeep !== false,
       mcp: normalizeMcpSettings(raw.mcp),
       osc: normalizeOscSettings(raw.osc),
       auphonic: normalizeAuphonic(raw.auphonic),
@@ -136,7 +139,7 @@ function loadSettings(): Settings {
       chapterImageFolder: typeof raw.chapterImageFolder === 'string' ? raw.chapterImageFolder : '',
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '' };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, takeBeep: true, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '' };
   }
 }
 
@@ -1183,6 +1186,16 @@ function buildMenu(): void {
             saveSettings();
           },
         },
+        {
+          label: 'Beep When a New Take Starts',
+          type: 'checkbox',
+          checked: settings.takeBeep,
+          click: (item) => {
+            settings.takeBeep = item.checked;
+            engine.setTakeBeep(item.checked);
+            saveSettings();
+          },
+        },
         { type: 'separator' },
         { label: 'Select All Clips', accelerator: 'CmdOrCtrl+A', click: menuSend('select-all') },
         { type: 'separator' },
@@ -1378,6 +1391,7 @@ app.whenReady().then(() => {
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
   engine.setMarkerPing(settings.markerPing);
+  engine.setTakeBeep(settings.takeBeep);
   // Recordings are written by a worker thread, so a slow or full disk never stalls the audio.
   try {
     recordWorker = new RecordWorker(path.join(__dirname, 'recordWorker.js'));

@@ -22,6 +22,7 @@ import {
   takesAt,
 } from '../src/core/takes';
 import { mergeRecording } from '../src/core/recordingJournal';
+import { passStartIn, takeBeepTone } from '../src/core/markerPing';
 import { AudioEngine, VIRTUAL_API } from '../src/main/audio/engine';
 import { WavReader } from '../src/core/wav';
 import type { Clip, Project, TransportUpdate } from '../src/shared/types';
@@ -251,5 +252,82 @@ describe('loop recording in the engine', () => {
     await wait(200);
     const takes = engine.stop();
     expect(engine.position).toBe(takes[0].clip.length);
+  });
+});
+
+describe('take beep', () => {
+  let engine: AudioEngine;
+  afterEach(() => engine?.dispose());
+
+  it('finds where a pass starts in a block', () => {
+    expect(passStartIn(900, 200, [1000, 2000])).toBe(100); // the run-up reaches the line
+    expect(passStartIn(1000, 200, [1000, 2000])).toBe(0); // right after a wrap
+    expect(passStartIn(800, 200, [1000, 2000])).toBe(-1); // ends just before it
+    expect(passStartIn(1200, 200, [1000, 2000])).toBe(-1);
+  });
+
+  it('is short, quiet and starts and ends silent', () => {
+    const t = takeBeepTone(48000);
+    expect(t.length).toBe(4800);
+    expect(Math.max(...t.map(Math.abs))).toBeLessThanOrEqual(0.3);
+    expect(Math.abs(t[0])).toBeLessThan(1e-6);
+  });
+
+  function setup(output2Source: 'master' | 'mixminus') {
+    engine = new AudioEngine(null);
+    engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480, outputFirstChannel: 0, output2FirstChannel: 2, output2Source });
+    const p = addTrack(createProject('Beep', 48000), { name: 'Anna', inputChannels: [0], armed: true });
+    engine.setProject(p, tmpDir());
+    return engine as unknown as { onOutput(n: number, nch: number): Float32Array };
+  }
+  /** Peak of each output channel over `blocks` blocks of 480 frames. */
+  const peaks = (e: { onOutput(n: number, nch: number): Float32Array }, blocks: number) => {
+    const pk = [0, 0, 0, 0];
+    for (let b = 0; b < blocks; b++) {
+      const out = e.onOutput(480, 4);
+      for (let i = 0; i < out.length; i++) pk[i % 4] = Math.max(pk[i % 4], Math.abs(out[i]));
+    }
+    return pk;
+  };
+
+  it('beeps on the monitor output at the start of every pass, never in the mix-minus feed', () => {
+    const e = setup('mixminus');
+    engine.seek(4800 - 960); // two blocks of run-up
+    engine.record({ loop: [4800, 4800 + 48000] }); // 1 s passes: 100 blocks
+    let [l, r, g] = peaks(e, 2);
+    expect(l).toBe(0); // run-up: silent
+    [l, r, g] = peaks(e, 10); // pass 1 starts: the 100 ms beep
+    expect(l).toBeGreaterThan(0.2);
+    expect(r).toBeGreaterThan(0.2);
+    expect(g).toBe(0); // the guest doesn't hear it
+    expect(peaks(e, 90)[0]).toBe(0); // rest of pass 1
+    expect(peaks(e, 10)[0]).toBeGreaterThan(0.2); // pass 2 starts after the wrap
+    engine.stop();
+  });
+
+  it('beeps at the punch-in point, not during the pre-roll', () => {
+    const e = setup('mixminus');
+    engine.record({ punch: { start: 9600, end: 48000, preRoll: 4800, postRoll: 0 } });
+    expect(peaks(e, 10)[0]).toBe(0); // pre-roll
+    const [l, , g] = peaks(e, 10); // punch-in
+    expect(l).toBeGreaterThan(0.2);
+    expect(g).toBe(0);
+    expect(peaks(e, 10)[0]).toBe(0);
+    engine.stop();
+  });
+
+  it('beeps on a second output that copies the main mix, and can be turned off', () => {
+    const e = setup('master');
+    engine.seek(4800);
+    engine.record({ loop: [4800, 9600] });
+    const [l, , s] = peaks(e, 10);
+    expect(l).toBeGreaterThan(0.2);
+    expect(s).toBeGreaterThan(0.2);
+    engine.stop();
+    engine.setTakeBeep(false);
+    engine.seek(4800);
+    engine.record({ loop: [4800, 9600] });
+    expect(peaks(e, 25)[0]).toBe(0);
+    engine.stop();
   });
 });

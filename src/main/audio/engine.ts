@@ -41,7 +41,7 @@ import type { RecordOptions } from '../../shared/types';
 import { clearJournal, journalOwner, writeJournal, type RecordingJournal } from '../../core/recordingJournal';
 import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
-import { markersCrossed, pingTone } from '../../core/markerPing';
+import { markersCrossed, passStartIn, pingTone, takeBeepTone } from '../../core/markerPing';
 import { punchPlan, punchTakeClip, type PunchPlan } from '../../core/punch';
 import { SimulatedBackend } from './simulatedBackend';
 import { MixMinusBuffer, mixMinusSources, type MixMinusSource } from '../../core/mixMinus';
@@ -208,6 +208,14 @@ export class AudioEngine extends EventEmitter {
   private markerPing = false;
   private pings: Array<{ tone: Float32Array; pos: number }> = [];
   private pingTones = new Map<string, Float32Array>();
+  /**
+   * Take beep on/off, and the beeps sounding now (pos < 0: starts that many frames into the block).
+   * Heard on the monitor output only: not recorded, not in the mix-minus feed, not on the meters.
+   */
+  private takeBeep = true;
+  private beeps: Array<{ tone: Float32Array; pos: number }> = [];
+  private beepTone: Float32Array | null = null;
+  private beepBuf = new Float32Array(0);
   private meterTimer: NodeJS.Timeout | null = null;
   private fallbackClock: NodeJS.Timeout | null = null;
 
@@ -544,6 +552,12 @@ export class AudioEngine extends EventEmitter {
   setMarkerPing(on: boolean): void {
     this.markerPing = on;
     if (!on) this.pings = [];
+  }
+
+  /** Beep on the monitor output when a loop-recording pass (a new take) starts. On by default. */
+  setTakeBeep(on: boolean): void {
+    this.takeBeep = on;
+    if (!on) this.beeps = [];
   }
 
   /** 1 (normal) up to 3; playback only. */
@@ -1020,6 +1034,7 @@ export class AudioEngine extends EventEmitter {
     this.renderTimeline(frames);
     this.renderVoices(frames);
     const pv = this.renderPreview(frames);
+    const beep = this.renderBeeps(frames);
     const out = this.outBuf;
     out.fill(0);
     // gains of the timeline (episode) and the live jingles on the main and the second pair
@@ -1030,6 +1045,8 @@ export class AudioEngine extends EventEmitter {
     const first = Math.min(this.config.outputFirstChannel, Math.max(0, nch - 2));
     const second = this.config.output2FirstChannel;
     const has2 = second !== null && second !== undefined && second + 1 < nch && second !== first;
+    // the take beep goes to whoever monitors: the main pair, and a second pair that copies it
+    const beep2 = src2 === 'master' ? beep : null;
     // the guest feed: live microphones without the guest's own, on top of jingles and playback
     let mm: Float32Array[] | null = null;
     if (src2 === 'mixminus' && this.mixMinus) {
@@ -1044,11 +1061,13 @@ export class AudioEngine extends EventEmitter {
       const r = R[i] * tlMain + SR[i] + (pv ? pv[1][i] : 0);
       if (Math.abs(l) > this.outputPeaks[0]) this.outputPeaks[0] = Math.abs(l);
       if (Math.abs(r) > this.outputPeaks[1]) this.outputPeaks[1] = Math.abs(r);
-      out[i * nch + first] = l;
-      if (nch > 1) out[i * nch + first + 1] = r;
+      const bp = beep ? beep[i] : 0;
+      out[i * nch + first] = l + bp;
+      if (nch > 1) out[i * nch + first + 1] = r + bp;
       if (has2) {
-        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2 + (mm ? mm[0][i] : 0);
-        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2 + (mm ? mm[1][i] : 0);
+        const bp2 = beep2 ? beep2[i] : 0;
+        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2 + (mm ? mm[0][i] : 0) + bp2;
+        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2 + (mm ? mm[1][i] : 0) + bp2;
       }
     }
     return out;
@@ -1070,6 +1089,27 @@ export class AudioEngine extends EventEmitter {
     const before = this.playPos;
     this.renderTimelineMix(frames);
     if (this.state === 'playing' && this.markerPing) this.renderPings(before, this.playPos, frames);
+  }
+
+  /** Starts the take beep `offset` frames into the current block. */
+  private queueTakeBeep(offset: number): void {
+    const sr = this.project.sampleRate;
+    if (!this.beepTone || this.beepTone.length !== Math.round(sr * 0.1)) this.beepTone = takeBeepTone(sr);
+    this.beeps.push({ tone: this.beepTone, pos: -offset });
+  }
+
+  /** The take beeps for this block, or null when none sounds. */
+  private renderBeeps(frames: number): Float32Array | null {
+    if (!this.beeps.length) return null;
+    if (this.beepBuf.length < frames) this.beepBuf = new Float32Array(frames);
+    const b = this.beepBuf;
+    b.fill(0, 0, frames);
+    for (const p of this.beeps) {
+      for (let i = Math.max(0, -p.pos); i < frames && p.pos + i < p.tone.length; i++) b[i] += p.tone[p.pos + i];
+      p.pos += frames;
+    }
+    this.beeps = this.beeps.filter((p) => p.pos < p.tone.length);
+    return b;
   }
 
   /** Beeps for markers that playback just passed. */
@@ -1123,6 +1163,12 @@ export class AudioEngine extends EventEmitter {
         const edge = this.playPos < p.in ? p.in : this.playPos < p.out ? p.out : Infinity;
         n = Math.min(n, edge - this.playPos);
         tracks = this.playPos >= p.in && this.playPos < p.out ? unarmed : all;
+      }
+      // the take beep: at the start of each loop pass, or at the punch-in point
+      const beepAt = this.state === 'recording' ? (this.recLoop ?? (p ? ([p.in, p.out] as [number, number]) : null)) : null;
+      if (beepAt && this.takeBeep) {
+        const at = passStartIn(this.playPos, n, beepAt);
+        if (at >= 0) this.queueTakeBeep(done + at);
       }
       this.renderChunk(n, done, tracks);
       done += n;
