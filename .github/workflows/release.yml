@@ -1,5 +1,8 @@
 name: Release
 
+# The only workflow that runs on Windows and macOS: tests and packages every platform when a
+# release tag (v*) is pushed. Pull requests are checked on Linux only (ci.yml).
+
 on:
   push:
     tags: ['v*']

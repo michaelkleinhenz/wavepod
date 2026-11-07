@@ -1,25 +1,25 @@
 name: CI
 
-# To save CI minutes this does not run on every merge. All three platforms are checked when a
-# release is tagged (alongside release.yml, which builds the installers) and when run by hand from
-# the Actions tab (Run workflow); pull requests are checked on Linux only.
+# To save Actions minutes this runs on Linux only, for pull requests and when run by hand from the
+# Actions tab (Run workflow). Merges to main run nothing here. Windows and macOS are only built and
+# tested when a release is tagged, by release.yml (which runs the tests on every platform before
+# packaging), so a tag doesn't run the checks twice.
 on:
-  push:
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run still going for the previous one.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
-    name: Check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') }}
+    name: Check (ubuntu-latest)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -28,7 +28,6 @@ jobs:
           cache: npm
       # npm ci compiles the patched audify (scripts/build-audify.mjs), which needs the ALSA/PulseAudio headers.
       - name: Install system libraries
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libpulse-dev pkg-config pulseaudio xvfb
       - run: npm ci
       - run: npm run typecheck
@@ -46,7 +45,6 @@ jobs:
       # Opens real streams on a PulseAudio null sink inside Electron's main process, where
       # Electron's allocator catches native memory bugs that plain Node does not.
       - name: Audio streams in Electron (Linux)
-        if: runner.os == 'Linux'
         run: |
           pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=ci sink_properties=device.description=CI-Stereo
@@ -59,7 +57,7 @@ jobs:
     name: Package smoke test (Linux)
     runs-on: ubuntu-latest
     needs: check
-    # a tag already packages every platform in release.yml; only a manual run needs this one
+    # pull requests skip packaging to save minutes; a tag packages every platform in release.yml
     if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
