@@ -314,6 +314,29 @@ describe('MCP takes', () => {
   });
 });
 
+describe('MCP align', () => {
+  it('moves a whole track into sync, onto drift-corrected copies', async () => {
+    const fake = fakeHost();
+    const sr = fake.project.sampleRate;
+    let asked: { ids: string[]; ref: string } | null = null;
+    fake.host.alignClips = async (ids, ref) => {
+      asked = { ids, ref };
+      return { shift: 2 * sr, anchor: 0, drift: 0.0001, confidence: 0.9, windows: 9, measured: 10, overlapSeconds: 3600, files: { 'g.wav': 'g-synced.wav' } };
+    };
+    const server = createWavePodServer(fake.host, '1');
+    const p = fake.project;
+    p.tracks[0].clips.push({ id: 'h', file: 'h.wav', start: 0, offset: 0, length: 60 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p.tracks[1].clips.push({ id: 'g', file: 'g.wav', start: 0, offset: 0, length: 60 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    fake.host.apply(p, 'setup');
+    const r = await call(server, 'align_track', { track: 'Guest', to: 'Host' });
+    expect(asked).toEqual({ ids: ['g'], ref: p.tracks[0].id });
+    expect(r.data).toMatchObject({ track: 'Guest', to: 'Host', movedSeconds: 2, driftPpm: 100, driftCorrectedMs: 360, weak: false, newFiles: ['g-synced.wav'] });
+    expect(fake.project.tracks[1].clips[0]).toMatchObject({ file: 'g-synced.wav', start: 2 * sr });
+    expect(fake.summaries.at(-1)).toBe('Aligned Guest to Host');
+    expect((await call(server, 'align_track', { track: 'Guest', to: 'Guest' })).isError).toBe(true);
+  });
+});
+
 describe('MCP transcript', () => {
   it('returns speaker paragraphs at timeline times, or says there is none', async () => {
     const fake = fakeHost();

@@ -28,7 +28,7 @@ From left to right and top to bottom:
 | Pan | Left … right. Double-click to centre, or click the value and type `L 40`, `C` or `R 25`. |
 | **Auto** | Shows the track's volume or pan automation. See [Automation](#automation). |
 
-Right-click a track header to move the track into a folder.
+Right-click a track header to move the track into a folder, or to line it up with another track (**Align to other track…**, see [Aligning recordings](editing.md#aligning-recordings)).
 
 > **Tip:** Every slider value in WavePod can be clicked to type an exact number, for example `-3,5 dB`, `1.2 kHz` or `250 ms`. Enter applies it (kept within the slider's range), Escape cancels.
 

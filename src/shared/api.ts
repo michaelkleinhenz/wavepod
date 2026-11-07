@@ -39,7 +39,7 @@ import type {
 import type { ElevenVoice, SpeechEditMode } from '../core/speech';
 import type { TemplateSummary } from '../core/template';
 import type { FxPresetEntry } from '../core/fx/presets';
-import type { AlignResult } from '../core/align';
+import type { AlignOutcome } from '../core/alignEdit';
 import type { SoundLibraryInfo } from '../core/soundLibrary';
 
 export interface OpenedProject {
@@ -293,8 +293,12 @@ export interface WavePodApi {
   revealFile(path: string): Promise<void>;
   /** Opens the help window at a page of the user guide (`topic` or `topic/anchor`). */
   openHelp(topic?: string): Promise<void>;
-  /** Where a clip should start to line up with a reference track (double-ender alignment). */
-  alignClip(clipId: string, refTrackId: string): Promise<AlignResult>;
+  /**
+   * How clips (one track's, e.g. a field recorder's) have to move to line up with a reference track
+   * by their content. With clock drift, their files are resampled to stretched copies first (see
+   * AlignOutcome.files); the caller applies the result with applyAlignment.
+   */
+  alignClips(clipIds: string[], refTrackId: string): Promise<AlignOutcome>;
 
   // transcripts (ElevenLabs speech-to-text) and cleanup
   getTranscriptionInfo(): Promise<TranscriptionInfo>;
@@ -472,7 +476,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'measureClips',
   'revealFile',
   'openHelp',
-  'alignClip',
+  'alignClips',
   'getTranscriptionInfo',
   'setTranscriptionSettings',
   'loadTranscripts',

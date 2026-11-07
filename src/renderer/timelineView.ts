@@ -18,7 +18,7 @@ import { jingleMediaFile } from '../core/soundboard';
 import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
 import { LIBRARY_DRAG_TYPE, insertLibrarySound } from './soundLibraryPanel';
-import { regionFromSelection, alignSelectedClip, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, scrub, seek, splitAtPlayhead } from './actions';
+import { regionFromSelection, alignSelectedClips, alignTrack, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, scrub, seek, splitAtPlayhead } from './actions';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
@@ -286,8 +286,8 @@ export class TimelineView {
       ),
       btn(
         'align',
-        { label: 'Align to track…', detail: 'Double-ender: line up the selected clip (a guest’s own recording) with what another track recorded during the call' },
-        () => void alignSelectedClip(),
+        { label: 'Align to track…', detail: 'Line up the selected clips with another track by their content: a second recorder, or a guest’s own recording against the call. Clock drift is corrected too. For a whole track, right-click its name.' },
+        () => void alignSelectedClips(),
       ),
       this.snapBtn,
       h('span', { class: 'sep' }),
@@ -751,8 +751,16 @@ export class TimelineView {
   private trackHeaderMenu(t: Track, x: number, y: number): void {
     const folders = store.project.folders ?? [];
     const takes = t.takes ?? [];
+    const canAlign = t.clips.length > 0 && store.project.tracks.some((o) => o.id !== t.id && o.kind !== 'soundboard' && o.clips.length > 0);
     showContextMenu(
       [
+        {
+          label: 'Align to other track…',
+          enabled: canAlign && store.transport.state !== 'recording',
+          title: canAlign ? 'Moves this whole track into sync with another one by their content (separate recorders), and corrects clock drift' : 'Needs audio on this track and on another one',
+          run: () => void alignTrack(t.id),
+        },
+        { kind: 'separator' },
         ...(takes.length
           ? [
               { kind: 'header' as const, label: `Takes (${takes.length})` },

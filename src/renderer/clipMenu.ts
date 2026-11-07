@@ -25,7 +25,7 @@ import { deleteClips, findClip, updateTrack } from '../core/project';
 import { selectionSpan } from '../core/navigation';
 import { parseNumberInput } from '../core/numberInput';
 import { clipRate, MAX_RATE, MIN_RATE, parseRateInput, rateToSemitones } from '../core/clipSound';
-import { alignSelectedClip, pasteClipboard, regionFromSelection } from './actions';
+import { alignSelectedClips, pasteClipboard, regionFromSelection } from './actions';
 import { CLIP_COLORS, showClipLabel } from './clipLabel';
 import { closeContextMenu, showContextMenu, type ContextMenuEntry } from './contextMenu';
 import { h, toast } from './dom';
@@ -55,6 +55,7 @@ export function openClipMenu(o: ClipMenuOptions): void {
   if (!clips.length) return;
   const n = clips.length;
   const one = n === 1;
+  const oneTrack = new Set(store.project.tracks.filter((t) => t.clips.some((c) => ids.has(c.id))).map((t) => t.id)).size === 1;
   const noun = one ? 'clip' : `${n} clips`;
   const pos = store.transport.position;
   const recording = store.transport.state === 'recording';
@@ -164,7 +165,12 @@ export function openClipMenu(o: ClipMenuOptions): void {
       },
     },
     { label: one ? 'Region from clip' : 'Region from clips', run: regionFromSelection },
-    { label: 'Align to track…', enabled: one, title: one ? 'Double-ender: line this clip up with another track' : 'Align works on one clip', run: () => void alignSelectedClip() },
+    {
+      label: 'Align to track…',
+      enabled: !recording && oneTrack,
+      title: oneTrack ? 'Line these clips up with another track by their content (and correct clock drift)' : 'Align works on clips of one track',
+      run: () => void alignSelectedClips([...ids]),
+    },
   ];
   showContextMenu(entries, o.pageX, o.pageY);
 }

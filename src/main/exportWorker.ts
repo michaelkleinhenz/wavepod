@@ -4,12 +4,16 @@ import type { CleanupOptions, ExportOptions, Project, TimelineWord } from '../sh
 import { scanCleanup } from '../core/cleanupScan';
 import { exportProject } from '../core/exporter';
 import { analyseClips, analyseProject } from '../core/analysis';
-import { alignClip } from '../core/align';
+import { alignClips, stretchWav } from '../core/align';
 import { setVstHost } from '../core/fx/vst';
 import { VstHostProcess } from './vst/host';
 
 interface Job {
-  kind: 'export' | 'loudness' | 'clips' | 'align' | 'cleanup';
+  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup';
+  /** stretch: absolute source and destination WAV, and the factor. */
+  src?: string;
+  dest?: string;
+  stretch?: number;
   words?: TimelineWord[];
   cleanup?: CleanupOptions;
   refTrackId?: string;
@@ -24,7 +28,7 @@ interface Job {
 
 const job = workerData as Job;
 // VST3 filters render through a host process of this worker's own
-const usesVst = job.kind !== 'clips' && job.kind !== 'align' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
+const usesVst = job.kind !== 'clips' && job.kind !== 'align' && job.kind !== 'stretch' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
 const vstHost = usesVst && job.vstExe && job.vstBridge ? new VstHostProcess(job.vstExe, job.vstBridge) : null;
 if (vstHost) setVstHost(vstHost);
 try {
@@ -34,7 +38,10 @@ try {
   } else if (job.kind === 'cleanup') {
     parentPort!.postMessage({ type: 'done', result: scanCleanup(job.project, job.dir, job.words ?? [], job.cleanup!) });
   } else if (job.kind === 'align') {
-    parentPort!.postMessage({ type: 'done', result: alignClip(job.project, job.dir, job.clipIds![0], job.refTrackId!) });
+    parentPort!.postMessage({ type: 'done', result: alignClips(job.project, job.dir, job.clipIds ?? [], job.refTrackId!) });
+  } else if (job.kind === 'stretch') {
+    stretchWav(job.src!, job.dest!, job.stretch!, (f) => parentPort!.postMessage({ type: 'progress', progress: f }));
+    parentPort!.postMessage({ type: 'done', result: null });
   } else if (job.kind === 'clips') {
     parentPort!.postMessage({ type: 'done', result: analyseClips(job.project, job.dir, job.clipIds ?? []) });
   } else {

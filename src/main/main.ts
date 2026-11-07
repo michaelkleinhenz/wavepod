@@ -51,6 +51,8 @@ import { SpeechService, type SpeakInput } from './speech';
 import { normalizeSpeechSettings } from '../core/speech';
 import { normalizeTranscriptionSettings } from '../core/elevenlabs';
 import { timelineWords } from '../core/transcript';
+import { syncedFileName, stretchTranscript, type AlignOutcome, type AlignResult } from '../core/align';
+import { loadTranscript, saveTranscript } from './transcribe/store';
 import { decodeKey, encodeKey } from './auphonic';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
@@ -345,6 +347,7 @@ const mcpHost: WavePodHost = {
     send(IPC.projectEdited, { project, summary });
   },
   measureLoudness: () => handlers.measureLoudness() as Promise<LoudnessReport[]>,
+  alignClips: (clipIds, refTrackId) => alignClipsTo(clipIds, refTrackId),
   transcripts: () => transcription.load(),
   transcriptFilter: () => settings.transcription,
   get presets() {
@@ -404,6 +407,36 @@ function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise
       if (code !== 0) reject(new Error(`export worker exited with ${code}`));
     });
   });
+}
+
+/**
+ * Align to another track: measures in a worker, and when the recorders' clocks drifted apart,
+ * writes stretched copies of the moving files (next to them in the project) and carries their
+ * transcripts over, so nothing has to be transcribed again.
+ */
+async function alignClipsTo(clipIds: string[], refTrackId: string): Promise<AlignOutcome> {
+  const project = current.project;
+  const dir = current.dir;
+  const r = await runWorker<AlignResult>({ kind: 'align', project, dir, clipIds, refTrackId });
+  const files: Record<string, string> = {};
+  if (r.drift !== 0) {
+    const abs = (f: string) => (path.isAbsolute(f) ? f : path.join(dir, f));
+    const sources = [...new Set(project.tracks.flatMap((t) => t.clips).filter((c) => clipIds.includes(c.id) && !c.sound).map((c) => c.file))];
+    for (const file of sources) {
+      // copies of files outside the project go into its media folder
+      const copy = syncedFileName(path.isAbsolute(file) ? `media/${path.basename(file)}` : file, (f) => fs.existsSync(abs(f)));
+      fs.mkdirSync(path.dirname(abs(copy)), { recursive: true });
+      await runWorker({ kind: 'stretch', project, dir, src: abs(file), dest: abs(copy), stretch: 1 + r.drift });
+      files[file] = copy;
+      const t = loadTranscript(dir, file);
+      if (t) {
+        const next = stretchTranscript(t, copy, 1 + r.drift);
+        saveTranscript(dir, next);
+        send(IPC.transcript, { file: copy, transcript: next });
+      }
+    }
+  }
+  return { ...r, files };
 }
 
 type Handler = (...args: never[]) => unknown;
@@ -718,8 +751,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
   revealFile: (p: string) => shell.showItemInFolder(p),
   openHelp: (topic?: string) => openHelp(topic),
-  alignClip: (clipId: string, refTrackId: string) =>
-    runWorker({ kind: 'align', project: current.project, dir: current.dir, clipIds: [clipId], refTrackId }),
+  alignClips: (clipIds: string[], refTrackId: string) => alignClipsTo(clipIds, refTrackId),
 
   getTranscriptionInfo: () => transcription.info(),
   setTranscriptionSettings: (input: TranscriptionSettingsInput) => transcription.setSettings(input),

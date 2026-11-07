@@ -97,9 +97,22 @@ Drag audio files from your file manager (or sounds from the sound library) onto 
 
 While you drag, the target track lights up and a line shows where the file will land. The drop snaps to clip edges, markers and the playhead; hold `Alt` to place it freely. Several files dropped at once are one undo step, and the new clips are selected.
 
-## Aligning a double-ender
+## Aligning recordings
 
-When a remote guest records themselves locally (a "double-ender"), their file has to be lined up with the call. Import the guest's file, select the clip, and use **Align to track…** (toolbar or clip menu). Pick the track that recorded the guest during the call, for example the RØDECaster's *USB Chat* channel. WavePod compares the speech in both and moves the clip into place (by up to a minute). If the match is weak it says so: listen, and undo if it's off.
+WavePod can line up recordings by what they hear, so you don't have to slide them into place by ear. This works for:
+
+- **Separate recorders**: one field recorder for the host and one for the guest, started at different times. Each mic picks up a little of the other person, and that is enough to match them.
+- **A double-ender**: a remote guest recorded themselves locally, and their file has to line up with the call recording (for example the RØDECaster's *USB Chat* channel).
+
+Put each recording on its own track, then right-click the name of the track that should move › **Align to other track…**. To move only some clips, select them (on one track) and use **Align to track…** in the toolbar or the clip menu. If there is more than one other track with audio, pick the one to align to; it stays where it is. The whole move is one undo step. If the moved recording started earlier than everything else, the part that would land before the start of the episode is trimmed off.
+
+WavePod searches the full length of both recordings, so it doesn't matter if they were started minutes apart or imported at the wrong place. It then checks the match at many points along the recording and moves the track to within a fraction of a millisecond. Long interviews take a minute.
+
+### Clock drift
+
+No two recorders run at exactly the same speed. Over an hour they can drift apart by a tenth of a second or more, so a track that is in sync at the start can echo at the end. WavePod measures this drift along the recording and corrects it: it writes a resampled copy of the moved track's files next to them (`…-synced.wav`) and switches the clips to it. The original files stay untouched, and undo goes back to them. The pitch change is a few thousandths of a semitone, far below what anyone can hear. Transcripts are carried over to the copy, so nothing has to be transcribed again.
+
+The message after aligning says how far the track moved and how much drift was corrected. If the match is weak it says so: listen, and undo if it's off. Recordings that don't hear each other at all (for example two speakers in different rooms without a call recording) can't be matched.
 
 ## Prepare all tracks for editing
 
