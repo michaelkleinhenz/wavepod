@@ -88,6 +88,16 @@ Keep your sound effects and atmospheres in a folder and search them from inside 
 
 WAV, MP3, FLAC, Ogg, Opus, M4A and AIFF files are found. **Rescan** reads the folder again after you add sounds. Sounds you insert are copied into the episode, so it keeps working without the library.
 
+### Favourites
+
+The **★ Favourites** tab at the top of the sound library holds the sounds you use again and again: your intro and outro, jingles, intermissions, a stinger, room tone. They are part of WavePod's [app settings](settings.md), not of the episode, so every episode has them.
+
+- **Add sounds…** adds audio files from anywhere on your computer; they don't have to be in the library folder.
+- In the **Library** tab, click the ☆ next to a sound (or right-click › **Add to Favourites**), or drag it onto the Favourites tab.
+- Listen, insert, drag onto a track and **Fill the Selection (Loop)** work just like in the library.
+- Right-click a favourite to **Rename…** it (`F2`), **Move Up** or **Move Down** in the list, or **Remove from Favourites** (`Delete`, or click its ★). The file itself is never deleted.
+- A favourite whose file was moved or deleted is crossed out with the path it was at.
+
 The sound library, the script and the transcript share the right side of the window: opening one closes the others.
 
 ## Sound design on clips

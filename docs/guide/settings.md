@@ -3,7 +3,7 @@
 WavePod keeps two kinds of settings apart:
 
 - **Episode settings** belong to one episode and travel with its folder: tracks, recording quality, filters, metadata, stems. Most of them are in **Setup** and the **Chapters** view.
-- **App settings** belong to this computer and apply to every episode: devices, controllers, AI agents, the sound library, transcription. They are in **Edit › Settings…** (`Ctrl+,`) and in a few menu checkboxes.
+- **App settings** belong to this computer and apply to every episode: devices, controllers, AI agents, the sound library, transcription. They are in **Edit › Settings…** (`Ctrl+,`) and in a few menu checkboxes. Your [favourite sounds](audio-drama.md#favourites) are app settings too: you manage them in the sound library.
 
 ## Edit › Settings…
 

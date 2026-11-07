@@ -2,9 +2,24 @@
 // folder names; arrow keys walk the results and play each one (pre-listen on the main output);
 // Enter or a double click inserts the sound at the playhead, dragging a row drops it on a track
 // at the drop position, and "Fill selection" loops an ambience over a selected time range.
+// The Favourites tab holds sounds the user keeps at hand in every episode (intro, jingles,
+// intermissions, room tone): any audio files, stored in the app settings, not in the episode.
 import type { Clip } from '../shared/types';
 import { addClip, addTrack } from '../core/project';
-import { fillClips, libraryFolderOf, libraryTitle, matchRanges, searchLibrary, type LibraryEntry, type SoundLibraryInfo } from '../core/soundLibrary';
+import {
+  favouriteEntries,
+  favouritePathOf,
+  favouriteRef,
+  fillClips,
+  libraryFolderOf,
+  libraryTitle,
+  matchRanges,
+  moveFavourite,
+  searchLibrary,
+  type FavouriteSoundInfo,
+  type LibraryEntry,
+  type SoundLibraryInfo,
+} from '../core/soundLibrary';
 import { formatTimestamp, uid } from '../shared/time';
 import { decodeBytes } from './audioFiles';
 import { showContextMenu } from './contextMenu';
@@ -19,6 +34,8 @@ const SFX_TRACK_NAME = 'Sound effects';
 const MAX_ROWS = 400;
 const TARGET_KEY = 'wavepod.libraryTarget';
 const AUTOPLAY_KEY = 'wavepod.libraryAutoplay';
+const TAB_KEY = 'wavepod.libraryTab';
+type LibraryTab = 'library' | 'favourites';
 /** Crossfade between the repeats of "Fill selection". */
 const FILL_CROSSFADE_SECONDS = 1;
 
@@ -37,19 +54,84 @@ const save = (key: string, value: string) => {
   }
 };
 
+// ---------------------------------------------------------------- favourites (app settings)
+
+let favourites: FavouriteSoundInfo[] = [];
+let favouritesLoaded: Promise<void> | null = null;
+/** Favourites as list entries; a new array on every change (the search index is cached per array). */
+let favouriteList: LibraryEntry[] = [];
+
+function setFavourites(list: FavouriteSoundInfo[]): void {
+  favourites = list;
+  favouriteList = favouriteEntries(list);
+  window.dispatchEvent(new Event('wavepod:favourites-changed'));
+}
+
+function loadFavourites(force = false): Promise<void> {
+  if (!favouritesLoaded || force) {
+    favouritesLoaded = api()
+      .getFavouriteSounds()
+      .then(setFavourites)
+      .catch((e) => toast(errorMessage(e), 'error'));
+  }
+  return favouritesLoaded;
+}
+
+function favouriteOf(ref: string): FavouriteSoundInfo | undefined {
+  const p = favouritePathOf(ref);
+  return p === null ? undefined : favourites.find((f) => f.path === p);
+}
+
+/** The name a sound is shown and inserted under: a favourite's own name, else the file name. */
+function soundTitle(ref: string): string {
+  return favouriteOf(ref)?.name ?? libraryTitle(favouritePathOf(ref) ?? ref);
+}
+
+async function saveFavourites(list: FavouriteSoundInfo[]): Promise<void> {
+  try {
+    setFavourites(await api().setFavouriteSounds(list.map(({ path, name }) => ({ path, name }))));
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
+/** Adds library sounds (paths inside the library) to the favourites. */
+export async function addLibraryFavourites(rels: string[]): Promise<void> {
+  try {
+    const r = await api().addFavouriteSounds({ library: rels });
+    setFavourites(r.list);
+    toast(r.added ? `${r.added === 1 ? soundTitle(favouriteRef(r.list[r.list.length - 1].path)) : `${r.added} sounds`} added to Favourites` : 'Already in Favourites');
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
+function removeFavourite(ref: string): void {
+  const p = favouritePathOf(ref);
+  const f = favourites.find((x) => x.path === p);
+  if (!f) return;
+  void saveFavourites(favourites.filter((x) => x !== f));
+  toast(`${f.name} removed from Favourites`);
+}
+
 // ---------------------------------------------------------------- audio of library files
 
 const decoded = new Map<string, Promise<Float32Array[]>>();
 const durations = new Map<string, number>();
 const imported = new Map<string, Promise<{ file: string; length: number }>>();
 
+/** A library file's or a favourite's bytes. */
+function readSoundBytes(ref: string): Promise<Uint8Array> {
+  const fav = favouritePathOf(ref);
+  return fav === null ? api().readLibraryFile(ref) : api().readFavouriteSound(fav);
+}
+
 /** Decodes a library file at the project rate (the last few are kept for quick replays and inserts). */
 function decodeLibraryFile(rel: string): Promise<Float32Array[]> {
   const key = `${rel}|${store.sampleRate}`;
   let p = decoded.get(key);
   if (!p) {
-    p = api()
-      .readLibraryFile(rel)
+    p = readSoundBytes(rel)
       .then((bytes) => decodeBytes(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, store.sampleRate))
       .then((ch) => {
         durations.set(rel, ch[0].length / store.sampleRate);
@@ -71,7 +153,7 @@ function importLibraryFile(rel: string): Promise<{ file: string; length: number 
   const key = `${store.dir}|${rel}|${store.sampleRate}`;
   let p = imported.get(key);
   if (!p) {
-    p = decodeLibraryFile(rel).then((ch) => api().importAudio(libraryTitle(rel), ch, store.sampleRate));
+    p = decodeLibraryFile(rel).then((ch) => api().importAudio(soundTitle(rel), ch, store.sampleRate));
     p.catch(() => imported.delete(key));
     imported.set(key, p);
   }
@@ -87,7 +169,8 @@ function sfxTrackId(): string | null {
  * after the sound; undefined: the panel's chosen target). With `fill`, the sound repeats over that range.
  */
 export async function insertLibrarySound(rel: string, opts: { at?: number; trackId?: string | null; fill?: [number, number]; folderId?: string } = {}): Promise<void> {
-  const title = libraryTitle(rel);
+  if (favouritePathOf(rel) !== null) await loadFavourites();
+  const title = soundTitle(rel);
   try {
     const media = await importLibraryFile(rel);
     const at = Math.max(0, Math.round(opts.fill ? opts.fill[0] : opts.at ?? store.transport.position));
@@ -145,6 +228,10 @@ export class SoundLibraryPanel {
   private hidden = false;
   private searchTimer: number | undefined;
   private scanning = false;
+  private tab: LibraryTab = load(TAB_KEY, 'library') === 'favourites' ? 'favourites' : 'library';
+  private tabBar = h('div', { class: 'library-tabs', role: 'tablist' });
+  /** A favourite whose name is being edited in its row. */
+  private renaming: string | null = null;
   /** Called when the panel opens (the app closes the transcript, which sits in the same place). */
   onOpen: () => void = () => {};
 
@@ -158,6 +245,7 @@ export class SoundLibraryPanel {
     });
     this.el.append(
       h('div', { class: 'fx-head' }, h('div', null, h('div', { class: 'fx-kicker' }, 'Sound effects'), h('h2', null, 'Sound library')), h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×')),
+      this.tabBar,
       h('div', { class: 'library-toolbar' }, this.search),
       h(
         'div',
@@ -171,6 +259,59 @@ export class SoundLibraryPanel {
     );
     this.el.addEventListener('keydown', (e) => this.key(e));
     window.addEventListener('wavepod:library-changed', () => void this.reload(false));
+    window.addEventListener('wavepod:favourites-changed', () => {
+      this.renderTabs();
+      if (this.shown && this.tab === 'favourites') this.runSearch();
+      else if (this.shown) this.renderRows(); // the stars in the library list
+    });
+    this.renderTabs();
+  }
+
+  private renderTabs(): void {
+    const tab = (id: LibraryTab, label: string, title: string, count?: number) =>
+      h(
+        'button',
+        {
+          class: `library-tab${this.tab === id ? ' active' : ''}`,
+          role: 'tab',
+          'aria-selected': String(this.tab === id),
+          title,
+          onclick: () => this.setTab(id),
+          // a library sound dropped on the Favourites tab is added there
+          ondragover: (e: DragEvent) => {
+            if (id !== 'favourites' || !Array.from(e.dataTransfer?.types ?? []).includes(LIBRARY_DRAG_TYPE)) return;
+            e.preventDefault();
+            e.dataTransfer!.dropEffect = 'copy';
+            (e.currentTarget as HTMLElement).classList.add('drop');
+          },
+          ondragleave: (e: DragEvent) => (e.currentTarget as HTMLElement).classList.remove('drop'),
+          ondrop: (e: DragEvent) => {
+            (e.currentTarget as HTMLElement).classList.remove('drop');
+            const ref = e.dataTransfer?.getData(LIBRARY_DRAG_TYPE);
+            if (id !== 'favourites' || !ref) return;
+            e.preventDefault();
+            if (favouritePathOf(ref) === null) void addLibraryFavourites([ref]);
+          },
+        },
+        label,
+        count ? h('span', { class: 'library-tab-count' }, String(count)) : null,
+      );
+    this.tabBar.replaceChildren(
+      tab('library', 'Library', 'Every sound in your sound library folder'),
+      tab('favourites', '★ Favourites', 'Your own set of sounds for every episode: intros, jingles, intermissions. Stored with WavePod\'s settings.', favourites.length),
+    );
+  }
+
+  private setTab(tab: LibraryTab): void {
+    if (tab === this.tab) return;
+    this.tab = tab;
+    save(TAB_KEY, tab);
+    this.renaming = null;
+    this.sel = -1;
+    this.search.placeholder = tab === 'favourites' ? 'Search favourites' : 'Search sounds, e.g. door creak';
+    this.renderTabs();
+    this.runSearch();
+    this.search.focus();
   }
 
   get isOpen(): boolean {
@@ -188,6 +329,7 @@ export class SoundLibraryPanel {
     document.body.classList.add('library-open');
     if (!this.hidden) document.getElementById('app')!.append(this.el);
     this.renderTargets();
+    void loadFavourites(true);
     if (!this.info) void this.reload(false);
     else this.renderRows();
     this.search.focus();
@@ -247,7 +389,7 @@ export class SoundLibraryPanel {
   }
 
   private runSearch(): void {
-    const files = this.info?.files ?? [];
+    const files = this.tab === 'favourites' ? favouriteList : this.info?.files ?? [];
     const prev = this.results[this.sel]?.path;
     const r = searchLibrary(files, this.search.value, MAX_ROWS);
     this.results = r.results;
@@ -267,6 +409,7 @@ export class SoundLibraryPanel {
 
   private renderStatus(): void {
     const info = this.info;
+    if (this.tab === 'favourites') return this.renderFavouritesStatus();
     if (this.scanning) this.status.textContent = 'Reading the library folder…';
     else if (!info?.folder) this.status.textContent = '';
     else if (info.error) this.status.textContent = info.error;
@@ -285,6 +428,27 @@ export class SoundLibraryPanel {
     ]);
   }
 
+  private renderFavouritesStatus(): void {
+    const n = favourites.length;
+    const all = `${n} favourite${n === 1 ? '' : 's'}`;
+    this.status.textContent = !n ? '' : this.search.value.trim() ? `${this.total} of ${all}` : all;
+    this.folderLine.replaceChildren(
+      h('span', { class: 'library-folder-path muted', style: 'direction: ltr' }, 'Saved with WavePod, in every episode'),
+      h('button', { class: 'small', title: 'Add audio files from anywhere on your computer', onclick: () => void this.chooseFavourites() }, 'Add sounds…'),
+    );
+  }
+
+  private async chooseFavourites(): Promise<void> {
+    try {
+      const r = await api().chooseFavouriteSounds();
+      if (!r) return;
+      setFavourites(r.list);
+      if (r.added) toast(`${r.added} sound${r.added === 1 ? '' : 's'} added to Favourites`);
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
+  }
+
   private async chooseFolder(): Promise<void> {
     try {
       const info = await api().chooseSoundLibraryFolder();
@@ -300,6 +464,20 @@ export class SoundLibraryPanel {
     this.renderStatus();
     const query = this.search.value;
     this.rows = this.results.map((e, i) => this.row(e, i, query));
+    if (this.tab === 'favourites' && !this.rows.length) {
+      this.body.replaceChildren(
+        favourites.length
+          ? h('div', { class: 'library-empty muted' }, 'No favourite matches.')
+          : h(
+              'div',
+              { class: 'library-empty' },
+              h('p', null, 'Keep the sounds you use in every episode here: your intro and outro, jingles, intermissions, a stinger, room tone.'),
+              h('p', { class: 'muted' }, 'Add audio files from anywhere, or click the ☆ next to a sound in the Library (or drag it onto this tab). Favourites belong to WavePod, not to the episode, so every episode has them.'),
+              h('button', { class: 'primary', onclick: () => void this.chooseFavourites() }, 'Add sounds…'),
+            ),
+      );
+      return;
+    }
     if (!this.info?.folder && !this.scanning) {
       this.body.replaceChildren(
         h(
@@ -321,25 +499,29 @@ export class SoundLibraryPanel {
   }
 
   private row(e: LibraryEntry, i: number, query: string): HTMLElement {
-    const title = libraryTitle(e.path);
-    const folder = libraryFolderOf(e.path);
+    const title = e.title ?? libraryTitle(e.path);
+    const fav = favouriteOf(e.path);
+    const folder = fav?.missing ? `File not found: ${fav.path}` : e.folder ?? libraryFolderOf(e.path);
+    const starred = fav ? true : this.isFavourite(e.path);
     const dur = durations.get(e.path);
     const playing = this.playing?.rel === e.path;
     const el = h(
       'div',
       {
-        class: `library-row${playing ? ' playing' : ''}`,
+        class: `library-row${playing ? ' playing' : ''}${fav?.missing ? ' missing' : ''}`,
         draggable: 'true',
-        title: `${e.path}\nClick: listen · Double click or Enter: insert · Drag onto a track · Right click: more`,
+        title: `${fav?.path ?? e.path}\nClick: listen · Double click or Enter: insert · Drag onto a track · Right click: more`,
         onmousedown: (ev: MouseEvent) => {
           if (ev.button !== 0 || (ev.target as HTMLElement).closest('.library-play')) return;
           this.select(i, false);
         },
         onclick: (ev: MouseEvent) => {
-          if ((ev.target as HTMLElement).closest('.library-play')) return;
+          if ((ev.target as HTMLElement).closest('.library-play, .library-star, input')) return;
           if (ev.detail === 1) this.togglePreview(e.path);
         },
-        ondblclick: () => void this.insert(e.path),
+        ondblclick: (ev: MouseEvent) => {
+          if (!(ev.target as HTMLElement).closest('.library-star, input')) void this.insert(e.path);
+        },
         oncontextmenu: (ev: MouseEvent) => {
           ev.preventDefault();
           this.select(i, false);
@@ -352,16 +534,100 @@ export class SoundLibraryPanel {
         },
       },
       h('button', { class: 'library-play small icon-only', title: playing ? 'Stop' : 'Listen', onclick: () => (this.select(i, false), this.togglePreview(e.path)) }, playing ? '■' : '▶'),
-      h('div', { class: 'library-text' }, h('div', { class: 'library-name' }, ...highlight(title, query)), folder ? h('div', { class: 'library-sub' }, ...highlight(folder, query)) : null),
+      h(
+        'div',
+        { class: 'library-text' },
+        fav && this.renaming === e.path ? this.renameInput(fav) : h('div', { class: 'library-name' }, ...highlight(title, query)),
+        folder ? h('div', { class: 'library-sub' }, ...(fav?.missing ? [folder] : highlight(folder, query))) : null,
+      ),
       h('span', { class: 'library-dur' }, dur !== undefined ? formatDur(dur) : ''),
+      h(
+        'button',
+        {
+          class: `library-star small icon-only${starred ? ' on' : ''}`,
+          title: starred ? 'Remove from Favourites' : 'Add to Favourites',
+          onclick: () => this.toggleFavourite(e.path),
+        },
+        starred ? '★' : '☆',
+      ),
       h('div', { class: 'library-progress' }),
     );
     return el;
   }
 
+  /** The favourite that is this library sound, if any (paths compared with "/" separators). */
+  private favouriteForLibrary(rel: string): FavouriteSoundInfo | undefined {
+    const folder = this.info?.folder;
+    if (!folder || !favourites.length) return undefined;
+    const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+    const abs = `${norm(folder)}/${rel}`;
+    return favourites.find((f) => norm(f.path) === abs);
+  }
+
+  private isFavourite(rel: string): boolean {
+    return !!this.favouriteForLibrary(rel);
+  }
+
+  private toggleFavourite(ref: string): void {
+    if (favouritePathOf(ref) !== null) return removeFavourite(ref);
+    const fav = this.favouriteForLibrary(ref);
+    if (fav) removeFavourite(favouriteRef(fav.path));
+    else void addLibraryFavourites([ref]);
+  }
+
+  private renameInput(fav: FavouriteSoundInfo): HTMLInputElement {
+    const input = h('input', { class: 'library-rename', value: fav.name, spellcheck: false });
+    let done = false;
+    const finish = (commit: boolean) => {
+      if (done) return;
+      done = true;
+      this.renaming = null;
+      const name = input.value.trim();
+      if (commit && name && name !== fav.name) void saveFavourites(favourites.map((f) => (f.path === fav.path ? { ...f, name } : f)));
+      else this.renderRows();
+      this.el.focus();
+    };
+    input.addEventListener('keydown', (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') finish(true);
+      else if (ev.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return input;
+  }
+
+  private rename(ref: string): void {
+    if (!favouriteOf(ref)) return;
+    this.renaming = ref;
+    this.renderRows();
+  }
+
+  private move(ref: string, by: number): void {
+    const p = favouritePathOf(ref);
+    const i = favourites.findIndex((f) => f.path === p);
+    if (i < 0) return;
+    this.search.value = ''; // moving is about the whole list
+    void saveFavourites(moveFavourite(favourites, i, by));
+  }
+
   private menu(e: LibraryEntry, x: number, y: number): void {
     const range = store.selection.range;
     const hasRange = !!range && range[1] > range[0];
+    const fav = favouriteOf(e.path);
+    const favIndex = fav ? favourites.indexOf(fav) : -1;
+    const favItems = fav
+      ? [
+          { kind: 'separator' as const },
+          { label: 'Rename…', accel: 'F2', run: () => this.rename(e.path) },
+          { label: 'Move Up', enabled: favIndex > 0, run: () => this.move(e.path, -1) },
+          { label: 'Move Down', enabled: favIndex < favourites.length - 1, run: () => this.move(e.path, 1) },
+          { label: 'Remove from Favourites', accel: 'Delete', run: () => removeFavourite(e.path) },
+        ]
+      : [{ kind: 'separator' as const }, { label: this.isFavourite(e.path) ? 'Remove from Favourites' : 'Add to Favourites', run: () => this.toggleFavourite(e.path) }];
     showContextMenu(
       [
         { label: this.playing?.rel === e.path ? 'Stop' : 'Listen', accel: 'Click', run: () => this.togglePreview(e.path) },
@@ -374,8 +640,9 @@ export class SoundLibraryPanel {
           title: hasRange ? 'Repeat the sound over the selected time range, with crossfades: for ambience and atmospheres' : 'Select a time range on the timeline first',
           run: () => void insertLibrarySound(e.path, { fill: range!, trackId: store.selection.rangeTracks?.length === 1 ? store.selection.rangeTracks[0] : undefined }),
         },
+        ...favItems,
         { kind: 'separator' },
-        { label: 'Show in Folder', run: () => void api().revealLibraryFile(e.path) },
+        { label: 'Show in Folder', enabled: !fav?.missing, run: () => void (fav ? api().revealFile(fav.path) : api().revealLibraryFile(e.path)) },
       ],
       x,
       y,
@@ -409,6 +676,10 @@ export class SoundLibraryPanel {
         this.search.value = '';
         this.runSearch();
       } else this.close();
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && !inSearch && this.tab === 'favourites') {
+      if (sel) removeFavourite(sel.path);
+    } else if (e.key === 'F2' && this.tab === 'favourites') {
+      if (sel) this.rename(sel.path);
     } else if (e.key === ' ' && (!inSearch || e.ctrlKey)) {
       if (sel) this.togglePreview(sel.path);
     } else if (!inSearch && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -445,7 +716,7 @@ export class SoundLibraryPanel {
       else if (this.playing?.rel === rel) this.playing.startedAt = performance.now();
     } catch (e) {
       if (this.playing?.rel === rel) this.setPlaying(null);
-      toast(`Could not play ${libraryTitle(rel)}: ${errorMessage(e)}`, 'error');
+      toast(`Could not play ${soundTitle(rel)}: ${errorMessage(e)}`, 'error');
     }
   }
 

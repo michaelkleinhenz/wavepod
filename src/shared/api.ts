@@ -40,7 +40,7 @@ import type { ElevenVoice, SpeechEditMode } from '../core/speech';
 import type { TemplateSummary } from '../core/template';
 import type { FxPresetEntry } from '../core/fx/presets';
 import type { AlignOutcome } from '../core/alignEdit';
-import type { SoundLibraryInfo } from '../core/soundLibrary';
+import type { FavouriteSound, FavouriteSoundInfo, SoundLibraryInfo } from '../core/soundLibrary';
 
 export interface OpenedProject {
   project: Project;
@@ -282,6 +282,16 @@ export interface WavePodApi {
   revealLibraryFile(rel: string): Promise<void>;
   /** Plays decoded audio on the main output for pre-listening; null stops. False if nothing plays. */
   previewSound(channels: Float32Array[] | null): Promise<boolean>;
+  // favourite sounds (app settings, not the episode)
+  getFavouriteSounds(): Promise<FavouriteSoundInfo[]>;
+  /** Replaces the list (rename, reorder, remove); returns it as stored. */
+  setFavouriteSounds(list: FavouriteSound[]): Promise<FavouriteSoundInfo[]>;
+  /** Adds library files (paths inside the library) and/or absolute file paths at the end. */
+  addFavouriteSounds(opts: { library?: string[]; files?: string[] }): Promise<{ list: FavouriteSoundInfo[]; added: number }>;
+  /** Lets the user pick audio files to add; null if cancelled. */
+  chooseFavouriteSounds(): Promise<{ list: FavouriteSoundInfo[]; added: number } | null>;
+  /** Bytes of a favourite's file (only files in the list). */
+  readFavouriteSound(path: string): Promise<Uint8Array>;
 
   // export
   chooseExportBase(defaultName: string): Promise<string | null>;
@@ -470,6 +480,11 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'readLibraryFile',
   'revealLibraryFile',
   'previewSound',
+  'getFavouriteSounds',
+  'setFavouriteSounds',
+  'addFavouriteSounds',
+  'chooseFavouriteSounds',
+  'readFavouriteSound',
   'chooseExportBase',
   'exportProject',
   'measureLoudness',

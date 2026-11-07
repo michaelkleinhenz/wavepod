@@ -2,7 +2,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fillClips, isLibraryAudio, matchRanges, normalizeName, searchLibrary, type LibraryEntry } from '../src/core/soundLibrary';
+import {
+  addFavourites,
+  favouriteEntries,
+  favouritePathOf,
+  favouriteRef,
+  fillClips,
+  isLibraryAudio,
+  matchRanges,
+  moveFavourite,
+  normalizeFavourites,
+  normalizeName,
+  searchLibrary,
+  soundFileTitle,
+  type LibraryEntry,
+} from '../src/core/soundLibrary';
 import { libraryFilePath, scanLibrary } from '../src/main/soundLibrary';
 
 const lib = (...paths: string[]): LibraryEntry[] => paths.map((p) => ({ path: p, size: 1 }));
@@ -99,5 +113,59 @@ describe('library folder scan', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('favourite sounds', () => {
+  it('reads favourites from settings: valid entries, each file once, names from the file', () => {
+    expect(normalizeFavourites(null)).toEqual([]);
+    expect(
+      normalizeFavourites([
+        { path: '/sfx/Intermission Jingle.wav', name: '  ' },
+        { path: '/sfx/Intermission Jingle.wav', name: 'dupe' },
+        { path: 'C:\\Sounds\\Outro v1.2.mp3' },
+        { name: 'no path' },
+        'junk',
+        { path: '/sfx/sting.wav', name: 'Sting' },
+      ]),
+    ).toEqual([
+      { path: '/sfx/Intermission Jingle.wav', name: 'Intermission Jingle' },
+      { path: 'C:\\Sounds\\Outro v1.2.mp3', name: 'Outro v1.2' },
+      { path: '/sfx/sting.wav', name: 'Sting' },
+    ]);
+    expect(soundFileTitle('C:\\a\\b.flac')).toBe('b');
+  });
+
+  it('adds new files at the end and keeps existing ones where they are', () => {
+    const list = [{ path: '/a.wav', name: 'My intro' }];
+    const r = addFavourites(list, ['/b.wav', '/a.wav', '/c.wav']);
+    expect(r.added).toBe(2);
+    expect(r.list).toEqual([
+      { path: '/a.wav', name: 'My intro' },
+      { path: '/b.wav', name: 'b' },
+      { path: '/c.wav', name: 'c' },
+    ]);
+  });
+
+  it('moves favourites within the list', () => {
+    const list = ['/a', '/b', '/c'].map((path) => ({ path, name: path }));
+    expect(moveFavourite(list, 2, -1).map((f) => f.path)).toEqual(['/a', '/c', '/b']);
+    expect(moveFavourite(list, 0, -1)).toBe(list);
+    expect(moveFavourite(list, 1, 5).map((f) => f.path)).toEqual(['/a', '/c', '/b']);
+  });
+
+  it('refs tell favourites from library paths', () => {
+    expect(favouritePathOf(favouriteRef('/x/y.wav'))).toBe('/x/y.wav');
+    expect(favouritePathOf('Doors/creak.wav')).toBeNull();
+  });
+
+  it('searches favourites by their own name and their file name', () => {
+    const entries = favouriteEntries([
+      { path: '/jingles/stinger_02.wav', name: 'Break jingle' },
+      { path: '/sfx/room.wav', name: 'Room tone' },
+    ]);
+    expect(searchLibrary(entries, 'jingle').results.map((e) => e.title)).toEqual(['Break jingle']);
+    expect(searchLibrary(entries, 'stinger').results.map((e) => e.title)).toEqual(['Break jingle']);
+    expect(searchLibrary(entries, '').results).toHaveLength(2);
   });
 });
