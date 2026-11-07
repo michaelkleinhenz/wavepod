@@ -13,6 +13,7 @@ Any class-compliant USB MIDI controller works: a pad controller, a keyboard, a f
 | Function | Does |
 | --- | --- |
 | Start recording / Stop recording / Record on / off | Controls recording. |
+| Punch in | Re-records the selected range with pre-roll. See [Punch-in](recording.md#punch-in-re-record-one-line). |
 | Play / Pause, Stop | Controls playback. |
 | Chapter marker, Edit marker | Drops a marker at the playhead. |
 | Prepare for editing | Unarms all tracks. |
@@ -41,6 +42,7 @@ Open **Connection details and addresses** to change the **UDP port**, to tick **
 | Address | Does |
 | --- | --- |
 | `/wavepod/record`, `/wavepod/record/start`, `/wavepod/record/stop` | Record on / off, start, stop |
+| `/wavepod/punch` | Punch in: re-record the selection with pre-roll |
 | `/wavepod/play`, `/wavepod/stop` | Play / pause, stop |
 | `/wavepod/marker/chapter`, `/wavepod/marker/edit` | Drop a marker |
 | `/wavepod/prepare` | Prepare for editing |

@@ -677,6 +677,30 @@ html[data-mode="drama"] .spots { opacity: 1; }
 .mus::after { content: ""; position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 10px #fff; left: 0; animation: playhead 5s linear infinite; }
 @keyframes playhead { to { left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .mus::after { display: none; } }
+/* Punch-in: the playhead runs through the pre-roll, the new take grows inside the brackets. */
+.viz-punch { flex-direction: column; justify-content: center; align-items: stretch !important; gap: 10px; padding: 18px 16px; }
+.pn-lane { position: relative; height: 64px; border-radius: 8px; background: rgb(255 255 255 / .03); border: 1px solid var(--line); overflow: hidden; }
+.pn-name { position: absolute; left: 8px; top: 4px; z-index: 3; font: 600 .64rem "JetBrains Mono", monospace; color: var(--muted); }
+.pn-old { position: absolute; left: 0; right: 0; top: 18px; bottom: 8px; background: repeating-linear-gradient(90deg, #64b5f6 0 2px, transparent 2px 4px);
+  clip-path: polygon(0 50%, 6% 20%, 12% 60%, 18% 30%, 24% 55%, 30% 15%, 36% 50%, 44% 25%, 52% 60%, 60% 20%, 68% 45%, 74% 25%, 80% 55%, 88% 30%, 94% 50%, 100% 35%, 100% 100%, 0 100%); opacity: .75; }
+.pn-zone { position: absolute; top: 0; bottom: 0; }
+.pn-pre { left: 18%; width: 18%; background: rgb(255 255 255 / .05); }
+.pn-in { left: 36%; width: 30%; background: rgb(var(--glow) / .12); }
+.pn-post { left: 66%; width: 8%; background: rgb(255 255 255 / .05); }
+.pn-new { position: absolute; left: 36%; top: 16px; bottom: 6px; width: 30%; z-index: 1; background: #15151d; clip-path: inset(0 100% 0 0); animation: pn-grow 6s linear infinite; }
+.pn-new::after { content: ""; position: absolute; inset: 2px 0; background: repeating-linear-gradient(90deg, var(--au1) 0 2px, transparent 2px 4px);
+  clip-path: polygon(0 45%, 8% 15%, 16% 55%, 24% 10%, 32% 45%, 40% 20%, 48% 50%, 56% 25%, 64% 55%, 72% 15%, 80% 45%, 88% 25%, 96% 50%, 100% 35%, 100% 100%, 0 100%); filter: drop-shadow(0 0 4px var(--au1)); }
+.pn-br { position: absolute; top: 4px; bottom: 4px; width: 7px; z-index: 2; border: 2px solid var(--au1); filter: drop-shadow(0 0 6px var(--au1)); }
+.pn-br-l { left: 36%; border-right: 0; border-radius: 3px 0 0 3px; }
+.pn-br-r { left: calc(66% - 7px); border-left: 0; border-radius: 0 3px 3px 0; }
+.pn-head { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 3; background: #fff; box-shadow: 0 0 10px #fff; left: 18%; animation: pn-head 6s linear infinite; }
+.pn-labels { position: relative; height: 14px; font: 600 .62rem "JetBrains Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.pn-labels span { position: absolute; top: 0; white-space: nowrap; }
+.pn-labels .l-pre { left: 18%; } .pn-labels .l-in { left: 36%; padding-left: 4px; color: var(--text); } .pn-labels .l-post { left: 66%; }
+@keyframes pn-head { 0% { left: 18%; opacity: 1; } 80% { left: 74%; opacity: 1; } 90%, 100% { left: 74%; opacity: 0; } }
+@keyframes pn-grow { 0%, 25.7% { clip-path: inset(0 100% 0 0); } 68.6%, 100% { clip-path: inset(0 0 0 0); } }
+@media (prefers-reduced-motion: reduce) { .pn-head { display: none; } .pn-new { animation: none; clip-path: none; } }
+@media (max-width: 640px) { .pn-labels span { font-size: .55rem; } .pn-labels .k { display: none; } }
 @media (max-width: 640px) { .studio-too .viz-chips { height: auto !important; padding: 16px 12px; } }
 
 /* takes and comping: three take lanes, a swipe picks a part of each, the comp fills up */

@@ -522,6 +522,8 @@ export interface TransportUpdate {
   trackPeaks?: Record<string, number>;
   /** While recording: problems to show now, and how much disk is left. */
   health?: RecordingHealth;
+  /** While a punch-in pass runs: the range [in, out) the take replaces. */
+  punch?: [Frames, Frames];
 }
 
 export type RecordingProblem = 'dropout' | 'crackle' | 'clipping' | 'stall' | 'disk';
@@ -602,11 +604,15 @@ export interface LivePeaks {
 export interface RecordOptions {
   /** Loop recording: the timeline jumps from loop[1] back to loop[0] until stopped; each pass is a take. */
   loop?: [Frames, Frames];
+  /** Punch-in: re-record only [start, end) with pre-roll and post-roll (frames). Wins over `loop`. */
+  punch?: { start: Frames; end: Frames; preRoll: Frames; postRoll: Frames };
 }
 
 export interface RecordedTake {
   trackId: string;
   clip: Clip;
+  /** Punch-in take: the range [in, out) of the track it replaces. */
+  punch?: [Frames, Frames];
 }
 
 /** One resolution of a waveform: interleaved min,max pairs scaled to -127..127, mono (channels averaged). */
@@ -729,6 +735,8 @@ export type MidiAction =
   | 'record-start'
   | 'record-stop'
   | 'record-toggle'
+  /** Punch-in: re-record the selected range with pre-roll. */
+  | 'punch-in'
   | 'play-toggle'
   | 'stop'
   | 'chapter-marker'

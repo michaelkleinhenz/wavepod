@@ -62,6 +62,8 @@ nav { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radiu
 .transport { width: 36px; height: 32px; padding: 0; }
 .transport.rec { color: var(--rec); }
 .transport.rec.on { background: var(--rec); border-color: var(--rec); color: #fff; animation: pulse 1s infinite; }
+.transport.punch { color: var(--rec); }
+.transport.punch.on { background: var(--rec); border-color: var(--rec); color: #fff; animation: pulse 1s infinite; }
 .transport.play.on { background: var(--ok); border-color: var(--ok); color: #fff; }
 button.icon-btn.transport { width: 36px; height: 32px; }
 .transport.repeat.on { background: var(--accent); border-color: var(--accent); color: #fff; }

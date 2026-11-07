@@ -14,6 +14,25 @@ While a recording runs, the status bar shows how much recording time the disk ha
 
 > **Tip:** Stopping a recording asks for confirmation, so a stray key doesn't end the show. Switch this off with **Edit › Confirm Before Stopping a Recording**.
 
+## Punch-in: re-record one line
+
+When one line went wrong, re-record just that line inside the existing audio, the way radio drama studios do:
+
+1. Select the line: drag over it in the ruler (or on an empty spot of the timeline). The selection is the **punch range**.
+2. Arm the track (or tracks) of the speaker.
+3. Press `Shift+R`, click the **punch** button next to Record (a record dot between brackets), or choose **Edit › Punch In: Re-record Selection**.
+
+Playback starts the **pre-roll** (3 seconds by default) before the range, with the old take still audible, so the speaker hears the lead-in and comes in on cue. At the start of the range recording takes over: the armed tracks go quiet in the playback (the speaker hears themselves through the interface as usual) and the new take replaces the old audio. After the end of the range a short **post-roll** (1 second) plays the old audio again so you hear the joint, then the pass stops by itself and the playhead goes back to where the pre-roll started. Press Space to listen to the result, or `Shift+R` again for another try.
+
+- Only the selected range changes, and only on the armed tracks. Both edges get a short crossfade, so the joints don't click.
+- What was there before is kept as a take: the old version is **Take 1**, the punch **Take 2**. Press `T` to switch back and forth, or comp them in the take lanes. See [Takes and comping](#takes-and-comping).
+- The whole pass is kept in the file, pre-roll and post-roll included, so you can drag the edges of the new clip out if the line needs a little more room.
+- Stopping during the range keeps what was recorded up to there. Stopping during the pre-roll keeps nothing.
+- Change the pre-roll and post-roll in **Edit › Settings… › General › Punch-in recording**.
+- A MIDI button or foot switch (**Punch in**) or the OSC address `/wavepod/punch` starts a punch too. See [MIDI and remote control](controllers.md).
+
+A punch take is protected like any other take: if the app goes down mid-pass, the recovered take is put back into the range only.
+
 ## Soundcheck
 
 Before a take starts, WavePod checks the things that commonly go wrong. If something is off, a **Soundcheck** dialog lists it:
@@ -67,7 +86,8 @@ To make the soundboard duck under the voices, use **Duck under the other tracks*
 Record a line as often as it takes and keep the best one. WavePod never throws a take away.
 
 - **Record over it again.** Put the playhead before the line and press `R`. When the new recording runs over audio on an armed track, the earlier recording of that stretch becomes **Take 1**, the new one **Take 2**, and so on. The newest take plays.
-- **Loop recording.** Select the time range of the line (drag across the timeline) and press `Shift+R` (**Edit › Loop-Record the Selection (Takes)**). Playback starts 2 seconds before the line so the speaker hears a run-up, then jumps back to the start of the selection at its end and keeps going until you stop. Every pass is a take, and the last whole pass plays (a pass cut short by stopping is kept too). The recording shows *loop recording · pass n*. After stopping, the playhead waits at the start of the line for the next go.
+- **Punch in.** To redo one line inside a longer recording, select it and press `Shift+R`. See [Punch-in](#punch-in-re-record-one-line).
+- **Loop recording.** Select the time range of the line (drag across the timeline) and press `Alt+Shift+R` (**Edit › Loop-Record the Selection (Takes)**). Playback starts 2 seconds before the line so the speaker hears a run-up, then jumps back to the start of the selection at its end and keeps going until you stop. Every pass is a take, and the last whole pass plays (a pass cut short by stopping is kept too). The recording shows *loop recording · pass n*. After stopping, the playhead waits at the start of the line for the next go.
 
 A track with takes gets a **Takes** button in its header. Click it to show the **take lanes** under the track, one lane per take:
 
