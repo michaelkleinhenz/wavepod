@@ -67,7 +67,7 @@ To make the soundboard duck under the voices, use **Duck under the other tracks*
 Record a line as often as it takes and keep the best one. WavePod never throws a take away.
 
 - **Record over it again.** Put the playhead before the line and press `R`. When the new recording runs over audio on an armed track, the earlier recording of that stretch becomes **Take 1**, the new one **Take 2**, and so on. The newest take plays.
-- **Loop recording.** Select the time range of the line (drag across the timeline) and press `Shift+R` (**Edit › Loop-Record the Selection (Takes)**). Playback starts 2 seconds before the line so the speaker hears a run-up, then jumps back to the start of the selection at its end and keeps going until you stop. Every pass is a take. The recording shows *loop recording · pass n*. After stopping, the playhead waits at the start of the line for the next go.
+- **Loop recording.** Select the time range of the line (drag across the timeline) and press `Shift+R` (**Edit › Loop-Record the Selection (Takes)**). Playback starts 2 seconds before the line so the speaker hears a run-up, then jumps back to the start of the selection at its end and keeps going until you stop. Every pass is a take, and the last whole pass plays (a pass cut short by stopping is kept too). The recording shows *loop recording · pass n*. After stopping, the playhead waits at the start of the line for the next go.
 
 A track with takes gets a **Takes** button in its header. Click it to show the **take lanes** under the track, one lane per take:
 

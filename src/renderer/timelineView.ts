@@ -588,7 +588,7 @@ export class TimelineView {
         },
       },
       h('div', { class: 'th-row' }, h('span', { class: 'take-name' }, `Take ${take.n}`), h('span', { class: 'take-state muted' }, state)),
-      h('div', { class: 'th-row muted th-hint' }, `${t.name}: click the take to use it, drag over a part to use just that`),
+      h('div', { class: 'th-row muted th-hint' }, `${t.name} · click: use it · drag: use a part`),
       h(
         'div',
         { class: 'th-row' },

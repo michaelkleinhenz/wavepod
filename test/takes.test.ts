@@ -205,6 +205,8 @@ describe('takes: helpers', () => {
     const rec = { trackId: tid(p0), clip: clip('loop.wav', 1000, 4500) };
     const p = mergeRecording(p0, [rec], { recordStart: 1000, loop: [1000, 3000], events: [{ frame: 2500, kind: 'clipping', text: 'Clipping' }] }, 1000);
     expect(track(p).takes!.map((k) => k.n)).toEqual([1, 2, 3]);
+    // the last pass was cut short by Stop: kept, but the last whole pass plays
+    expect(track(p).clips).toEqual([expect.objectContaining({ takeId: track(p).takes![1].id, length: 2000 })]);
     expect(p.markers).toEqual([expect.objectContaining({ kind: 'edit', position: 1500 })]);
   });
 });

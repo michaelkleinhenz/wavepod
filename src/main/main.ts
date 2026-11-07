@@ -11,6 +11,8 @@ import { findProfile } from '../core/deviceProfiles';
 import { writeWavFile } from '../core/wav';
 import { AudioEngine, defaultConfig, type TakeReport } from './audio/engine';
 import { RecordWorker } from './audio/takeSink';
+import { SOUNDBOARD_TRACK_ID } from '../core/soundboard';
+import { loopTakeClips } from '../core/takes';
 import { clearJournal, mergeRecording, recoverRecording, type Recovery } from '../core/recordingJournal';
 import { formatMinutes } from '../core/recordingMonitor';
 import { RtAudioBackend } from './audio/rtaudioBackend';
@@ -1195,7 +1197,11 @@ app.whenReady().then(() => {
         /* recovery would find the clips already there */
       }
     }
-    send(IPC.recordingFinished, { takes, project, preparedForEditing, problems: report?.events.length ?? 0 });
+    // loop recording: how many passes each track got (they are takes now)
+    const loop = report?.loop;
+    const first = takes.find((t) => t.trackId !== SOUNDBOARD_TRACK_ID);
+    const passes = loop && first ? loopTakeClips(first.clip, loop, project.sampleRate).length : undefined;
+    send(IPC.recordingFinished, { takes, project, preparedForEditing, problems: report?.events.length ?? 0, ...(passes ? { passes } : {}) });
   });
 
   try {

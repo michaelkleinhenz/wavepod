@@ -9,7 +9,7 @@ import { addClip, addMarker, addTrack } from './project';
 import { repairWav, syncDir, syncFd } from './wav';
 import { uid } from '../shared/time';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from './soundboard';
-import { loopFramePosition, loopTakeClips, recordTakes } from './takes';
+import { loopFramePosition, loopTakeClips, pickTake, recordTakes } from './takes';
 
 export const JOURNAL_FILE = 'recording-in-progress.json';
 
@@ -95,7 +95,16 @@ export function mergeRecording(
   if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) p = ensureSoundboardTrack(p);
   for (const t of takes) {
     if (t.trackId === SOUNDBOARD_TRACK_ID) p = addClip(p, t.trackId, t.clip);
-    else p = recordTakes(p, t.trackId, info.loop ? loopTakeClips(t.clip, info.loop, sampleRate) : [t.clip]);
+    else if (!info.loop) p = recordTakes(p, t.trackId, [t.clip]);
+    else {
+      const passes = loopTakeClips(t.clip, info.loop, sampleRate);
+      p = recordTakes(p, t.trackId, passes);
+      // a last pass cut short by Stop is kept as a take, but the last whole pass plays
+      const takes = p.tracks.find((x) => x.id === t.trackId)?.takes ?? [];
+      if (passes.length > 1 && passes[passes.length - 1].length < info.loop[1] - info.loop[0] && takes.length > 1) {
+        p = pickTake(p, t.trackId, [...takes].sort((a, b) => a.n - b.n)[takes.length - 2].id);
+      }
+    }
   }
   if (info.events.length) {
     // in a loop recording, a problem goes where the pass was on the timeline
@@ -150,7 +159,7 @@ export function recoverRecording(dir: string, project: Project): Recovery | null
       trackId = p.tracks[p.tracks.length - 1].id;
     }
     const clip = { id: uid('clp'), file: t.file, start: j.recordStart, offset: 0, length: frames, gain: 0, fadeIn: 0, fadeOut: 0 };
-    p = recordTakes(p, trackId, j.loop ? loopTakeClips(clip, j.loop, j.sampleRate) : [clip]);
+    p = mergeRecording(p, [{ trackId, clip }], { recordStart: j.recordStart, events: [], loop: j.loop }, j.sampleRate);
     takes++;
     longest = Math.max(longest, frames / j.sampleRate);
   }
