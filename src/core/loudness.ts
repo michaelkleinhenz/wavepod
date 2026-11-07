@@ -108,6 +108,37 @@ class TruePeak {
   }
 }
 
+/** Momentary loudness below this counts as silence (dead air) in `stats().silences`. */
+export const SILENCE_LUFS = -50;
+/** Silences shorter than this (seconds) are pauses, not dead air. */
+export const SILENCE_MIN_SECONDS = 5;
+
+/**
+ * Stretches where every 400 ms block (100 ms apart) is below `thresholdLufs`, at least `minSeconds`
+ * long, as [start, end] in seconds.
+ */
+export function findSilences(blockEnergies: number[], thresholdLufs = SILENCE_LUFS, minSeconds = SILENCE_MIN_SECONDS): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let run = -1;
+  const close = (end: number) => {
+    if (run < 0) return;
+    // block i covers i·0.1 … i·0.1 + 0.4 s
+    const a = run * 0.1;
+    const b = (end - 1) * 0.1 + 0.4;
+    if (b - a >= minSeconds - 1e-9) out.push([Math.round(a * 10) / 10, Math.round(b * 10) / 10]);
+    run = -1;
+  };
+  for (let i = 0; i < blockEnergies.length; i++) {
+    const z = blockEnergies[i];
+    const quiet = !(z > 0) || energyToLufs(z) < thresholdLufs;
+    if (quiet) {
+      if (run < 0) run = i;
+    } else close(i);
+  }
+  close(blockEnergies.length);
+  return out;
+}
+
 /** Short-term loudness history kept for plots: one value per this many seconds at most. */
 const HISTORY_POINTS = 1200;
 
@@ -248,6 +279,7 @@ export class LoudnessMeter {
       history,
       // the first value covers the first 3 s, the next ones are 100 ms (times the stride) apart
       historyStep: stride * 0.1,
+      silences: findSilences(this.blockEnergies),
     };
   }
 }

@@ -1,7 +1,8 @@
 // Project templates: a project's setup (tracks, input channels, filter stacks, soundboard) without any recorded material.
-import type { BitDepth, EpisodeMetadata, Fx, Project, SoundboardSlot, Track, TrackFolder } from '../shared/types';
+import type { BitDepth, EpisodeMetadata, ExportSettings, Fx, Project, SoundboardSlot, Track, TrackFolder } from '../shared/types';
 import { uid } from '../shared/time';
 import { createProject, normalizeProject } from './project';
+import { normalizeExportSettings } from './exportSettings';
 
 /** A track as a template keeps it: everything except its clips (with their volume lines) and mute regions. */
 export type TemplateTrack = Omit<Track, 'clips' | 'muteRegions' | 'automation'>;
@@ -23,6 +24,8 @@ export interface ProjectTemplate {
   soundboard: SoundboardSlot[];
   /** Show-level metadata that stays the same from episode to episode. */
   metadata: Pick<EpisodeMetadata, 'podcast' | 'author' | 'artwork' | 'category'>;
+  /** How the show exports (formats, bitrate, mono, loudness target), when the episode was exported before. */
+  exportSettings?: ExportSettings;
 }
 
 export interface TemplateSummary {
@@ -64,6 +67,7 @@ export function projectToTemplate(project: Project, name: string, inputDevice?: 
       ...(p.metadata.artwork ? { artwork: p.metadata.artwork } : {}),
       ...(p.metadata.category ? { category: p.metadata.category } : {}),
     },
+    ...(p.exportSettings ? { exportSettings: p.exportSettings } : {}),
   };
 }
 
@@ -87,6 +91,8 @@ export function normalizeTemplate(raw: Partial<ProjectTemplate>, fallbackName = 
     ...(typeof raw.metadata?.category === 'string' && raw.metadata.category ? { category: raw.metadata.category } : {}),
   };
   t.soundboard = t.soundboard.filter((s) => s && typeof s.file === 'string');
+  const exportSettings = normalizeExportSettings(raw.exportSettings);
+  if (exportSettings) t.exportSettings = exportSettings;
   return t;
 }
 
@@ -113,6 +119,7 @@ export function projectFromTemplate(template: ProjectTemplate, name: string, sam
       ...(t.metadata.artwork ? { artwork: t.metadata.artwork } : {}),
       ...(t.metadata.category ? { category: t.metadata.category } : {}),
     },
+    ...(t.exportSettings ? { exportSettings: t.exportSettings } : {}),
   });
 }
 

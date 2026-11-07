@@ -23,6 +23,8 @@ interface Job {
   opts?: ExportOptions;
   clipIds?: string[];
   mixOnly?: boolean;
+  /** loudness: measure the mix folded to mono. */
+  mono?: boolean;
   vstExe?: string | null;
   vstBridge?: string;
   /** importWav: the episode's sample rate. */
@@ -51,7 +53,7 @@ try {
   } else if (job.kind === 'clips') {
     parentPort!.postMessage({ type: 'done', result: analyseClips(job.project, job.dir, job.clipIds ?? []) });
   } else {
-    parentPort!.postMessage({ type: 'done', result: analyseProject(job.project, job.dir, job.mixOnly) });
+    parentPort!.postMessage({ type: 'done', result: analyseProject(job.project, job.dir, job.mixOnly, job.mono) });
   }
 } catch (e) {
   parentPort!.postMessage({ type: 'error', message: (e as Error).message });

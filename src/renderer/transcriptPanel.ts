@@ -238,7 +238,7 @@ export class TranscriptPanel {
         ? h('button', { class: 'small', onclick: () => t.stop() }, 'Stop')
         : h('button', { class: missing ? 'small primary' : 'small', title: 'Upload the tracks to ElevenLabs speech-to-text. Only files without a transcript are sent.', onclick: () => void t.transcribe(false) }, missing ? 'Transcribe' : 'Up to date'),
       h('button', { class: 'small', title: 'Experimental: replace the clicked or selected words, or insert new ones, spoken by ElevenLabs in the speaker’s voice (Enter or double-click a word)', onclick: () => this.changeWords() }, 'Change…'),
-      h('button', { class: 'small', title: 'Find long pauses and hesitations (äh, ähm, uh) and take them out', onclick: () => this.onCleanup() }, 'Clean up…'),
+      h('button', { class: 'small', title: 'Find long pauses, hesitations (äh, ähm, uh) and retakes and take them out', onclick: () => this.onCleanup() }, 'Clean up…'),
       h(
         'select',
         {

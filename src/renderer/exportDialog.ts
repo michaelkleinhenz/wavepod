@@ -1,9 +1,13 @@
 // Export dialog: formats, loudness target, stems, chapter files, range, progress.
 // While the mix renders, the progress bar is its waveform and the loudness so far runs beside it.
-import type { ExportOptions, ExportProgress, ExportResult, LiveLoudness, LoudnessReport } from '../shared/types';
+import type { ExportProgress, ExportResult, ExportSettings, LiveLoudness, LoudnessReport } from '../shared/types';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
-import { LOUDNESS_PRESETS, loudnessTiles } from './loudnessDialog';
+import { loudnessTiles, targetPicker } from './loudnessDialog';
 import { api, store } from './store';
+import { seek } from './actions';
+import { DEFAULT_EXPORT_SETTINGS, MP3_BITRATES, OPUS_BITRATES, PEAK_CEILINGS, normalizeExportSettings, targetForMono } from '../core/exportSettings';
+import { exportChecks, imageSize, type ImageSize } from '../core/exportChecks';
+import { formatTimestamp } from '../shared/time';
 import { regionOutputBase } from '../core/regions';
 import { chapterWarningList } from './chaptersView';
 import { audibleTracks, updateTrack } from '../core/project';
@@ -11,7 +15,29 @@ import { STEM_CHOICES, STEM_GROUPS, trackStem } from '../core/stems';
 import { folderOf } from '../core/folders';
 import type { StemGroup, Track } from '../shared/types';
 
-const PRESETS = LOUDNESS_PRESETS;
+const LAST_KEY = 'wavepod.exportSettings';
+
+/** How the last export on this computer was set up, for episodes that were never exported. */
+function lastSettings(): ExportSettings | undefined {
+  try {
+    return normalizeExportSettings(JSON.parse(localStorage.getItem(LAST_KEY) ?? 'null'));
+  } catch {
+    return undefined;
+  }
+}
+
+function rememberSettings(s: ExportSettings): void {
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify(s));
+  } catch {
+    // not remembered on this computer; the episode still keeps them
+  }
+}
+
+/** The episode's own settings, else the last ones used on this computer, else one MP3 at −16 LUFS. */
+export function initialExportSettings(): ExportSettings {
+  return structuredClone(store.project.exportSettings ?? lastSettings() ?? DEFAULT_EXPORT_SETTINGS);
+}
 
 const checkbox = (label: string, checked: boolean, onChange: (v: boolean) => void, disabled = false) =>
   h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, disabled, onchange: (e: Event) => onChange((e.target as HTMLInputElement).checked) }), label);
@@ -112,15 +138,11 @@ export function exportSummary(res: ExportResult): string {
 
 export class ExportDialog {
   private overlay = h('div', { class: 'overlay' });
-  private opts: Omit<ExportOptions, 'outputBase'> = {
-    formats: ['mp3', 'wav'],
-    mp3Bitrate: 128,
-    normalize: true,
-    targetLufs: -16,
-    peakCeiling: -1,
-    stems: false,
-    chapterFiles: true,
-  };
+  private opts: ExportSettings = { ...DEFAULT_EXPORT_SETTINGS };
+  /** The episode folder the options were loaded for; another episode loads its own. */
+  private openedFor: string | null = null;
+  /** Size of the episode cover (null: unreadable), for the checks; read once per file. */
+  private cover: { path: string; size?: ImageSize | null } | null = null;
   private useRange = false;
   /** Export each region as its own file instead of the whole episode. */
   private perRegion = false;
@@ -159,14 +181,34 @@ export class ExportDialog {
   }
 
   open(): void {
+    if (this.openedFor !== store.dir) {
+      this.opts = initialExportSettings();
+      this.openedFor = store.dir;
+    }
     this.mix = null;
     this.exported = false;
+    this.loadCover();
     this.render();
     document.body.append(this.overlay);
   }
 
   close(): void {
     this.overlay.remove();
+  }
+
+  private loadCover(): void {
+    const art = store.project.metadata.artwork;
+    if (!art) return void (this.cover = null);
+    if (this.cover?.path === art) return;
+    const cover: { path: string; size?: ImageSize | null } = { path: art };
+    this.cover = cover;
+    api()
+      .readFile(art)
+      .then((bytes) => (cover.size = imageSize(bytes)))
+      .catch(() => (cover.size = null))
+      .finally(() => {
+        if (this.cover === cover && this.overlay.isConnected && !this.busy) this.render();
+      });
   }
 
   private render(): void {
@@ -193,13 +235,28 @@ export class ExportDialog {
       h('h2', null, 'Export episode'),
       h('div', { class: 'grid' },
         h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'), fmt('flac', 'FLAC 24-bit (lossless, with chapters)'), fmt('opus', 'Opus (small files, with chapters)'),
+          h('label', { class: 'check', title: 'One channel instead of two: half the size at the same quality, or better quality at the same size. Right for shows that are only voices. Stems stay stereo.' },
+            h('input', {
+              type: 'checkbox',
+              checked: !!o.mono,
+              onchange: (e: Event) => {
+                const mono = (e.target as HTMLInputElement).checked;
+                if (mono) o.mono = true;
+                else delete o.mono;
+                // mono is measured as mono, which reads 3 LU lower: −19 is the mono podcast target
+                o.targetLufs = targetForMono(o.targetLufs, mono);
+                this.mix = null;
+                this.render();
+              },
+            }),
+            'Mono (half the size, for speech)'),
           h('label', { class: 'field' }, h('span', null, 'MP3 bitrate'),
             h('select', { disabled: !o.formats.includes('mp3'), onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
-              ...[64, 96, 128, 160, 192, 256].map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps`)))),
+              ...MP3_BITRATES.map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps${o.mono && b === 64 ? ' (like 128 in stereo)' : ''}`)))),
           o.formats.includes('opus')
             ? h('label', { class: 'field' }, h('span', null, 'Opus bitrate'),
                 h('select', { onchange: (e: Event) => (o.opusBitrate = Number((e.target as HTMLSelectElement).value)) },
-                  ...[32, 48, 64, 96, 128].map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 ? ' (like MP3 at 128)' : ''}`))))
+                  ...OPUS_BITRATES.map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 && !o.mono ? ' (like MP3 at 128)' : ''}`))))
             : null,
           check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }),
           check('Stems (separate files for editing or delivery)', o.stems, (v) => { o.stems = v; this.render(); }),
@@ -209,16 +266,16 @@ export class ExportDialog {
         h('div', null, h('h3', null, 'Loudness'),
           check('Normalise loudness', o.normalize, (v) => { o.normalize = v; this.render(); }),
           h('label', { class: 'field' }, h('span', null, 'Target'),
-            h('select', { disabled: !o.normalize, onchange: (e: Event) => (o.targetLufs = Number((e.target as HTMLSelectElement).value)) },
-              ...PRESETS.map((p) => h('option', { value: String(p.value), selected: p.value === o.targetLufs }, p.label)))),
+            targetPicker(o.targetLufs, (lufs) => { o.targetLufs = lufs; this.render(); }, !o.normalize)),
           h('label', { class: 'field' }, h('span', null, 'Peak ceiling'),
-            h('select', { disabled: !o.normalize, onchange: (e: Event) => (o.peakCeiling = Number((e.target as HTMLSelectElement).value)) },
-              ...[-0.1, -1, -2, -3].map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`)))),
+            h('select', { disabled: !o.normalize, onchange: (e: Event) => { o.peakCeiling = Number((e.target as HTMLSelectElement).value); this.render(); } },
+              ...PEAK_CEILINGS.map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`)))),
+          o.mono ? h('p', { class: 'muted export-hint' }, 'A mono file is measured as mono, so it reads 3 LU lower than the same audio in stereo: −19 LUFS in mono sounds like −16 LUFS in stereo.') : null,
           h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.mix ? 'Analyse again' : 'Analyse loudness'),
         ),
       ),
       this.stemSection(),
-      this.chapterNotes(range),
+      this.checks(range),
       // only the mix matters for the export; per-track figures are in the Loudness dialog
       this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target, o.normalize)) : null,
       this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
@@ -277,9 +334,44 @@ export class ExportDialog {
     );
   }
 
-  /** Chapter problems and a missing cover, checked before the MP3 is written (Ultraschall warns about these too). */
+  /**
+   * What is worth fixing first: chapter problems (Ultraschall warns about these too), the episode
+   * details and cover, and once the mix was analysed, its loudness and stretches of dead air.
+   */
+  private checks(range: [number, number] | null): HTMLElement | null {
+    const chapters = this.opts.formats.includes('mp3') || this.opts.chapterFiles ? this.chapterNotes(range) : null;
+    const cover = this.cover?.path === store.project.metadata.artwork ? this.cover?.size : undefined;
+    const found = exportChecks(store.project.metadata, this.opts, cover, this.mix?.stats);
+    const sr = store.sampleRate;
+    const items = found.map((c) =>
+      h('li', { class: 'warning' }, c.message,
+        ...(c.at ?? []).slice(0, 8).map((t) =>
+          h('button', {
+            class: 'small link',
+            title: 'Close and put the playhead there',
+            onclick: () => {
+              this.close();
+              seek(t * sr);
+            },
+          }, formatTimestamp(t, false)),
+        ),
+      ),
+    );
+    if (!chapters && !items.length) {
+      return this.mix ? null : h('div', { class: 'export-notes' }, h('p', { class: 'muted' }, 'Analyse loudness to also check the mix for its level and for silence.'));
+    }
+    return h(
+      'div',
+      { class: 'export-notes' },
+      h('h3', null, 'Before you export'),
+      chapters,
+      items.length ? h('ul', { class: 'chapter-warnings' }, ...items) : null,
+      this.mix ? null : h('p', { class: 'muted' }, 'Analyse loudness to also check the mix for its level and for silence.'),
+    );
+  }
+
+  /** Chapter problems: per region, each file gets its own chapter list, so each is checked on its own. */
   private chapterNotes(range: [number, number] | null): HTMLElement | null {
-    if (!this.opts.formats.includes('mp3') && !this.opts.chapterFiles) return null;
     const r = this.useRange && range && !this.perRegion ? range : null;
     // per region, each file gets its own chapter list, so each is checked on its own
     const list = this.perRegion
@@ -291,15 +383,7 @@ export class ExportDialog {
           return parts.length ? h('div', null, ...parts) : null;
         })()
       : chapterWarningList(r ? r[0] : 0, r ? r[1] : Infinity, () => this.render());
-    const noCover = this.opts.formats.includes('mp3') && !store.project.metadata.artwork;
-    if (!list && !noCover) return null;
-    return h(
-      'div',
-      { class: 'export-notes' },
-      h('h3', null, 'Before you export'),
-      list,
-      noCover ? h('p', { class: 'muted' }, 'No episode cover set. Add one under Chapters › Episode to embed it in the MP3.') : null,
-    );
+    return list;
   }
 
   private progress(p: ExportProgress): void {
@@ -328,7 +412,7 @@ export class ExportDialog {
     this.progressLabel.textContent = 'Analysing…';
     this.render();
     try {
-      this.mix = (await api().measureLoudness(true)).find((r) => r.kind === 'mix') ?? null;
+      this.mix = (await api().measureLoudness(true, !!this.opts.mono)).find((r) => r.kind === 'mix') ?? null;
       this.progressLabel.textContent = '';
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -342,6 +426,10 @@ export class ExportDialog {
     const name = (store.project.metadata.title || store.project.name).replace(/[\\/:*?"<>|]+/g, '_');
     const base = await api().chooseExportBase(name);
     if (!base) return;
+    // the episode (and a template saved from it) exports the same way next time
+    const settings = structuredClone(this.opts);
+    store.patch((p) => ({ ...p, exportSettings: settings }));
+    rememberSettings(settings);
     const range = this.useRange ? store.selection.range : null;
     const regions = this.perRegion ? (store.project.regions ?? []) : [];
     this.busy = true;

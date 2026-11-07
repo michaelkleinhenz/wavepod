@@ -177,26 +177,27 @@ export class OpusWriter {
   private ogg: OggStream;
   private enc: OpusScript;
   private resampler: Resampler | null;
-  private pcm = new Int16Array(FRAME * 2);
+  private pcm: Int16Array;
   private fill = 0;
   /** 48 kHz samples taken in, and encoded (incl. padding). */
   private samplesIn = 0;
   private samplesEncoded = 0;
   private sinceFlush = 0;
 
-  constructor(path: string, inputRate: number, bitrateKbps: number, tags: FlacTags) {
+  constructor(path: string, inputRate: number, bitrateKbps: number, tags: FlacTags, readonly channels: 1 | 2 = 2) {
     this.path = path;
+    this.pcm = new Int16Array(FRAME * channels);
     this.fd = fs.openSync(path, 'w');
     this.ogg = new OggStream(this.fd, (Math.random() * 0xffffffff) >>> 0);
-    this.enc = new OpusScript(OPUS_RATE, 2, OpusScript.Application.AUDIO);
+    this.enc = new OpusScript(OPUS_RATE, channels, OpusScript.Application.AUDIO);
     this.enc.encoderCTL(OPUS_SET_BITRATE, Math.round(bitrateKbps * 1000));
     this.enc.encoderCTL(OPUS_SET_SIGNAL, OPUS_SIGNAL_MUSIC);
-    this.resampler = inputRate === OPUS_RATE ? null : new Resampler(inputRate, OPUS_RATE, 2);
+    this.resampler = inputRate === OPUS_RATE ? null : new Resampler(inputRate, OPUS_RATE, channels);
 
     const head = Buffer.alloc(19);
     head.write('OpusHead', 0, 'latin1');
     head[8] = 1; // version
-    head[9] = 2; // channels
+    head[9] = channels;
     head.writeUInt16LE(PRE_SKIP, 10);
     head.writeUInt32LE(inputRate, 12);
     head.writeInt16LE(0, 16); // output gain
@@ -208,18 +209,17 @@ export class OpusWriter {
     this.ogg.flush();
   }
 
-  /** Takes `n` stereo frames at the input rate, float −1…1. */
-  write(channels: Float32Array[], n: number): void {
-    let l = channels[0];
-    let r = channels[1] ?? channels[0];
+  /** Takes `n` frames at the input rate (one array per channel), float −1…1. */
+  write(src: Float32Array[], n: number): void {
+    const ch = this.channels;
+    let x = ch === 1 ? [src[0]] : [src[0], src[1] ?? src[0]];
     let count = n;
     if (this.resampler) {
-      [l, r] = this.resampler.process([l, r], n);
-      count = l.length;
+      x = this.resampler.process(x, n);
+      count = x[0].length;
     }
     for (let i = 0; i < count; i++) {
-      this.pcm[this.fill * 2] = toI16(l[i]);
-      this.pcm[this.fill * 2 + 1] = toI16(r[i]);
+      for (let c = 0; c < ch; c++) this.pcm[this.fill * ch + c] = toI16(x[c][i]);
       this.samplesIn++;
       if (++this.fill === FRAME) this.encodeFrame();
     }
@@ -242,8 +242,7 @@ export class OpusWriter {
     const total = this.samplesIn;
     let pad = PRE_SKIP + (FRAME - this.fill) % FRAME;
     while (pad > 0 || this.fill > 0) {
-      this.pcm[this.fill * 2] = 0;
-      this.pcm[this.fill * 2 + 1] = 0;
+      for (let c = 0; c < this.channels; c++) this.pcm[this.fill * this.channels + c] = 0;
       pad--;
       if (++this.fill === FRAME) {
         const packet = this.enc.encode(Buffer.from(this.pcm.buffer, this.pcm.byteOffset, this.pcm.byteLength), FRAME);

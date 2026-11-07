@@ -6,9 +6,13 @@ Podcast apps and platforms expect episodes at a certain loudness, measured in LU
 
 | Target | Use it for |
 | --- | --- |
+| **−14 LUFS** (Spotify / YouTube) | Episodes mainly heard on Spotify or YouTube, which play at −14 LUFS. |
 | **−16 LUFS** (Podcast stereo) | Most podcasts. The default. |
 | **−19 LUFS** (Podcast mono / Apple) | Mono podcasts, Apple's recommendation. |
 | **−23 LUFS** (EBU R128 broadcast) | Radio and TV delivery. |
+| **Custom…** | Any target from −30 to −9 LUFS, for a delivery spec that asks for something else. |
+
+For a mono export, use −19 LUFS: the export dialog switches to it when you tick **Mono**. See [Exporting](export.md#formats).
 
 Together with the target you set a **true-peak ceiling**, by default −1 dBTP: the highest any peak may reach, including peaks between samples that appear after MP3 or Opus encoding.
 
