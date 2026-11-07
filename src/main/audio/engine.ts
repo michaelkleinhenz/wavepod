@@ -1175,7 +1175,7 @@ export class AudioEngine extends EventEmitter {
     const r = p.data[1] ?? l;
     const fade = Math.round(0.02 * this.project.sampleRate);
     for (let i = 0; i < frames && p.pos < l.length && p.stop > 0; i++, p.pos++) {
-      const g = p.stop < fade ? p.stop-- / fade : 1;
+      const g = p.stop <= fade ? p.stop-- / fade : 1;
       L[i] = l[p.pos] * g;
       R[i] = r[p.pos] * g;
     }
