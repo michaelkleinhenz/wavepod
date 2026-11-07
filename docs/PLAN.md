@@ -119,7 +119,7 @@ UI concern only.
 ### Phase 4 — Build, CI/CD ✅
 - `Makefile`: `install`, `dev`, `build`, `test`, `lint`, `dist`,
   `dist-linux`, `dist-win`, `dist-mac`, `clean`.
-- GitHub Actions `ci.yml`: typecheck + tests + build on Linux/Windows/macOS
+- GitHub Actions `ci.yml`: typecheck + tests + build on Linux for pull requests; `release.yml` tests and packages Linux/Windows/macOS on release tags
   for every push and PR.
 - GitHub Actions `release.yml`: on tag `v*`, build AppImage / NSIS / DMG with
   electron-builder and attach them to a GitHub Release.
