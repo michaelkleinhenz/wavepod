@@ -1164,8 +1164,10 @@ export class AudioEngine extends EventEmitter {
         n = Math.min(n, edge - this.playPos);
         tracks = this.playPos >= p.in && this.playPos < p.out ? unarmed : all;
       }
-      if (this.state === 'recording' && this.recLoop && this.takeBeep) {
-        const at = passStartIn(this.playPos, n, this.recLoop);
+      // the take beep: at the start of each loop pass, or at the punch-in point
+      const beepAt = this.state === 'recording' ? (this.recLoop ?? (p ? ([p.in, p.out] as [number, number]) : null)) : null;
+      if (beepAt && this.takeBeep) {
+        const at = passStartIn(this.playPos, n, beepAt);
         if (at >= 0) this.queueTakeBeep(done + at);
       }
       this.renderChunk(n, done, tracks);

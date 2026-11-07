@@ -305,6 +305,17 @@ describe('take beep', () => {
     engine.stop();
   });
 
+  it('beeps at the punch-in point, not during the pre-roll', () => {
+    const e = setup('mixminus');
+    engine.record({ punch: { start: 9600, end: 48000, preRoll: 4800, postRoll: 0 } });
+    expect(peaks(e, 10)[0]).toBe(0); // pre-roll
+    const [l, , g] = peaks(e, 10); // punch-in
+    expect(l).toBeGreaterThan(0.2);
+    expect(g).toBe(0);
+    expect(peaks(e, 10)[0]).toBe(0);
+    engine.stop();
+  });
+
   it('beeps on a second output that copies the main mix, and can be turned off', () => {
     const e = setup('master');
     engine.seek(4800);
