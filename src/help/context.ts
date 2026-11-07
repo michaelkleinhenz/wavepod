@@ -17,7 +17,7 @@ export const DIALOG_TOPICS: Array<[RegExp, string]> = [
   [/^export episode/i, 'export'],
   [/^send to auphonic/i, 'export/send-to-auphonic'],
   [/^loudness analysis/i, 'loudness/loudness-analysis'],
-  [/^clean up/i, 'transcript/clean-up-pauses-and-hesitations'],
+  [/^clean up/i, 'transcript/clean-up-pauses-hesitations-and-retakes'],
   [/^change words/i, 'transcript/changing-words-experimental'],
   [/^(soundcheck|can.t record yet)/i, 'recording/soundcheck'],
   [/^stop recording/i, 'recording/arm-record-stop'],

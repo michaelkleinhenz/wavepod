@@ -921,7 +921,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     flushSave();
     return runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, (p) => send(IPC.exportProgress, p));
   },
-  measureLoudness: (mixOnly?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly }),
+  measureLoudness: (mixOnly?: boolean, mono?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly, mono: !!mono }),
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
   revealFile: (p: string) => shell.showItemInFolder(p),
   openHelp: (topic?: string) => openHelp(topic),
@@ -1155,7 +1155,7 @@ function buildMenu(): void {
         { label: 'Loudness Analysis…', accelerator: 'Shift+CmdOrCtrl+L', click: menuSend('loudness-analysis') },
         { type: 'separator' },
         { label: 'Transcribe Episode', click: menuSend('transcribe') },
-        { label: 'Clean Up Pauses and Hesitations…', accelerator: 'Shift+CmdOrCtrl+K', click: menuSend('cleanup') },
+        { label: 'Clean Up Pauses, Hesitations and Retakes…', accelerator: 'Shift+CmdOrCtrl+K', click: menuSend('cleanup') },
         { type: 'separator' },
         // Shift+R is handled in the window like R, see MENU_KEY_HINTS
         { id: 'punch-in', label: 'Punch In: Re-record Selection', click: menuSend('punch-in') },

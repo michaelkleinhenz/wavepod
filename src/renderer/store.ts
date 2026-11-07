@@ -158,16 +158,18 @@ class Store {
   }
 
   undo(): void {
-    const p = this.history.undo(this.project);
-    if (!p) return;
+    const prev = this.history.undo(this.project);
+    if (!prev) return;
+    const p = keepSettings(prev, this.project);
     this.project = p;
     void api().updateProject(p, this.rev);
     this.notify('project');
   }
 
   redo(): void {
-    const p = this.history.redo(this.project);
-    if (!p) return;
+    const prev = this.history.redo(this.project);
+    if (!prev) return;
+    const p = keepSettings(prev, this.project);
     this.project = p;
     void api().updateProject(p, this.rev);
     this.notify('project');
@@ -273,4 +275,18 @@ export function saveSpeedSetting(speed: number): void {
 }
 
 // Made last: the settings readers above use constants that must exist by then.
+/**
+ * Undo and redo restore the episode's content, not settings saved along with it (how it is
+ * exported, soundcheck warnings turned off): those stay as they are now.
+ */
+function keepSettings(restored: Project, now: Project): Project {
+  if (restored.exportSettings === now.exportSettings && restored.soundcheckIgnored === now.soundcheckIgnored) return restored;
+  const { exportSettings: _e, soundcheckIgnored: _s, ...rest } = restored;
+  return {
+    ...rest,
+    ...(now.exportSettings ? { exportSettings: now.exportSettings } : {}),
+    ...(now.soundcheckIgnored ? { soundcheckIgnored: now.soundcheckIgnored } : {}),
+  };
+}
+
 export const store = new Store();

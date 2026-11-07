@@ -15,14 +15,19 @@ Tick one or more formats:
 
 More options:
 
+- **Mono (half the size, for speech)**: writes the mix files with one channel instead of two. For a show that is only voices, mono sounds the same and the file is half the size, or you can use the bytes for better quality (64 kbps mono is like 128 kbps stereo). Ticking it moves a −16 LUFS target to −19 LUFS, the mono podcast target: a mono file is measured as mono, so it reads 3 LU lower than the same audio in stereo, and −19 LUFS in mono plays as loud as −16 LUFS in stereo. Stems stay stereo.
 - **Chapter files (PSC, JSON, mp4chaps, Audacity)**: writes the chapters as Podlove Simple Chapters (XML), Podcasting 2.0 JSON, mp4chaps text and Audacity labels, for your podcast host or website.
 - **Stems (separate files for editing or delivery)**: see [Stems](#stems).
 
 Click **Export…** and choose the folder and the base name of the files. By default the export goes into the episode's `export/` folder, named after the episode title. When it is done, WavePod shows the files in your file manager.
 
+### Your export settings are remembered
+
+When you export, WavePod saves your choices (formats, bitrates, mono, chapter files, stems, loudness target and ceiling) with the episode, so its next export starts the same way. A [template](episodes.md#templates) saved from the episode keeps them too, so every new episode of the show exports the way the show always does. An episode that was never exported starts with the settings of your last export on this computer, and the very first time with one MP3 at 128 kbps, normalised to −16 LUFS, with chapter files.
+
 ## Loudness
 
-Tick **Normalise loudness** and pick the **Target** (−16, −19 or −23 LUFS) and the **Peak ceiling**. The mix is brought to the target; where peaks would go over the ceiling, a true-peak limiter holds them so the target is still reached. See [Loudness](loudness.md).
+Tick **Normalise loudness** and pick the **Target** (−14, −16, −19 or −23 LUFS, or **Custom…** to type your own) and the **Peak ceiling**. The mix is brought to the target; where peaks would go over the ceiling, a true-peak limiter holds them so the target is still reached. See [Loudness](loudness.md).
 
 **Analyse loudness** measures the mix before exporting, so you can see where you stand.
 
@@ -57,7 +62,16 @@ The dialog points out things worth fixing first:
 
 - the first chapter doesn't start at 0:00 (with a button to add one),
 - a chapter has no title,
-- no episode cover is set for the MP3.
+- the episode details have no title, podcast name, episode number or description (podcast apps show what the file's tags say),
+- no episode cover is set, or the cover can't be read, isn't square, is smaller than 1400 × 1400 px or larger than 3000 × 3000 px (what Apple Podcasts and Spotify ask for).
+
+The tag and cover checks apply when you export MP3, FLAC or Opus; a WAV carries no tags.
+
+Click **Analyse loudness** and the mix is checked as well:
+
+- it is more than 1 LU off the target, or its peaks go over the ceiling, while **Normalise loudness** is off;
+- it is so quiet that normalising would raise it by more than 12 dB, and the room noise with it;
+- it has **dead air**: 5 seconds or more of silence. Click a time to close the dialog and put the playhead there.
 
 Set the cover and episode details in the **Chapters** view. See [Chapters and markers](chapters.md#episode-details).
 

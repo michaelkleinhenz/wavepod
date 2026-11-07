@@ -1,6 +1,6 @@
 # Transcript and text editing
 
-WavePod can turn your episode into text and let you edit the audio by editing the text: delete words to cut them, let WavePod find pauses and filler words, and (experimentally) change words in the speaker's own voice.
+WavePod can turn your episode into text and let you edit the audio by editing the text: delete words to cut them, let WavePod find pauses, filler words and retakes, and (experimentally) change words in the speaker's own voice.
 
 Transcripts are made by **ElevenLabs** speech-to-text (Scribe), an online service. You need an ElevenLabs account and API key; transcribing uses credits on your account.
 
@@ -44,19 +44,29 @@ The panel shows the episode as text, one paragraph per speaker turn. Hesitations
 
 AI agents can read the transcript (for show notes or chapter titles) through the `get_transcript` tool. See [AI agents (MCP)](ai-agents.md).
 
-## Clean up pauses and hesitations
+## Clean up pauses, hesitations and retakes
 
-**Edit › Clean Up Pauses and Hesitations…** (`Shift+Ctrl+K`, or **Clean up…** in the transcript) finds:
+**Edit › Clean Up Pauses, Hesitations and Retakes…** (`Shift+Ctrl+K`, or **Clean up…** in the transcript) finds:
 
 - **pauses** in the mix longer than a set length (1.5 s by default), and shortens them to a set length (0.7 s) by cutting out their middle, so the breaths at both ends stay;
-- **hesitations** from the transcript (äh, ähm, öhm, hm; uh, um, erm in English). Each cut is moved onto the quiet points around the sound. If someone else talks at that moment, the hesitation is muted on its own track instead of cut.
+- **hesitations** from the transcript (äh, ähm, öhm, hm; uh, um, erm in English). Each cut is moved onto the quiet points around the sound. If someone else talks at that moment, the hesitation is muted on its own track instead of cut;
+- **retakes and false starts** from the transcript: a speaker starts a sentence, breaks off or gets it wrong, and says it again. Everything from the first attempt up to the start of the last one is cut, so the last attempt stays and the gap closes. Three tries at one sentence give one cut that keeps the third.
+
+How a retake is recognised:
+
+- The same speaker starts a sentence again with the same words within 20 seconds: at least three words, or two when the first attempt broke off right there ("I think— I think that…").
+- When the first attempt was a finished sentence, the next one has to repeat at least five words, so two sentences that merely begin alike ("I think that's right. I think that we…") are left alone.
+- Nobody else may talk in between, except for a quick "mhm" (which is cut with the retake).
+- Small spelling differences between the two attempts in the transcript are allowed.
+
+The list shows each retake with the words that are cut (struck through) and the start of the attempt that stays. Listen with **▶** before you apply: a speaker may repeat words on purpose.
 
 Listen to each find with **▶** (from a little before to a little after), untick what should stay, then:
 
 - **Apply** to make all the cuts (one undo step), or
 - **Mark only** to put edit markers there and decide by hand.
 
-Hesitations need a transcript first; pauses don't.
+Hesitations and retakes need a transcript first; pauses don't.
 
 ## Changing words (experimental)
 

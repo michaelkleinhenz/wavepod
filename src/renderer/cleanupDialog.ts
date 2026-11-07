@@ -1,5 +1,6 @@
-// Edit › Clean Up Pauses and Hesitations…: finds long pauses (from the audio) and hesitations
-// (from the transcript), lists them to listen to and untick, and takes them out in one undo step.
+// Edit › Clean Up Pauses, Hesitations and Retakes…: finds long pauses (from the audio), and
+// hesitations and retakes (from the transcript), lists them to listen to and untick, and takes
+// them out in one undo step.
 import type { CleanupItem, CleanupOptions, Project } from '../shared/types';
 import { CLEANUP_DEFAULTS, applyCleanup, cleanupSaving } from '../core/cleanup';
 import { addMarker } from '../core/project';
@@ -63,8 +64,10 @@ export class CleanupDialog {
 
   private async find(): Promise<void> {
     const hasWords = transcripts().words().length > 0;
-    const opts = { ...this.opts, fillers: this.opts.fillers && hasWords };
-    if (!opts.pauses && !opts.fillers) return toast(this.opts.fillers && !hasWords ? 'Transcribe the episode first to find hesitations' : 'Choose what to look for');
+    const opts = { ...this.opts, fillers: this.opts.fillers && hasWords, retakes: !!this.opts.retakes && hasWords };
+    if (!opts.pauses && !opts.fillers && !opts.retakes) {
+      return toast((this.opts.fillers || this.opts.retakes) && !hasWords ? 'Transcribe the episode first to find hesitations and retakes' : 'Choose what to look for');
+    }
     this.busy = true;
     this.render();
     try {
@@ -146,6 +149,18 @@ export class CleanupDialog {
         'Remove hesitations (äh, ähm, öhm, hm, uh, um…)',
         hasWords ? null : h('span', { class: 'muted' }, ' · transcribe the episode first'),
       ),
+      h(
+        'label',
+        {
+          class: 'check',
+          title: hasWords
+            ? 'A sentence said again by the same speaker within 20 seconds: the earlier attempt is cut, the last one stays'
+            : 'Needs a transcript: View › Transcript › Transcribe',
+        },
+        h('input', { type: 'checkbox', checked: !!this.opts.retakes && hasWords, disabled: !hasWords, onchange: (e: Event) => this.setOpt({ retakes: (e.target as HTMLInputElement).checked }) }),
+        'Remove retakes and false starts (keep the last attempt)',
+        hasWords ? null : h('span', { class: 'muted' }, ' · transcribe the episode first'),
+      ),
       h('div', { class: 'row' }, h('button', { class: 'primary', disabled: this.busy, onclick: () => void this.find() }, this.busy ? 'Looking…' : items ? 'Find again' : 'Find')),
     );
     const list = items
@@ -164,7 +179,7 @@ export class CleanupDialog {
                   this.render();
                 },
               }),
-              `${items.filter((i) => i.kind === 'pause').length} pauses, ${items.filter((i) => i.kind === 'filler').length} hesitations`,
+              summary(items),
             ),
             ...items.map((item) =>
               h(
@@ -186,7 +201,10 @@ export class CleanupDialog {
                   { class: 'cleanup-what' },
                   item.kind === 'pause'
                     ? `Pause ${((item.pauseLength ?? 0) / sr).toFixed(1)} s → ${(((item.pauseLength ?? 0) - (item.end - item.start)) / sr).toFixed(1)} s`
-                    : h('span', null, h('b', null, `“${item.text}”`), ` ${names.get(item.trackId ?? '') ?? ''}`),
+                    : item.kind === 'retake'
+                      ? h('span', { title: `Cut: ${item.text ?? ''}\nKept: ${item.kept ?? ''} …` },
+                          'Retake ', h('s', null, `“${item.text}”`), ` → “${item.kept} …” `, h('span', { class: 'muted' }, names.get(item.trackId ?? '') ?? ''))
+                      : h('span', null, h('b', null, `“${item.text}”`), ` ${names.get(item.trackId ?? '') ?? ''}`),
                 ),
                 item.kind === 'filler'
                   ? h(
@@ -206,15 +224,15 @@ export class CleanupDialog {
               ),
             ),
           )
-        : h('p', { class: 'muted' }, 'Nothing found: no pause is that long, and no hesitations in the transcript.')
+        : h('p', { class: 'muted' }, 'Nothing found: no pause is that long, and no hesitations or retakes in the transcript.')
       : stale
         ? h('p', { class: 'warning' }, 'The episode changed since the search. Find again.')
         : null;
     const dialog = h(
       'div',
       { class: 'dialog cleanup-dialog' },
-      h('h2', null, 'Clean up pauses and hesitations'),
-      h('p', { class: 'muted' }, 'Pauses are found in the mix (the middle of each is taken out, so breaths stay). Hesitations come from the transcript; each cut is moved to the quiet points around the sound. Untick what should stay, listen with ▶.'),
+      h('h2', null, 'Clean up pauses, hesitations and retakes'),
+      h('p', { class: 'muted' }, 'Pauses are found in the mix (the middle of each is taken out, so breaths stay). Hesitations and retakes come from the transcript; each cut is moved to the quiet points around it. For a retake, everything from the first attempt up to the last one is cut. Untick what should stay, listen with ▶.'),
       options,
       list,
       h(
@@ -231,7 +249,18 @@ export class CleanupDialog {
 }
 
 function label(i: CleanupItem): string {
-  return i.kind === 'pause' ? 'Long pause' : `Hesitation “${i.text ?? ''}”`;
+  if (i.kind === 'pause') return 'Long pause';
+  if (i.kind === 'retake') return `Retake “${i.text ?? ''}”`;
+  return `Hesitation “${i.text ?? ''}”`;
+}
+
+function summary(items: CleanupItem[]): string {
+  const n = (kind: CleanupItem['kind'], word: string) => {
+    const k = items.filter((i) => i.kind === kind).length;
+    return `${k} ${word}${k === 1 ? '' : 's'}`;
+  };
+  const retakes = items.some((i) => i.kind === 'retake');
+  return `${n('pause', 'pause')}, ${n('filler', 'hesitation')}${retakes ? `, ${n('retake', 'retake')}` : ''}`;
 }
 
 function seconds(value: number, min: number, max: number, set: (v: number) => void): HTMLInputElement {

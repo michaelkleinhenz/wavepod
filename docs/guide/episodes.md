@@ -46,7 +46,9 @@ A template stores how an episode is set up, so the next one starts ready to reco
 
 - the tracks with their names, colours, folders and input channels,
 - every filter stack including Master FX and VST3 plug-in settings,
-- the soundboard jingles.
+- the soundboard jingles,
+- the show's episode details: podcast name, author, cover and category,
+- how the show exports (formats, bitrates, mono, loudness target), once the episode was exported. See [Exporting](export.md#your-export-settings-are-remembered).
 
 A template holds no recordings, markers, volume lines or automation.
 

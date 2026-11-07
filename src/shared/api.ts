@@ -311,7 +311,8 @@ export interface WavePodApi {
   chooseExportBase(defaultName: string): Promise<string | null>;
   exportProject(opts: ExportOptions): Promise<ExportResult>;
   /** Loudness of the mix and (unless `mixOnly`) of every track with clips. */
-  measureLoudness(mixOnly?: boolean): Promise<LoudnessReport[]>;
+  /** `mono`: the mix folded to mono, as a mono export is measured. */
+  measureLoudness(mixOnly?: boolean, mono?: boolean): Promise<LoudnessReport[]>;
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   revealFile(path: string): Promise<void>;
@@ -347,7 +348,7 @@ export interface WavePodApi {
   speakWords(input: { trackId: string; voiceId: string; text: string; previousText?: string; nextText?: string; mode: SpeechEditMode; at: number }): Promise<SpokenWords>;
   /** Saves generated words as a media file with its own transcript. */
   storeSpokenWords(text: string, spoken: Pick<SpokenWords, 'samples' | 'pad'>): Promise<{ file: string; length: number }>;
-  /** Finds long pauses and hesitations to take out (pauses from the audio, hesitations from the transcript). */
+  /** Finds long pauses, hesitations and retakes to take out (pauses from the audio, the rest from the transcript). */
   findCleanup(opts: CleanupOptions): Promise<CleanupItem[]>;
 
   // VST3 plug-ins (hosted in a separate process; editors are never shown)

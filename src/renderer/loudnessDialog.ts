@@ -3,15 +3,55 @@ import type { Clip, LoudnessReport, LoudnessStats } from '../shared/types';
 import { normalizationGain, normalizedClipGain, type LoudnessTarget } from '../core/loudness';
 import { findClip, updateClip } from '../core/project';
 import { formatTimestamp } from '../shared/time';
+import { CUSTOM_TARGET_MAX, CUSTOM_TARGET_MIN, LOUDNESS_TARGETS, PEAK_CEILINGS, clampTarget, isPresetTarget } from '../core/exportSettings';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
 
-export const LOUDNESS_PRESETS = [
-  { label: 'Podcast stereo (−16 LUFS)', value: -16 },
-  { label: 'Podcast mono / Apple (−19 LUFS)', value: -19 },
-  { label: 'EBU R128 broadcast (−23 LUFS)', value: -23 },
-];
-const CEILINGS = [-0.1, -1, -2, -3];
+const CEILINGS = PEAK_CEILINGS;
+
+function customStart(lufs: number): number {
+  let v = clampTarget(lufs - 1) ?? -18;
+  while (isPresetTarget(v)) v -= 0.5;
+  return v;
+}
+
+/**
+ * The loudness target as a list of the usual targets plus "Custom…"; a custom target gets a field
+ * to type it in (−30 to −9 LUFS). Shared by the Loudness and the Export dialogs.
+ */
+export function targetPicker(lufs: number, onChange: (lufs: number) => void, disabled = false): HTMLElement {
+  const custom = !isPresetTarget(lufs);
+  const select = h(
+    'select',
+    {
+      disabled,
+      onchange: (e: Event) => {
+        const v = (e.target as HTMLSelectElement).value;
+        // a custom target starts 1 LU under the target chosen so far (never a listed one), to type over
+        onChange(v === 'custom' ? customStart(lufs) : Number(v));
+      },
+    },
+    ...LOUDNESS_TARGETS.map((p) => h('option', { value: String(p.value), selected: !custom && p.value === lufs }, p.label)),
+    h('option', { value: 'custom', selected: custom }, custom ? `Custom (${lufs} LUFS)` : 'Custom…'),
+  );
+  const field = custom
+    ? h('input', {
+        type: 'number',
+        class: 'lufs-custom',
+        title: `Your own target, ${CUSTOM_TARGET_MIN} to ${CUSTOM_TARGET_MAX} LUFS`,
+        min: String(CUSTOM_TARGET_MIN),
+        max: String(CUSTOM_TARGET_MAX),
+        step: '0.5',
+        value: String(lufs),
+        disabled,
+        onchange: (e: Event) => {
+          const v = clampTarget(Number((e.target as HTMLInputElement).value));
+          if (v !== null) onChange(v);
+        },
+      })
+    : null;
+  return h('span', { class: 'lufs-picker' }, select, field, custom ? h('span', { class: 'muted' }, 'LUFS') : null);
+}
 
 // Falls back to the key used while the app was called SoundPod.
 const TARGET_KEY = 'wavepod.loudnessTarget';
@@ -258,8 +298,7 @@ export class LoudnessDialog {
       'div',
       { class: 'row loudness-target' },
       h('label', { class: 'field' }, h('span', null, 'Target'),
-        h('select', { onchange: (e: Event) => this.setTarget({ lufs: Number((e.target as HTMLSelectElement).value) }) },
-          ...LOUDNESS_PRESETS.map((p) => h('option', { value: String(p.value), selected: p.value === t.lufs }, p.label)))),
+        targetPicker(t.lufs, (lufs) => this.setTarget({ lufs }))),
       h('label', { class: 'field' }, h('span', null, 'True-peak ceiling'),
         h('select', { onchange: (e: Event) => this.setTarget({ ceiling: Number((e.target as HTMLSelectElement).value) }) },
           ...CEILINGS.map((c) => h('option', { value: String(c), selected: c === t.ceiling }, `${c} dBTP`)))),

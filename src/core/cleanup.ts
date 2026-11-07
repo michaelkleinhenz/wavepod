@@ -5,7 +5,7 @@ import type { CleanupItem, CleanupOptions, Frames, Project, TimelineWord } from 
 import { rippleDelete } from './project';
 import { addMuteRegion } from './muteRegions';
 
-export const CLEANUP_DEFAULTS: CleanupOptions = { pauses: true, maxPause: 1.5, keepPause: 0.7, fillers: true };
+export const CLEANUP_DEFAULTS: CleanupOptions = { pauses: true, maxPause: 1.5, keepPause: 0.7, fillers: true, retakes: true };
 /** Level analysis step for pause finding. */
 export const LEVEL_HOP_SECONDS = 0.01;
 

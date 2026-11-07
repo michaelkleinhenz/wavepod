@@ -4,6 +4,7 @@ import type { CleanupItem, CleanupOptions, Project, TimelineWord } from '../shar
 import { Mixer, ReaderCache } from './mixer';
 import { projectLength } from './project';
 import { LEVEL_HOP_SECONDS, fillerItems, findPauses, levelsDb, pauseItems, refineCut } from './cleanup';
+import { findRetakes, retakeSearchRange } from './retakes';
 
 const BLOCK = 8192;
 
@@ -13,7 +14,8 @@ export function scanCleanup(project: Project, dir: string, words: TimelineWord[]
   const sr = project.sampleRate;
   try {
     const items: CleanupItem[] = [];
-    const fillers = opts.fillers ? fillerItems(words) : [];
+    // hesitations and retakes are both placed on the quiet points of their own track
+    const fillers = [...(opts.fillers ? fillerItems(words) : []), ...(opts.retakes ? findRetakes(words, sr) : [])];
     const total = (opts.pauses ? projectLength(project) : 0) + fillers.length * sr;
     let done = 0;
     if (opts.pauses) {
@@ -43,12 +45,13 @@ export function scanCleanup(project: Project, dir: string, words: TimelineWord[]
       for (const item of fillers) {
         const track = project.tracks.find((t) => t.id === item.trackId);
         if (!track) continue;
-        const from = Math.max(0, item.start - pad);
-        const n = item.end + pad - from;
+        const [a, b] = item.kind === 'retake' ? retakeSearchRange(item, sr) : [item.start, item.end];
+        const from = Math.max(0, a - pad);
+        const n = b + pad - from;
         const buf = [new Float32Array(n), new Float32Array(n)];
         mixer.renderStems([track], from, n, buf);
         const mono = buf[0].map((v, i) => (v + buf[1][i]) / 2);
-        const [start, end] = refineCut(levelsDb(mono, hop), hop, from, item.start, item.end, sr);
+        const [start, end] = refineCut(levelsDb(mono, hop), hop, from, a, b, sr);
         items.push({ ...item, start, end });
         done += sr;
         progress?.(done / Math.max(1, total));

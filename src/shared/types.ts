@@ -283,6 +283,8 @@ export interface Project {
   soundcheckIgnored?: string[];
   /** The audio drama script, if one was imported (View › Script). */
   script?: Script;
+  /** How the episode was last exported (formats, bitrate, mono, loudness target). */
+  exportSettings?: ExportSettings;
 }
 
 // ---------------------------------------------------------------- scripts (audio drama)
@@ -441,13 +443,15 @@ export interface TranscribeProgress {
 /** One suggested edit of the cleanup: a pause to shorten or a hesitation to take out. */
 export interface CleanupItem {
   id: string;
-  kind: 'pause' | 'filler';
+  kind: 'pause' | 'filler' | 'retake';
   /** Timeline range to cut (pause: the part taken out; filler: the sound itself). */
   start: Frames;
   end: Frames;
-  /** Filler: the track it was said on, and the word. */
+  /** Filler: the track it was said on, and the word. Retake: the track, and the first attempt's words. */
   trackId?: string;
   text?: string;
+  /** Retake: the start of the attempt that is kept (it begins where the cut ends). */
+  kept?: string;
   /** Pause: its full length before shortening. */
   pauseLength?: Frames;
   /** cut = ripple cut on all tracks; mute = silenced on its own track (someone else talks at the same time). */
@@ -461,6 +465,8 @@ export interface CleanupOptions {
   /** …are shortened to this (seconds). */
   keepPause: number;
   fillers: boolean;
+  /** Find sentences said again (false starts, retakes) and cut the earlier attempt. */
+  retakes?: boolean;
 }
 
 // ---------------------------------------------------------------- devices
@@ -691,9 +697,14 @@ export interface ExportOptions {
   /** With DME stems: also a music & effects mix (M&E), the international version without dialogue. */
   stemMe?: boolean;
   chapterFiles: boolean;
+  /** Mix files in mono (stems stay stereo). Loudness is then measured on the mono file, as players do. */
+  mono?: boolean;
   start?: Frames;
   end?: Frames;
 }
+
+/** The export dialog's choices, kept with the episode and its template so each show exports the same way. */
+export type ExportSettings = Omit<ExportOptions, 'outputBase' | 'start' | 'end'>;
 
 export interface ExportResult {
   files: string[];
@@ -758,6 +769,8 @@ export interface LoudnessStats {
   samplePeak: number;
   /** Seconds of audio measured. */
   duration: number;
+  /** Stretches of near silence (start and end in seconds) of SILENCE_MIN_SECONDS or longer: dead air. */
+  silences?: Array<[number, number]>;
   /** Short-term loudness curve in LUFS, one value per `historyStep` seconds (after the first 3 s). */
   history: number[];
   historyStep: number;

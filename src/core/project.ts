@@ -9,6 +9,7 @@ import { migrateTrackEnvelope, sortPoints } from './envelope';
 import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
 import { clampRate } from './clipSound';
 import { audibleTracks, groupFolderTracks, normalizeFolders } from './folders';
+import { normalizeExportSettings } from './exportSettings';
 import { normalizeScript } from './script';
 import { insertIntoTakes, normalizeTakes, rippleTakes } from './takes';
 
@@ -112,6 +113,9 @@ export function normalizeProject(raw: Partial<Project>): Project {
   const script = normalizeScript(raw.script);
   if (script) p.script = script;
   else delete p.script;
+  const exportSettings = normalizeExportSettings(raw.exportSettings);
+  if (exportSettings) p.exportSettings = exportSettings;
+  else delete p.exportSettings;
   return p;
 }
 

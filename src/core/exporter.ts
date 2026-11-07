@@ -42,7 +42,8 @@ export class LiveTap {
   /** Adds rendered audio (also measured by `meter`). */
   push(block: Float32Array[], frames: number): void {
     this.meter.push(block, frames);
-    const [l, r] = block;
+    const l = block[0];
+    const r = block[1] ?? block[0];
     const peaks = this.peaks;
     const last = this.columns - 1;
     for (let i = 0; i < frames; i++) {
@@ -97,17 +98,33 @@ function renderRange(
   }
 }
 
-export function measureLoudness(project: Project, projectDir: string, tracks?: Track[]): LoudnessStats {
+/** Loudness of the mix (or of `tracks`); `mono` measures it folded to mono, as a mono export plays. */
+export function measureLoudness(project: Project, projectDir: string, tracks?: Track[], mono = false): LoudnessStats {
   const readers = new ReaderCache(projectDir);
   const mixer = new Mixer(project, readers);
   try {
-    const meter = new LoudnessMeter(project.sampleRate, 2);
-    renderRange(mixer, 0, projectLength(project), tracks ?? null, (b, n) => meter.push(b, n));
+    const meter = new LoudnessMeter(project.sampleRate, mono ? 1 : 2);
+    const shape = shaper(mono);
+    renderRange(mixer, 0, projectLength(project), tracks ?? null, (b, n) => meter.push(shape(b, n), n));
     return meter.stats();
   } finally {
     mixer.dispose();
     readers.closeAll();
   }
+}
+
+/** Folds a stereo block to mono (the average of both channels) into `dst`. */
+export function foldToMono(block: Float32Array[], n: number, dst: Float32Array): Float32Array {
+  const [l, r] = block;
+  for (let i = 0; i < n; i++) dst[i] = (l[i] + r[i]) * 0.5;
+  return dst;
+}
+
+/** The mix as written: stereo as rendered, or folded to mono. Reuses its buffer between blocks. */
+function shaper(mono: boolean): (block: Float32Array[], n: number) => Float32Array[] {
+  if (!mono) return (block) => block;
+  const buf = new Float32Array(BLOCK);
+  return (block, n) => [foldToMono(block, n, buf)];
 }
 
 function toInt16(src: Float32Array, n: number, gain: number, dst: Int16Array): Int16Array {
@@ -166,14 +183,17 @@ const MAX_FIT_PASSES = 3;
 const FIT_TOLERANCE_LU = 0.1;
 
 /** Integrated loudness of the mix with `gainDb` applied and its peaks limited at `ceilingDb`. */
-function limitedLoudness(mixer: Mixer, start: number, end: number, sampleRate: number, gainDb: number, ceilingDb: number, onProgress: (f: number) => void): number {
-  const meter = new LoudnessMeter(sampleRate, 2);
+function limitedLoudness(mixer: Mixer, start: number, end: number, sampleRate: number, gainDb: number, ceilingDb: number, mono: boolean, onProgress: (f: number) => void): number {
+  const meter = new LoudnessMeter(sampleRate, mono ? 1 : 2);
   const lim = makeLimiter(sampleRate, ceilingDb);
+  const shape = shaper(mono);
   const out = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
   const g = dbToGain(gainDb);
   renderRange(mixer, start, end, null, (b, n) => {
-    for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) b[c][i] *= g;
-    lim.process(b[0], b[1], n, out[0], out[1]);
+    const x = shape(b, n);
+    for (const ch of x) for (let i = 0; i < n; i++) ch[i] *= g;
+    // mono: the same signal on both sides of the (linked) limiter, so one output is the mono result
+    lim.process(x[0], x[1] ?? x[0], n, out[0], out[1]);
     meter.push(out, n);
   }, onProgress);
   const tail = [new Float32Array(lim.latency), new Float32Array(lim.latency)];
@@ -247,13 +267,16 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     const durationSeconds = (end - start) / project.sampleRate;
     fs.mkdirSync(path.dirname(opts.outputBase), { recursive: true });
 
-    // Pass 1: loudness of the mix.
-    const meter = new LoudnessMeter(project.sampleRate, 2);
+    // Pass 1: loudness of the mix, as it will be written (a mono file is measured as mono)
+    const mono = !!opts.mono;
+    const channels = mono ? 1 : 2;
+    const shape = shaper(mono);
+    const meter = new LoudnessMeter(project.sampleRate, channels);
     const measureTap = new LiveTap(end - start, meter);
     // the mix is measured for normalisation and rendered for mix files; stems alone need neither
     const mixFiles = opts.formats.length > 0;
     if (mixFiles || opts.normalize) {
-      renderRange(mixer, start, end, null, (b, n) => measureTap.push(b, n), (f) => progress({ phase: 'Measuring loudness', fraction: f, ...measureTap.take() }));
+      renderRange(mixer, start, end, null, (b, n) => measureTap.push(shape(b, n), n), (f) => progress({ phase: 'Measuring loudness', fraction: f, ...measureTap.take() }));
     }
     const loudness = meter.integrated();
     const peakDb = meter.peakDb();
@@ -269,7 +292,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         // limiting takes a little loudness off: measure the limited mix and make up for it,
         // again if the make-up gain itself got limited enough to miss
         for (let pass = 1; pass <= MAX_FIT_PASSES; pass++) {
-          const reached = limitedLoudness(mixer, start, end, project.sampleRate, appliedGainDb, opts.peakCeiling, (f) =>
+          const reached = limitedLoudness(mixer, start, end, project.sampleRate, appliedGainDb, opts.peakCeiling, mono, (f) =>
             progress({ phase: pass === 1 ? 'Fitting the limiter' : `Fitting the limiter (${pass})`, fraction: f }),
           );
           const short = opts.targetLufs - reached;
@@ -284,7 +307,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     const limiter = limiting ? makeLimiter(project.sampleRate, opts.peakCeiling) : null;
 
     // Pass 2: write outputs.
-    const wav = opts.formats.includes('wav') ? new WavWriter(`${opts.outputBase}.wav`, 2, project.sampleRate, 24, 1 << 20) : null;
+    const wav = opts.formats.includes('wav') ? new WavWriter(`${opts.outputBase}.wav`, channels, project.sampleRate, 24, 1 << 20) : null;
     let mp3Fd: number | null = null;
     let encoder: Mp3Encoder | null = null;
     const chapters: Id3Chapter[] = markersToChapters(project, start)
@@ -306,8 +329,8 @@ export function exportProject(project: Project, projectDir: string, opts: Export
       chapters,
       ...(cover ? { cover } : {}),
     };
-    const flac = opts.formats.includes('flac') ? new FlacWriter(`${opts.outputBase}.flac`, 2, project.sampleRate, 24, textTags) : null;
-    const opus = opts.formats.includes('opus') ? new OpusWriter(`${opts.outputBase}.opus`, project.sampleRate, opts.opusBitrate ?? 64, textTags) : null;
+    const flac = opts.formats.includes('flac') ? new FlacWriter(`${opts.outputBase}.flac`, channels, project.sampleRate, 24, textTags) : null;
+    const opus = opts.formats.includes('opus') ? new OpusWriter(`${opts.outputBase}.opus`, project.sampleRate, opts.opusBitrate ?? 64, textTags, channels) : null;
     if (opts.formats.includes('mp3')) {
       const mp3Path = `${opts.outputBase}.mp3`;
       mp3Fd = fs.openSync(mp3Path, 'w');
@@ -325,13 +348,13 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         durationSeconds,
       });
       fs.writeSync(mp3Fd, tag);
-      encoder = new Mp3Encoder(2, project.sampleRate, opts.mp3Bitrate);
+      encoder = new Mp3Encoder(channels, project.sampleRate, opts.mp3Bitrate);
     }
     const l16 = new Int16Array(BLOCK);
     const r16 = new Int16Array(BLOCK);
     const scaled = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     // waveform and loudness of the audio as written (after normalisation)
-    const renderTap = new LiveTap(end - start, new LoudnessMeter(project.sampleRate, 2));
+    const renderTap = new LiveTap(end - start, new LoudnessMeter(project.sampleRate, channels));
     const emit = (out: Float32Array[], n: number): void => {
       if (n <= 0) return;
       renderTap.push(out, n);
@@ -339,7 +362,8 @@ export function exportProject(project: Project, projectDir: string, opts: Export
       if (flac) flac.write(out, n);
       if (opus) opus.write(out, n);
       if (encoder && mp3Fd !== null) {
-        const data = encoder.encodeBuffer(toInt16(out[0], n, 1, l16).subarray(0, n), toInt16(out[1], n, 1, r16).subarray(0, n));
+        const left = toInt16(out[0], n, 1, l16).subarray(0, n);
+        const data = mono ? encoder.encodeBuffer(left) : encoder.encodeBuffer(left, toInt16(out[1], n, 1, r16).subarray(0, n));
         if (data.length) fs.writeSync(mp3Fd, data);
       }
     };
@@ -353,12 +377,14 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         end,
         null,
         (b, n) => {
-          for (let c = 0; c < 2; c++) for (let i = 0; i < n; i++) scaled[c][i] = b[c][i] * gain;
-          if (!limiter) return emit(scaled, n);
-          limiter.process(scaled[0], scaled[1], n, limited[0], limited[1]);
+          const x = shape(b, n);
+          for (let c = 0; c < channels; c++) for (let i = 0; i < n; i++) scaled[c][i] = x[c][i] * gain;
+          const sc = scaled.slice(0, channels);
+          if (!limiter) return emit(sc, n);
+          limiter.process(scaled[0], scaled[channels - 1], n, limited[0], limited[1]);
           const drop = Math.min(skip, n);
           skip -= drop;
-          emit([limited[0].subarray(drop), limited[1].subarray(drop)], n - drop);
+          emit(limited.slice(0, channels).map((ch) => ch.subarray(drop)), n - drop);
         },
         (f) => progress({ phase: 'Rendering mix', fraction: f, ...renderTap.take() }),
       );
@@ -366,7 +392,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         const tail = [new Float32Array(limiter.latency), new Float32Array(limiter.latency)];
         limiter.flush(tail[0], tail[1]);
         // what is still to skip here is left over from a render shorter than the delay
-        emit([tail[0].subarray(skip), tail[1].subarray(skip)], limiter.latency - skip);
+        emit(tail.slice(0, channels).map((ch) => ch.subarray(skip)), limiter.latency - skip);
       }
     }
     if (wav) {

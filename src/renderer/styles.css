@@ -456,6 +456,10 @@ ul.chapter-warnings { margin: 8px 0 0; padding-left: 18px; }
 ul.chapter-warnings li { margin: 4px 0; }
 ul.chapter-warnings button { margin-left: 8px; }
 .export-notes { margin-top: 8px; }
+.lufs-picker { display: inline-flex; gap: 6px; align-items: center; }
+.lufs-custom { width: 72px; }
+.export-hint { font-size: 12px; margin: 6px 0 0; max-width: 320px; }
+ul.chapter-warnings button.link { margin-left: 6px; }
 .export-stems { margin-top: 8px; }
 .export-stems p { margin: 4px 0; font-size: 12px; }
 .stem-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
