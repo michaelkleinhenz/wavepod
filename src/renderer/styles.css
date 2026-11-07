@@ -693,11 +693,11 @@ body.script-open .script-btn { background: var(--panel-2); color: var(--text); }
 .script-open-only { display: flex; align-items: center; gap: 4px; color: var(--muted); white-space: nowrap; }
 .script-cast { padding: 0 14px 8px; border-bottom: 1px solid var(--border); }
 .script-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.script-chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid color-mix(in srgb, var(--char-color) 55%, transparent); background: color-mix(in srgb, var(--char-color) 12%, transparent); }
+.script-panel button.script-chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid color-mix(in srgb, var(--char-color) 55%, transparent); background: color-mix(in srgb, var(--char-color) 12%, transparent); }
 .script-chip .name { color: var(--char-color); font-weight: 700; }
 .script-chip .count { color: var(--muted); font-variant-numeric: tabular-nums; }
 .script-chip.done .count { color: var(--ok); }
-.script-chip.on { background: var(--char-color); }
+.script-panel button.script-chip.on { border-color: var(--char-color); background: var(--char-color); }
 .script-chip.on .name, .script-chip.on .count { color: #111; }
 .script-tracks { margin-top: 6px; font-size: 12px; }
 .script-tracks summary { cursor: pointer; color: var(--muted); }

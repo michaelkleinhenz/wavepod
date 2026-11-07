@@ -678,3 +678,18 @@ html[data-mode="drama"] .spots { opacity: 1; }
 @keyframes playhead { to { left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .mus::after { display: none; } }
 @media (max-width: 640px) { .studio-too .viz-chips { height: auto !important; padding: 16px 12px; } }
+
+/* script card (audio drama) */
+.viz-script { display: grid; gap: 6px; padding: 12px 14px; height: 150px; align-content: center; }
+.sl { display: grid; grid-template-columns: 16px auto 1fr auto; gap: 8px; align-items: center; font-size: .72rem; color: var(--dim); white-space: nowrap; }
+.sl span { overflow: hidden; text-overflow: ellipsis; }
+.sl b { font: 700 .66rem "JetBrains Mono", monospace; color: var(--c); letter-spacing: .04em; }
+.sl em { font-style: normal; font-size: .6rem; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 999px; }
+.sl i { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line-2); position: relative; animation: tick 4.8s infinite; }
+.sl i::after { content: "✓"; position: absolute; inset: 0; display: grid; place-content: center; font-size: 10px; color: #fff; opacity: 0; animation: tickmark 4.8s infinite; }
+.sl:nth-child(3) i, .sl:nth-child(3) i::after { animation-delay: .8s; }
+.sl:nth-child(4) i, .sl:nth-child(4) i::after { animation-delay: 1.6s; }
+.sl-scene { font: 700 .62rem "JetBrains Mono", monospace; letter-spacing: .08em; color: var(--text); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+@keyframes tick { 0%, 15% { background: transparent; border-color: var(--line-2); } 22%, 88% { background: #43a047; border-color: #43a047; } 100% { background: transparent; } }
+@keyframes tickmark { 0%, 15% { opacity: 0; } 22%, 88% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sl i, .sl i::after { animation: none; background: #43a047; border-color: #43a047; opacity: 1; } }
