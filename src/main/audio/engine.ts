@@ -40,6 +40,7 @@ import { clearJournal, writeJournal, type RecordingJournal } from '../../core/re
 import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
 import { markersCrossed, pingTone } from '../../core/markerPing';
+import { punchPlan, punchTakeClip, type PunchPlan, type PunchRequest } from '../../core/punch';
 import { SimulatedBackend } from './simulatedBackend';
 
 export const VIRTUAL_API = 'virtual';
@@ -160,6 +161,8 @@ export class AudioEngine extends EventEmitter {
   private loop: [number, number] | null = null;
   private recordStart = 0;
   private recordedFrames = 0;
+  /** Set while a punch-in pass runs: the take only replaces [in, out), and the pass ends at `until`. */
+  private punch: PunchPlan | null = null;
   private recorders: Recorder[] = [];
   /** Where the take's audio goes; set while recording. */
   private sink: TakeSink | null = null;
@@ -593,9 +596,15 @@ export class AudioEngine extends EventEmitter {
     return clipsEnd(this.project);
   }
 
-  /** Starts recording all armed tracks at the playhead. Returns the files being written. */
-  record(): string[] {
+  /**
+   * Starts recording all armed tracks at the playhead. Returns the files being written.
+   * With `punch`, it is a punch-in pass instead: playback and the take start the pre-roll before
+   * the range, armed tracks are heard until the punch-in, and the pass stops by itself after the
+   * post-roll; only the range ends up replacing the audio on the armed tracks.
+   */
+  record(punch?: PunchRequest): string[] {
     if (this.state === 'recording') return this.recorders.map((r) => r.file);
+    const plan = punch ? punchPlan(punch) : null;
     this.scrubber = null;
     if (!this.input) throw new Error('No input device is open. Choose one in Setup.');
     if (!this.projectDir) throw new Error('No project folder.');
@@ -617,6 +626,7 @@ export class AudioEngine extends EventEmitter {
     if (free !== null && free < bytesPerSecond * MIN_DISK_SECONDS) {
       throw new Error(`The disk is full: there is not even room for a minute of recording (${Math.round(free / 1e6)} MB free).`);
     }
+    const startAt = plan ? plan.from : this.playPos;
     const stamp = timestamp();
     const recorders: Recorder[] = armed.map((t) => {
       let rel = path.join('media', `${safeFileName(t.name)}-${stamp}.wav`);
@@ -640,7 +650,8 @@ export class AudioEngine extends EventEmitter {
       startedAt: new Date().toISOString(),
       sampleRate: sr,
       bitDepth,
-      recordStart: this.playPos,
+      recordStart: startAt,
+      ...(plan ? { punch: [plan.in, plan.out] as [number, number] } : {}),
       takes: recorders.map((r) => ({
         trackId: r.trackId,
         trackName: armed.find((t) => t.id === r.trackId)?.name ?? 'Track',
@@ -668,8 +679,11 @@ export class AudioEngine extends EventEmitter {
     });
     this.journalSaved = { rev: 0, at: performance.now() };
     this.freeBytes = { value: free, at: performance.now() };
-    this.recordStart = this.playPos;
+    this.playPos = startAt;
+    this.stretcher = null;
+    this.recordStart = startAt;
     this.recordedFrames = 0;
+    this.punch = plan;
     this.jingleTakes = [];
     this.state = 'recording';
     this.emitTransport();
@@ -712,8 +726,10 @@ export class AudioEngine extends EventEmitter {
     let takes: RecordedTake[] = [];
     let report: TakeReport | null = null;
     if (wasRecording) {
+      const punch = this.punch;
       ({ takes, report } = this.finishRecording());
-      this.playPos = this.recordStart + this.recordedFrames;
+      // after a punch the playhead goes back to the pre-roll start, so Play reviews the new line in context
+      this.playPos = punch ? punch.from : this.recordStart + this.recordedFrames;
     }
     this.state = 'stopped';
     this.emitTransport();
@@ -738,6 +754,12 @@ export class AudioEngine extends EventEmitter {
         /* peaks are a cache; ignore */
       }
       if (length <= 0) continue;
+      if (this.punch) {
+        const placed = punchTakeClip({ file: r.file, recordStart: this.recordStart, frames: length }, this.punch, this.project.sampleRate);
+        if (placed) takes.push({ trackId: r.trackId, clip: placed.clip, punch: placed.range });
+        else this.discardTakeFile(r.file);
+        continue;
+      }
       takes.push({
         trackId: r.trackId,
         clip: {
@@ -753,6 +775,7 @@ export class AudioEngine extends EventEmitter {
       });
     }
     this.recorders = [];
+    this.punch = null;
     // Jingles still playing end on the timeline where the recording ends.
     for (const v of this.voices) this.finishJingle(v);
     takes.push(...this.jingleTakes.map(({ trackId, clip }) => ({ trackId, clip })));
@@ -761,6 +784,17 @@ export class AudioEngine extends EventEmitter {
     this.monitor = null;
     this.journal = null;
     return { takes, report };
+  }
+
+  /** A punch pass stopped before its punch-in: the file holds only pre-roll, nothing to keep. */
+  private discardTakeFile(file: string): void {
+    for (const f of [file, `${file}.peaks`]) {
+      try {
+        fs.rmSync(path.join(this.projectDir, f), { force: true });
+      } catch {
+        /* left behind; harmless */
+      }
+    }
   }
 
   // ------------------------------------------------------------ soundboard
@@ -878,6 +912,21 @@ export class AudioEngine extends EventEmitter {
   /** Adds one buffer to the take; `live` is false for silence written while the input is gone. */
   private recordBuffer(interleaved: Float32Array, frames: number, nch: number, live: boolean): void {
     if (this.state !== 'recording' || this.recorders.length === 0) return;
+    // a punch pass ends exactly at punch-out plus post-roll
+    let passDone = false;
+    if (this.punch) {
+      const left = this.punch.until - (this.recordStart + this.recordedFrames);
+      if (left <= frames) {
+        passDone = true;
+        frames = Math.max(0, left);
+        interleaved = interleaved.subarray(0, frames * nch);
+      }
+    }
+    if (frames > 0) this.writeBuffer(interleaved, frames, nch, live);
+    if (passDone) this.stop();
+  }
+
+  private writeBuffer(interleaved: Float32Array, frames: number, nch: number, live: boolean): void {
     // Audio first: hand it to the writer before anything else can go wrong.
     try {
       this.sink?.write(interleaved, frames);
@@ -978,9 +1027,11 @@ export class AudioEngine extends EventEmitter {
   }
 
   private renderTimelineMix(frames: number): void {
-    let tracks = audibleTracks(this.project);
-    // While recording, don't play back what is being recorded (avoids hearing yourself late).
-    if (this.state === 'recording') tracks = tracks.filter((t) => !this.armedTrackIds.has(t.id));
+    const all = audibleTracks(this.project);
+    // While recording, don't play back what is being recorded (avoids hearing yourself late);
+    // a punch pass plays the armed tracks too, except inside the punch range.
+    const unarmed = this.state === 'recording' ? all.filter((t) => !this.armedTrackIds.has(t.id)) : all;
+    let tracks = this.punch ? all : unarmed;
     if (this.state === 'playing' && this.speed !== 1) {
       // faster listening: the mix is rendered contiguously and time-stretched, pitch kept
       if (!this.stretcher) {
@@ -998,7 +1049,13 @@ export class AudioEngine extends EventEmitter {
     }
     // While recording this keeps overdub playback moving along with the take.
     for (let done = 0; done < frames && this.transportState !== 'stopped'; ) {
-      const n = this.framesUntilJump(frames - done);
+      let n = this.framesUntilJump(frames - done);
+      const p = this.state === 'recording' ? this.punch : null;
+      if (p) {
+        const edge = this.playPos < p.in ? p.in : this.playPos < p.out ? p.out : Infinity;
+        n = Math.min(n, edge - this.playPos);
+        tracks = this.playPos >= p.in && this.playPos < p.out ? unarmed : all;
+      }
       this.renderChunk(n, done, tracks);
       done += n;
       this.advance(n);
@@ -1122,6 +1179,7 @@ export class AudioEngine extends EventEmitter {
       outputPeaks: [...this.outputPeaks],
       recordedFrames: this.recordedFrames,
     };
+    if (this.state === 'recording' && this.punch) update.punch = [this.punch.in, this.punch.out];
     if (this.state === 'recording') {
       update.recordingPeaks = this.takeLivePeaks();
       update.health = this.checkHealth();

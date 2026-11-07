@@ -111,6 +111,30 @@ export async function toggleRecord(): Promise<void> {
   }
 }
 
+/**
+ * Punch-in: re-records the selected time range on the armed tracks. Playback starts the pre-roll
+ * before the range so the speaker hears the lead-in, the take replaces only the range, and the
+ * pass stops by itself after the post-roll. Pressed while recording, it stops like Record does.
+ */
+export async function punchIn(): Promise<void> {
+  if (store.transport.state === 'recording') return stop();
+  const r = store.selection.range;
+  const start = r ? Math.max(0, Math.round(Math.min(r[0], r[1]))) : 0;
+  const end = r ? Math.round(Math.max(r[0], r[1])) : 0;
+  if (!(end > start)) return toast('Punch in: select the line to re-record first (drag over it in the ruler or an empty spot)');
+  if (!store.project.tracks.some((t) => t.armed && t.inputChannels.length)) return toast('Punch in: arm the track to re-record first', 'error');
+  try {
+    if (!(await soundcheck())) return;
+    if (store.transport.state === 'playing') await api().stop();
+    const sr = store.sampleRate;
+    const { preRoll, postRoll } = store.punchRoll;
+    await api().record({ start, end, preRoll: Math.round(preRoll * sr), postRoll: Math.round(postRoll * sr) });
+    toast(`Punch in: ${preRoll ? `${preRoll} s pre-roll, then ` : ''}${((end - start) / sr).toFixed(1)} s are re-recorded`);
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
 /** Runs the soundcheck; true if recording may start (no problems, or the user chose to record anyway). */
 async function soundcheck(): Promise<boolean> {
   const info = await api().soundcheckInfo();

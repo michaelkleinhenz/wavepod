@@ -7,13 +7,14 @@ import { isMcpOn, renderMcpCard } from './mcpCard';
 import { midi } from './midi';
 import { renderMidiCard } from './midiCard';
 import { isOscOn, renderOscCard } from './oscCard';
-import { api, store } from './store';
+import { api, savePunchRoll, store, type PunchRoll } from './store';
+import { DEFAULT_POST_ROLL_SECONDS, DEFAULT_PRE_ROLL_SECONDS, MAX_POST_ROLL_SECONDS, MAX_PRE_ROLL_SECONDS, clampRoll } from '../core/punch';
 import { transcripts } from './transcripts';
 import { CROSSTALK_CHOICES, CROSSTALK_DEFAULT_DB, MIN_LEVEL_CHOICES } from '../core/wordLevels';
 
 export type SettingsTab = 'general' | 'controllers' | 'agents';
 const TABS: Array<{ id: SettingsTab; label: string; blurb: string }> = [
-  { id: 'general', label: 'General', blurb: 'Recording alerts, the sound effects folder and how transcripts are made.' },
+  { id: 'general', label: 'General', blurb: 'Recording alerts, punch-in pre-roll, the sound effects folder and how transcripts are made.' },
   { id: 'controllers', label: 'Controllers', blurb: 'Start recording, drop markers and fire jingles from a MIDI controller or Stream Deck.' },
   { id: 'agents', label: 'AI agents', blurb: 'Let AI apps on this computer help with filters and loudness.' },
 ];
@@ -223,6 +224,13 @@ export class SettingsDialog {
         h('button', { class: 'small', onclick: (e: Event) => this.testAlert(e.currentTarget as HTMLButtonElement) }, 'Test emergency notification'),
         h('span', { class: 'muted settings-alert-hint' }, 'Fires after 5 seconds, so you can switch to another window first.'),
       ),
+      h('h3', null, 'Punch-in recording'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Select a line and press Shift+R (or the punch button next to Record) to re-record it on the armed tracks. Playback starts the pre-roll earlier so the speaker hears the lead-in; only the selection is replaced, and the pass stops by itself after the post-roll.',
+      ),
+      h('div', { class: 'settings-grid settings-punch' }, rollField('Pre-roll', 'preRoll', MAX_PRE_ROLL_SECONDS), rollField('Post-roll', 'postRoll', MAX_POST_ROLL_SECONDS)),
       h('h3', null, 'Sound library'),
       h('p', { class: 'muted' }, 'A folder of sound effects and atmospheres (subfolders included). Search it in View › Sound Library (Shift+Ctrl+B), listen, and insert sounds into the episode.'),
       h(
@@ -349,4 +357,28 @@ export class SettingsDialog {
       ),
     ];
   }
+}
+
+/** A seconds field for the punch-in pre-roll or post-roll, remembered on this computer. */
+function rollField(label: string, key: keyof PunchRoll, max: number): HTMLElement {
+  const fallback = key === 'preRoll' ? DEFAULT_PRE_ROLL_SECONDS : DEFAULT_POST_ROLL_SECONDS;
+  return h(
+    'label',
+    { class: 'field' },
+    h('span', null, `${label} (seconds)`),
+    h('input', {
+      type: 'number',
+      class: `settings-${key === 'preRoll' ? 'pre' : 'post'}-roll`,
+      min: '0',
+      max: String(max),
+      step: '0.5',
+      value: String(store.punchRoll[key]),
+      onchange: (e: Event) => {
+        const input = e.target as HTMLInputElement;
+        const v = clampRoll(input.value, fallback, max);
+        input.value = String(v);
+        savePunchRoll({ ...store.punchRoll, [key]: v });
+      },
+    }),
+  );
 }

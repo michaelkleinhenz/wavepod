@@ -9,6 +9,7 @@ import { addClip, addMarker, addTrack } from './project';
 import { repairWav, syncDir, syncFd } from './wav';
 import { uid } from '../shared/time';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from './soundboard';
+import { punchInClip, punchTakeClip } from './punch';
 
 export const JOURNAL_FILE = 'recording-in-progress.json';
 
@@ -27,6 +28,8 @@ export interface RecordingJournal {
   bitDepth: BitDepth;
   /** Timeline position where the take starts. */
   recordStart: number;
+  /** Punch-in pass: only [in, out) of the takes replaces the audio on their tracks. */
+  punch?: [number, number];
   takes: JournalTake[];
   /** Jingles of the take that already finished playing. */
   jingles: RecordedTake[];
@@ -115,7 +118,13 @@ export function recoverRecording(dir: string, project: Project): Recovery | null
       p = addTrack(p, { name: `${t.trackName} (recovered)`, inputChannels: t.channels });
       trackId = p.tracks[p.tracks.length - 1].id;
     }
-    p = addClip(p, trackId, { id: uid('clp'), file: t.file, start: j.recordStart, offset: 0, length: frames, gain: 0, fadeIn: 0, fadeOut: 0 });
+    if (j.punch) {
+      const placed = punchTakeClip({ file: t.file, recordStart: j.recordStart, frames }, { in: j.punch[0], out: j.punch[1] }, j.sampleRate);
+      if (!placed) continue;
+      p = punchInClip(p, trackId, placed.clip, placed.range);
+    } else {
+      p = addClip(p, trackId, { id: uid('clp'), file: t.file, start: j.recordStart, offset: 0, length: frames, gain: 0, fadeIn: 0, fadeOut: 0 });
+    }
     takes++;
     longest = Math.max(longest, frames / j.sampleRate);
   }

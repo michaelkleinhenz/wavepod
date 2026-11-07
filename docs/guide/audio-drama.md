@@ -52,10 +52,15 @@ Right-click a clip › **Sound design**:
 
 Loop seams get a short crossfade. Fades, the volume line, splits and trims work on these clips as usual.
 
+## Re-recording a line
+
+A fluffed line doesn't need a whole new take: select it, arm the actor's track and press `Shift+R`. WavePod plays a few seconds before the line so the actor hears the cue, records only the selected range and crossfades the new take into the scene. See [Punch-in](recording.md#punch-in-re-record-one-line).
+
 ## Typical audio drama setup
 
 1. **Track folders › Audio drama folders** creates Dialogue, SFX, Atmo and Music folders.
 2. Give each character a track in Dialogue, with Room & distance for the scene's place.
-3. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
-4. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
-5. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).
+3. Fix fluffed lines with a [punch-in](recording.md#punch-in-re-record-one-line) instead of a new take.
+4. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
+5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
+6. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).

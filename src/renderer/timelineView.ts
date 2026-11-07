@@ -1153,14 +1153,23 @@ export class TimelineView {
       if (recording && t.armed && t.inputChannels.length) {
         const x0 = this.xOf(store.recordStart);
         const x1 = this.xOf(store.transport.position);
-        ctx.fillStyle = 'rgba(229,57,53,0.25)';
+        const punch = store.transport.punch;
+        // a punch pass: pre-roll and post-roll are recorded as handles, only the range replaces the track
+        ctx.fillStyle = punch ? 'rgba(229,57,53,0.08)' : 'rgba(229,57,53,0.25)';
         ctx.fillRect(this.cx(x0), y + 4, Math.max(1, this.cx(x1) - this.cx(x0)), TRACK_H - 9);
+        const pIn = punch ? this.xOf(punch[0]) : x0;
+        if (punch && x1 > pIn) {
+          const pOut = Math.min(x1, this.xOf(punch[1]));
+          ctx.fillStyle = 'rgba(229,57,53,0.25)';
+          ctx.fillRect(this.cx(pIn), y + 4, Math.max(1, this.cx(pOut) - this.cx(pIn)), TRACK_H - 9);
+        }
         const live = store.livePeaks.get(t.id);
         if (live) this.drawLiveWaveform(ctx, live.levelsSnapshot(false), x0, Math.min(x1, w), y + 4, TRACK_H - 9);
         ctx.fillStyle = '#ffcdd2';
         ctx.font = '11px system-ui, sans-serif';
         ctx.textBaseline = 'top';
-        ctx.fillText('● recording', Math.max(4, x0 + 4), y + 8);
+        const label = !punch ? '● recording' : x1 < pIn ? '● punch in: pre-roll' : x1 < this.xOf(punch[1]) ? '● punch in' : '● punch in: post-roll';
+        ctx.fillText(label, Math.max(4, (punch ? pIn : x0) + 4), y + 8);
       }
       ctx.fillStyle = '#0b0c0f';
       ctx.fillRect(0, y + TRACK_H - 2, w, 2);

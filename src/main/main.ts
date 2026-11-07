@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, MenuItem, app, dialog, ipcMain, shell, type MenuItemConstructorOptions } from 'electron';
+import { punchInClip, type PunchRequest } from '../core/punch';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -497,9 +498,9 @@ const handlers: Record<InvokeMethod, Handler> = {
 
   play: (from?: number) => engine.play(from),
   stop: () => engine.stop(),
-  record: () => {
+  record: (punch?: PunchRequest) => {
     backupNow('before-recording');
-    return engine.record();
+    return engine.record(punch ?? undefined);
   },
   seek: (pos: number) => engine.seek(pos),
   scrub: (pos: number | null) => engine.scrub(pos),
@@ -852,7 +853,7 @@ let appMenu: Menu | null = null;
 const menuItems = new Map<string, MenuItem>();
 
 /** Shortcuts shown next to menu items whose keys the window handles itself. */
-const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<' };
+const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'punch-in': 'Shift+R' };
 
 function menuModel(): MenuModelTop[] {
   menuItems.clear();
@@ -948,6 +949,9 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Transcribe Episode', click: menuSend('transcribe') },
         { label: 'Clean Up Pauses and Hesitations…', accelerator: 'Shift+CmdOrCtrl+K', click: menuSend('cleanup') },
+        { type: 'separator' },
+        // Shift+R is handled in the window like R, see MENU_KEY_HINTS
+        { id: 'punch-in', label: 'Punch In: Re-record Selection', click: menuSend('punch-in') },
         { type: 'separator' },
         { label: 'Prepare All Tracks for Editing', click: menuSend('prepare-for-editing') },
         {
@@ -1178,7 +1182,8 @@ app.whenReady().then(() => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
     let project = current.project;
     if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) project = ensureSoundboardTrack(project);
-    for (const t of takes) project = addClip(project, t.trackId, t.clip);
+    // a punch-in take replaces its range on the track; any other take is laid on top
+    for (const t of takes) project = t.punch ? punchInClip(project, t.trackId, t.clip, t.punch) : addClip(project, t.trackId, t.clip);
     // Problems found while recording become edit markers, so they are easy to find and check.
     if (report?.events.length) project = addProblemMarkers(project, report.recordStart, report.events);
     const prepared = settings.prepareForEditingAfterRecording ? prepareForEditing(project) : project;

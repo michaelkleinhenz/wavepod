@@ -1,6 +1,6 @@
 // Runs remote-control commands (MIDI buttons and OSC messages) the same way the keyboard does.
 import type { MidiAction, RemoteCommand } from '../shared/types';
-import { coughDown, coughTrackForKey, coughUp, dropMarker, prepareForEditing, stop, togglePlay, toggleRecord } from './actions';
+import { coughDown, coughTrackForKey, coughUp, dropMarker, prepareForEditing, punchIn, stop, togglePlay, toggleRecord } from './actions';
 import { api, store } from './store';
 
 /** Set at startup: plays soundboard slot `index` (0-based). */
@@ -57,6 +57,8 @@ function runAction(action: MidiAction): void {
         return state === 'recording' ? stop() : undefined;
       case 'record-toggle':
         return toggleRecord();
+      case 'punch-in':
+        return punchIn();
       case 'play-toggle':
         return togglePlay();
       case 'stop':

@@ -6,6 +6,7 @@ import { PeakPyramid } from '../core/peaks';
 import { WaveCache } from './waveCache';
 import { History } from '../core/project';
 import { PLAYBACK_SPEEDS } from '../core/timeStretch';
+import { DEFAULT_POST_ROLL_SECONDS, DEFAULT_PRE_ROLL_SECONDS, MAX_POST_ROLL_SECONDS, MAX_PRE_ROLL_SECONDS, clampRoll } from '../core/punch';
 
 declare global {
   interface Window {
@@ -52,6 +53,8 @@ class Store {
   selection: Selection = { clipIds: new Set(), range: null, markerId: null };
   /** Repeat: playback loops the selected time range. Remembered across launches. */
   repeat = readRepeatSetting();
+  /** Punch-in pre-roll and post-roll in seconds. Remembered on this computer. */
+  punchRoll = readPunchRoll();
   /** Listening speed (pitch kept, playback only). Remembered on this computer. */
   speed = readSpeedSetting();
   view: View = 'edit';
@@ -195,7 +198,6 @@ class Store {
   }
 }
 
-export const store = new Store();
 
 const REPEAT_KEY = 'wavepod.transport.repeat';
 
@@ -210,6 +212,35 @@ function readRepeatSetting(): boolean {
 export function saveRepeatSetting(on: boolean): void {
   try {
     localStorage.setItem(REPEAT_KEY, on ? '1' : '0');
+  } catch {
+    // not remembered, still works for this session
+  }
+}
+
+const PUNCH_KEY = 'wavepod.punchRoll';
+
+export interface PunchRoll {
+  preRoll: number;
+  postRoll: number;
+}
+
+function readPunchRoll(): PunchRoll {
+  let raw: Partial<PunchRoll> = {};
+  try {
+    raw = JSON.parse(localStorage.getItem(PUNCH_KEY) ?? '{}') ?? {};
+  } catch {
+    // defaults
+  }
+  return {
+    preRoll: clampRoll(raw.preRoll, DEFAULT_PRE_ROLL_SECONDS, MAX_PRE_ROLL_SECONDS),
+    postRoll: clampRoll(raw.postRoll, DEFAULT_POST_ROLL_SECONDS, MAX_POST_ROLL_SECONDS),
+  };
+}
+
+export function savePunchRoll(roll: PunchRoll): void {
+  store.punchRoll = roll;
+  try {
+    localStorage.setItem(PUNCH_KEY, JSON.stringify(roll));
   } catch {
     // not remembered, still works for this session
   }
@@ -233,3 +264,6 @@ export function saveSpeedSetting(speed: number): void {
     // not remembered, still works for this session
   }
 }
+
+// Made last: the settings readers above use constants that must exist by then.
+export const store = new Store();

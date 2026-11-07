@@ -38,6 +38,7 @@ import type {
 import type { ElevenVoice, SpeechEditMode } from '../core/speech';
 import type { TemplateSummary } from '../core/template';
 import type { FxPresetEntry } from '../core/fx/presets';
+import type { PunchRequest } from '../core/punch';
 import type { AlignResult } from '../core/align';
 import type { SoundLibraryInfo } from '../core/soundLibrary';
 
@@ -98,6 +99,7 @@ export type MenuCommand =
   | 'normalize-clips'
   | 'loudness-analysis'
   | 'prepare-for-editing'
+  | 'punch-in'
   | 'redo'
   | 'view-setup'
   | 'view-edit'
@@ -178,7 +180,8 @@ export interface WavePodApi {
   // transport
   play(from?: number): Promise<void>;
   stop(): Promise<RecordedTake[]>;
-  record(): Promise<string[]>;
+  /** Records the armed tracks at the playhead, or with `punch` re-records only that range with pre-roll. */
+  record(punch?: PunchRequest): Promise<string[]>;
   seek(position: number): Promise<void>;
   /** Tape-style scrub to `position` while the playhead is dragged (also while stopped); null ends it. */
   scrub(position: number | null): Promise<void>;
