@@ -130,6 +130,7 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     description: 'Adds room to a dry signal, e.g. a jingle bed or a voice that sounds too close.',
     params: [
       { key: 'size', label: 'Room size', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      { key: 'decay', label: 'Decay (RT60)', min: 0.1, max: 8, step: 0.01, default: 0.8, unit: 's', log: true },
       { key: 'damping', label: 'Damping', min: 0, max: 100, step: 1, default: 50, unit: '%' },
       { key: 'mix', label: 'Mix', min: 0, max: 100, step: 1, default: 15, unit: '%' },
       ms('predelay', 'Pre-delay', 10, 0, 200),
@@ -188,9 +189,10 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     params: [
       { key: 'distance', label: 'Distance', min: 0.3, max: 50, step: 0.1, default: 1, unit: 'm', log: true },
       { key: 'size', label: 'Room size', min: 0, max: 100, step: 1, default: 40, unit: '%' },
+      { key: 'decay', label: 'Decay (RT60)', min: 0.05, max: 8, step: 0.01, default: 0.5, unit: 's', log: true },
       { key: 'damping', label: 'Soft surfaces', min: 0, max: 100, step: 1, default: 50, unit: '%' },
-      { key: 'early', label: 'Reflections', min: 0, max: 100, step: 1, default: 30, unit: '%' },
-      { key: 'room', label: 'Reverb', min: 0, max: 100, step: 1, default: 20, unit: '%' },
+      { key: 'early', label: 'Reflections', min: 0, max: 100, step: 1, default: 20, unit: '%' },
+      { key: 'room', label: 'Reverb', min: 0, max: 100, step: 1, default: 12, unit: '%' },
       ms('predelay', 'Pre-delay', 10, 0, 100),
       { key: 'width', label: 'Width', min: 0, max: 100, step: 1, default: 100, unit: '%' },
     ],

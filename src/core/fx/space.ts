@@ -69,10 +69,10 @@ export class Space implements FxProcessor {
     const damping = p.damping ?? 50;
     // The gap between the direct sound and the first reflections shrinks as the source moves away.
     const predelay = (p.predelay ?? 10) / (1 + d / 4);
-    this.reverb.setParams({ size, damping, mix: 100, predelay: predelay + reflectionSpanMs(size) * 0.4, width: p.width ?? 100 });
+    this.reverb.setParams({ size, decay: p.decay ?? 0.5, damping, mix: 100, predelay: predelay + reflectionSpanMs(size) * 0.4, width: p.width ?? 100 });
     this.direct = Math.pow(10, distanceGainDb(d) / 20);
-    this.room = (p.room ?? 20) / 100;
-    this.early = ((p.early ?? 30) / 100) * TAP_NORM * 0.7;
+    this.room = (p.room ?? 12) / 100;
+    this.early = ((p.early ?? 20) / 100) * TAP_NORM * 0.7;
     this.erDamp = Math.exp((-2 * Math.PI * Math.max(800, 14000 * (1 - (damping / 100) * 0.85))) / this.sr);
     const span = reflectionSpanMs(size);
     const w = (p.width ?? 100) / 100;

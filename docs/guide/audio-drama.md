@@ -72,6 +72,21 @@ The **Places: room & distance** group puts a voice into a room with the **Room &
 
 Its **Distance** (in metres) moves the speaker away: the voice gets quieter, loses highs and bass, and the room takes over, as if the speaker walked away. Below 1 m it gets the bass of speaking close to the mic. Use [volume and pan automation](tracks-mixing.md#automation) or clip filters to have a character walk past.
 
+**Decay (RT60)** is how long the room's reverb takes to die away by 60 dB, in seconds, the figure acousticians measure rooms with. **Soft surfaces** make the highs die away sooner than that. The places use the decay times of real, furnished rooms, and keep the room well below the voice, as in film and radio drama:
+
+| Place | Decay | Place | Decay |
+| --- | --- | --- | --- |
+| Car | 0.07 s | Basement | 0.9 s |
+| Close to the mic | 0.25 s | Stairwell | 1.6 s |
+| Bedroom | 0.3 s | Garage / warehouse | 1.8 s |
+| Living room | 0.4 s | Concert hall | 2.0 s |
+| Office | 0.5 s | Tunnel | 2.2 s |
+| Small kitchen | 0.55 s | Cave | 2.5 s |
+| Classroom | 0.7 s | Church | 2.8 s |
+| Bathroom (tiled) | 0.8 s | Forest, street | 0.8–0.9 s, very quiet |
+
+A room that sounds too big usually needs a shorter decay; one that sounds too reverberant needs less **Reverb** and **Reflections**. The **Reverb** filter has the same **Decay (RT60)** setting.
+
 ## Sound library
 
 Keep your sound effects and atmospheres in a folder and search them from inside WavePod.

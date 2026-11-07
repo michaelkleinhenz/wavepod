@@ -27,7 +27,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Limiter** | Keeps peaks below the ceiling. |
 | **Dynamics** | Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. A port of Ultraschall's Dynamics. |
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
-| **Reverb** | Adds room to a dry signal, for example a jingle bed or a voice that sounds too close. |
+| **Reverb** | Adds room to a dry signal, for example a jingle bed or a voice that sounds too close. **Decay (RT60)** sets how long the tail lasts in seconds (a furnished room is about 0.3–0.5 s, a church 2–4 s); **Room size** sets how dense and spread out it is. |
 | **Band-pass** | Keeps only the frequencies between the low and the high cut: telephone, radio and walkie-talkie voices, or a muffled voice behind a wall. |
 | **Distortion** | Saturation, clipping or fuzz, optionally with fewer bits and a lower sample rate. |
 | **Echo** | Repeats the sound after a delay, each repeat a little duller. |

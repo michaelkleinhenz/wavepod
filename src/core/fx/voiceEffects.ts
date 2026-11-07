@@ -63,7 +63,7 @@ export const VOICE_EFFECTS: VoiceEffect[] = [
     id: 'distant',
     name: 'Far away',
     description: 'A voice calling from a distance outdoors.',
-    chain: [['bandpass', 'Distant voice'], ['echo', 'Mountains']],
+    chain: [['bandpass', 'Distant voice'], ['echo', 'Outdoor']],
   },
   {
     id: 'bathroom',
