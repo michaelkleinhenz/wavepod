@@ -5,7 +5,7 @@ import { importChapters, parseChapterContent } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
 import { formatTimestamp, uid } from '../shared/time';
-import { baseName, decodeBytes, decodeFile } from './audioFiles';
+import { baseName, importAudioSource } from './audioFiles';
 import { errorMessage, h, toast } from './dom';
 import { api, saveRepeatSetting, saveSpeedSetting, store } from './store';
 import { speedLabel, stepSpeed } from '../core/timeStretch';
@@ -495,6 +495,7 @@ export function muteSelection(): void {
 }
 
 export async function importAudioFiles(): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before importing');
   const paths = await api().pickAudioFiles();
   if (!paths.length) return;
   const sr = store.sampleRate;
@@ -502,8 +503,7 @@ export async function importAudioFiles(): Promise<void> {
   for (const path of paths) {
     try {
       toast(`Importing ${baseName(path)}…`);
-      const channels = await decodeFile(path, sr);
-      const res = await api().importAudio(baseName(path), channels, sr);
+      const res = await importAudioSource({ path, name: baseName(path) }, sr);
       store.edit((p) => {
         const q = addTrack(p, { name: baseName(path).replace(/\.[^.]+$/, '') });
         const track = q.tracks[q.tracks.length - 1];
@@ -593,7 +593,7 @@ export async function newProject(name?: string): Promise<boolean> {
   if (!chosen) return false;
   try {
     const res = await api().newProject(chosen);
-    if (res) store.setProject(res.project, res.dir);
+    if (res) store.setProject(res.project, res.dir, res.rev);
     toast(`New episode “${chosen}”`);
     return true;
   } catch (e) {
@@ -627,7 +627,7 @@ export async function saveEpisodeAs(): Promise<void> {
   try {
     toast('Saving a copy…');
     const res = await api().saveProjectAs(name);
-    store.setProject(res.project, res.dir);
+    store.setProject(res.project, res.dir, res.rev);
     toast(`Saved as “${res.project.name}”`);
   } catch (e) {
     toast(`Could not save a copy: ${errorMessage(e)}`, 'error');
@@ -642,7 +642,7 @@ export async function openProjectAt(dir: string): Promise<boolean> {
   }
   try {
     const res = await api().openProjectAt(dir);
-    store.setProject(res.project, res.dir);
+    store.setProject(res.project, res.dir, res.rev);
     return true;
   } catch (e) {
     toast(errorMessage(e), 'error');
@@ -665,7 +665,7 @@ export async function importZencastrSession(): Promise<void> {
     return toast(`Could not import the Zencastr session: ${errorMessage(e)}`, 'error');
   }
   if (!res) return;
-  store.setProject(res.opened.project, res.opened.dir);
+  store.setProject(res.opened.project, res.opened.dir, res.opened.rev);
   store.setView('edit');
   const sr = store.sampleRate;
   const failed: string[] = [];
@@ -677,8 +677,7 @@ export async function importZencastrSession(): Promise<void> {
       let end = 0;
       for (const part of t.parts) {
         try {
-          const channels = await decodeFile(part.path, sr);
-          const a = await api().importAudio(t.name, channels, sr);
+          const a = await importAudioSource({ path: part.path, name: t.name }, sr);
           // parts never overlap: a rejoin starts where the file name says, or after the last part
           const start = Math.max(Math.round(part.start * sr), end);
           clips.push({ file: a.file, start, length: a.length });
@@ -716,7 +715,7 @@ export async function importZencastrSession(): Promise<void> {
 export async function openProject(): Promise<boolean> {
   try {
     const res = await api().openProject();
-    if (res) store.setProject(res.project, res.dir);
+    if (res) store.setProject(res.project, res.dir, res.rev);
     return !!res;
   } catch (e) {
     toast(errorMessage(e), 'error');
@@ -850,13 +849,13 @@ function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, t
  */
 /** `folderId`: new tracks go into this track folder (files dropped on a folder row). */
 export async function importDroppedFiles(files: File[], at: number, trackId: string | null, folderId?: string): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before importing');
   const sr = store.sampleRate;
   const imported: { name: string; file: string; length: number }[] = [];
   for (const file of files) {
     try {
       toast(`Importing ${file.name}…`);
-      const channels = await decodeBytes(await file.arrayBuffer(), sr);
-      const res = await api().importAudio(file.name, channels, sr);
+      const res = await importAudioSource({ file, name: file.name }, sr);
       imported.push({ name: file.name, file: res.file, length: res.length });
     } catch (e) {
       toast(`${file.name}: ${errorMessage(e) || 'not an audio file this app can read'}`, 'error');

@@ -155,13 +155,20 @@ export function listProjects(root: string, limit = 30): Array<{ name: string; di
     if (!e.isDirectory()) continue;
     const dir = path.join(root, e.name);
     const file = path.join(dir, PROJECT_FILE);
+    let modified: number;
     try {
-      const modified = fs.statSync(file).mtimeMs;
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { name?: unknown };
-      out.push({ name: typeof raw.name === 'string' && raw.name.trim() ? raw.name : e.name, dir, modified });
+      modified = fs.statSync(file).mtimeMs;
     } catch {
-      /* not an episode folder (Templates, Presets, …) or unreadable */
+      continue; // not an episode folder (Templates, Presets, …)
     }
+    let name = e.name;
+    try {
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { name?: unknown };
+      if (typeof raw.name === 'string' && raw.name.trim()) name = raw.name;
+    } catch {
+      /* damaged: still listed under its folder name, opening it offers the backup */
+    }
+    out.push({ name, dir, modified });
   }
   return out.sort((a, b) => b.modified - a.modified).slice(0, limit);
 }
@@ -173,4 +180,40 @@ export function isUntouchedProject(project: Project): boolean {
     !project.markers.length &&
     !project.soundboard.length
   );
+}
+
+/** True if `dir` has a project.json that can't be read as a project (damaged, cut short, not JSON). */
+export function isDamagedProject(dir: string): boolean {
+  if (!isProjectDir(dir)) return false;
+  try {
+    loadProject(dir);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Replaces a damaged project.json with the newest backup that can be read. The damaged file is kept
+ * as `damaged-project-<date>.json` in the backup folder (not listed as a backup). Returns the backup used, or null when there
+ * is none (nothing is changed then).
+ */
+export function restoreNewestBackup(dir: string, date = new Date()): string | null {
+  for (const file of listBackups(dir)) {
+    let project: Project;
+    try {
+      project = loadBackup(file);
+    } catch {
+      continue;
+    }
+    const current = path.join(dir, PROJECT_FILE);
+    if (fs.existsSync(current)) {
+      let keep = path.join(dir, BACKUP_DIR, `damaged-project-${stamp(date)}.json`);
+      for (let i = 2; fs.existsSync(keep); i++) keep = path.join(dir, BACKUP_DIR, `damaged-project-${stamp(date)}-${i}.json`);
+      fs.renameSync(current, keep);
+    }
+    saveProject(dir, project);
+    return file;
+  }
+  return null;
 }

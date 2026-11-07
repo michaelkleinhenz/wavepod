@@ -5,12 +5,13 @@ import { scanCleanup } from '../core/cleanupScan';
 import { exportProject } from '../core/exporter';
 import { analyseClips, analyseProject } from '../core/analysis';
 import { alignClips, stretchWav } from '../core/align';
+import { importWav } from '../core/importAudio';
 import { setVstHost } from '../core/fx/vst';
 import { VstHostProcess } from './vst/host';
 
 interface Job {
-  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup';
-  /** stretch: absolute source and destination WAV, and the factor. */
+  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav';
+  /** stretch / importWav: absolute source and destination WAV (and the stretch factor). */
   src?: string;
   dest?: string;
   stretch?: number;
@@ -24,11 +25,13 @@ interface Job {
   mixOnly?: boolean;
   vstExe?: string | null;
   vstBridge?: string;
+  /** importWav: the episode's sample rate. */
+  sampleRate?: number;
 }
 
 const job = workerData as Job;
 // VST3 filters render through a host process of this worker's own
-const usesVst = job.kind !== 'clips' && job.kind !== 'align' && job.kind !== 'stretch' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
+const usesVst = job.kind !== 'clips' && job.kind !== 'align' && job.kind !== 'stretch' && job.kind !== 'importWav' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
 const vstHost = usesVst && job.vstExe && job.vstBridge ? new VstHostProcess(job.vstExe, job.vstBridge) : null;
 if (vstHost) setVstHost(vstHost);
 try {
@@ -42,6 +45,9 @@ try {
   } else if (job.kind === 'stretch') {
     stretchWav(job.src!, job.dest!, job.stretch!, (f) => parentPort!.postMessage({ type: 'progress', progress: f }));
     parentPort!.postMessage({ type: 'done', result: null });
+  } else if (job.kind === 'importWav') {
+    const frames = importWav(job.src!, job.dest!, job.sampleRate!, (f) => parentPort!.postMessage({ type: 'progress', progress: f }));
+    parentPort!.postMessage({ type: 'done', result: frames });
   } else if (job.kind === 'clips') {
     parentPort!.postMessage({ type: 'done', result: analyseClips(job.project, job.dir, job.clipIds ?? []) });
   } else {

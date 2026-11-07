@@ -58,7 +58,7 @@ A template holds no recordings, markers, volume lines or automation.
 
 **File › Import Audio…** (`Ctrl+I`) adds audio files as new tracks at the playhead. You can also drag files from your file manager straight onto the timeline: onto a track to add them there, or below the tracks for new tracks. See [Editing clips](editing.md#dropping-files-on-the-timeline).
 
-WAV, AIFF, MP3, M4A/AAC, Ogg, Opus, FLAC and WebM files can be imported. Imported audio is copied into the episode's `media/` folder.
+WAV, AIFF, MP3, M4A/AAC, Ogg, Opus, FLAC and WebM files can be imported. Imported audio is copied into the episode's `media/` folder. WAV files of any length (also RF64 files over 4 GB) are copied in the background without loading them into memory; files at another sample rate are converted to the episode's rate. Importing is not possible while recording.
 
 ## Zencastr
 
@@ -79,6 +79,8 @@ WavePod keeps backups of the project file (not the audio, which is never changed
 - before restoring a backup, and before repairing an interrupted recording.
 
 The newest 20 are kept. **File › Restore Backup…** lets you pick one and brings the episode back to that state. Restoring is one undo step, so `Ctrl+Z` takes you back to where you were.
+
+If `project.json` itself is damaged (for example by a power cut while it was being saved), WavePod says so when you open the episode and offers to restore the newest backup that can be read. The damaged file is kept in `backup/` as `damaged-project-<date>.json`. If the last episode can't be found when WavePod starts (say it is on a drive that isn't connected), WavePod tells you where it was and starts a new episode; the old one is not touched.
 
 ## What is in an episode folder
 

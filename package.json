@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "dist": "npm run build && electron-builder --publish never",
-    "dist:linux": "npm run build && electron-builder --linux AppImage --publish never",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --publish never",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "postinstall": "patch-package && node scripts/build-audify.mjs"
@@ -58,7 +58,8 @@
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
       "category": "AudioVideo",
       "syncDesktopName": true,
@@ -69,6 +70,21 @@
           "Keywords": "podcast;record;audio;multitrack;daw;"
         }
       }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libasound2t64 | libasound2",
+        "libpulse0"
+      ]
     },
     "win": {
       "target": [

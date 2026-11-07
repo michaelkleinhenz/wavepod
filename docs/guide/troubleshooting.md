@@ -54,9 +54,17 @@ Only VST3 effects are supported (not VST2, AU or CLAP plug-ins, and no instrumen
 
 Check the ElevenLabs API key in **Edit › Settings… › General**, that your account has credits, and that you are online. See [Transcript and text editing](transcript.md).
 
-## Linux: WavePod doesn't start from source
+## Linux: WavePod doesn't start
 
-When running from source, Electron's sandbox may need extra permissions on Ubuntu 23.10 and later; `make start` explains the options. The AppImage doesn't add itself to the app grid; see the README for `make desktop-install`.
+On Ubuntu, Debian and other systems that use `.deb` packages, install the **.deb** rather than the AppImage: `sudo apt install ./WavePod-<version>-linux-amd64.deb`. It puts WavePod in the app grid and installs the AppArmor profile that Ubuntu 23.10 and later need for the app's sandbox. Without that profile, the AppImage closes right away with a message about the "SUID sandbox helper" when started from a terminal.
+
+If you use the AppImage:
+
+- It needs FUSE 2. On Ubuntu 22.04 and later, install it with `sudo apt install libfuse2t64` (on 22.04: `libfuse2`).
+- On Ubuntu 23.10 and later, use the .deb instead, or allow the sandbox as described in the README (section "Linux: Chromium sandbox").
+- The AppImage doesn't add itself to the app grid; see the README for `make desktop-install`.
+
+When running from source, `make start` explains the sandbox options.
 
 ## Reporting a problem
 

@@ -45,6 +45,12 @@ import type { FavouriteSound, FavouriteSoundInfo, SoundLibraryInfo } from '../co
 export interface OpenedProject {
   project: Project;
   dir: string;
+  /**
+   * Revision of the project in the main process. It goes up whenever the main process changes the
+   * project itself (opening, a finished recording, an AI agent's edit); edits the window sends with
+   * an older revision were made on a project that no longer exists and are ignored.
+   */
+  rev: number;
 }
 
 /** Whether project.json holds the latest changes (autosave runs shortly after every change). */
@@ -216,7 +222,8 @@ export interface WavePodApi {
   /** File › Save As: copies the episode folder under a new name next to it and continues in the copy. */
   saveProjectAs(name: string): Promise<OpenedProject>;
   getSaveState(): Promise<SaveState>;
-  updateProject(project: Project): Promise<void>;
+  /** Saves the window's project; false (and nothing changes) when `rev` is stale, see OpenedProject.rev. */
+  updateProject(project: Project, rev: number): Promise<boolean>;
   /** Coarse waveform levels of a media file (computed and cached next to it on first use). */
   getPeaks(file: string): Promise<WaveformPeaks | null>;
   /** PEAK_TILE buckets of a finer level, starting at bucket tile * PEAK_TILE (null if unavailable). */
@@ -251,6 +258,13 @@ export interface WavePodApi {
   readFile(path: string): Promise<Uint8Array>;
   /** Writes decoded audio as a WAV into the project's media folder. */
   importAudio(name: string, channels: Float32Array[], sampleRate: number): Promise<ImportedAudio>;
+  /** Imports a WAV file from disk in a worker (any length); null when it isn't a WAV it can stream. */
+  importAudioFile(path: string, name: string, sampleRate: number): Promise<ImportedAudio | null>;
+  /** Starts a chunked import of decoded audio; returns its id for importAudioChunk / importAudioEnd. */
+  importAudioBegin(name: string, channels: number, sampleRate: number): Promise<string>;
+  importAudioChunk(id: string, channels: Float32Array[]): Promise<void>;
+  /** Finishes a chunked import (null when aborted: the file is removed). */
+  importAudioEnd(id: string, abort?: boolean): Promise<ImportedAudio | null>;
   openTextFile(title: string, extensions: string[]): Promise<{ path: string; text: string } | null>;
   saveTextFile(defaultName: string, text: string): Promise<string | null>;
   /**
@@ -361,13 +375,13 @@ export interface WavePodApi {
   onTransport(cb: (u: TransportUpdate) => void): () => void;
   onStatus(cb: (s: EngineStatus) => void): () => void;
   /** Takes are already merged into `project` (and saved) by the main process; `preparedForEditing` = tracks were unarmed afterwards. */
-  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean; problems: number; passes?: number }) => void): () => void;
+  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; rev: number; preparedForEditing: boolean; problems: number; passes?: number }) => void): () => void;
   onExportProgress(cb: (p: ExportProgress) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   /** OSC remote-control commands. */
   onRemote(cb: (cmd: RemoteCommand) => void): () => void;
   /** An AI agent changed the project over MCP; it is already applied in the main process. */
-  onProjectEdited(cb: (e: { project: Project; summary: string }) => void): () => void;
+  onProjectEdited(cb: (e: { project: Project; rev: number; summary: string }) => void): () => void;
   onSaveState(cb: (s: SaveState) => void): () => void;
   onTranscribeProgress(cb: (p: TranscribeProgress) => void): () => void;
   /** A file's transcript was made (or removed: null). */
@@ -376,6 +390,8 @@ export interface WavePodApi {
   onRecordingAlert(cb: (a: RecordingAlert) => void): () => void;
 
   platform: string;
+  /** Where a file dropped onto the window lives on disk ('' if it isn't a file on disk). */
+  pathForFile(file: File): string;
 }
 
 export interface AppInfo {
@@ -408,7 +424,7 @@ export const IPC = {
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'onTranscribeProgress' | 'onTranscript' | 'onRecordingAlert' | 'platform'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'onTranscribeProgress' | 'onTranscript' | 'onRecordingAlert' | 'platform' | 'pathForFile'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
@@ -467,6 +483,10 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'pickAudioFiles',
   'readFile',
   'importAudio',
+  'importAudioFile',
+  'importAudioBegin',
+  'importAudioChunk',
+  'importAudioEnd',
   'openTextFile',
   'saveTextFile',
   'pickImage',

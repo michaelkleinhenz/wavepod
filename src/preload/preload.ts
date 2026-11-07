@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { INVOKE_METHODS, IPC, type WavePodApi } from '../shared/api';
 
 function subscribe<T>(channel: string) {
@@ -24,6 +24,13 @@ const api: Record<string, unknown> = {
   onTranscript: subscribe(IPC.transcript),
   onRecordingAlert: subscribe(IPC.recordingAlert),
   platform: process.platform,
+  pathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
+  },
 };
 for (const method of INVOKE_METHODS) {
   api[method] = (...args: unknown[]) => ipcRenderer.invoke(IPC.invoke, method, ...args);

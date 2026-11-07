@@ -193,7 +193,7 @@ export async function newFromTemplate(t: TemplateSummary, typedName?: string): P
   if (!name) return false;
   try {
     const res = await api().newProjectFromTemplate(t.id, name);
-    store.setProject(res.project, res.dir);
+    store.setProject(res.project, res.dir, res.rev);
     toast(`New episode “${name}” from “${t.name}”`);
     return true;
   } catch (e) {

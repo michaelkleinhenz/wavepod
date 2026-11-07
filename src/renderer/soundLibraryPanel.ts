@@ -21,7 +21,7 @@ import {
   type SoundLibraryInfo,
 } from '../core/soundLibrary';
 import { formatTimestamp, uid } from '../shared/time';
-import { decodeBytes } from './audioFiles';
+import { decodeBytes, uploadDecoded } from './audioFiles';
 import { showContextMenu } from './contextMenu';
 import { append, errorMessage, h, toast } from './dom';
 import { api, store } from './store';
@@ -153,7 +153,7 @@ function importLibraryFile(rel: string): Promise<{ file: string; length: number 
   const key = `${store.dir}|${rel}|${store.sampleRate}`;
   let p = imported.get(key);
   if (!p) {
-    p = decodeLibraryFile(rel).then((ch) => api().importAudio(soundTitle(rel), ch, store.sampleRate));
+    p = decodeLibraryFile(rel).then((ch) => uploadDecoded(soundTitle(rel), ch, store.sampleRate));
     p.catch(() => imported.delete(key));
     imported.set(key, p);
   }
@@ -169,6 +169,7 @@ function sfxTrackId(): string | null {
  * after the sound; undefined: the panel's chosen target). With `fill`, the sound repeats over that range.
  */
 export async function insertLibrarySound(rel: string, opts: { at?: number; trackId?: string | null; fill?: [number, number]; folderId?: string } = {}): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before inserting sounds');
   if (favouritePathOf(rel) !== null) await loadFavourites();
   const title = soundTitle(rel);
   try {

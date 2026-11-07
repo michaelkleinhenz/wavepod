@@ -417,9 +417,9 @@ async function main(): Promise<void> {
   store.subscribe((kinds) => {
     if (kinds.has('status')) preShowBtn.classList.toggle('on', !!store.status?.preShow);
   });
-  api().onRecordingFinished(({ takes, project, preparedForEditing, problems, passes }) => {
+  api().onRecordingFinished(({ takes, project, rev, preparedForEditing, problems, passes }) => {
     store.history.push(store.project);
-    store.setProject(project);
+    store.setProject(project, undefined, rev);
     const what = passes ? `Recorded ${passes} pass${passes === 1 ? '' : 'es'} as takes (T / Shift+T to switch)` : `Recorded ${takes.length} take${takes.length === 1 ? '' : 's'}`;
     if (problems) {
       toast(`${what} · ${problems} recording problem${problems === 1 ? '' : 's'} marked with ⚠ edit markers: listen to those spots`, 'error');
@@ -435,8 +435,8 @@ async function main(): Promise<void> {
     store.saveState = s;
     store.notify('save');
   });
-  api().onProjectEdited(({ project, summary }) => {
-    store.applyExternal(project);
+  api().onProjectEdited(({ project, rev, summary }) => {
+    store.applyExternal(project, rev);
     toast(`AI agent: ${summary}`);
   });
   remoteHooks.playSound = (i) => void soundboard.trigger(i);
@@ -660,7 +660,7 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------------------- boot
   const opened = await api().currentProject();
-  store.setProject(opened.project, opened.dir);
+  store.setProject(opened.project, opened.dir, opened.rev);
   store.saveState = await api().getSaveState();
   store.status = await api().getStatus();
   await setup.refreshDevices();
