@@ -10,6 +10,10 @@ export interface LibraryEntry {
   /** Path inside the library folder, with "/" separators. */
   path: string;
   size: number;
+  /** Shown and searched instead of the file name (favourites carry their own name). */
+  title?: string;
+  /** Shown and searched instead of the folder (for favourites: the file's name). */
+  folder?: string;
 }
 
 export interface SoundLibraryInfo {
@@ -65,7 +69,7 @@ const indexCache = new WeakMap<LibraryEntry[], Indexed[]>();
 function indexOf(entries: LibraryEntry[]): Indexed[] {
   let idx = indexCache.get(entries);
   if (!idx) {
-    idx = entries.map((entry) => ({ entry, name: ` ${normalizeName(libraryTitle(entry.path))}`, folder: ` ${normalizeName(libraryFolderOf(entry.path))}` }));
+    idx = entries.map((entry) => ({ entry, name: ` ${normalizeName(entry.title ?? libraryTitle(entry.path))}`, folder: ` ${normalizeName(entry.folder ?? libraryFolderOf(entry.path))}` }));
     indexCache.set(entries, idx);
   }
   return idx;
@@ -156,4 +160,85 @@ export function fillClips(opts: { file: string; length: number; start: number; e
     at += length - xf;
   }
   return clips;
+}
+
+// ---------------------------------------------------------------- favourite sounds
+
+/**
+ * A sound the user keeps at hand (intro, jingle, intermission, room tone): any audio file, kept in
+ * the app settings so every episode has it. `path` is absolute.
+ */
+export interface FavouriteSound {
+  path: string;
+  name: string;
+}
+
+export interface FavouriteSoundInfo extends FavouriteSound {
+  /** The file is gone (moved, deleted, or on a drive that isn't connected). */
+  missing?: boolean;
+}
+
+/** At most this many favourites are kept. */
+export const MAX_FAVOURITES = 500;
+
+/**
+ * Favourites travel through the panel, its caches and drag and drop as "sound refs" next to library
+ * paths. Library paths never start with "." (the scan skips hidden entries), so this prefix can't clash.
+ */
+const FAVOURITE_PREFIX = '.fav:';
+
+export function favouriteRef(path: string): string {
+  return FAVOURITE_PREFIX + path;
+}
+
+/** The absolute path of a favourite's ref; null for a library path. */
+export function favouritePathOf(ref: string): string | null {
+  return ref.startsWith(FAVOURITE_PREFIX) ? ref.slice(FAVOURITE_PREFIX.length) : null;
+}
+
+/** File name of an absolute path, "/" or "\\" separated. */
+export function soundFileName(path: string): string {
+  return libraryFileName(path.replace(/\\/g, '/'));
+}
+
+/** The name a newly added file gets: its file name without extension. */
+export function soundFileTitle(path: string): string {
+  return libraryTitle(soundFileName(path));
+}
+
+/** Favourites from the settings file: valid entries only, each file once, names never empty. */
+export function normalizeFavourites(raw: unknown): FavouriteSound[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FavouriteSound[] = [];
+  const seen = new Set<string>();
+  for (const r of raw) {
+    const path = r && typeof r === 'object' && typeof (r as FavouriteSound).path === 'string' ? (r as FavouriteSound).path : '';
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    const name = typeof (r as FavouriteSound).name === 'string' ? (r as FavouriteSound).name.trim() : '';
+    out.push({ path, name: name || soundFileTitle(path) });
+    if (out.length >= MAX_FAVOURITES) break;
+  }
+  return out;
+}
+
+/** Adds files at the end (named after the file); files already in the list stay where they are. */
+export function addFavourites(list: FavouriteSound[], paths: string[]): { list: FavouriteSound[]; added: number } {
+  const next = normalizeFavourites([...list, ...paths.map((path) => ({ path, name: '' }))]);
+  return { list: next, added: next.length - normalizeFavourites(list).length };
+}
+
+/** Moves the favourite at `from` by `by` places (clamped to the list). */
+export function moveFavourite(list: FavouriteSound[], from: number, by: number): FavouriteSound[] {
+  const to = Math.max(0, Math.min(list.length - 1, from + by));
+  if (from < 0 || from >= list.length || to === from) return list;
+  const next = list.slice();
+  const [f] = next.splice(from, 1);
+  next.splice(to, 0, f);
+  return next;
+}
+
+/** Favourites as library entries for searching and listing: their name, and the file name below it. */
+export function favouriteEntries(list: FavouriteSound[]): LibraryEntry[] {
+  return list.map((f) => ({ path: favouriteRef(f.path), size: 0, title: f.name, folder: soundFileName(f.path) }));
 }

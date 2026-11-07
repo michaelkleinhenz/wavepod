@@ -56,7 +56,7 @@ import { loadTranscript, saveTranscript } from './transcribe/store';
 import { decodeKey, encodeKey } from './auphonic';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
-import type { SoundLibraryInfo } from '../core/soundLibrary';
+import { LIBRARY_EXTENSIONS, addFavourites, normalizeFavourites, type FavouriteSound, type FavouriteSoundInfo, type SoundLibraryInfo } from '../core/soundLibrary';
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
@@ -84,6 +84,8 @@ interface Settings {
   speech: SpeechSettings;
   /** Sound effects library folder ('' = none). */
   soundLibraryFolder: string;
+  /** Favourite sounds (Sounds panel › Favourites): any audio files, for every episode. */
+  favouriteSounds: FavouriteSound[];
   /** Folder the chapter image picker opens in: where the last chapter image came from ('' = none yet). */
   chapterImageFolder: string;
 }
@@ -107,10 +109,11 @@ function loadSettings(): Settings {
       elevenLabsKey: typeof raw.elevenLabsKey === 'string' ? raw.elevenLabsKey : '',
       speech: normalizeSpeechSettings(raw.speech),
       soundLibraryFolder: typeof raw.soundLibraryFolder === 'string' ? raw.soundLibraryFolder : '',
+      favouriteSounds: normalizeFavourites(raw.favouriteSounds),
       chapterImageFolder: typeof raw.chapterImageFolder === 'string' ? raw.chapterImageFolder : '',
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', chapterImageFolder: '' };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '' };
   }
 }
 
@@ -165,6 +168,16 @@ function soundLibrary(rescan = false): Promise<SoundLibraryInfo> {
   const folder = settings.soundLibraryFolder;
   if (!libraryScan || rescan) libraryScan = scanLibrary(folder);
   return libraryScan.then((info) => (info.folder === folder ? info : soundLibrary(true)));
+}
+/** The favourites, each marked when its file can't be found. */
+function favouriteSounds(): FavouriteSoundInfo[] {
+  return settings.favouriteSounds.map((f) => (fs.existsSync(f.path) ? { ...f } : { ...f, missing: true }));
+}
+function addFavouriteFiles(paths: string[]): { list: FavouriteSoundInfo[]; added: number } {
+  const r = addFavourites(settings.favouriteSounds, paths);
+  settings.favouriteSounds = r.list;
+  saveSettings();
+  return { list: favouriteSounds(), added: r.added };
 }
 let engine: AudioEngine;
 let win: BrowserWindow | null = null;
@@ -733,6 +746,29 @@ const handlers: Record<InvokeMethod, Handler> = {
   readLibraryFile: (rel: string) => new Uint8Array(fs.readFileSync(libraryFilePath(settings.soundLibraryFolder, rel))),
   revealLibraryFile: (rel: string) => shell.showItemInFolder(libraryFilePath(settings.soundLibraryFolder, rel)),
   previewSound: (channels: Float32Array[] | null) => engine.previewSound(channels),
+  getFavouriteSounds: () => favouriteSounds(),
+  setFavouriteSounds: (list: FavouriteSound[]) => {
+    settings.favouriteSounds = normalizeFavourites(list);
+    saveSettings();
+    return favouriteSounds();
+  },
+  addFavouriteSounds: (opts: { library?: string[]; files?: string[] }) =>
+    addFavouriteFiles([...(opts.library ?? []).map((rel) => libraryFilePath(settings.soundLibraryFolder, rel)), ...(opts.files ?? []).filter((f) => path.isAbsolute(f))]),
+  chooseFavouriteSounds: async () => {
+    const last = settings.favouriteSounds[settings.favouriteSounds.length - 1]?.path;
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Add favourite sounds',
+      defaultPath: (last && path.dirname(last)) || settings.soundLibraryFolder || safeGetPath('music') || app.getPath('home'),
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Audio', extensions: LIBRARY_EXTENSIONS }],
+    });
+    if (res.canceled || !res.filePaths.length) return null;
+    return addFavouriteFiles(res.filePaths);
+  },
+  readFavouriteSound: (p: string) => {
+    if (!settings.favouriteSounds.some((f) => f.path === p)) throw new Error('That sound is not in your favourites.');
+    return new Uint8Array(fs.readFileSync(p));
+  },
 
   chooseExportBase: async (defaultName: string) => {
     const res = await dialog.showSaveDialog(win!, {
