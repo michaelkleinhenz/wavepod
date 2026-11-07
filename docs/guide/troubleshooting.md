@@ -30,6 +30,14 @@ Change the track's **input** in its header on the timeline, or speak into each m
 
 Unarm the tracks with **Edit › Prepare All Tracks for Editing**, and tick **Prepare for Editing When Recording Stops** so it happens by itself. See [Recording](recording.md#after-recording).
 
+## Starting WavePod again only brings its window to the front
+
+Only one WavePod runs at a time, so two windows can never record into or save the same episode. Starting it again brings the open window to the front. To work on another episode, open it from **Setup › Project** or **File › Open Episode…**.
+
+## Importing or dropping files doesn't work
+
+Importing audio is not possible while recording, so a stray drop can't disturb the take. Stop the recording first. See [Importing audio](episodes.md#importing-audio).
+
 ## WavePod crashed while recording
 
 Open the episode again. WavePod finds the interrupted recording, repairs the files and puts them back on their tracks, and tells you so. A backup of the episode from before the repair is kept in its `backup/` folder. See [Recording safety](recording.md#recording-safety).

@@ -37,7 +37,7 @@ These options are checkboxes in the menus and are remembered:
 | **Edit › Confirm Before Stopping a Recording** | Asks before a take stops. On by default. |
 | **View › Ping at Markers During Playback** | Beeps when playback passes a marker. Off by default. |
 
-The playback speed, Repeat, the open Setup and Settings tab and which filter cards are folded are remembered too.
+The playback speed, Repeat, the open Setup and Settings tab, which filter cards are folded, the loudness target of **Loudness analysis**, the open sound library tab and the export settings of your last export (the start for episodes that were never exported, see [Exporting](export.md#your-export-settings-are-remembered)) are remembered too.
 
 ## Setup
 
@@ -54,4 +54,4 @@ Besides switching views and the playback options, the **View** menu has:
 
 ## Where settings are stored
 
-App settings are stored in WavePod's settings folder for your user (on Linux `~/.config/WavePod`, on macOS `~/Library/Application Support/WavePod`, on Windows `%APPDATA%\WavePod`). API keys are kept encrypted with the system keychain where there is one. Your own filter presets and templates are in `Documents/WavePod/`.
+App settings are stored in WavePod's settings folder for your user (on Linux `~/.config/WavePod`, on macOS `~/Library/Application Support/WavePod`, on Windows `%APPDATA%\WavePod`). API keys are kept encrypted with the system keychain where there is one. `settings.json` is saved safely: the previous version is kept as `settings.json.bak`, and WavePod reads that one if the file is ever damaged, for example by a power cut. Your own filter presets and templates are in `Documents/WavePod/`.

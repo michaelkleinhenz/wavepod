@@ -73,11 +73,12 @@ Right-click a clip for every clip command. It works on all selected clips if the
 - **Cut**, **Copy**, **Paste at playhead**, **Duplicate**, **Delete**
 - **Add fades**, **Remove fades**
 - **Show volume line**, **Reset volume line**
-- **Clip gain…**, **Reset clip gain**, **Normalise to −16 LUFS**, **Loudness analysis…**
+- **Clip gain…**, **Reset clip gain**, **Normalise to −16 LUFS** (or the target picked in **Loudness analysis**), **Loudness analysis…**
 - **Sound design**: **Reverse**, **Speed…**, **Loop**, **Loop to next clip**, **Loop over selection**, **Play as recorded**. See [Audio drama](audio-drama.md#sound-design-on-clips).
 - **Colour** swatches and **Note…**
 - **Select all on this track**, **Zoom to clip**
 - **Region from clip**, **Align to track…**
+- **Takes** (on a track with takes): the takes under the clip, to switch to one, and **Show take lanes**. See [Takes and comping](recording.md#takes-and-comping).
 
 ## Colours and notes
 

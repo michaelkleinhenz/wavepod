@@ -64,4 +64,4 @@ The export can write each region as its own file. See [Exporting](export.md#part
 
 ## Checks before export
 
-The export dialog warns you when the first chapter doesn't start at 0:00 (podcast apps show no chapter before it, and it offers to add one) and when a chapter has no title.
+The export dialog warns you when the first chapter doesn't start at 0:00 (podcast apps show no chapter before it, and it offers to add one) and when a chapter has no title. It also checks the [episode details](#episode-details) and the cover (missing title, podcast name, episode number or description; a cover that isn't square or is outside 1400 to 3000 px) and, after **Analyse loudness**, the loudness and dead air. See [Before you export](export.md#before-you-export).

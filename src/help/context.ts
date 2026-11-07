@@ -23,9 +23,12 @@ export const DIALOG_TOPICS: Array<[RegExp, string]> = [
   [/^stop recording/i, 'recording/arm-record-stop'],
   [/^keyboard shortcuts/i, 'shortcuts'],
   [/beta software/i, 'getting-started/beta-software'],
+  [/(no audio from the input|recording can.t be written|input is back|recording is fine again|^recording stopped$)/i, 'recording/recording-alerts'],
+  [/^wavepod$/i, 'getting-started/getting-help'],
   [/template/i, 'episodes/templates'],
   [/backup/i, 'episodes/backups'],
   [/^align/i, 'editing/aligning-recordings'],
+  [/^(new episode|save episode as)$/i, 'episodes/saving'],
   [/folder/i, 'tracks-mixing/track-folders'],
 ];
 

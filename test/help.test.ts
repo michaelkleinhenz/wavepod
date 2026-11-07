@@ -181,6 +181,11 @@ describe('context help', () => {
     expect(helpTopicFor({ view: 'setup', tab: 'Audio' })).toBe('audio-setup');
     expect(helpTopicFor({ view: 'edit', panel: 'fx' })).toBe('filters');
     expect(helpTopicFor({ view: 'edit', recording: true })).toBe('recording');
+    expect(helpTopicFor({ view: 'edit', recording: true, dialog: 'No audio from the input device' })).toBe('recording/recording-alerts');
+    expect(helpTopicFor({ view: 'edit', dialog: 'The recording can’t be written' })).toBe('recording/recording-alerts');
+    expect(helpTopicFor({ view: 'edit', dialog: 'WavePod' })).toBe('getting-started/getting-help');
+    expect(helpTopicFor({ view: 'setup', dialog: 'Save episode as' })).toBe('episodes/saving');
+    expect(helpTopicFor({ view: 'setup', dialog: 'New episode from template' })).toBe('episodes/templates');
     expect(helpTopicFor({ view: 'edit' })).toBe('timeline');
   });
 });
