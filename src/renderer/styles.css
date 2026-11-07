@@ -800,3 +800,4 @@ button.link:hover:not(:disabled) { background: none; border: none; }
 .take-header.used .take-state { color: var(--text, #ddd); }
 .takes-btn { flex: none; }
 .takes-btn.open { color: #ce93d8; border-color: #7b5a86; }
+.align-busy { display: flex; align-items: center; gap: 10px; }

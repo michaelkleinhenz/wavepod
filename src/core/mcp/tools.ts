@@ -17,6 +17,7 @@ import { paragraphs, timelineWords } from '../transcript';
 import { scriptCharacters, scriptProgress, scriptSummary } from '../script';
 import type { WordFilter } from '../wordLevels';
 import { formatTimestamp, uid } from '../../shared/time';
+import { WEAK_CONFIDENCE, alignedPosition, applyAlignment, type AlignOutcome } from '../alignEdit';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
 
 /** What the tools need from the app. The main process implements it; tests use a fake. */
@@ -28,6 +29,8 @@ export interface WavePodHost {
   /** Applies an edit as one undo step and shows `summary` to the user. */
   apply(next: Project, summary: string): void;
   measureLoudness(): Promise<LoudnessReport[]>;
+  /** Measures how clips have to move to line up with a reference track (and makes drift-corrected copies). */
+  alignClips?(clipIds: string[], refTrackId: string): Promise<AlignOutcome>;
   /** The episode's transcripts by media file (made with Transcribe in WavePod). */
   transcripts?(): Record<string, FileTranscript>;
   /** Which quiet words (crosstalk) to leave out of the transcript, from Settings › Transcription. */
@@ -56,7 +59,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals. Lines recorded several times are kept as takes: list_takes shows them, use_take plays a whole take or splices part of one into the comp.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals. Recordings from separate recorders (one per speaker) are put in sync with align_track. Lines recorded several times are kept as takes: list_takes shows them, use_take plays a whole take or splices part of one into the comp.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -519,6 +522,47 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         const name = project.folders!.find((f) => f.id === id)!.name;
         host.apply(removeFolder(project, id), `Removed folder ${name}`);
         return { removed: name };
+      },
+    },
+    {
+      name: 'align_track',
+      description:
+        'Moves a whole track into sync with another track by their content, e.g. two field recorders (one per speaker, started at different times) or a guest\'s own recording against the call recording. ' +
+        'Searches the full length, so the recordings may be minutes apart, and corrects clock drift between recorders by switching the track to a resampled copy of its files (transcripts are carried over). Takes a while for long recordings.',
+      inputSchema: obj(
+        {
+          track: { type: 'string', description: 'Track id or name: the track that moves.' },
+          to: { type: 'string', description: 'Track id or name: the reference that stays where it is.' },
+        },
+        ['track', 'to'],
+      ),
+      annotations: { title: 'Align track', ...EDIT },
+      run: async (args) => {
+        if (!host.alignClips) throw new ToolError('Aligning is not available here.');
+        if (host.transportState() === 'recording') throw new ToolError('WavePod is recording; align after the recording.');
+        const p = host.project();
+        const moving = resolveTarget(p, str(args, 'track', true));
+        const ref = resolveTarget(p, str(args, 'to', true));
+        if (moving.target === MASTER || ref.target === MASTER) throw new ToolError('Align works on tracks, not the master bus.');
+        if (moving.target === ref.target) throw new ToolError('Pick two different tracks.');
+        const track = p.tracks.find((t) => t.id === moving.target)!;
+        if (!track.clips.length) throw new ToolError(`${moving.name} has no audio.`);
+        const ids = track.clips.map((c) => c.id);
+        const r = await host.alignClips(ids, ref.target);
+        if (r.confidence <= 0) throw new ToolError(`No clear match between ${moving.name} and ${ref.name}; they don't seem to hear the same conversation.`);
+        const now = host.project();
+        const first = Math.min(...track.clips.map((c) => c.start));
+        host.apply(applyAlignment(now, ids, r, r.files), `Aligned ${moving.name} to ${ref.name}`);
+        return {
+          track: moving.name,
+          to: ref.name,
+          movedSeconds: round((alignedPosition(r, first) - first) / p.sampleRate, 4),
+          driftPpm: round(r.drift * 1e6, 1),
+          driftCorrectedMs: round(Math.abs(r.drift) * r.overlapSeconds * 1000, 1),
+          confidence: round(r.confidence, 2),
+          weak: r.confidence < WEAK_CONFIDENCE,
+          newFiles: Object.values(r.files),
+        };
       },
     },
     {

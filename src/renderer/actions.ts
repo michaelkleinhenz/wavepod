@@ -1,6 +1,6 @@
 // Commands shared by keyboard shortcuts, menus and buttons.
 import type { MarkerKind } from '../shared/types';
-import { addClip, addMarker, addTrack, applyChapterContent, chaptersToMarkers, clipsEnd, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt, updateClip, updateMarker } from '../core/project';
+import { addClip, addMarker, addTrack, applyChapterContent, chaptersToMarkers, clipsEnd, deleteClips, prepareForEditing as unarmAll, rippleDelete, splitAt, updateMarker } from '../core/project';
 import { importChapters, parseChapterContent } from '../core/chapters';
 import { addMuteRegion, removeMuteRegion } from '../core/muteRegions';
 import { muteSelection as muteEnvelopeRange } from '../core/envelope';
@@ -18,6 +18,7 @@ import { selectionSpan } from '../core/navigation';
 import { confirmStop, showSoundcheck } from './recordDialogs';
 import { askName } from './nameDialog';
 import { cycleTake } from '../core/takes';
+import { WEAK_CONFIDENCE, alignedPosition, applyAlignment } from '../core/alignEdit';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
 let confirming = false;
@@ -736,27 +737,81 @@ export async function restoreBackup(): Promise<void> {
   }
 }
 
-/** Double-ender: moves the selected clip so it lines up with a reference track the user picks. */
-export async function alignSelectedClip(): Promise<void> {
-  const ids = [...store.selection.clipIds];
-  const track = store.project.tracks.find((t) => t.clips.some((c) => c.id === ids[0]));
-  if (ids.length !== 1 || !track) return toast('Select one clip: the guest’s own recording');
-  const refs = store.project.tracks.filter((t) => t.id !== track.id && t.clips.length > 0);
+/** Toolbar / clip menu: lines the selected clips (all on one track) up with another track. */
+export async function alignSelectedClips(clipIds?: string[]): Promise<void> {
+  const ids = clipIds ?? [...store.selection.clipIds];
+  if (!ids.length) return toast('Select the clips to move, or right-click a track name › Align to other track…');
+  const tracks = store.project.tracks.filter((t) => t.clips.some((c) => ids.includes(c.id)));
+  if (tracks.length !== 1) return toast('Select clips on one track: the recording to move');
+  await alignTo(ids, tracks[0].id);
+}
+
+/** Track menu › Align to other track…: moves the whole track (every clip on it) into sync. */
+export async function alignTrack(trackId: string): Promise<void> {
+  const track = store.project.tracks.find((t) => t.id === trackId);
+  if (!track?.clips.length) return toast('This track has no audio to align');
+  await alignTo(
+    track.clips.map((c) => c.id),
+    track.id,
+  );
+}
+
+/**
+ * Finds where the clips match the reference track by their content (two recorders hearing the same
+ * conversation, or a guest's own recording and the call) and moves them there as one undo step.
+ * Clock drift between the recorders is corrected with stretched copies of the files.
+ */
+async function alignTo(clipIds: string[], trackId: string): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before aligning');
+  const track = store.project.tracks.find((t) => t.id === trackId)!;
+  const refs = store.project.tracks.filter((t) => t.id !== trackId && t.kind !== 'soundboard' && t.clips.length > 0);
   if (!refs.length) return toast('There is no other track with audio to align to');
-  const refId = await pickTrack(refs, 'Align to which track?', 'Pick the track that recorded this guest during the call (for example the RØDECaster’s USB Chat channel).');
+  const refId =
+    refs.length === 1
+      ? refs[0].id
+      : await pickTrack(refs, `Align ${track.name} to which track?`, 'Pick the track that heard the same conversation: the other speaker’s recorder (each mic picks up a little of the other person), or the call recording for a guest’s own recording.');
   if (!refId) return;
-  const clipId = ids[0];
-  toast('Aligning…');
+  const ref = refs.find((t) => t.id === refId)!;
+  const busy = h(
+    'div',
+    { class: 'overlay' },
+    h(
+      'div',
+      { class: 'dialog narrow' },
+      h('h2', null, `Aligning ${track.name} to ${ref.name}`),
+      h('p', { class: 'muted align-busy' }, h('span', { class: 'spinner' }), 'Finding where the recordings match and checking for clock drift. Long interviews take a minute.'),
+    ),
+  );
+  document.body.append(busy);
   try {
-    const r = await api().alignClip(clipId, refId);
-    store.edit((p) => updateClip(p, clipId, { start: r.start }));
-    const ms = (r.shift / store.sampleRate) * 1000;
-    const moved = Math.abs(ms) < 1000 ? `${ms.toFixed(0)} ms` : `${(ms / 1000).toFixed(2)} s`;
-    if (r.confidence < 0.3) toast(`Moved by ${moved}, but the match is weak (${Math.round(r.confidence * 100)}%). Listen and undo if it’s off.`, 'error');
-    else toast(`Aligned: moved by ${moved} (match ${Math.round(r.confidence * 100)}%)`);
+    const r = await api().alignClips(clipIds, refId);
+    if (r.confidence <= 0) {
+      toast(`No clear match between ${track.name} and ${ref.name}. Do both recordings hear the same conversation?`, 'error');
+      return;
+    }
+    const sr = store.sampleRate;
+    const first = Math.min(...store.project.tracks.flatMap((t) => t.clips).filter((c) => clipIds.includes(c.id)).map((c) => c.start));
+    store.edit((p) => applyAlignment(p, clipIds, r, r.files));
+    const shift = alignedPosition(r, first) - first;
+    const moved = Math.abs(shift) < sr ? `${Math.round((shift / sr) * 1000)} ms` : formatShift(shift / sr);
+    const driftMs = Math.abs(r.drift) * r.overlapSeconds * 1000;
+    const drift = r.drift ? ` Clock drift of ${Math.round(driftMs)} ms over ${Math.round(r.overlapSeconds / 60)} min corrected.` : '';
+    if (r.confidence < WEAK_CONFIDENCE) toast(`Moved ${track.name} by ${moved}, but the match is weak (${Math.round(r.confidence * 100)}%). Listen and undo if it’s off.${drift}`, 'error');
+    else toast(`Aligned ${track.name} to ${ref.name}: moved by ${moved}.${drift}`);
   } catch (e) {
     toast(errorMessage(e), 'error');
+  } finally {
+    busy.remove();
   }
+}
+
+/** "+1:02.35 min", "−4.25 s" */
+function formatShift(sec: number): string {
+  const sign = sec < 0 ? '−' : '+';
+  const a = Math.abs(sec);
+  if (a < 60) return `${sign}${a.toFixed(2)} s`;
+  const m = Math.floor(a / 60);
+  return `${sign}${m}:${(a - m * 60).toFixed(2).padStart(5, '0')} min`;
 }
 
 function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, title: string, hint: string): Promise<string | null> {

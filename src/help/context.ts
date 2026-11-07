@@ -25,7 +25,7 @@ export const DIALOG_TOPICS: Array<[RegExp, string]> = [
   [/beta software/i, 'getting-started/beta-software'],
   [/template/i, 'episodes/templates'],
   [/backup/i, 'episodes/backups'],
-  [/^align/i, 'editing/aligning-a-double-ender'],
+  [/^align/i, 'editing/aligning-recordings'],
   [/folder/i, 'tracks-mixing/track-folders'],
 ];
 
