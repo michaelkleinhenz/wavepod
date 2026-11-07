@@ -34,11 +34,11 @@ WavePod has three views. Switch between them with the tabs at the top left or wi
 
 The bar at the top is always there:
 
-- **Transport:** Record (`R`), Play / Pause (`Space`), Stop, Repeat (`L`) and To start (`Home`).
+- **Transport:** Record (`R`), Punch in (`Shift+R`, the record dot between brackets), Play / Pause (`Space`), Stop, Repeat (`L`) and To start (`Home`). See [Punch-in](recording.md#punch-in-re-record-one-line).
 - **Playback speed:** listen faster without changing pitch. See [Navigating the timeline](timeline.md#playback-speed).
 - **Time display** with the master output meter inside it.
 - **Master FX** opens the filters on the master bus. See [Filters and effects](filters.md).
-- **Transcript** and **Sounds** open the side panels. See [Transcript and text editing](transcript.md) and [Audio drama](audio-drama.md#sound-library).
+- **Transcript**, **Sounds** and **Script** open the side panels. See [Transcript and text editing](transcript.md), [Sound library](audio-drama.md#sound-library) and [Script](audio-drama.md#script).
 - **Pre-show** plays only the soundboard, for waiting music before the show. See [Recording](recording.md#pre-show).
 - The **save dot** at the right is green when every change is saved. See [Episodes and saving](episodes.md#saving).
 

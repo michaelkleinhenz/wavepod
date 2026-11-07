@@ -48,6 +48,7 @@ Open **Connection details and addresses** to change the **UDP port**, to tick **
 | `/wavepod/prepare` | Prepare for editing |
 | `/wavepod/cough/1` … `/wavepod/cough/6` | Cough button: argument 1 mutes the speaker, 0 releases |
 | `/wavepod/sound/1` … `/wavepod/sound/9`, `/wavepod/sounds/stop` | Play a soundboard slot, stop all sounds |
+| `/wavepod/preshow` | Pre-show on / off (only the soundboard is heard) |
 
 A button that sends 1 on press and 0 on release fires once; a message without arguments counts as a press.
 

@@ -59,7 +59,7 @@ How a retake is recognised:
 - Nobody else may talk in between, except for a quick "mhm" (which is cut with the retake).
 - Small spelling differences between the two attempts in the transcript are allowed.
 
-The list shows each retake with the words that are cut (struck through) and the start of the attempt that stays. Listen with **▶** before you apply: a speaker may repeat words on purpose.
+The list shows each retake with the words that are cut (struck through) and the start of the attempt that stays. A speaker may repeat words on purpose, so listen before you apply.
 
 Listen to each find with **▶** (from a little before to a little after), untick what should stay, then:
 

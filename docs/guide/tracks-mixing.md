@@ -27,6 +27,7 @@ From left to right and top to bottom:
 | Gain | Track volume in dB. Drag the slider, double-click it for 0 dB, or click the number to type a value. |
 | Pan | Left … right. Double-click to centre, or click the value and type `L 40`, `C` or `R 25`. |
 | **Auto** | Shows the track's volume or pan automation. See [Automation](#automation). |
+| **Takes** | Only on a track with takes: shows or hides its take lanes. See [Takes and comping](recording.md#takes-and-comping). |
 
 Right-click a track header to move the track into a folder, or to line it up with another track (**Align to other track…**, see [Aligning recordings](editing.md#aligning-recordings)).
 
