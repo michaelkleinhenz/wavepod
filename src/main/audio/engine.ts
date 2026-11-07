@@ -36,12 +36,15 @@ import {
 import { WavReader, writeWavFile } from '../../core/wav';
 import type { TakeFileSpec, TakeFilesOptions } from '../../core/takeFiles';
 import { RecordingMonitor, formatMinutes } from '../../core/recordingMonitor';
+import { loopFramePosition } from '../../core/takes';
+import type { RecordOptions } from '../../shared/types';
 import { clearJournal, writeJournal, type RecordingJournal } from '../../core/recordingJournal';
 import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
 import { markersCrossed, pingTone } from '../../core/markerPing';
-import { punchPlan, punchTakeClip, type PunchPlan, type PunchRequest } from '../../core/punch';
+import { punchPlan, punchTakeClip, type PunchPlan } from '../../core/punch';
 import { SimulatedBackend } from './simulatedBackend';
+import { MixMinusBuffer, mixMinusSources, type MixMinusSource } from '../../core/mixMinus';
 
 export const VIRTUAL_API = 'virtual';
 const METER_HZ = 30;
@@ -64,7 +67,10 @@ export interface TakeReport {
   events: RecordingEvent[];
   /** Set if the files could not be finished cleanly; the journal is then kept for recovery. */
   writeError: string | null;
+  /** Loop recording: the range the timeline jumped round in; each pass becomes a take. */
+  loop?: [number, number];
 }
+
 
 function freeBytesAt(dir: string): number | null {
   try {
@@ -159,6 +165,8 @@ export class AudioEngine extends EventEmitter {
   private scrubber: Scrubber | null = null;
   /** Repeat range [start, end) in frames: playback that reaches `end` continues at `start`. */
   private loop: [number, number] | null = null;
+  /** Loop recording: the range the take's timeline jumps round in (fixed for the whole take). */
+  private recLoop: [number, number] | null = null;
   private recordStart = 0;
   private recordedFrames = 0;
   /** Set while a punch-in pass runs: the take only replaces [in, out), and the pass ends at `until`. */
@@ -187,6 +195,9 @@ export class AudioEngine extends EventEmitter {
   /** Scratch for the part of a buffer that follows a jump back to the repeat start. */
   private loopBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private outBuf = new Float32Array(0);
+  /** The guest feed (mix-minus) on the second output: which inputs go in, and the live audio on its way. */
+  private mixMinus: { sources: MixMinusSource[]; buf: MixMinusBuffer } | null = null;
+  private mmBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
   private voices: Voice[] = [];
@@ -250,6 +261,15 @@ export class AudioEngine extends EventEmitter {
 
   /** Applies a device configuration, (re)opening streams. Never throws; errors land in status().error. */
   applyConfig(next: Partial<DeviceConfig>): EngineStatus {
+    // Who the guest feed leaves out can change mid-show: no need to stop or reopen anything.
+    const keys = Object.keys(next);
+    if (keys.length && keys.every((k) => k === 'mixMinusExclude')) {
+      this.config = { ...this.config, ...next };
+      this.updateMixMinus();
+      const s = this.status();
+      this.emit('status', s);
+      return s;
+    }
     if (this.state !== 'stopped') this.stop();
     this.closeStreams();
     this.config = { ...this.config, ...next };
@@ -288,6 +308,7 @@ export class AudioEngine extends EventEmitter {
       if (err) errors.push(err);
     }
     if (errors.length) this.error = [this.error, ...errors].filter(Boolean).join('\n');
+    this.updateMixMinus();
     this.startMeters();
     const s = this.status();
     this.emit('status', s);
@@ -481,6 +502,21 @@ export class AudioEngine extends EventEmitter {
     else this.mixer.project = project;
     this.scrubber?.invalidate();
     this.armedTrackIds = new Set(project.tracks.filter((t) => t.armed).map((t) => t.id));
+    this.updateMixMinus();
+  }
+
+  /** Sets up (or drops) the guest feed after the device setup or the tracks changed. */
+  private updateMixMinus(): void {
+    const c = this.config;
+    if (c.output2Source !== 'mixminus' || c.output2FirstChannel === null || c.output2FirstChannel === undefined) {
+      this.mixMinus = null;
+      return;
+    }
+    const sources = mixMinusSources(this.project.tracks, Number.MAX_SAFE_INTEGER, c.mixMinusExclude ?? []);
+    // up to four device buffers of delay; after a clock-drift drop, two
+    const max = Math.max(4 * c.bufferSize, 1024);
+    if (this.mixMinus?.buf.maxDelay === max) this.mixMinus.sources = sources;
+    else this.mixMinus = { sources, buf: new MixMinusBuffer(max, Math.max(2 * c.bufferSize, 512)) };
   }
 
   // ------------------------------------------------------------ transport
@@ -490,7 +526,8 @@ export class AudioEngine extends EventEmitter {
   }
 
   get position(): number {
-    return this.state === 'recording' ? this.recordStart + this.recordedFrames : this.playPos;
+    if (this.state !== 'recording') return this.playPos;
+    return this.recLoop ? loopFramePosition(this.recordedFrames, this.recordStart, this.recLoop) : this.recordStart + this.recordedFrames;
   }
 
   get playbackSpeed(): number {
@@ -559,20 +596,27 @@ export class AudioEngine extends EventEmitter {
     this.emitTransport();
   }
 
-  /** Sets (or clears) the range that playback repeats. Recording is never looped. */
+  /** Sets (or clears) the range that playback repeats. Recording loops only when asked to (record({ loop })). */
   setLoop(range: [number, number] | null): void {
     const start = range ? Math.max(0, Math.round(range[0])) : 0;
     const end = range ? Math.round(range[1]) : 0;
     this.loop = range && end > start ? [start, end] : null;
   }
 
-  /** Whether playback is inside or before the repeat range, so it wraps instead of running on. */
+  /** The range the timeline jumps round in now: the repeat range while playing, the take's loop while loop recording. */
+  private get activeLoop(): [number, number] | null {
+    return this.state === 'playing' ? this.loop : this.state === 'recording' ? this.recLoop : null;
+  }
+
+  /** Whether the playhead is inside or before the active loop, so it wraps instead of running on. */
   private get looping(): boolean {
-    return this.state === 'playing' && !!this.loop && this.playPos < this.loop[1];
+    const loop = this.activeLoop;
+    return !!loop && this.playPos < loop[1];
   }
 
   /** Frames to render before the repeat jump or the end of the last clip, or `frames` if neither is in this block. */
   private framesUntilJump(frames: number): number {
+    if (this.state === 'recording') return this.looping ? Math.min(frames, this.recLoop![1] - this.playPos) : frames;
     if (this.state !== 'playing') return frames;
     const until = this.looping ? this.loop![1] : this.clipsEnd();
     return this.playPos < until ? Math.min(frames, until - this.playPos) : frames;
@@ -581,9 +625,15 @@ export class AudioEngine extends EventEmitter {
   /** Advances the playhead: jumps back to the repeat start, or stops at the end of the last clip. */
   private advance(frames: number): void {
     const wasLooping = this.looping;
+    const loop = this.activeLoop;
     this.playPos += frames;
+    // loop recording: the other tracks play the loop over and over along with the passes
+    if (this.state === 'recording') {
+      if (wasLooping && this.playPos === loop![1]) this.playPos = loop![0];
+      return;
+    }
     if (this.state !== 'playing') return;
-    if (wasLooping && this.playPos === this.loop![1]) this.playPos = this.loop![0];
+    if (wasLooping && this.playPos === loop![1]) this.playPos = loop![0];
     else if (!wasLooping && this.playPos >= this.clipsEnd()) {
       this.state = 'stopped';
       this.stopFallbackClock();
@@ -597,14 +647,16 @@ export class AudioEngine extends EventEmitter {
   }
 
   /**
-   * Starts recording all armed tracks at the playhead. Returns the files being written.
-   * With `punch`, it is a punch-in pass instead: playback and the take start the pre-roll before
-   * the range, armed tracks are heard until the punch-in, and the pass stops by itself after the
-   * post-roll; only the range ends up replacing the audio on the armed tracks.
+   * Starts recording all armed tracks at the playhead. Returns the files being written. With
+   * `loop`, the timeline jumps back to the loop start at its end until stopped (loop recording);
+   * the take is one file per track, cut into a take per pass when it stops. With `punch`, it is a
+   * punch-in pass instead: playback and the take start the pre-roll before the range, armed tracks
+   * are heard until the punch-in, and the pass stops by itself after the post-roll; only the range
+   * ends up replacing the audio on the armed tracks (as a new take).
    */
-  record(punch?: PunchRequest): string[] {
+  record(options: RecordOptions = {}): string[] {
     if (this.state === 'recording') return this.recorders.map((r) => r.file);
-    const plan = punch ? punchPlan(punch) : null;
+    const plan = options.punch ? punchPlan(options.punch) : null;
     this.scrubber = null;
     if (!this.input) throw new Error('No input device is open. Choose one in Setup.');
     if (!this.projectDir) throw new Error('No project folder.');
@@ -627,6 +679,7 @@ export class AudioEngine extends EventEmitter {
       throw new Error(`The disk is full: there is not even room for a minute of recording (${Math.round(free / 1e6)} MB free).`);
     }
     const startAt = plan ? plan.from : this.playPos;
+    const loop = !plan && options.loop && options.loop[1] > options.loop[0] && this.playPos < options.loop[1] ? ([Math.max(0, Math.round(options.loop[0])), Math.round(options.loop[1])] as [number, number]) : null;
     const stamp = timestamp();
     const recorders: Recorder[] = armed.map((t) => {
       let rel = path.join('media', `${safeFileName(t.name)}-${stamp}.wav`);
@@ -660,6 +713,7 @@ export class AudioEngine extends EventEmitter {
       })),
       jingles: [],
       events: [],
+      ...(loop ? { loop } : {}),
     };
     writeJournal(this.projectDir, this.journal);
     try {
@@ -684,6 +738,7 @@ export class AudioEngine extends EventEmitter {
     this.recordStart = startAt;
     this.recordedFrames = 0;
     this.punch = plan;
+    this.recLoop = loop;
     this.jingleTakes = [];
     this.state = 'recording';
     this.emitTransport();
@@ -728,8 +783,9 @@ export class AudioEngine extends EventEmitter {
     if (wasRecording) {
       const punch = this.punch;
       ({ takes, report } = this.finishRecording());
-      // after a punch the playhead goes back to the pre-roll start, so Play reviews the new line in context
-      this.playPos = punch ? punch.from : this.recordStart + this.recordedFrames;
+      // after a punch the playhead goes back to the pre-roll start, so Play reviews the new line in
+      // context; after loop recording it waits at the loop start, ready for the next go
+      this.playPos = punch ? punch.from : report.loop ? report.loop[0] : this.recordStart + this.recordedFrames;
     }
     this.state = 'stopped';
     this.emitTransport();
@@ -780,7 +836,8 @@ export class AudioEngine extends EventEmitter {
     for (const v of this.voices) this.finishJingle(v);
     takes.push(...this.jingleTakes.map(({ trackId, clip }) => ({ trackId, clip })));
     this.jingleTakes = [];
-    const report: TakeReport = { recordStart: this.recordStart, events: this.monitor?.events ?? [], writeError: done.error };
+    const report: TakeReport = { recordStart: this.recordStart, events: this.monitor?.events ?? [], writeError: done.error, ...(this.recLoop ? { loop: this.recLoop } : {}) };
+    this.recLoop = null;
     this.monitor = null;
     this.journal = null;
     return { takes, report };
@@ -906,6 +963,7 @@ export class AudioEngine extends EventEmitter {
     const nch = this.input?.channels ?? 1;
     const frames = Math.floor(interleaved.length / nch);
     interleavedPeaks(interleaved, nch, this.inputPeaks);
+    this.mixMinus?.buf.write(interleaved, nch, this.mixMinus.sources);
     this.recordBuffer(interleaved, frames, nch, true);
   }
 
@@ -971,6 +1029,15 @@ export class AudioEngine extends EventEmitter {
     const first = Math.min(this.config.outputFirstChannel, Math.max(0, nch - 2));
     const second = this.config.output2FirstChannel;
     const has2 = second !== null && second !== undefined && second + 1 < nch && second !== first;
+    // the guest feed: live microphones without the guest's own, on top of jingles and playback
+    let mm: Float32Array[] | null = null;
+    if (src2 === 'mixminus' && this.mixMinus) {
+      if (this.mmBuf[0].length < frames) this.mmBuf = [new Float32Array(frames), new Float32Array(frames)];
+      mm = this.mmBuf;
+      mm[0].fill(0, 0, frames);
+      mm[1].fill(0, 0, frames);
+      this.mixMinus.buf.readInto(frames, mm[0], mm[1]);
+    }
     for (let i = 0; i < frames; i++) {
       const l = L[i] * tlMain + SL[i] + (pv ? pv[0][i] : 0);
       const r = R[i] * tlMain + SR[i] + (pv ? pv[1][i] : 0);
@@ -979,8 +1046,8 @@ export class AudioEngine extends EventEmitter {
       out[i * nch + first] = l;
       if (nch > 1) out[i * nch + first + 1] = r;
       if (has2) {
-        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2;
-        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2;
+        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2 + (mm ? mm[0][i] : 0);
+        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2 + (mm ? mm[1][i] : 0);
       }
     }
     return out;
@@ -1182,6 +1249,7 @@ export class AudioEngine extends EventEmitter {
     if (this.state === 'recording' && this.punch) update.punch = [this.punch.in, this.punch.out];
     if (this.state === 'recording') {
       update.recordingPeaks = this.takeLivePeaks();
+      if (this.recLoop) update.recordLoop = this.recLoop;
       update.health = this.checkHealth();
       if (this.jingleTakes.length) {
         update.recordedJingles = this.jingleTakes.map((t) => ({ slotId: t.slotId, start: t.clip.start, length: t.clip.length }));

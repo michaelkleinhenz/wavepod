@@ -25,6 +25,7 @@ When one line went wrong, re-record just that line inside the existing audio, th
 Playback starts the **pre-roll** (3 seconds by default) before the range, with the old take still audible, so the speaker hears the lead-in and comes in on cue. At the start of the range recording takes over: the armed tracks go quiet in the playback (the speaker hears themselves through the interface as usual) and the new take replaces the old audio. After the end of the range a short **post-roll** (1 second) plays the old audio again so you hear the joint, then the pass stops by itself and the playhead goes back to where the pre-roll started. Press Space to listen to the result, or `Shift+R` again for another try.
 
 - Only the selected range changes, and only on the armed tracks. Both edges get a short crossfade, so the joints don't click.
+- What was there before is kept as a take: the old version is **Take 1**, the punch **Take 2**. Press `T` to switch back and forth, or comp them in the take lanes. See [Takes and comping](#takes-and-comping).
 - The whole pass is kept in the file, pre-roll and post-roll included, so you can drag the edges of the new clip out if the line needs a little more room.
 - Stopping during the range keeps what was recorded up to there. Stopping during the pre-roll keeps nothing.
 - Change the pre-roll and post-roll in **Edit › Settings… › General › Punch-in recording**.
@@ -79,6 +80,25 @@ A playing slot shows the time it has left.
 Jingles you play while recording are recorded onto a **Soundboard** track, so they are part of the edit and the export. Jingles are copied into the episode's `sounds/` folder, and templates keep them.
 
 To make the soundboard duck under the voices, use **Duck under the other tracks** on its track. See [Tracks and mixing](tracks-mixing.md#ducking).
+
+## Takes and comping
+
+Record a line as often as it takes and keep the best one. WavePod never throws a take away.
+
+- **Record over it again.** Put the playhead before the line and press `R`. When the new recording runs over audio on an armed track, the earlier recording of that stretch becomes **Take 1**, the new one **Take 2**, and so on. The newest take plays.
+- **Punch in.** To redo one line inside a longer recording, select it and press `Shift+R`. See [Punch-in](#punch-in-re-record-one-line).
+- **Loop recording.** Select the time range of the line (drag across the timeline) and press `Alt+Shift+R` (**Edit › Loop-Record the Selection (Takes)**). Playback starts 2 seconds before the line so the speaker hears a run-up, then jumps back to the start of the selection at its end and keeps going until you stop. Every pass is a take, and the last whole pass plays (a pass cut short by stopping is kept too). The recording shows *loop recording · pass n*. After stopping, the playhead waits at the start of the line for the next go.
+
+A track with takes gets a **Takes** button in its header. Click it to show the **take lanes** under the track, one lane per take:
+
+- **Click a take** to play the whole take.
+- **Drag over a part of a take** to use just that part: the comp plays it there and keeps the other takes around it (swipe comping). Use take 2 for the first sentence, take 4 for the punchline.
+- The parts the comp plays are bright and framed in the track colour; unused parts are dimmed.
+- Right-click a lane for **Use this take**, **Use this take for the selected time**, **Delete take** (only takes the comp doesn't use), **Delete unused takes**, **Flatten takes** and **Hide take lanes**.
+
+Without opening the lanes, press `T` (**Edit › Next Take**) or `Shift+T` (**Edit › Previous Take**) to step through the takes at the playhead, on the selected clips' tracks or on every track with takes there. The clip menu lists the takes under the clip as well.
+
+The comp is ordinary clips: trim, split, fade and move them as usual. When you drag a whole comped line somewhere else, its takes move along. Ripple cuts and inserted silence move takes too. **Flatten takes** keeps the comp and forgets the takes; their files stay in the project folder.
 
 ## Pre-show
 

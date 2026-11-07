@@ -3,8 +3,9 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AudioEngine } from '../src/main/audio/engine';
 import { addTrack, createProject } from '../src/core/project';
-import { PUNCH_CROSSFADE_SECONDS, clampRoll, punchInClip, punchPlan, punchTakeClip } from '../src/core/punch';
+import { PUNCH_CROSSFADE_SECONDS, clampRoll, mergePunchTake, punchPlan, punchTakeClip } from '../src/core/punch';
 import { trackFades } from '../src/core/crossfade';
+import { pickTake } from '../src/core/takes';
 import { readJournal, recoverRecording, writeJournal } from '../src/core/recordingJournal';
 import { WavReader, writeWavFile } from '../src/core/wav';
 import type { AudioBackend } from '../src/main/audio/backend';
@@ -76,10 +77,10 @@ describe('placing a punch take', () => {
     anna.clips.push(clip('old', 0, 480000), clip('inside', 200000, 10000));
     ben.clips.push(clip('ben', 0, 480000));
     const placed = punchTakeClip({ file: 'media/new.wav', recordStart: 50000, frames: 160000 }, { in: 96000, out: 192000 }, SR)!;
-    const out = punchInClip(p, anna.id, placed.clip, placed.range);
+    const out = mergePunchTake(p, anna.id, placed.clip, placed.range);
     const a = out.tracks[0].clips;
     // left part, the new take, right part; the short clip outside the range stays
-    expect(a.map((c) => [c.start, c.start + c.length])).toEqual([
+    expect(a.map((c: Clip) => [c.start, c.start + c.length])).toEqual([
       [0, 96000],
       [96000 - XF, 192000 + XF],
       [192000, 480000],
@@ -91,6 +92,24 @@ describe('placing a punch take', () => {
     expect(fades.get(a[1].id)).toMatchObject({ fadeIn: XF, fadeOut: XF, autoIn: true, autoOut: true });
     // the other track is untouched
     expect(out.tracks[1].clips).toEqual(ben.clips);
+    // the old audio of the range is take 1 and the punch take 2, which plays
+    const takes = out.tracks[0].takes!;
+    expect(takes.map((t) => [t.n, t.clips.map((c) => [c.file, c.start, c.start + c.length])])).toEqual([
+      [1, [['media/old.wav', 96000 - XF, 192000 + XF]]],
+      [2, [['media/new.wav', 96000 - XF, 192000 + XF]]],
+    ]);
+    expect(a[1].takeId).toBe(takes[1].id);
+  });
+
+  it('switches back to the old version with the take, without losing the punch', () => {
+    let p = createProject('P', SR);
+    p = addTrack(p, { name: 'Anna' });
+    p.tracks[0].clips.push(clip('old', 0, 480000));
+    const placed = punchTakeClip({ file: 'media/new.wav', recordStart: 50000, frames: 160000 }, { in: 96000, out: 192000 }, SR)!;
+    const out = mergePunchTake(p, p.tracks[0].id, placed.clip, placed.range);
+    const back = pickTake(out, out.tracks[0].id, out.tracks[0].takes![0].id);
+    expect(back.tracks[0].clips.every((c) => c.file === 'media/old.wav')).toBe(true);
+    expect(back.tracks[0].takes).toHaveLength(2);
   });
 });
 
@@ -150,7 +169,7 @@ describe('punch-in recording in the engine', () => {
   it('plays the pre-roll with the armed track audible, mutes it inside the range and stops after the post-roll', () => {
     const { dir, p, run, takes } = setup();
     engine.seek(40000);
-    engine.record({ start: 24000, end: 33600, preRoll: 9600, postRoll: 4800 });
+    engine.record({ punch: { start: 24000, end: 33600, preRoll: 9600, postRoll: 4800 } });
     expect(engine.transportState).toBe('recording');
     expect(engine.position).toBe(14400); // the take starts with the pre-roll
     // pre-roll 14400..24000: the old audio is heard
@@ -181,7 +200,7 @@ describe('punch-in recording in the engine', () => {
 
   it('keeps nothing when stopped during the pre-roll', () => {
     const { dir, run, takes } = setup();
-    const [file] = engine.record({ start: 48000, end: 60000, preRoll: 24000, postRoll: 0 });
+    const [file] = engine.record({ punch: { start: 48000, end: 60000, preRoll: 24000, postRoll: 0 } });
     run(10);
     expect(engine.stop()).toEqual([]);
     expect(takes).toEqual([]);
@@ -191,7 +210,7 @@ describe('punch-in recording in the engine', () => {
 
   it('ends the take where the pass was stopped inside the range', () => {
     const { run } = setup();
-    engine.record({ start: 4800, end: 48000, preRoll: 4800, postRoll: 0 });
+    engine.record({ punch: { start: 4800, end: 48000, preRoll: 4800, postRoll: 0 } });
     run(20); // 0 .. 9600
     const [t] = engine.stop();
     expect(t.punch).toEqual([4800, 9600]);

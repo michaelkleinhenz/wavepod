@@ -4,7 +4,7 @@
 // to the file, so the new clip has handles: its edges can be dragged out again afterwards.
 import type { Clip, Frames, Project } from '../shared/types';
 import { uid } from '../shared/time';
-import { splitAt } from './project';
+import { recordTake } from './takes';
 
 /** Overlap at each punch edge: the new take and the old audio crossfade (equal power) over it. */
 export const PUNCH_CROSSFADE_SECONDS = 0.02;
@@ -84,17 +84,29 @@ export function punchTakeClip(
 }
 
 /**
- * Puts a punch take on its track: the old clips are cut at the range edges, what lay inside the
- * range goes, and the new clip takes its place. Where the new clip reaches past the range it
- * overlaps the old audio, which the mixer turns into an equal-power crossfade.
+ * Puts a punch take on its track as a new take (see core/takes.ts recordTake): what was under it
+ * is kept as a take of its own, so it can be picked again, and the new take plays. Comping cuts the
+ * old audio at the clip's edges; where the old audio simply ran on there, the neighbours are
+ * stretched back to the punch range, so they overlap the new clip's 20 ms handles and the mixer
+ * crossfades them (equal power) instead of butting them together.
  */
-export function punchInClip(project: Project, trackId: string, clip: Clip, range: [Frames, Frames]): Project {
-  const [a, b] = range;
-  const p = splitAt(splitAt(project, a, [trackId]), b, [trackId]);
+export function mergePunchTake(project: Project, trackId: string, clip: Clip, range: [Frames, Frames]): Project {
+  const before = project.tracks.find((t) => t.id === trackId)?.clips ?? [];
+  const p = recordTake(project, trackId, clip);
   const t = p.tracks.find((x) => x.id === trackId);
-  if (!t) return p;
-  t.clips = t.clips.filter((c) => !(c.start >= a && c.start + c.length <= b));
-  t.clips.push(clip);
+  if (!t || p === project) return p;
+  const [a, b] = range;
+  const s = clip.start;
+  const e = clip.start + clip.length;
+  // the old clip that played continuously over [from, to), in the same source frames as `c`
+  const ranOn = (c: Clip, from: Frames, to: Frames) =>
+    before.some((o) => o.file === c.file && !o.sound && !c.sound && o.offset - o.start === c.offset - c.start && o.start <= from && o.start + o.length >= to);
+  t.clips = t.clips.map((c) => {
+    if (c.file === clip.file) return c; // the new take itself
+    if (a > s && c.start + c.length === s && c.start < s && ranOn(c, c.start, a)) return { ...c, length: a - c.start };
+    if (e > b && c.start === e && ranOn(c, b, c.start + c.length)) return { ...c, start: b, offset: c.offset - (e - b), length: c.length + (e - b) };
+    return c;
+  });
   t.clips.sort((x, y) => x.start - y.start);
   return p;
 }

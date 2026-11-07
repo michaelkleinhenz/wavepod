@@ -9,7 +9,8 @@ import { addClip, addMarker, addTrack } from './project';
 import { repairWav, syncDir, syncFd } from './wav';
 import { uid } from '../shared/time';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from './soundboard';
-import { punchInClip, punchTakeClip } from './punch';
+import { loopFramePosition, loopTakeClips, pickTake, recordTakes } from './takes';
+import { mergePunchTake, punchTakeClip } from './punch';
 
 export const JOURNAL_FILE = 'recording-in-progress.json';
 
@@ -35,6 +36,8 @@ export interface RecordingJournal {
   jingles: RecordedTake[];
   /** Problems found so far. */
   events: RecordingEvent[];
+  /** Loop recording: the range the timeline jumped round in; each pass becomes a take. */
+  loop?: [number, number];
 }
 
 /** Writes the journal so that it survives a crash or power cut (temp file, fsync, rename). */
@@ -80,6 +83,48 @@ export function addProblemMarkers(project: Project, recordStart: number, events:
   return p;
 }
 
+/**
+ * Puts a finished recording on the timeline: each track's take (one per pass when loop recording)
+ * goes onto its track, stacked as takes over anything recorded there before; jingles become clips on
+ * the Soundboard track; problems found while recording become edit markers.
+ */
+export function mergeRecording(
+  project: Project,
+  takes: RecordedTake[],
+  info: { recordStart: number; events: RecordingEvent[]; loop?: [number, number] },
+  sampleRate: number,
+): Project {
+  let p = project;
+  if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) p = ensureSoundboardTrack(p);
+  for (const t of takes) {
+    if (t.trackId === SOUNDBOARD_TRACK_ID) p = addClip(p, t.trackId, t.clip);
+    // a punch-in take replaces its range, keeping what was there as a take
+    else if (t.punch) p = mergePunchTake(p, t.trackId, t.clip, t.punch);
+    else if (!info.loop) p = recordTakes(p, t.trackId, [t.clip]);
+    else {
+      const passes = loopTakeClips(t.clip, info.loop, sampleRate);
+      p = recordTakes(p, t.trackId, passes);
+      // a last pass cut short by Stop is kept as a take, but the last whole pass plays
+      const takes = p.tracks.find((x) => x.id === t.trackId)?.takes ?? [];
+      if (passes.length > 1 && passes[passes.length - 1].length < info.loop[1] - info.loop[0] && takes.length > 1) {
+        p = pickTake(p, t.trackId, [...takes].sort((a, b) => a.n - b.n)[takes.length - 2].id);
+      }
+    }
+  }
+  if (info.events.length) {
+    // in a loop recording, a problem goes where the pass was on the timeline
+    const events = info.loop
+      ? info.events.map((e) => ({
+          ...e,
+          frame: loopFramePosition(e.frame, info.recordStart, info.loop!) - info.recordStart,
+          ...(e.lastFrame !== undefined ? { lastFrame: loopFramePosition(e.lastFrame, info.recordStart, info.loop!) - info.recordStart } : {}),
+        }))
+      : info.events;
+    p = addProblemMarkers(p, info.recordStart, events);
+  }
+  return p;
+}
+
 export interface Recovery {
   project: Project;
   /** Takes put back on the timeline. */
@@ -100,7 +145,7 @@ export function recoverRecording(dir: string, project: Project): Recovery | null
   const j = readJournal(dir);
   if (!j) return null;
   let p = project;
-  const has = (file: string) => p.tracks.some((t) => t.clips.some((c) => c.file === file));
+  const has = (file: string) => p.tracks.some((t) => t.clips.some((c) => c.file === file) || !!t.takes?.some((tk) => tk.clips.some((c) => c.file === file)));
   let takes = 0;
   let longest = 0;
   const missing: string[] = [];
@@ -118,12 +163,14 @@ export function recoverRecording(dir: string, project: Project): Recovery | null
       p = addTrack(p, { name: `${t.trackName} (recovered)`, inputChannels: t.channels });
       trackId = p.tracks[p.tracks.length - 1].id;
     }
+    const clip = { id: uid('clp'), file: t.file, start: j.recordStart, offset: 0, length: frames, gain: 0, fadeIn: 0, fadeOut: 0 };
     if (j.punch) {
+      // a punch pass: only its range goes back, as a take over what was there
       const placed = punchTakeClip({ file: t.file, recordStart: j.recordStart, frames }, { in: j.punch[0], out: j.punch[1] }, j.sampleRate);
       if (!placed) continue;
-      p = punchInClip(p, trackId, placed.clip, placed.range);
+      p = mergeRecording(p, [{ trackId, clip: placed.clip, punch: placed.range }], { recordStart: j.recordStart, events: [] }, j.sampleRate);
     } else {
-      p = addClip(p, trackId, { id: uid('clp'), file: t.file, start: j.recordStart, offset: 0, length: frames, gain: 0, fadeIn: 0, fadeOut: 0 });
+      p = mergeRecording(p, [{ trackId, clip }], { recordStart: j.recordStart, events: [], loop: j.loop }, j.sampleRate);
     }
     takes++;
     longest = Math.max(longest, frames / j.sampleRate);
@@ -133,6 +180,6 @@ export function recoverRecording(dir: string, project: Project): Recovery | null
     if (jt.trackId === SOUNDBOARD_TRACK_ID) p = ensureSoundboardTrack(p);
     p = addClip(p, jt.trackId, { ...jt.clip, id: uid('clp') });
   }
-  if (takes > 0) p = addProblemMarkers(p, j.recordStart, j.events);
+  if (takes > 0) p = mergeRecording(p, [], { recordStart: j.recordStart, events: j.events, loop: j.loop }, j.sampleRate);
   return { project: p, takes, seconds: longest, startedAt: j.startedAt, missing };
 }

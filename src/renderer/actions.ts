@@ -17,6 +17,7 @@ import { ensureSoundboardTrack, soundboardTrack } from '../core/soundboard';
 import { selectionSpan } from '../core/navigation';
 import { confirmStop, showSoundcheck } from './recordDialogs';
 import { askName } from './nameDialog';
+import { cycleTake } from '../core/takes';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
 let confirming = false;
@@ -128,11 +129,58 @@ export async function punchIn(): Promise<void> {
     if (store.transport.state === 'playing') await api().stop();
     const sr = store.sampleRate;
     const { preRoll, postRoll } = store.punchRoll;
-    await api().record({ start, end, preRoll: Math.round(preRoll * sr), postRoll: Math.round(postRoll * sr) });
+    await api().record({ punch: { start, end, preRoll: Math.round(preRoll * sr), postRoll: Math.round(postRoll * sr) } });
     toast(`Punch in: ${preRoll ? `${preRoll} s pre-roll, then ` : ''}${((end - start) / sr).toFixed(1)} s are re-recorded`);
   } catch (e) {
     toast(errorMessage(e), 'error');
   }
+}
+
+/** Loop recording starts this many seconds before the selection, so the speaker hears a run-up. */
+const LOOP_PRE_ROLL_SECONDS = 2;
+
+/**
+ * Loop recording (Alt+Shift+R): records the selected time range over and over until stopped, with a
+ * short run-up before the first pass. Every pass becomes a take on each armed track.
+ */
+export async function loopRecordSelection(): Promise<void> {
+  if (store.transport.state === 'recording') return stop();
+  const r = store.selection.range;
+  const a = r ? Math.round(Math.min(r[0], r[1])) : 0;
+  const b = r ? Math.round(Math.max(r[0], r[1])) : 0;
+  if (!r || b - a < store.sampleRate / 4) return void toast('Select the time range of the line first (drag across the timeline), then press Alt+Shift+R to record takes of it in a loop');
+  try {
+    if (!(await soundcheck())) return;
+    if (store.transport.state === 'playing') await api().stop();
+    const start = Math.max(0, a - Math.round(LOOP_PRE_ROLL_SECONDS * store.sampleRate));
+    await api().seek(start);
+    store.recordStart = start;
+    const files = await api().record({ loop: [a, b] });
+    toast(`Loop recording ${files.length} track${files.length === 1 ? '' : 's'}: every pass becomes a take. Stop when you have a good one.`);
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
+/**
+ * Plays the next (T) or previous (Shift+T) take at the playhead: on the selected clips' tracks, or
+ * on every track that has takes there.
+ */
+export function cycleTakes(dir: 1 | -1): void {
+  const pos = store.transport.position;
+  const sel = store.selection.clipIds;
+  const tracks = store.project.tracks.filter((t) => t.takes?.length && (!sel.size || t.clips.some((c) => sel.has(c.id))));
+  const names: string[] = [];
+  let next = store.project;
+  for (const t of tracks) {
+    const r = cycleTake(next, t.id, pos, dir);
+    if (!r.take) continue;
+    next = r.project;
+    names.push(`${t.name}: take ${r.take.n}`);
+  }
+  if (!names.length) return void toast('No takes at the playhead (record the same line again, or loop-record it with Alt+Shift+R)');
+  store.edit(() => next);
+  toast(names.join(' · '));
 }
 
 /** Runs the soundcheck; true if recording may start (no problems, or the user chose to record anyway). */

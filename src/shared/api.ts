@@ -23,6 +23,7 @@ import type {
   RemoteCommand,
   Project,
   RecordedTake,
+  RecordOptions,
   TransportUpdate,
   WaveformPeaks,
   CleanupItem,
@@ -38,7 +39,6 @@ import type {
 import type { ElevenVoice, SpeechEditMode } from '../core/speech';
 import type { TemplateSummary } from '../core/template';
 import type { FxPresetEntry } from '../core/fx/presets';
-import type { PunchRequest } from '../core/punch';
 import type { AlignResult } from '../core/align';
 import type { SoundLibraryInfo } from '../core/soundLibrary';
 
@@ -118,7 +118,10 @@ export type MenuCommand =
   | 'transcript'
   | 'sound-library'
   | 'transcribe'
-  | 'cleanup';
+  | 'cleanup'
+  | 'loop-record'
+  | 'next-take'
+  | 'previous-take';
 
 /** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
 export interface MenuModelItem {
@@ -180,8 +183,11 @@ export interface WavePodApi {
   // transport
   play(from?: number): Promise<void>;
   stop(): Promise<RecordedTake[]>;
-  /** Records the armed tracks at the playhead, or with `punch` re-records only that range with pre-roll. */
-  record(punch?: PunchRequest): Promise<string[]>;
+  /**
+   * Starts recording the armed tracks at the playhead; `loop` records takes over and over (loop
+   * recording), `punch` re-records only that range with pre-roll (punch-in).
+   */
+  record(opts?: RecordOptions): Promise<string[]>;
   seek(position: number): Promise<void>;
   /** Tape-style scrub to `position` while the playhead is dragged (also while stopped); null ends it. */
   scrub(position: number | null): Promise<void>;
@@ -339,7 +345,7 @@ export interface WavePodApi {
   onTransport(cb: (u: TransportUpdate) => void): () => void;
   onStatus(cb: (s: EngineStatus) => void): () => void;
   /** Takes are already merged into `project` (and saved) by the main process; `preparedForEditing` = tracks were unarmed afterwards. */
-  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean; problems: number }) => void): () => void;
+  onRecordingFinished(cb: (r: { takes: RecordedTake[]; project: Project; preparedForEditing: boolean; problems: number; passes?: number }) => void): () => void;
   onExportProgress(cb: (p: ExportProgress) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   /** OSC remote-control commands. */

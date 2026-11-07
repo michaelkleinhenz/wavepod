@@ -59,6 +59,7 @@ Every change an agent makes is one undo step (`Ctrl+Z`), shows up in the FX pane
 | `set_automix` | Crosstalk removal on a track |
 | `set_track_automation` | Volume and pan automation |
 | `set_track_stem` | Which stem a track goes to |
+| `list_takes`, `use_take` | Takes of a track; play a whole take or splice part of one into the comp |
 | `create_folder`, `move_tracks_to_folder`, `update_folder`, `remove_folder` | Track folders |
 
 Agents never open VST3 plug-in windows; they set the same parameters you see as sliders.

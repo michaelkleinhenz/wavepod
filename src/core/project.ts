@@ -9,6 +9,7 @@ import { migrateTrackEnvelope, sortPoints } from './envelope';
 import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
 import { clampRate } from './clipSound';
 import { audibleTracks, groupFolderTracks, normalizeFolders } from './folders';
+import { insertIntoTakes, normalizeTakes, rippleTakes } from './takes';
 
 function normalizeFxList(list: unknown): Fx[] {
   return Array.isArray(list) ? list.map((f) => normalizeFx(f as Partial<Fx>)).filter((f): f is Fx => !!f) : [];
@@ -51,6 +52,25 @@ function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
 }
 
+function normalizeClip(c: Clip): Clip {
+  return {
+    ...c,
+    gain: c.gain ?? 0,
+    fadeIn: c.fadeIn ?? 0,
+    fadeOut: c.fadeOut ?? 0,
+    offset: c.offset ?? 0,
+    sound: undefined,
+    ...(c.fx !== undefined ? { fx: normalizeFxList(c.fx) } : {}),
+    ...normalizeSound(c.sound),
+    ...(Array.isArray(c.envelope) ? { envelope: sortPoints(c.envelope.filter((e) => Number.isFinite(e?.pos) && Number.isFinite(e?.db))) } : {}),
+  };
+}
+
+function takesOf(t: Track): Pick<Track, 'takes' | 'showTakes'> {
+  const takes = normalizeTakes(t.takes, normalizeClip);
+  return takes ? { takes, ...(t.showTakes ? { showTakes: true } : {}) } : {};
+}
+
 /** Fills defaults for projects saved by older versions or hand-edited files. */
 export function normalizeProject(raw: Partial<Project>): Project {
   const base = createProject(raw.name, raw.sampleRate);
@@ -75,17 +95,8 @@ export function normalizeProject(raw: Partial<Project>): Project {
     ...(t.voice && typeof t.voice.id === 'string' && t.voice.id ? { voice: { id: t.voice.id, name: String(t.voice.name ?? ''), ...(t.voice.cloned ? { cloned: true } : {}) } } : {}),
     ...(t.stem === 'dialogue' || t.stem === 'music' || t.stem === 'effects' || t.stem === 'none' ? { stem: t.stem } : {}),
     ...(typeof t.folderId === 'string' && t.folderId ? { folderId: t.folderId } : {}),
-    clips: (t.clips ?? []).map((c) => ({
-      ...c,
-      gain: c.gain ?? 0,
-      fadeIn: c.fadeIn ?? 0,
-      fadeOut: c.fadeOut ?? 0,
-      offset: c.offset ?? 0,
-      sound: undefined,
-      ...(c.fx !== undefined ? { fx: normalizeFxList(c.fx) } : {}),
-      ...normalizeSound(c.sound),
-      ...(Array.isArray(c.envelope) ? { envelope: sortPoints(c.envelope.filter((e) => Number.isFinite(e?.pos) && Number.isFinite(e?.db))) } : {}),
-    })),
+    clips: (t.clips ?? []).map(normalizeClip),
+    ...takesOf(t),
   }));
   // per-track volume lines (one early version) become per-clip ones
   (raw.tracks ?? []).forEach((t, i) => {
@@ -235,6 +246,7 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
       .map((c) => (c.start >= end ? { ...c, start: c.start - len } : c));
     if (t.muteRegions?.length) t.muteRegions = rippleRegions(t.muteRegions, start, end);
     mapTrackAutomation(t, (pts) => shiftAutomation(pts, end, -len));
+    rippleTakes(t, start, end);
   }
   if (p.regions?.length) p.regions = rippleDeleteRegions(p.regions, start, end);
   p.markers = p.markers
@@ -251,6 +263,7 @@ export function insertSilence(project: Project, position: number, length: number
     for (const c of t.clips) if (c.start >= position) c.start += length;
     if (t.muteRegions?.length) t.muteRegions = insertIntoRegions(t.muteRegions, position, length);
     mapTrackAutomation(t, (pts) => shiftAutomation(pts, position, length));
+    insertIntoTakes(t, position, length);
   }
   for (const m of p.markers) if (m.position >= position) m.position += length;
   if (p.regions?.length) p.regions = insertIntoRegionList(p.regions, position, length);
