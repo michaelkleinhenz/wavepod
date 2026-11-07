@@ -9,6 +9,7 @@ import {
   insertSilence,
   markersToChapters,
   moveClip,
+  moveClipsToTracks,
   normalizeProject,
   prepareForEditing,
   rippleDelete,
@@ -73,6 +74,32 @@ describe('project editing', () => {
     const out = moveClip(p, 'a', 2000, p.tracks[1].id);
     expect(out.tracks[0].clips).toHaveLength(0);
     expect(out.tracks[1].clips.map((c) => c.id)).toEqual(['b', 'a']);
+  });
+
+  it('moves clips onto new tracks below the last one', () => {
+    const p = setup();
+    const out = moveClipsToTracks(p, [
+      { clipId: 'b', start: 700, newTrack: 1 },
+      { clipId: 'a', start: 100, newTrack: 0 },
+    ]);
+    expect(out.tracks).toHaveLength(4);
+    expect(out.tracks[0].clips).toHaveLength(0);
+    expect(out.tracks[1].clips).toHaveLength(0);
+    // one new track per new row, in row order, named and coloured like any added track
+    expect(out.tracks[2].clips.map((c) => [c.id, c.start])).toEqual([['a', 100]]);
+    expect(out.tracks[3].clips.map((c) => [c.id, c.start])).toEqual([['b', 700]]);
+    expect(out.tracks[2].name).toBe('Track 3');
+    expect(out.tracks[2].color).not.toBe(out.tracks[3].color);
+    // clips sharing a new row share the new track; others move between existing tracks
+    const both = moveClipsToTracks(p, [
+      { clipId: 'a', start: 0, newTrack: 0 },
+      { clipId: 'b', start: 1500, toTrackId: p.tracks[0].id },
+    ]);
+    expect(both.tracks).toHaveLength(3);
+    expect(both.tracks[0].clips.map((c) => c.id)).toEqual(['b']);
+    expect(both.tracks[2].clips.map((c) => c.id)).toEqual(['a']);
+    // a plain move adds no track
+    expect(moveClipsToTracks(p, [{ clipId: 'a', start: 50 }]).tracks).toHaveLength(2);
   });
 
   it('converts markers to chapters and back', () => {

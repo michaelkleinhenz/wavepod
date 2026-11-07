@@ -205,6 +205,23 @@ export function moveClip(project: Project, clipId: string, newStart: number, toT
   return p;
 }
 
+/**
+ * Moves several clips at once. A move with `newTrack` instead of `toTrackId` goes onto a new track
+ * added at the bottom: one track per distinct `newTrack` number, in that order, so clips dragged
+ * below the last track from different tracks keep their order on the new tracks.
+ */
+export function moveClipsToTracks(project: Project, moves: Array<{ clipId: string; start: number; toTrackId?: string; newTrack?: number }>): Project {
+  let p = project;
+  const newIds = new Map<number, string>();
+  for (const n of [...new Set(moves.flatMap((m) => (m.newTrack === undefined ? [] : [m.newTrack])))].sort((a, b) => a - b)) {
+    const id = uid('trk');
+    newIds.set(n, id);
+    p = addTrack(p, { id });
+  }
+  for (const m of moves) p = moveClip(p, m.clipId, m.start, m.newTrack === undefined ? m.toTrackId : newIds.get(m.newTrack));
+  return p;
+}
+
 export function deleteClips(project: Project, clipIds: string[]): Project {
   const ids = new Set(clipIds);
   const p = clone(project);
