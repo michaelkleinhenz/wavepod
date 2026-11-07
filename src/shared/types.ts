@@ -32,6 +32,20 @@ export interface Clip {
   fx?: Fx[];
   /** Sound design: reverse, varispeed and loop. Not set on a clip that plays its file as recorded. */
   sound?: ClipSound;
+  /** The take (Track.takes) this part of the comp was cut from. */
+  takeId?: string;
+}
+
+/**
+ * One recorded pass of a line, kept on its track for comping. The track's clips are what plays (the
+ * comp); takes hold every pass as recorded, so any of them, or any part of one, can be put back.
+ */
+export interface Take {
+  id: string;
+  /** Number shown as "Take n", counted per track. */
+  n: number;
+  /** The pass's audio at its timeline position (usually one clip). */
+  clips: Clip[];
 }
 
 /**
@@ -86,6 +100,10 @@ export interface Track {
   stem?: StemGroup;
   /** The track folder (group) this track belongs to; its members sit next to each other in the track list. */
   folderId?: string;
+  /** Takes recorded over the same lines (loop recording, retakes), oldest first. */
+  takes?: Take[];
+  /** Take lanes are shown below the track in the timeline. */
+  showTakes?: boolean;
 }
 
 /**
@@ -484,6 +502,8 @@ export interface TransportUpdate {
   recordedFrames: Frames;
   /** While recording: new waveform buckets per recording track since the previous update. */
   recordingPeaks?: LivePeaks[];
+  /** While loop recording: the range the timeline jumps round in; each pass becomes a take. */
+  recordLoop?: [Frames, Frames];
   /** Jingles currently playing. */
   jingles?: PlayingJingle[];
   /** Sound library preview playing: frames played and its length. */
@@ -570,6 +590,12 @@ export interface LivePeaks {
   from: number;
   /** Interleaved min,max pairs scaled to -127..127. */
   data: number[];
+}
+
+/** Options for a recording. */
+export interface RecordOptions {
+  /** Loop recording: the timeline jumps from loop[1] back to loop[0] until stopped; each pass is a take. */
+  loop?: [Frames, Frames];
 }
 
 export interface RecordedTake {

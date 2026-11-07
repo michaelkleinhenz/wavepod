@@ -23,6 +23,7 @@ import type {
   RemoteCommand,
   Project,
   RecordedTake,
+  RecordOptions,
   TransportUpdate,
   WaveformPeaks,
   CleanupItem,
@@ -178,7 +179,8 @@ export interface WavePodApi {
   // transport
   play(from?: number): Promise<void>;
   stop(): Promise<RecordedTake[]>;
-  record(): Promise<string[]>;
+  /** Starts recording the armed tracks at the playhead; `loop` records takes over and over (loop recording). */
+  record(opts?: RecordOptions): Promise<string[]>;
   seek(position: number): Promise<void>;
   /** Tape-style scrub to `position` while the playhead is dragged (also while stopped); null ends it. */
   scrub(position: number | null): Promise<void>;
