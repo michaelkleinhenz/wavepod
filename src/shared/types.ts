@@ -289,6 +289,8 @@ export interface FileTranscript {
   words: TranscriptWord[];
   /** Level curve of the file, to tell a speaker from crosstalk of the others (see core/wordLevels). */
   levels?: TranscriptLevels;
+  /** Sounds the speech-to-text heard (laughter, coughing…), in file frames; transcripts made since WavePod keeps them. */
+  events?: TranscriptWord[];
 }
 
 /** A coarse level curve: one byte per `step` file frames, dB below full scale, base64 encoded. */

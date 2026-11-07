@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import type { FileTranscript, TranscribeProgress, TranscriptionSettings } from '../../shared/types';
 import { SPEECH_RATE, pcmToWav, wavLevelCurve, wavToSpeechPcm } from '../../core/speechAudio';
 import { levelCurve } from '../../core/wordLevels';
-import { wordsFromScribe } from '../../core/transcript';
+import { eventsFromScribe, wordsFromScribe } from '../../core/transcript';
 import { transcribeWithScribe } from '../../core/elevenlabs';
 
 export interface TranscribeJob {
@@ -57,6 +57,7 @@ async function run(): Promise<void> {
         created: new Date().toISOString(),
         words: wordsFromScribe(res.words ?? [], sampleRate),
         levels: levelCurve(pcm, SPEECH_RATE, sampleRate),
+        events: eventsFromScribe(res.words ?? [], sampleRate),
       };
       post({ type: 'file', transcript });
     } catch (e) {

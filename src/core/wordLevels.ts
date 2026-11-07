@@ -4,7 +4,7 @@
 // when another track is much louder at the same moment (it's that speaker, heard through this
 // mic) or when it is quieter than a set level.
 import type { FileTranscript, Frames, Project, TimelineWord, TranscriptLevels } from '../shared/types';
-import { bareWord } from './transcript';
+import { allTimelineWords, bareWord } from './transcript';
 
 /** One level value per this many seconds. */
 export const LEVEL_STEP_S = 0.02;
@@ -108,9 +108,10 @@ export function peakLevel(l: TranscriptLevels, from: number, to: number): number
  *   `crosstalkDb` or more above this track;
  * - echo (`matchWords`): another track has the same word at about the same time and is louder
  *   there. Bleed is transcribed as a quieter copy of what the speaker said, so this catches it
- *   even when the mics are close and the bleed is only a few dB down. A word the speech-to-text
- *   heard a bit differently is caught when it sits between two such echoes and the other
- *   track is louder during it.
+ *   even when the mics are close and the bleed is only a few dB down. While one of the two
+ *   tracks laughs or coughs (a sound event, or "haha"), the other one is taken as the speaker.
+ *   A word the speech-to-text heard a bit differently is caught when it sits between two
+ *   such echoes and the speaker's track says something then.
  * Words of files without a level curve are always kept.
  */
 export function filterQuietWords(
@@ -184,17 +185,30 @@ export function filterQuietWords(
     return false;
   };
 
-  // Echoes: the same word on two tracks at the same time. Which track is the speaker is decided
-  // per run of such pairs (a sentence), by most of its words: a laugh or a cough of the other
-  // person over a few of them then doesn't swap who said it.
+  // Laughs, coughs and other sounds per track: the speech-to-text's sound events (newer
+  // transcripts keep them) and laughter written as words. A track's level means little then.
+  const sounds = new Map<string, Array<[number, number]>>();
+  const addSound = (trackId: string, start: number, end: number) => {
+    const list = sounds.get(trackId) ?? [];
+    sounds.set(trackId, list);
+    list.push([start, end]);
+  };
+  for (let i = 0; i < n; i++) if (bare[i] && !speechWord(i)) addSound(words[i].trackId, words[i].start, words[i].end);
+  const eventFiles: Record<string, FileTranscript> = {};
+  const all = transcripts instanceof Map ? [...transcripts.values()] : Object.values(transcripts as Record<string, FileTranscript>);
+  for (const t of all) if (t.events?.length) eventFiles[t.file] = { ...t, words: t.events };
+  for (const e of allTimelineWords(project, eventFiles)) addSound(e.trackId, e.start, e.end);
+  const soundAt = (trackId: string, start: number, end: number) => (sounds.get(trackId) ?? []).some(([a, b]) => a < end && b > start);
+
+  // Echoes: the same word on two tracks at the same time. The louder copy is the speaker's,
+  // unless one of the two tracks laughs or coughs right then: then the other one is.
   if (filter.matchWords) {
     const win = MATCH_WINDOW_S * sr;
-    const pairs: Array<[number, number]> = [];
     for (let i = 0; i < n; i++) {
       if (own[i] === -Infinity || !speechWord(i)) continue;
       const w = words[i];
       const mid = (w.start + w.end) / 2;
-      // pair each word with the closest same word on a later-listed word of another track
+      // pair each word with the closest same word of another track listed after it
       let best = -1;
       let bestD = Infinity;
       for (let j = i + 1; j < n && words[j].start <= w.end + win; j++) {
@@ -206,32 +220,19 @@ export function filterQuietWords(
           bestD = d;
         }
       }
-      if (best >= 0) pairs.push([i, best]);
+      if (best < 0) continue;
+      const u = words[best];
+      const iSound = soundAt(w.trackId, Math.min(w.start, u.start), Math.max(w.end, u.end));
+      const jSound = soundAt(u.trackId, Math.min(w.start, u.start), Math.max(w.end, u.end));
+      let speaker: number;
+      if (iSound !== jSound) speaker = iSound ? best : i;
+      else if (own[i] !== own[best]) speaker = own[i] > own[best] ? i : best;
+      else continue;
+      const bleed = speaker === i ? best : i;
+      role[speaker] = 1;
+      role[bleed] = 2;
     }
-    // runs per pair of tracks: pairs no further apart than ECHO_RUN_GAP_S
     const gap = ECHO_RUN_GAP_S * sr;
-    const runs = new Map<string, Array<Array<[number, number]>>>();
-    for (const [i, j] of pairs) {
-      const [a, b] = words[i].trackId < words[j].trackId ? [i, j] : [j, i];
-      const key = `${words[a].trackId}\n${words[b].trackId}`;
-      const list = runs.get(key) ?? [];
-      runs.set(key, list);
-      const last = list[list.length - 1];
-      if (last && words[a].start - words[last[last.length - 1][0]].end <= gap) last.push([a, b]);
-      else list.push([[a, b]]);
-    }
-    for (const list of runs.values())
-      for (const run of list) {
-        // the louder side of most pairs is the speaker (median of the differences)
-        const diffs = run.map(([a, b]) => own[a] - own[b]).sort((x, y) => x - y);
-        const m = diffs.length % 2 ? diffs[(diffs.length - 1) >> 1] : (diffs[diffs.length / 2 - 1] + diffs[diffs.length / 2]) / 2;
-        if (m === 0) continue;
-        for (const [a, b] of run) {
-          const [speaker, bleed] = m > 0 ? [a, b] : [b, a];
-          role[speaker] = 1;
-          role[bleed] = 2;
-        }
-      }
     // words heard a bit differently inside a run: between two bleed words of the same track
     const prev = new Int32Array(n).fill(-1);
     const next = new Int32Array(n).fill(-1);
@@ -269,7 +270,7 @@ export function filterQuietWords(
     // much louder elsewhere: only crosstalk if that track is speaking then. Laughing, coughing or
     // moving the mic doesn't take this speaker's words away, and nor does a word the echo check
     // already found to be the speaker's own.
-    else if (filter.crosstalkDb > 0 && role[i] !== 1 && other[i] - own[i] >= filter.crosstalkDb && speaksAt(i, otherLane[i])) drop[i] = 1;
+    else if (filter.crosstalkDb > 0 && role[i] !== 1 && other[i] - own[i] >= filter.crosstalkDb && speaksAt(i, otherLane[i]) && !soundAt(otherLane[i], w.start, w.end)) drop[i] = 1;
   }
   const out = words.filter((_, i) => !drop[i]);
   return { words: out, hidden: n - out.length };
