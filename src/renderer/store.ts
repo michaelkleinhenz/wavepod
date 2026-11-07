@@ -1,4 +1,5 @@
 // Renderer state: the project (with undo), engine status, transport and selection.
+import { syncTakes } from '../core/takes';
 import type { ClipboardData } from '../core/clipboard';
 import type { SaveState, WavePodApi } from '../shared/api';
 import type { AudioDevice, DeviceProfile, EngineStatus, LivePeaks, Project, TransportUpdate, WaveformPeaks } from '../shared/types';
@@ -102,7 +103,8 @@ class Store {
 
   /** Applies an undoable edit and syncs it to the main process. */
   edit(fn: (p: Project) => Project): void {
-    const next = fn(this.project);
+    // takes move along when a comp was dragged elsewhere as a whole
+    const next = syncTakes(fn(this.project));
     if (next === this.project) return;
     this.history.push(this.project);
     this.project = next;

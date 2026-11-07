@@ -9,6 +9,8 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
     'Recording',
     [
       ['R', 'Record / stop recording'],
+      ['Shift+R', 'Loop-record the selected time range: every pass becomes a take'],
+      ['T / Shift+T', 'Next / previous take at the playhead'],
       ['Space', 'Play / stop'],
       ['M', 'Chapter marker at the playhead'],
       ['Shift+M', 'Chapter marker with a title'],

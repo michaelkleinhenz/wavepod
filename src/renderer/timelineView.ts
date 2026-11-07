@@ -1,7 +1,8 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import { LevelMeter } from './levelMeter';
 import { selectionSpan } from '../core/navigation';
-import type { AutomationLane, AutomationPoint, Clip, EnvelopePoint, Marker, PeakLevel, Project, Track } from '../shared/types';
+import type { AutomationLane, AutomationPoint, Clip, EnvelopePoint, Marker, PeakLevel, Project, Take, Track, TrackFolder } from '../shared/types';
+import { compTake, deleteTake, deleteUnusedTakes, flattenTakes, loopPass, pickTake, takeInUse, takeUsage } from '../core/takes';
 import { DRAMA_FOLDERS, FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addDramaFolders, addFolder, audibleTracks, removeFolder, setTrackFolder, timelineRows, updateFolder, type TimelineRow } from '../core/folders';
 import { askName } from './nameDialog';
 import { addAutomationPoint, automationValueAt, formatPan, parsePan, setTrackAutomation, showTrackAutomation } from '../core/automation';
@@ -84,6 +85,11 @@ const clipFxCount = (clip: Clip) => clip.fx?.filter((f) => f.enabled).length ?? 
 /** Colours of the track automation lanes (the clip volume line is green). */
 const LANE_COLOR: Record<AutomationLane, string> = { volume: '#ffb74d', pan: '#82b1ff' };
 const LANE_NAME: Record<AutomationLane, string> = { volume: 'Volume', pan: 'Pan' };
+/** A take lane under its track (shown with the track's take lanes). */
+type TakeRow = { kind: 'take'; track: Track; take: Take; folder?: TrackFolder };
+/** A row of the timeline: a folder, a track, or one of a track's take lanes. */
+type Row = TimelineRow | TakeRow;
+
 /** The lane shown on a track's row, if any. */
 const shownLane = (t: Track | undefined): AutomationLane | null => t?.automation?.shown ?? null;
 
@@ -102,10 +108,12 @@ type Drag =
   | { kind: 'mute'; trackId: string; index: number | null; edge: 'left' | 'right' | 'new'; anchor: number; current: number; moved: boolean }
   | { kind: 'playhead'; startX: number; grabOffset: number; current: number; moved: boolean }
   // Shift+drag: a rubber band across tracks and time that selects every clip it touches
-  | { kind: 'marquee'; startX: number; startY: number; a: number; b: number; y0: number; y1: number; clipId: string | null; ids: Set<string>; moved: boolean };
+  | { kind: 'marquee'; startX: number; startY: number; a: number; b: number; y0: number; y1: number; clipId: string | null; ids: Set<string>; moved: boolean }
+  // on a take lane: click plays the whole take, drag splices the part dragged over into the comp
+  | { kind: 'takeSwipe'; trackId: string; takeId: string; row: number; a: number; b: number; startX: number; moved: boolean };
 
 /** Drags that scroll the view when the mouse nears or leaves its left or right edge (Reaper style). */
-const AUTOSCROLL_X = new Set<Drag['kind']>(['clip', 'trim', 'fade', 'range', 'rangeEdge', 'marker', 'mute', 'marquee', 'autoPoint']);
+const AUTOSCROLL_X = new Set<Drag['kind']>(['clip', 'trim', 'fade', 'range', 'rangeEdge', 'marker', 'mute', 'marquee', 'autoPoint', 'takeSwipe']);
 /** Drags that also scroll the tracks up or down at the top and bottom edge. */
 const AUTOSCROLL_Y = new Set<Drag['kind']>(['clip', 'range', 'marquee']);
 
@@ -122,7 +130,7 @@ export class TimelineView {
   private folderMeters = new Map<string, LevelMeter>();
   private folderBtn: HTMLButtonElement | null = null;
   /** Timeline rows (folders and the tracks shown) for the current project, rebuilt when it changes. */
-  private layoutCache: { project: Project; rows: TimelineRow[]; rowOf: Map<string, number>; audible: Set<string> } | null = null;
+  private layoutCache: { project: Project; rows: Row[]; rowOf: Map<string, number>; audible: Set<string> } | null = null;
 
   /** Seconds at the left edge. */
   viewStart = 0;
@@ -332,11 +340,16 @@ export class TimelineView {
     });
   }
 
-  private layout(): { rows: TimelineRow[]; rowOf: Map<string, number>; audible: Set<string> } {
+  private layout(): { rows: Row[]; rowOf: Map<string, number>; audible: Set<string> } {
     const project = store.project;
     if (!project) return { rows: [], rowOf: new Map(), audible: new Set() };
     if (this.layoutCache?.project !== project) {
-      const rows = timelineRows(project);
+      // a track's take lanes follow its row, take 1 first
+      const rows: Row[] = timelineRows(project).flatMap((r): Row[] =>
+        r.kind === 'track' && r.track.showTakes && r.track.takes?.length
+          ? [r, ...[...r.track.takes].sort((a, b) => a.n - b.n).map((take): TakeRow => ({ kind: 'take', track: r.track, take, folder: r.folder }))]
+          : [r],
+      );
       const rowOf = new Map<string, number>();
       rows.forEach((r, i) => {
         if (r.kind === 'track') rowOf.set(r.track.id, i);
@@ -347,7 +360,7 @@ export class TimelineView {
   }
 
   /** Rows of the timeline, top to bottom: folder rows and the tracks that are not folded away. */
-  private get rows(): TimelineRow[] {
+  private get rows(): Row[] {
     return this.layout().rows;
   }
 
@@ -367,7 +380,7 @@ export class TimelineView {
     const rows = this.rows;
     const lo = Math.max(0, Math.min(a, b));
     const hi = Math.min(rows.length - 1, Math.max(a, b));
-    return rows.slice(lo, hi + 1).flatMap((r) => (r.kind === 'track' ? [r.track] : r.folder.collapsed ? r.members : []));
+    return rows.slice(lo, hi + 1).flatMap((r) => (r.kind === 'track' ? [r.track] : r.kind === 'folder' && r.folder.collapsed ? r.members : []));
   }
 
   /** The row `d` rows away from `row` for a dragged clip; folder rows are stepped over. */
@@ -397,6 +410,7 @@ export class TimelineView {
     this.folderMeters.clear();
     this.rows.forEach((row) => {
       if (row.kind === 'folder') return void this.headers.append(this.folderHeader(row));
+      if (row.kind === 'take') return void this.headers.append(this.takeHeader(row));
       const t = row.track;
       const cur = t.inputChannels.join(',');
       if (cur && !inputOptions.some((o) => o.value === cur)) inputOptions.push({ value: cur, label: `${cur} (unavailable)` });
@@ -427,7 +441,7 @@ export class TimelineView {
               // text fields keep their own copy/paste menu
               if ((e.target as HTMLElement).closest('input:not([type=range]), select')) return;
               e.preventDefault();
-              this.trackFolderMenu(t, e.clientX, e.clientY);
+              this.trackHeaderMenu(t, e.clientX, e.clientY);
             },
           },
           h(
@@ -505,6 +519,19 @@ export class TimelineView {
               },
               t.fx?.some((f) => f.enabled) ? `FX ${t.fx.filter((f) => f.enabled).length}` : 'FX',
             ),
+            ...(t.takes?.length
+              ? [
+                  h(
+                    'button',
+                    {
+                      class: `fx-btn takes-btn${t.showTakes ? ' open' : ''}`,
+                      title: `${t.takes.length} takes: ${t.showTakes ? 'hide' : 'show'} the take lanes (click a take to play it, drag over part of one to use that part)`,
+                      onclick: () => store.patch((p) => updateTrack(p, t.id, { showTakes: !t.showTakes })),
+                    },
+                    `Takes ${t.takes.length}`,
+                  ),
+                ]
+              : []),
             editableNumber(h('span', { class: 'gain-label', title: 'Track gain (click to type a value)' }, `${t.gain > 0 ? '+' : ''}${t.gain.toFixed(1)} dB`), {
               min: -24,
               max: 12,
@@ -542,6 +569,62 @@ export class TimelineView {
       );
     }
     this.resize();
+  }
+
+  /** A take lane's header: which take, whether the comp plays it, and buttons to play or delete it. */
+  private takeHeader(row: TakeRow): HTMLElement {
+    const { track: t, take } = row;
+    const used = takeUsage(t, take.id);
+    const whole = used.length === 1 && take.clips.length === 1 && used[0][0] === take.clips[0].start && used[0][1] === take.clips[0].start + take.clips[0].length;
+    const state = !used.length ? 'not used' : whole ? 'playing' : `${used.length} part${used.length === 1 ? '' : 's'} used`;
+    return h(
+      'div',
+      {
+        class: `track-header take-header${used.length ? ' used' : ''}${row.folder ? ' in-folder' : ''}`,
+        style: `height: ${TRACK_H}px; --track-color: ${t.color}${row.folder ? `; --folder-color: ${row.folder.color}` : ''}`,
+        oncontextmenu: (e: MouseEvent) => {
+          e.preventDefault();
+          this.takeMenu(t, take, e.clientX, e.clientY);
+        },
+      },
+      h('div', { class: 'th-row' }, h('span', { class: 'take-name' }, `Take ${take.n}`), h('span', { class: 'take-state muted' }, state)),
+      h('div', { class: 'th-row muted th-hint' }, `${t.name} · click: use it · drag: use a part`),
+      h(
+        'div',
+        { class: 'th-row' },
+        h('button', { class: 'fx-btn', title: 'Use this whole take', disabled: whole, onclick: () => store.edit((p) => pickTake(p, t.id, take.id)) }, 'Use take'),
+        h(
+          'button',
+          {
+            class: 'fx-btn',
+            title: used.length ? 'The comp uses this take; use another one before deleting it' : 'Delete this take (its file stays in the project folder)',
+            disabled: used.length > 0,
+            onclick: () => store.edit((p) => deleteTake(p, t.id, take.id)),
+          },
+          'Delete',
+        ),
+      ),
+    );
+  }
+
+  /** Right-click on a take lane or its header. */
+  private takeMenu(t: Track, take: Take, x: number, y: number): void {
+    const range = store.selection.range;
+    const used = takeInUse(t, take.id);
+    showContextMenu(
+      [
+        { kind: 'header', label: `Take ${take.n}` },
+        { label: 'Use this take', run: () => store.edit((p) => pickTake(p, t.id, take.id)) },
+        { label: 'Use this take for the selected time', enabled: !!range, run: () => range && store.edit((p) => compTake(p, t.id, take.id, range[0], range[1])) },
+        { label: used ? 'Delete take (in use)' : 'Delete take', enabled: !used, run: () => store.edit((p) => deleteTake(p, t.id, take.id)) },
+        { kind: 'separator' },
+        { label: 'Delete unused takes', enabled: (t.takes ?? []).some((k) => !takeInUse(t, k.id)), run: () => store.edit((p) => deleteUnusedTakes(p, t.id)) },
+        { label: 'Flatten takes (keep the comp, forget the takes)', run: () => store.edit((p) => flattenTakes(p, t.id)) },
+        { label: 'Hide take lanes', run: () => store.patch((p) => updateTrack(p, t.id, { showTakes: false })) },
+      ],
+      x,
+      y,
+    );
   }
 
   /** A folder's header: fold/unfold, name, group mute and solo, group volume and a meter over its tracks. */
@@ -664,11 +747,21 @@ export class TimelineView {
     if (name) store.edit((p) => addFolder(p, { name, trackIds }));
   }
 
-  /** Right-click on a track header: which folder the track is in. */
-  private trackFolderMenu(t: Track, x: number, y: number): void {
+  /** Right-click on a track header: its takes and which folder the track is in. */
+  private trackHeaderMenu(t: Track, x: number, y: number): void {
     const folders = store.project.folders ?? [];
+    const takes = t.takes ?? [];
     showContextMenu(
       [
+        ...(takes.length
+          ? [
+              { kind: 'header' as const, label: `Takes (${takes.length})` },
+              { label: 'Show take lanes', checked: !!t.showTakes, run: () => store.patch((p) => updateTrack(p, t.id, { showTakes: !t.showTakes })) },
+              { label: 'Delete unused takes', enabled: takes.some((k) => !takeInUse(t, k.id)), run: () => store.edit((p) => deleteUnusedTakes(p, t.id)) },
+              { label: 'Flatten takes (keep the comp, forget the takes)', run: () => store.edit((p) => flattenTakes(p, t.id)) },
+              { kind: 'separator' as const },
+            ]
+          : []),
         { kind: 'header', label: `Move "${t.name}" to folder` },
         ...folders.map((f) => ({ label: f.name, checked: t.folderId === f.id, run: () => store.edit((p) => setTrackFolder(p, t.id, f.id)) })),
         { label: 'No folder', checked: !t.folderId, run: () => store.edit((p) => setTrackFolder(p, t.id, null)) },
@@ -1137,6 +1230,7 @@ export class TimelineView {
     rows.forEach((row, i) => {
       const y = i * TRACK_H;
       if (row.kind === 'folder') return this.drawFolderRow(ctx, row, y);
+      if (row.kind === 'take') return this.drawTakeRow(ctx, row, i);
       const t = row.track;
       ctx.fillStyle = i % 2 ? '#191b21' : '#1b1d23';
       ctx.fillRect(0, y, w, TRACK_H - 2);
@@ -1151,16 +1245,22 @@ export class TimelineView {
       const lane = shownLane(t);
       if (lane) this.drawAutomation(ctx, t, i, lane);
       if (recording && t.armed && t.inputChannels.length) {
-        const x0 = this.xOf(store.recordStart);
+        // loop recording: after the first pass the current pass is drawn from the loop start
+        const loop = store.transport.recordLoop;
+        const pass = loop ? loopPass(store.transport.recordedFrames, store.recordStart, loop) : 1;
+        const passStart = pass > 1 && loop ? loop[0] : store.recordStart;
+        // file frame where the drawn pass begins
+        const fileStart = pass > 1 && loop ? loop[1] - store.recordStart + (pass - 2) * (loop[1] - loop[0]) : 0;
+        const x0 = this.xOf(passStart);
         const x1 = this.xOf(store.transport.position);
         ctx.fillStyle = 'rgba(229,57,53,0.25)';
         ctx.fillRect(this.cx(x0), y + 4, Math.max(1, this.cx(x1) - this.cx(x0)), TRACK_H - 9);
         const live = store.livePeaks.get(t.id);
-        if (live) this.drawLiveWaveform(ctx, live.levelsSnapshot(false), x0, Math.min(x1, w), y + 4, TRACK_H - 9);
+        if (live) this.drawLiveWaveform(ctx, live.levelsSnapshot(false), x0 - (fileStart / this.sr) * this.pxPerSec, Math.min(x1, w), y + 4, TRACK_H - 9, x0);
         ctx.fillStyle = '#ffcdd2';
         ctx.font = '11px system-ui, sans-serif';
         ctx.textBaseline = 'top';
-        ctx.fillText('● recording', Math.max(4, x0 + 4), y + 8);
+        ctx.fillText(loop ? `● loop recording · pass ${pass}` : '● recording', Math.max(4, x0 + 4), y + 8);
       }
       ctx.fillStyle = '#0b0c0f';
       ctx.fillRect(0, y + TRACK_H - 2, w, 2);
@@ -1172,7 +1272,7 @@ export class TimelineView {
       const x1 = this.cx(this.xOf(range[1]));
       rows.forEach((r, i) => {
         // a folder row is lit when the selection covers its tracks
-        const covered = r.kind === 'track' ? [r.track] : r.members;
+        const covered = r.kind === 'track' ? [r.track] : r.kind === 'folder' ? r.members : [];
         if (!covered.length || (ids && !covered.some((t) => ids.includes(t.id)))) return;
         ctx.fillStyle = 'rgba(120,160,255,0.22)';
         ctx.fillRect(x0, i * TRACK_H, x1 - x0, TRACK_H - 1);
@@ -1197,6 +1297,69 @@ export class TimelineView {
     this.drawPlayhead(ctx, height);
     this.drawSnapLine(ctx, height);
     this.drawDropHint(ctx, height);
+  }
+
+  /**
+   * A take lane: the take's audio, bright where the comp plays it and dimmed elsewhere, with the
+   * part being swiped over highlighted.
+   */
+  private drawTakeRow(ctx: CanvasRenderingContext2D, row: TakeRow, i: number): void {
+    const w = this.width;
+    const y = i * TRACK_H;
+    const { track, take } = row;
+    ctx.fillStyle = '#121418';
+    ctx.fillRect(0, y, w, TRACK_H - 2);
+    ctx.globalAlpha = 0.04;
+    ctx.fillStyle = track.color;
+    ctx.fillRect(0, y, w, TRACK_H - 2);
+    ctx.globalAlpha = 1;
+    const view: Track = { ...track, clips: take.clips };
+    const hgt = TRACK_H - 9;
+    const used = takeUsage(track, take.id);
+    for (const clip of take.clips) {
+      const g: ClipGeo = { x: this.xOf(clip.start), y: y + 4, w: (clip.length / this.sr) * this.pxPerSec, start: clip.start, length: clip.length, offset: clip.offset, trackIndex: i };
+      if (g.x > w || g.x + g.w < 0) continue;
+      this.drawClipBody(ctx, view, clip, g, 0.45);
+      this.drawClipWave(ctx, view, clip, g, 0.35);
+      // the parts the comp plays, at full strength
+      for (const [a, b] of used) {
+        const sx0 = Math.max(this.cx(this.xOf(a)), this.cx(g.x));
+        const sx1 = Math.min(this.cx(this.xOf(b)), this.cx(g.x + g.w));
+        if (sx1 - sx0 < 0.5) continue;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(sx0, g.y, sx1 - sx0, hgt);
+        ctx.clip();
+        this.drawClipBody(ctx, view, clip, g, 1);
+        this.drawClipWave(ctx, view, clip, g, 1, [sx0, sx1]);
+        ctx.strokeStyle = track.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx0 + 1, g.y + 1, sx1 - sx0 - 2, hgt - 2);
+        ctx.restore();
+      }
+      ctx.fillStyle = used.length ? '#e8eaf0' : '#8a90a0';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`Take ${take.n}`, Math.max(4, g.x + 4), g.y + 6, Math.max(10, g.w - 8));
+    }
+    const d = this.drag;
+    if (d?.kind === 'takeSwipe' && d.takeId === take.id && d.moved) {
+      const x0 = this.cx(this.xOf(Math.min(d.a, d.b)));
+      const x1 = this.cx(this.xOf(Math.max(d.a, d.b)));
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(x0, y + 4, x1 - x0, hgt);
+      ctx.fillStyle = track.color;
+      ctx.fillRect(Math.round(x0), y + 4, 2, hgt);
+      ctx.fillRect(Math.round(x1) - 2, y + 4, 2, hgt);
+    }
+    ctx.fillStyle = '#0b0c0f';
+    ctx.fillRect(0, y + TRACK_H - 2, w, 2);
+  }
+
+  /** The take lane on a row, if it is one. */
+  private takeRowAt(row: number): TakeRow | undefined {
+    const r = this.rows[row];
+    return r?.kind === 'take' ? r : undefined;
   }
 
   /**
@@ -1608,12 +1771,15 @@ export class TimelineView {
     }
   }
 
-  /** Draws the waveform of a take that is still being recorded, starting at x0. */
-  private drawLiveWaveform(ctx: CanvasRenderingContext2D, levels: PeakLevel[], x0: number, x1: number, y: number, hgt: number): void {
+  /**
+   * Draws the waveform of a take that is still being recorded; the take's first frame is at x0, and
+   * nothing is drawn left of `from` (a loop recording shows only the pass being recorded).
+   */
+  private drawLiveWaveform(ctx: CanvasRenderingContext2D, levels: PeakLevel[], x0: number, x1: number, y: number, hgt: number, from = x0): void {
     const base = levels[0];
     if (!base) return;
     drawLevelsWaveform(ctx, levels, {
-      x0: Math.max(0, Math.floor(x0)),
+      x0: Math.max(0, Math.floor(from)),
       x1: Math.ceil(x1),
       originX: x0,
       srcStart: 0,
@@ -1928,7 +2094,9 @@ export class TimelineView {
       ctx.font = '10px system-ui, sans-serif';
       ctx.textBaseline = 'top';
       const jingle = track.kind === 'soundboard' ? store.project.soundboard.find((s) => jingleMediaFile(s.id, this.sr) === clip.file) : undefined;
-      const name = jingle ? `♪ ${jingle.name}` : clip.file.split('/').pop() ?? '';
+      // a part of the comp is named after its take
+      const take = clip.takeId ? track.takes?.find((k) => k.id === clip.takeId) : undefined;
+      const name = jingle ? `♪ ${jingle.name}` : take ? `Take ${take.n}` : clip.file.split('/').pop() ?? '';
       const tag = soundTag(clip);
       ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}${tag ? `  ${tag}` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
       if (clip.note) {
@@ -2342,6 +2510,12 @@ export class TimelineView {
         this.hoverClipId = hover;
         this.draw();
       }
+      const takeRow = this.takeRowAt(Math.floor(y / TRACK_H));
+      if (takeRow) {
+        this.canvas.style.cursor = 'pointer';
+        this.canvas.title = `Take ${takeRow.take.n}: click to use the whole take, drag over a part to use just that part`;
+        return;
+      }
       if (e.shiftKey) {
         this.canvas.style.cursor = 'crosshair';
         this.canvas.title = 'Drag to select every clip in the rectangle, click a clip to add or remove it';
@@ -2450,6 +2624,11 @@ export class TimelineView {
     this.canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const { x, y } = local(e, this.canvas);
+      const takeRow = this.takeRowAt(Math.floor(y / TRACK_H));
+      if (takeRow) {
+        this.drag = null;
+        return this.takeMenu(takeRow.track, takeRow.take, e.clientX, e.clientY);
+      }
       const hit = this.hitClip(x, y);
       if (!hit) return;
       this.drag = null;
@@ -2467,6 +2646,14 @@ export class TimelineView {
       if (e.button === 2) return; // right-click opens the clip menu
       const { x, y } = local(e, this.canvas);
       this.snapLine = null;
+      // a take lane: click uses the take, drag swipes the part to use (comping)
+      const takeRow = this.takeRowAt(Math.floor(y / TRACK_H));
+      if (takeRow) {
+        if (e.button !== 0) return;
+        const f = this.snappedFrame(x, e);
+        this.drag = { kind: 'takeSwipe', trackId: takeRow.track.id, takeId: takeRow.take.id, row: Math.floor(y / TRACK_H), a: f, b: f, startX: e.clientX, moved: false };
+        return;
+      }
       // 0. Shift+drag draws a rubber band that selects every clip it touches (Shift+click still toggles a clip)
       if (e.shiftKey && !e.ctrlKey && !e.metaKey && e.button === 0) {
         const under = this.hitClip(x, y);
@@ -2652,6 +2839,10 @@ export class TimelineView {
             : { fadeOut: Math.max(0, Math.min(o.length - o.fadeIn, o.start + o.length - snapped)) };
         store.editLive((p) => updateClip(p, d.clipId, patch));
         this.draw();
+      } else if (d.kind === 'takeSwipe') {
+        d.b = this.snappedFrame(pos.x, e);
+        if (Math.abs(this.dragDx(d, e, d.startX)) > 3) d.moved = true;
+        this.draw();
       } else if (d.kind === 'range') {
         d.endFrame = this.snappedFrame(pos.x, e);
         if (d.startTrack !== null) d.endTrack = Math.max(0, Math.min(this.rows.length - 1, Math.floor(pos.y / TRACK_H)));
@@ -2730,6 +2921,13 @@ export class TimelineView {
       this.snapLine = null;
       document.body.classList.remove('scrubbing');
       if (!d) return;
+      if (d.kind === 'takeSwipe') {
+        const [a, b] = [Math.min(d.a, d.b), Math.max(d.a, d.b)];
+        if (d.moved && b > a) store.edit((p) => compTake(p, d.trackId, d.takeId, a, b));
+        else if (!d.moved) store.edit((p) => pickTake(p, d.trackId, d.takeId));
+        this.draw();
+        return;
+      }
       if (d.kind === 'playhead' && d.moved) {
         scrub(null);
         seek(d.current);

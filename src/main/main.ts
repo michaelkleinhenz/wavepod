@@ -5,14 +5,15 @@ import { Worker } from 'node:worker_threads';
 import { RecordingAlerter, withAlertMark } from './recordingAlert';
 import { IPC, type AboutLink, type AppInfo, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject, type SaveState } from '../shared/api';
 import { acceleratorLabel, menuLabel } from '../core/menuText';
-import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, VstPluginRef } from '../shared/types';
-import { addClip, prepareForEditing } from '../core/project';
-import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from '../core/soundboard';
+import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, RecordOptions, VstPluginRef } from '../shared/types';
+import { prepareForEditing } from '../core/project';
 import { findProfile } from '../core/deviceProfiles';
 import { writeWavFile } from '../core/wav';
 import { AudioEngine, defaultConfig, type TakeReport } from './audio/engine';
 import { RecordWorker } from './audio/takeSink';
-import { addProblemMarkers, clearJournal, recoverRecording, type Recovery } from '../core/recordingJournal';
+import { SOUNDBOARD_TRACK_ID } from '../core/soundboard';
+import { loopTakeClips } from '../core/takes';
+import { clearJournal, mergeRecording, recoverRecording, type Recovery } from '../core/recordingJournal';
 import { formatMinutes } from '../core/recordingMonitor';
 import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
@@ -497,9 +498,9 @@ const handlers: Record<InvokeMethod, Handler> = {
 
   play: (from?: number) => engine.play(from),
   stop: () => engine.stop(),
-  record: () => {
+  record: (opts?: RecordOptions) => {
     backupNow('before-recording');
-    return engine.record();
+    return engine.record(opts);
   },
   seek: (pos: number) => engine.seek(pos),
   scrub: (pos: number | null) => engine.scrub(pos),
@@ -852,7 +853,7 @@ let appMenu: Menu | null = null;
 const menuItems = new Map<string, MenuItem>();
 
 /** Shortcuts shown next to menu items whose keys the window handles itself. */
-const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<' };
+const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'loop-record': 'Shift+R', 'next-take': 'T', 'previous-take': 'Shift+T' };
 
 function menuModel(): MenuModelTop[] {
   menuItems.clear();
@@ -948,6 +949,11 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Transcribe Episode', click: menuSend('transcribe') },
         { label: 'Clean Up Pauses and Hesitations…', accelerator: 'Shift+CmdOrCtrl+K', click: menuSend('cleanup') },
+        { type: 'separator' },
+        // Takes: the keys are handled in the window (single keys must not fire while typing), see MENU_KEY_HINTS.
+        { id: 'loop-record', label: 'Loop-Record the Selection (Takes)', click: menuSend('loop-record') },
+        { id: 'next-take', label: 'Next Take', click: menuSend('next-take') },
+        { id: 'previous-take', label: 'Previous Take', click: menuSend('previous-take') },
         { type: 'separator' },
         { label: 'Prepare All Tracks for Editing', click: menuSend('prepare-for-editing') },
         {
@@ -1176,11 +1182,8 @@ app.whenReady().then(() => {
   });
   engine.on('recordingFinished', (takes: RecordedTake[], report: TakeReport | null) => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
-    let project = current.project;
-    if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) project = ensureSoundboardTrack(project);
-    for (const t of takes) project = addClip(project, t.trackId, t.clip);
-    // Problems found while recording become edit markers, so they are easy to find and check.
-    if (report?.events.length) project = addProblemMarkers(project, report.recordStart, report.events);
+    // Takes stack over earlier recordings of the same lines; problems found become edit markers.
+    let project = mergeRecording(current.project, takes, report ?? { recordStart: 0, events: [] }, current.project.sampleRate);
     const prepared = settings.prepareForEditingAfterRecording ? prepareForEditing(project) : project;
     const preparedForEditing = prepared !== project;
     project = prepared;
@@ -1194,7 +1197,11 @@ app.whenReady().then(() => {
         /* recovery would find the clips already there */
       }
     }
-    send(IPC.recordingFinished, { takes, project, preparedForEditing, problems: report?.events.length ?? 0 });
+    // loop recording: how many passes each track got (they are takes now)
+    const loop = report?.loop;
+    const first = takes.find((t) => t.trackId !== SOUNDBOARD_TRACK_ID);
+    const passes = loop && first ? loopTakeClips(first.clip, loop, project.sampleRate).length : undefined;
+    send(IPC.recordingFinished, { takes, project, preparedForEditing, problems: report?.events.length ?? 0, ...(passes ? { passes } : {}) });
   });
 
   try {

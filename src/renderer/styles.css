@@ -731,3 +731,17 @@ button.link:hover:not(:disabled) { background: none; border: none; }
 @media (prefers-reduced-motion: reduce) { .dialog.emergency { animation: none; } }
 .settings-alert-hint { font-size: 12px; align-self: center; }
 .settings-alert-row { margin-bottom: 14px; }
+
+/* take lanes (takes and comping): darker than the track, named after the take */
+.take-header {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--track-color) 14%, #111317) 0%,
+    color-mix(in srgb, var(--track-color) 6%, #111317) 100%);
+  border-left-style: dashed;
+}
+.take-header.used { box-shadow: inset 3px 0 0 var(--track-color); }
+.take-header .take-name { font-weight: 700; flex: 1; }
+.take-header .take-state { font-size: 11px; }
+.take-header.used .take-state { color: var(--text, #ddd); }
+.takes-btn { flex: none; }
+.takes-btn.open { color: #ce93d8; border-color: #7b5a86; }

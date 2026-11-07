@@ -38,6 +38,8 @@ import {
   selectAllClips,
   pasteClipboard,
   toggleRepeat,
+  loopRecordSelection,
+  cycleTakes,
   setSpeed,
   stepPlaybackSpeed,
 } from './actions';
@@ -385,14 +387,15 @@ async function main(): Promise<void> {
   store.subscribe((kinds) => {
     if (kinds.has('status')) preShowBtn.classList.toggle('on', !!store.status?.preShow);
   });
-  api().onRecordingFinished(({ takes, project, preparedForEditing, problems }) => {
+  api().onRecordingFinished(({ takes, project, preparedForEditing, problems, passes }) => {
     store.history.push(store.project);
     store.setProject(project);
+    const what = passes ? `Recorded ${passes} pass${passes === 1 ? '' : 'es'} as takes (T / Shift+T to switch)` : `Recorded ${takes.length} take${takes.length === 1 ? '' : 's'}`;
     if (problems) {
-      toast(`Recorded ${takes.length} take${takes.length === 1 ? '' : 's'} · ${problems} recording problem${problems === 1 ? '' : 's'} marked with ⚠ edit markers: listen to those spots`, 'error');
+      toast(`${what} · ${problems} recording problem${problems === 1 ? '' : 's'} marked with ⚠ edit markers: listen to those spots`, 'error');
       return;
     }
-    const recorded = `Recorded ${takes.length} take${takes.length === 1 ? '' : 's'}`;
+    const recorded = what;
     if (preparedForEditing) toast(`${recorded} · tracks unarmed for editing`);
     // Ultraschall's soundcheck reminds you of this too: armed tracks make R start a new take mid-edit.
     else if (project.tracks.some((t) => t.armed)) toast(`${recorded} · tracks are still armed, use Prepare for editing before you cut`);
@@ -464,6 +467,9 @@ async function main(): Promise<void> {
         if (!transcriptPanel.isOpen) openTranscript();
         return void transcripts().transcribe();
       case 'cleanup': return void (!document.querySelector('.overlay') && cleanupDialog.open());
+      case 'loop-record': return void loopRecordSelection();
+      case 'next-take': return cycleTakes(1);
+      case 'previous-take': return cycleTakes(-1);
     }
   });
 
@@ -513,7 +519,11 @@ async function main(): Promise<void> {
         break;
       case 'r':
       case 'R':
-        void toggleRecord();
+        void (e.shiftKey && store.transport.state !== 'recording' ? loopRecordSelection() : toggleRecord());
+        break;
+      case 't':
+      case 'T':
+        cycleTakes(e.shiftKey ? -1 : 1);
         break;
       case 'l':
       case 'L':
