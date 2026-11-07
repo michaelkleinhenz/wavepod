@@ -7,6 +7,7 @@ Each speaker, music bed or sound layer has a track. A track records one input (o
 - **Setup › Audio › Create speaker tracks** makes one track per microphone. See [Audio setup](audio-setup.md#microphones-and-inputs).
 - **Add track** in the timeline toolbar adds an empty track.
 - Importing or dropping audio below the tracks creates new tracks.
+- Dragging a clip below the last track moves it onto a new track. See [Editing clips](editing.md#moving-and-trimming).
 - **×** in a track header removes the track. If it has clips, WavePod asks first; `Ctrl+Z` brings it back.
 
 Each track gets a colour of its own, shown in its header and on its clips.

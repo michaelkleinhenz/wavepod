@@ -10,7 +10,7 @@ import { showContextMenu } from './contextMenu';
 import { dbToGain, formatTick, formatTimestamp } from '../shared/time';
 import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
 import { fitText, layoutMarkerLabels, type LabelLayout } from '../core/markerLabels';
-import { addTrack, moveClip, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
+import { TRACK_COLORS, addTrack, moveClipsToTracks, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
 import { FADE_SHAPES, fadeCurve, type FadeShape } from '../core/dsp';
 import { fadesAt, overlapSpans, trackFades, type EffectiveFades } from '../core/crossfade';
@@ -392,6 +392,50 @@ export class TimelineView {
     for (let k = r + dir; k >= 0 && k < rows.length; k += dir) if (rows[k].kind === 'track') return k;
     for (let k = r - dir; k >= 0 && k < rows.length; k -= dir) if (rows[k].kind === 'track') return k;
     return row;
+  }
+
+  /** The row a clip dragged `d` rows away from `row` lands on; rows past the last one are new tracks. */
+  private dragRow(row: number, d: number): number {
+    return row + d >= this.rows.length ? row + d : this.shiftRow(row, d);
+  }
+
+  /** How many new-track rows below the last track the clips being dragged reach. */
+  private newDragRows(): number {
+    const d = this.drag;
+    if (d?.kind !== 'clip' || !d.moved || d.dTrack <= 0) return 0;
+    let n = 0;
+    for (const t of store.project.tracks) {
+      const row = this.rowOfTrack(t.id);
+      if (row >= 0 && t.clips.some((c) => d.ids.has(c.id))) n = Math.max(n, row + d.dTrack - this.rows.length + 1);
+    }
+    return n;
+  }
+
+  /**
+   * Height of the tracks canvas in rows: the tracks, the new-track rows clips are dragged into, and
+   * while a clip is dragged one spare row under them, so there is always room to drag further down.
+   */
+  private canvasRows(): number {
+    const d = this.drag;
+    const spare = d?.kind === 'clip' && d.moved && !d.ripple ? 1 : 0;
+    return Math.max(this.rows.length + this.newDragRows() + spare, 1);
+  }
+
+  /** What a new-track row looks like while a clip is dragged onto it: an empty track in the next colour. */
+  private newTrackView(row: number): Track {
+    const i = store.project.tracks.length + row - this.rows.length;
+    return {
+      id: `new-track-${row}`,
+      name: 'New track',
+      color: TRACK_COLORS[i % TRACK_COLORS.length],
+      inputChannels: [],
+      armed: false,
+      mute: false,
+      solo: false,
+      gain: 0,
+      pan: 0,
+      clips: [],
+    };
   }
 
   renderHeaders(): void {
@@ -888,7 +932,7 @@ export class TimelineView {
     const w = Math.max(100, this.scroll.clientWidth - HEADER_W);
     this.width = w;
     const dpr = window.devicePixelRatio || 1;
-    const hTracks = Math.max(this.rows.length, 1) * TRACK_H;
+    const hTracks = this.canvasRows() * TRACK_H;
     for (const [c, height] of [
       [this.rulerCanvas, RULER_H + MARKER_H],
       [this.canvas, hTracks],
@@ -1221,7 +1265,7 @@ export class TimelineView {
     const ctx = this.ctx(this.canvas);
     const w = this.width;
     const rows = this.rows;
-    const height = Math.max(rows.length, 1) * TRACK_H;
+    const height = this.canvasRows() * TRACK_H;
     ctx.fillStyle = '#16181d';
     ctx.fillRect(0, 0, w, height);
     // grid
@@ -1284,6 +1328,7 @@ export class TimelineView {
       ctx.fillStyle = '#0b0c0f';
       ctx.fillRect(0, y + TRACK_H - 2, w, 2);
     });
+    for (let i = rows.length, n = rows.length + this.newDragRows(); i < n; i++) this.drawNewTrackRow(ctx, i);
     const range = this.liveRange();
     if (range) {
       const ids = this.liveRangeTracks();
@@ -1316,6 +1361,22 @@ export class TimelineView {
     this.drawPlayhead(ctx, height);
     this.drawSnapLine(ctx, height);
     this.drawDropHint(ctx, height);
+  }
+
+  /** A row below the last track that clips are being dragged onto: it becomes a new track on drop. */
+  private drawNewTrackRow(ctx: CanvasRenderingContext2D, i: number): void {
+    const y = i * TRACK_H;
+    ctx.fillStyle = 'rgba(120,160,255,0.08)';
+    ctx.fillRect(0, y, this.width, TRACK_H - 2);
+    ctx.strokeStyle = 'rgba(154,184,255,0.6)';
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(0.5, y + 0.5, this.width - 1, TRACK_H - 3);
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(154,184,255,0.9)';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('+ New track', 8, y + TRACK_H - 6);
+    this.drawRowClips(ctx, i);
   }
 
   /**
@@ -1820,7 +1881,7 @@ export class TimelineView {
     const d = this.drag;
     if (d?.kind === 'clip' && d.moved && d.ids.has(clip.id)) {
       start = Math.max(0, clip.start + d.delta);
-      ti = this.shiftRow(trackIndex, d.dTrack);
+      ti = this.dragRow(trackIndex, d.dTrack);
     } else if (d?.kind === 'trim' && d.clipId === clip.id) {
       ({ start, length, offset } = trimmed(d.orig, d.side, d.delta));
     }
@@ -1833,7 +1894,8 @@ export class TimelineView {
    * crossfades over overlaps show while dragging.
    */
   private rowClips(i: number): { track: Track; items: Array<{ clip: Clip; g: ClipGeo }> } {
-    const base = this.trackAt(i)!;
+    // a row past the last track is a new track the clips are being dragged onto
+    const base = this.trackAt(i) ?? this.newTrackView(i);
     const d = this.drag;
     if (!((d?.kind === 'clip' && d.moved) || d?.kind === 'trim')) {
       return { track: base, items: base.clips.map((clip) => ({ clip, g: this.clipGeometry(i, clip) })) };
@@ -2785,7 +2847,8 @@ export class TimelineView {
         if (hit.edge) {
           this.drag = { kind: 'trim', clipId: hit.clip.id, side: hit.edge, startX: e.clientX, orig: { ...hit.clip }, delta: 0 };
         } else {
-          // every selected clip moves along; limit the track offset so none leaves the track list
+          // every selected clip moves along; none may go above the first track, and below the last
+          // one they go onto new tracks (until the topmost clip reaches the first new one)
           const ids = sel.has(hit.clip.id) ? sel : new Set([hit.clip.id]);
           const rows = this.rows.flatMap((r, i) => (r.kind === 'track' && r.track.clips.some((c) => ids.has(c.id)) ? [i] : []));
           this.drag = {
@@ -2797,7 +2860,7 @@ export class TimelineView {
             delta: 0,
             dTrack: 0,
             minDTrack: -Math.min(...rows),
-            maxDTrack: this.rows.length - 1 - Math.max(...rows),
+            maxDTrack: this.rows.length - Math.min(...rows),
             moved: false,
             clickFrame: this.snappedFrame(x, e),
           };
@@ -2826,6 +2889,7 @@ export class TimelineView {
         const dx = this.dragDx(d, e, d.startX);
         d.dTrack = Math.max(d.minDTrack, Math.min(d.maxDTrack, Math.round(this.dragDy(d, e, d.startY) / TRACK_H)));
         if (Math.abs(dx) > 3 || d.dTrack) d.moved = true;
+        const canvasRows = this.canvasRows();
         // moving to another track with little sideways movement keeps the position, so tracks stay in sync
         const locked = d.dTrack !== 0 && Math.abs(dx) < TRACK_MOVE_LOCK_PX;
         let delta = locked ? 0 : framesOf(dx);
@@ -2836,7 +2900,9 @@ export class TimelineView {
         // no selected clip may move before zero
         const minStart = Math.min(...store.project.tracks.flatMap((t) => t.clips.filter((c) => d.ids.has(c.id)).map((c) => c.start)));
         d.delta = Math.max(d.ripple ? rippleMinDelta(store.project, d.ripple) : -minStart, delta);
-        this.draw();
+        // the canvas grows and shrinks with the new-track rows dragged into
+        if (canvasRows * TRACK_H !== parseFloat(this.canvas.style.height)) this.resize();
+        else this.draw();
       } else if (d.kind === 'trim') {
         let delta = framesOf(this.dragDx(d, e, d.startX));
         const edgeAt = (dl: number) => {
@@ -2970,21 +3036,21 @@ export class TimelineView {
         const ripple = d.ripple;
         store.edit((p) => rippleMove(p, ripple, d.delta));
       } else if (d.kind === 'clip' && d.moved) {
-        // target tracks by row (folder rows are stepped over); clips on folded-away tracks keep their track
-        const toTrackOf = new Map<string, string | undefined>();
+        // target tracks by row (folder rows are stepped over); clips on folded-away tracks keep their
+        // track; rows below the last track become new tracks, one per row, in one undo step
+        const n = this.rows.length;
+        const moves: Array<{ clipId: string; start: number; toTrackId?: string; newTrack?: number }> = [];
         for (const t of store.project.tracks) {
           const row = this.rowOfTrack(t.id);
-          for (const c of t.clips) if (d.ids.has(c.id)) toTrackOf.set(c.id, d.dTrack && row >= 0 ? this.trackAt(this.shiftRow(row, d.dTrack))?.id : undefined);
-        }
-        store.edit((p) => {
-          let q = p;
-          for (const id of d.ids) {
-            const found = q.tracks.flatMap((t) => t.clips).find((c) => c.id === id);
-            if (!found) continue;
-            q = moveClip(q, id, found.start + d.delta, toTrackOf.get(id));
+          const to = d.dTrack && row >= 0 ? this.dragRow(row, d.dTrack) : -1;
+          for (const c of t.clips) {
+            if (!d.ids.has(c.id)) continue;
+            const start = c.start + d.delta;
+            moves.push(to >= n ? { clipId: c.id, start, newTrack: to - n } : { clipId: c.id, start, toTrackId: to >= 0 ? this.trackAt(to)?.id : undefined });
           }
-          return q;
-        });
+        }
+        store.edit((p) => moveClipsToTracks(p, moves));
+        this.resize();
       } else if (d.kind === 'clip') {
         // a click on a clip without dragging it also puts the playhead there, as in Reaper
         seek(d.clickFrame);

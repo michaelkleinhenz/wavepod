@@ -6,6 +6,7 @@ Every recording and every imported file becomes a **clip** on a track. Editing i
 
 - **Drag a clip** to move it. Several selected clips move together.
 - **Drag a clip straight up or down** to move it to another track. It keeps its time position, so the tracks stay in sync; move it sideways as well to place it freely.
+- **Drag a clip below the last track** to put it on a new track. A dashed *New track* row shows where it will land; the track is created when you let go, and `Ctrl+Z` undoes the move and the new track together. Clips dragged down from several tracks get one new track each.
 - **Drag a clip's left or right edge** to trim it. Edges snap to clip edges on other tracks, markers and the playhead; hold `Alt` to trim freely.
 - **`Ctrl`+drag a clip** to move it together with everything after it on the same track. **`Ctrl+Shift`+drag** moves everything after it on all tracks (a ripple move).
 
