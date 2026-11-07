@@ -21,7 +21,7 @@ import {
   splitClipsAt,
   targetClips,
 } from '../core/clipOps';
-import { deleteClips, findClip } from '../core/project';
+import { deleteClips, findClip, updateTrack } from '../core/project';
 import { selectionSpan } from '../core/navigation';
 import { parseNumberInput } from '../core/numberInput';
 import { clipRate, MAX_RATE, MIN_RATE, parseRateInput, rateToSemitones } from '../core/clipSound';
@@ -31,6 +31,7 @@ import { closeContextMenu, showContextMenu, type ContextMenuEntry } from './cont
 import { h, toast } from './dom';
 import { loudnessTarget, normalizeClips } from './loudnessDialog';
 import { store } from './store';
+import { activeTakeAt, pickTake, takesAt } from '../core/takes';
 
 export interface ClipMenuOptions {
   clipId: string;
@@ -123,6 +124,7 @@ export function openClipMenu(o: ClipMenuOptions): void {
     { label: 'Reset clip gain', enabled: clips.some((c) => c.gain), run: () => edit((p) => setClipGain(p, ids, 0)) },
     { label: `Normalise to ${String(target.lufs).replace('-', '−')} LUFS`, accel: 'Alt+Shift+N', run: () => void normalizeClips([...ids]) },
     { label: 'Loudness analysis…', accel: 'Shift+Ctrl+L', run: o.openLoudness },
+    ...takeEntries(o, one, recording),
     { kind: 'separator' },
     { kind: 'header', label: 'Sound design' },
     { label: 'Reverse', checked: reversed, enabled: !recording, title: 'Play backwards', run: () => edit((p) => reverseClips(p, ids, !reversed)) },
@@ -255,4 +257,26 @@ function promptRate(ids: Set<string>, current: number, x: number, y: number): vo
   document.body.append(box);
   input.focus();
   input.select();
+}
+
+/** "Takes": the takes recorded over the clicked clip, to play another one, and the take lanes. */
+function takeEntries(o: ClipMenuOptions, one: boolean, recording: boolean): ContextMenuEntry[] {
+  const found = findClip(store.project, o.clipId);
+  if (!one || !found?.track.takes?.length) return [];
+  const { track, clip } = found;
+  const at = Math.min(Math.max(o.at, clip.start), clip.start + clip.length - 1);
+  const takes = takesAt(track, at);
+  if (!takes.length) return [];
+  const active = activeTakeAt(track, at);
+  return [
+    { kind: 'separator' },
+    { kind: 'header', label: 'Takes' },
+    ...takes.map((t) => ({
+      label: `Take ${t.n}`,
+      checked: active?.id === t.id,
+      enabled: !recording,
+      run: () => store.edit((p) => pickTake(p, track.id, t.id)),
+    })),
+    { label: 'Show take lanes', checked: !!track.showTakes, run: () => store.patch((p) => updateTrack(p, track.id, { showTakes: !track.showTakes })) },
+  ];
 }

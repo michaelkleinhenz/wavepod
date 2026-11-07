@@ -62,6 +62,24 @@ Jingles you play while recording are recorded onto a **Soundboard** track, so th
 
 To make the soundboard duck under the voices, use **Duck under the other tracks** on its track. See [Tracks and mixing](tracks-mixing.md#ducking).
 
+## Takes and comping
+
+Record a line as often as it takes and keep the best one. WavePod never throws a take away.
+
+- **Record over it again.** Put the playhead before the line and press `R`. When the new recording runs over audio on an armed track, the earlier recording of that stretch becomes **Take 1**, the new one **Take 2**, and so on. The newest take plays.
+- **Loop recording.** Select the time range of the line (drag across the timeline) and press `Shift+R` (**Edit › Loop-Record the Selection (Takes)**). Playback starts 2 seconds before the line so the speaker hears a run-up, then jumps back to the start of the selection at its end and keeps going until you stop. Every pass is a take. The recording shows *loop recording · pass n*. After stopping, the playhead waits at the start of the line for the next go.
+
+A track with takes gets a **Takes** button in its header. Click it to show the **take lanes** under the track, one lane per take:
+
+- **Click a take** to play the whole take.
+- **Drag over a part of a take** to use just that part: the comp plays it there and keeps the other takes around it (swipe comping). Use take 2 for the first sentence, take 4 for the punchline.
+- The parts the comp plays are bright and framed in the track colour; unused parts are dimmed.
+- Right-click a lane for **Use this take**, **Use this take for the selected time**, **Delete take** (only takes the comp doesn't use), **Delete unused takes**, **Flatten takes** and **Hide take lanes**.
+
+Without opening the lanes, press `T` (**Edit › Next Take**) or `Shift+T` (**Edit › Previous Take**) to step through the takes at the playhead, on the selected clips' tracks or on every track with takes there. The clip menu lists the takes under the clip as well.
+
+The comp is ordinary clips: trim, split, fade and move them as usual. When you drag a whole comped line somewhere else, its takes move along. Ripple cuts and inserted silence move takes too. **Flatten takes** keeps the comp and forgets the takes; their files stay in the project folder.
+
 ## Pre-show
 
 The **Pre-show** button in the header lets only the soundboard be heard, for waiting music before the show starts; the episode playback is silent. Click it again to go back to the show. It can also be toggled from MIDI and OSC.

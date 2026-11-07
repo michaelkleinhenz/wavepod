@@ -117,7 +117,10 @@ export type MenuCommand =
   | 'transcript'
   | 'sound-library'
   | 'transcribe'
-  | 'cleanup';
+  | 'cleanup'
+  | 'loop-record'
+  | 'next-take'
+  | 'previous-take';
 
 /** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
 export interface MenuModelItem {

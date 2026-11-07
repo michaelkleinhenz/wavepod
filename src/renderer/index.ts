@@ -38,6 +38,8 @@ import {
   selectAllClips,
   pasteClipboard,
   toggleRepeat,
+  loopRecordSelection,
+  cycleTakes,
   setSpeed,
   stepPlaybackSpeed,
 } from './actions';
@@ -464,6 +466,9 @@ async function main(): Promise<void> {
         if (!transcriptPanel.isOpen) openTranscript();
         return void transcripts().transcribe();
       case 'cleanup': return void (!document.querySelector('.overlay') && cleanupDialog.open());
+      case 'loop-record': return void loopRecordSelection();
+      case 'next-take': return cycleTakes(1);
+      case 'previous-take': return cycleTakes(-1);
     }
   });
 
@@ -513,7 +518,11 @@ async function main(): Promise<void> {
         break;
       case 'r':
       case 'R':
-        void toggleRecord();
+        void (e.shiftKey && store.transport.state !== 'recording' ? loopRecordSelection() : toggleRecord());
+        break;
+      case 't':
+      case 'T':
+        cycleTakes(e.shiftKey ? -1 : 1);
         break;
       case 'l':
       case 'L':

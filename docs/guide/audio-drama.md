@@ -52,10 +52,15 @@ Right-click a clip › **Sound design**:
 
 Loop seams get a short crossfade. Fades, the volume line, splits and trims work on these clips as usual.
 
+## Takes
+
+Actors rarely get a line right the first time. Select the line and press `Shift+R` to loop-record it: every pass becomes a take, and you pick the best one, or splice the best parts of several, in the take lanes. See [Takes and comping](recording.md#takes-and-comping).
+
 ## Typical audio drama setup
 
 1. **Track folders › Audio drama folders** creates Dialogue, SFX, Atmo and Music folders.
 2. Give each character a track in Dialogue, with Room & distance for the scene's place.
-3. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
-4. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
-5. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).
+3. Record each line in a loop (`Shift+R`) and comp the best take.
+4. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
+5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
+6. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).
