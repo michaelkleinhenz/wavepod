@@ -451,10 +451,16 @@ export interface DeviceConfig {
   output2FirstChannel?: number | null;
   /** What the second pair carries. */
   output2Source?: OutputSource;
+  /** For a 'mixminus' second output: the inputs (zero-based) of the remote guest that the feed leaves out. */
+  mixMinusExclude?: number[];
 }
 
-/** master: everything; soundboard: only jingles; episode: the timeline without live jingles. */
-export type OutputSource = 'master' | 'soundboard' | 'episode';
+/**
+ * master: everything; soundboard: only jingles; episode: the timeline without live jingles;
+ * mixminus: the live microphones, jingles and playback, without the inputs in `mixMinusExclude`
+ * (the feed back to a guest on Zoom or the phone).
+ */
+export type OutputSource = 'master' | 'soundboard' | 'episode' | 'mixminus';
 
 export interface ChannelLabel {
   index: number;

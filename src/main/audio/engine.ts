@@ -43,6 +43,7 @@ import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
 import { markersCrossed, pingTone } from '../../core/markerPing';
 import { SimulatedBackend } from './simulatedBackend';
+import { MixMinusBuffer, mixMinusSources, type MixMinusSource } from '../../core/mixMinus';
 
 export const VIRTUAL_API = 'virtual';
 const METER_HZ = 30;
@@ -191,6 +192,9 @@ export class AudioEngine extends EventEmitter {
   /** Scratch for the part of a buffer that follows a jump back to the repeat start. */
   private loopBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private outBuf = new Float32Array(0);
+  /** The guest feed (mix-minus) on the second output: which inputs go in, and the live audio on its way. */
+  private mixMinus: { sources: MixMinusSource[]; buf: MixMinusBuffer } | null = null;
+  private mmBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
   private voices: Voice[] = [];
@@ -254,6 +258,15 @@ export class AudioEngine extends EventEmitter {
 
   /** Applies a device configuration, (re)opening streams. Never throws; errors land in status().error. */
   applyConfig(next: Partial<DeviceConfig>): EngineStatus {
+    // Who the guest feed leaves out can change mid-show: no need to stop or reopen anything.
+    const keys = Object.keys(next);
+    if (keys.length && keys.every((k) => k === 'mixMinusExclude')) {
+      this.config = { ...this.config, ...next };
+      this.updateMixMinus();
+      const s = this.status();
+      this.emit('status', s);
+      return s;
+    }
     if (this.state !== 'stopped') this.stop();
     this.closeStreams();
     this.config = { ...this.config, ...next };
@@ -292,6 +305,7 @@ export class AudioEngine extends EventEmitter {
       if (err) errors.push(err);
     }
     if (errors.length) this.error = [this.error, ...errors].filter(Boolean).join('\n');
+    this.updateMixMinus();
     this.startMeters();
     const s = this.status();
     this.emit('status', s);
@@ -485,6 +499,21 @@ export class AudioEngine extends EventEmitter {
     else this.mixer.project = project;
     this.scrubber?.invalidate();
     this.armedTrackIds = new Set(project.tracks.filter((t) => t.armed).map((t) => t.id));
+    this.updateMixMinus();
+  }
+
+  /** Sets up (or drops) the guest feed after the device setup or the tracks changed. */
+  private updateMixMinus(): void {
+    const c = this.config;
+    if (c.output2Source !== 'mixminus' || c.output2FirstChannel === null || c.output2FirstChannel === undefined) {
+      this.mixMinus = null;
+      return;
+    }
+    const sources = mixMinusSources(this.project.tracks, Number.MAX_SAFE_INTEGER, c.mixMinusExclude ?? []);
+    // up to four device buffers of delay; after a clock-drift drop, two
+    const max = Math.max(4 * c.bufferSize, 1024);
+    if (this.mixMinus?.buf.maxDelay === max) this.mixMinus.sources = sources;
+    else this.mixMinus = { sources, buf: new MixMinusBuffer(max, Math.max(2 * c.bufferSize, 512)) };
   }
 
   // ------------------------------------------------------------ transport
@@ -902,6 +931,7 @@ export class AudioEngine extends EventEmitter {
     const nch = this.input?.channels ?? 1;
     const frames = Math.floor(interleaved.length / nch);
     interleavedPeaks(interleaved, nch, this.inputPeaks);
+    this.mixMinus?.buf.write(interleaved, nch, this.mixMinus.sources);
     this.recordBuffer(interleaved, frames, nch, true);
   }
 
@@ -952,6 +982,15 @@ export class AudioEngine extends EventEmitter {
     const first = Math.min(this.config.outputFirstChannel, Math.max(0, nch - 2));
     const second = this.config.output2FirstChannel;
     const has2 = second !== null && second !== undefined && second + 1 < nch && second !== first;
+    // the guest feed: live microphones without the guest's own, on top of jingles and playback
+    let mm: Float32Array[] | null = null;
+    if (src2 === 'mixminus' && this.mixMinus) {
+      if (this.mmBuf[0].length < frames) this.mmBuf = [new Float32Array(frames), new Float32Array(frames)];
+      mm = this.mmBuf;
+      mm[0].fill(0, 0, frames);
+      mm[1].fill(0, 0, frames);
+      this.mixMinus.buf.readInto(frames, mm[0], mm[1]);
+    }
     for (let i = 0; i < frames; i++) {
       const l = L[i] * tlMain + SL[i] + (pv ? pv[0][i] : 0);
       const r = R[i] * tlMain + SR[i] + (pv ? pv[1][i] : 0);
@@ -960,8 +999,8 @@ export class AudioEngine extends EventEmitter {
       out[i * nch + first] = l;
       if (nch > 1) out[i * nch + first + 1] = r;
       if (has2) {
-        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2;
-        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2;
+        out[i * nch + second] = L[i] * tl2 + SL[i] * sb2 + (mm ? mm[0][i] : 0);
+        out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2 + (mm ? mm[1][i] : 0);
       }
     }
     return out;
