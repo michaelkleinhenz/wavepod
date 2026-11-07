@@ -41,7 +41,7 @@ The playback speed, Repeat, the open Setup and Settings tab and which filter car
 ## Setup
 
 - **Setup › Project**: open, create and save episodes. See [Episodes and saving](episodes.md).
-- **Setup › Audio**: the audio interface, recording quality, inputs and the second output. See [Audio setup](audio-setup.md).
+- **Setup › Audio**: the audio interface, recording quality, inputs and the second output, including a mix-minus for remote guests. See [Audio setup](audio-setup.md).
 
 ## The View menu
 
