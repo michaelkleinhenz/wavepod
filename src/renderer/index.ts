@@ -57,6 +57,7 @@ import { api, store, type View } from './store';
 import { showShortcuts } from './shortcuts';
 import { openContextHelp } from './help';
 import { showAbout } from './aboutDialog';
+import { showBetaNotice, showBetaNoticeOnFirstStart } from './betaNotice';
 import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
@@ -451,6 +452,7 @@ async function main(): Promise<void> {
       case 'shortcuts': return showShortcuts();
       case 'help': return openContextHelp();
       case 'about': return void showAbout();
+      case 'beta-notice': return void showBetaNotice();
       case 'speed-up': return stepPlaybackSpeed(1);
       case 'speed-down': return stepPlaybackSpeed(-1);
       case 'speed-normal': return setSpeed(1, true);
@@ -621,6 +623,8 @@ async function main(): Promise<void> {
   renderTransport();
   soundboard.render();
   void soundboard.ensureLoaded();
+  // first start: the beta warning (backup recording!) before anything else
+  void showBetaNoticeOnFirstStart();
   await midi.init();
 }
 

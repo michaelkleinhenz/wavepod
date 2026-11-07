@@ -22,6 +22,7 @@ export const DIALOG_TOPICS: Array<[RegExp, string]> = [
   [/^(soundcheck|can.t record yet)/i, 'recording/soundcheck'],
   [/^stop recording/i, 'recording/arm-record-stop'],
   [/^keyboard shortcuts/i, 'shortcuts'],
+  [/beta software/i, 'getting-started/beta-software'],
   [/template/i, 'episodes/templates'],
   [/backup/i, 'episodes/backups'],
   [/^align/i, 'editing/aligning-a-double-ender'],

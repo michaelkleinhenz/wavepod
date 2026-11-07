@@ -708,6 +708,15 @@ button.link:hover:not(:disabled) { background: none; border: none; }
 .about-links a { color: #8fb0ff; text-decoration: none; }
 .about-links a:hover { text-decoration: underline; }
 
+/* Beta notice: first start and Help › Beta Notice */
+.dialog.beta-dialog { width: min(480px, 92vw); border-top: 3px solid var(--warn); text-align: left; }
+.beta-dialog .beta-icon { font-size: 36px; line-height: 1; color: var(--warn); text-align: center; margin-bottom: 6px; }
+.beta-dialog h2 { text-align: center; }
+.beta-dialog p { margin: 0 0 10px; line-height: 1.5; }
+.beta-dialog .beta-backup { padding: 8px 10px; border-left: 3px solid var(--warn); background: var(--panel-2); border-radius: 0 6px 6px 0; }
+.beta-dialog .beta-later { color: var(--muted); font-size: 12px; }
+.beta-dialog .row.end { margin-top: 12px; }
+
 /* Recording emergency (device lost, take not written): above every other dialog. */
 .overlay.emergency-overlay { z-index: 1000; background: rgba(60, 0, 0, 0.6); }
 .dialog.emergency { border: 2px solid var(--rec); box-shadow: 0 0 0 4px rgba(229, 57, 53, 0.25), 0 20px 60px rgba(0, 0, 0, 0.6); text-align: center; animation: emergency-pulse 1.2s ease-in-out infinite; }

@@ -1014,6 +1014,7 @@ function buildMenu(): void {
         { label: 'Getting Started', click: () => openHelp('getting-started') },
         { label: 'Keyboard Shortcuts', click: menuSend('shortcuts') },
         { label: 'Troubleshooting', click: () => openHelp('troubleshooting') },
+        { label: 'Beta Notice', click: menuSend('beta-notice') },
         { type: 'separator' },
         { label: 'Report a Problem…', click: () => void shell.openExternal('https://github.com/michaelkleinhenz/wavepod/issues') },
         ...(isMac ? [] : [{ type: 'separator' as const }, { label: 'About WavePod', click: menuSend('about') }]),
