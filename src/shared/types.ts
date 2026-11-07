@@ -263,6 +263,49 @@ export interface Project {
   metadata: EpisodeMetadata;
   /** Soundcheck warnings the user chose not to see again for this episode. */
   soundcheckIgnored?: string[];
+  /** The audio drama script, if one was imported (View › Script). */
+  script?: Script;
+}
+
+// ---------------------------------------------------------------- scripts (audio drama)
+
+/** Where a script line was recorded. */
+export interface ScriptTake {
+  /**
+   * The media file the line is in; `from`/`to` are frames of that file (in clip offset units),
+   * so the line stays found through cuts and moves. Without a file, `from` is a timeline position
+   * (ticked while recording, before the take's clip existed).
+   */
+  file?: string;
+  from: Frames;
+  to?: Frames;
+  /** Found by matching the transcript (Line up), not ticked by hand. */
+  auto?: boolean;
+  /** How many takes of the line the transcript holds. */
+  takes?: number;
+}
+
+export interface ScriptLine {
+  id: string;
+  /** scene: a scene heading; dialogue: a line a character speaks; action: a stage direction. */
+  kind: 'scene' | 'dialogue' | 'action';
+  text: string;
+  /** Who speaks it (dialogue lines). */
+  character?: string;
+  /** Direction for the actor, e.g. "whispering" or "V.O.". */
+  note?: string;
+  /** Ticked off as recorded. */
+  recorded?: boolean;
+  take?: ScriptTake;
+}
+
+export interface Script {
+  title: string;
+  /** Name of the file it was imported from. */
+  source?: string;
+  lines: ScriptLine[];
+  /** Character name (upper case) → the track their lines are recorded on. */
+  cast: Record<string, string>;
 }
 
 // ---------------------------------------------------------------- transcripts

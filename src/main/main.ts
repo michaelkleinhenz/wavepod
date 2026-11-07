@@ -922,6 +922,7 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Import Audio…', accelerator: 'CmdOrCtrl+I', click: menuSend('import-audio') },
         { label: 'Import Chapters…', click: menuSend('import-chapters') },
+        { label: 'Import Script…', click: menuSend('import-script') },
         { type: 'separator' },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: menuSend('export') },
         { label: 'Send to Auphonic…', click: menuSend('auphonic') },
@@ -982,6 +983,7 @@ function buildMenu(): void {
         { label: 'Chapters', accelerator: 'CmdOrCtrl+3', click: menuSend('view-chapters') },
         { label: 'Transcript', accelerator: 'Shift+CmdOrCtrl+T', click: menuSend('transcript') },
         { label: 'Sound Library', accelerator: 'Shift+CmdOrCtrl+B', click: menuSend('sound-library') },
+        { label: 'Script', accelerator: 'Shift+CmdOrCtrl+J', click: menuSend('script') },
         { type: 'separator' },
         // The keys > and < are handled in the window (they sit on different keys per layout); the
         // in-app menu bar only shows them, see MENU_KEY_HINTS.

@@ -9,6 +9,7 @@ import { migrateTrackEnvelope, sortPoints } from './envelope';
 import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
 import { clampRate } from './clipSound';
 import { audibleTracks, groupFolderTracks, normalizeFolders } from './folders';
+import { normalizeScript } from './script';
 
 function normalizeFxList(list: unknown): Fx[] {
   return Array.isArray(list) ? list.map((f) => normalizeFx(f as Partial<Fx>)).filter((f): f is Fx => !!f) : [];
@@ -97,6 +98,9 @@ export function normalizeProject(raw: Partial<Project>): Project {
   p.masterFx = normalizeFxList(p.masterFx);
   if (raw.regions !== undefined) p.regions = normalizeRegions(raw.regions);
   normalizeFolders(p);
+  const script = normalizeScript(raw.script);
+  if (script) p.script = script;
+  else delete p.script;
   return p;
 }
 

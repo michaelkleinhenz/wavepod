@@ -115,6 +115,8 @@ export type MenuCommand =
   | 'settings'
   | 'transcript'
   | 'sound-library'
+  | 'script'
+  | 'import-script'
   | 'transcribe'
   | 'cleanup';
 

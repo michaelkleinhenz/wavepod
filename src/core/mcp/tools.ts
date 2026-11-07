@@ -13,6 +13,7 @@ import { STEM_CHOICES, trackStem } from '../stems';
 import { setTrackAutomation, showTrackAutomation } from '../automation';
 import { FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addFolder, folderOf, removeFolder, setTrackFolder, updateFolder } from '../folders';
 import { paragraphs, timelineWords } from '../transcript';
+import { scriptCharacters, scriptProgress, scriptSummary } from '../script';
 import type { WordFilter } from '../wordLevels';
 import { formatTimestamp, uid } from '../../shared/time';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
@@ -54,7 +55,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -618,6 +619,29 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             text: para.words.map((i) => inRange[i].text).join(' '),
           })),
           fillers: inRange.filter((w) => w.filler).length,
+        };
+      },
+    },
+    {
+      name: 'get_script',
+      description:
+        'The audio drama script the user imported in WavePod (View › Script): scenes, stage directions and every line with its character, ' +
+        'whether it is recorded yet, and where its take is on the timeline (seconds). Useful to see what is still to record, or to check a scene.',
+      inputSchema: obj({ open: { type: 'boolean', description: 'Only lines that are not recorded yet (and their scene headings).' } }),
+      annotations: { title: 'Get script', ...READ },
+      run: (args) => {
+        const p = host.project();
+        const script = p.script;
+        if (!script) return { imported: false, note: 'No script yet. The user can import one in WavePod: File › Import Script… (plain text, Fountain or Final Draft).' };
+        let lines = scriptSummary(p);
+        if (bool(args, 'open')) lines = lines.filter((l) => l.kind === 'scene' || (l.kind === 'dialogue' && !l.recorded));
+        const names = new Map(p.tracks.map((t) => [t.id, t.name]));
+        return {
+          imported: true,
+          title: script.title,
+          progress: scriptProgress(script),
+          characters: scriptCharacters(script).map((c) => ({ name: c.name, lines: c.lines, recorded: c.recorded, ...(script.cast[c.key] && names.has(script.cast[c.key]) ? { track: names.get(script.cast[c.key]) } : {}) })),
+          lines,
         };
       },
     },

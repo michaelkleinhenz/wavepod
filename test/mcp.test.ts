@@ -305,3 +305,30 @@ describe('MCP transcript', () => {
     expect(r.data).toEqual({ transcribed: true, paragraphs: [{ speaker: 'Host', start: 2, text: 'Hallo ähm Welt.' }], fillers: 1 });
   });
 });
+
+describe('MCP script', () => {
+  it('returns the script with recorded lines and their times', async () => {
+    const fake = fakeHost();
+    const server = createWavePodServer(fake.host, '1');
+    let r = await call(server, 'get_script');
+    expect(r.data.imported).toBe(false);
+    const p = fake.project;
+    const sr = p.sampleRate;
+    p.tracks[0].clips.push({ id: 'c1', file: 'media/host.wav', start: 2 * sr, offset: 0, length: 10 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p.script = {
+      title: 'Night',
+      cast: { HOST: p.tracks[0].id },
+      lines: [
+        { id: 'a', kind: 'scene', text: 'INT. TRAIN' },
+        { id: 'b', kind: 'dialogue', character: 'Host', text: 'Tickets, please.', recorded: true, take: { file: 'media/host.wav', from: sr, to: 2 * sr } },
+        { id: 'c', kind: 'dialogue', character: 'Guest', text: 'I lost mine.' },
+      ],
+    };
+    r = await call(server, 'get_script');
+    expect(r.data.progress).toEqual({ lines: 2, recorded: 1 });
+    expect(r.data.characters).toEqual([{ name: 'Host', lines: 1, recorded: 1, track: 'Host' }, { name: 'Guest', lines: 1, recorded: 0 }]);
+    expect(r.data.lines[1]).toEqual({ kind: 'dialogue', character: 'Host', track: 'Host', text: 'Tickets, please.', recorded: true, start: 3, end: 4 });
+    r = await call(server, 'get_script', { open: true });
+    expect(r.data.lines.map((l: { text: string }) => l.text)).toEqual(['INT. TRAIN', 'I lost mine.']);
+  });
+});
