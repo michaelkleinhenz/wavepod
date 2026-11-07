@@ -67,6 +67,7 @@ import { TimelineView } from './timelineView';
 import { SettingsDialog } from './settingsDialog';
 import { TranscriptPanel } from './transcriptPanel';
 import { SoundLibraryPanel } from './soundLibraryPanel';
+import { ScriptPanel, importScriptFile } from './scriptPanel';
 import { CleanupDialog } from './cleanupDialog';
 import { transcripts } from './transcripts';
 import { RecordingAlertModal } from './recordingAlert';
@@ -107,8 +108,22 @@ async function main(): Promise<void> {
   const cleanupDialog = new CleanupDialog();
   transcriptPanel.onCleanup = () => cleanupDialog.open();
   const libraryPanel = new SoundLibraryPanel();
-  // the library and the transcript share the right side: one at a time
-  libraryPanel.onOpen = () => transcriptPanel.isOpen && transcriptPanel.close();
+  const scriptPanel = new ScriptPanel();
+  // the library, the script and the transcript share the right side: one at a time
+  libraryPanel.onOpen = () => {
+    if (transcriptPanel.isOpen) transcriptPanel.close();
+    if (scriptPanel.isOpen) scriptPanel.close();
+  };
+  scriptPanel.onOpen = () => {
+    if (transcriptPanel.isOpen) transcriptPanel.close();
+    if (libraryPanel.isOpen) libraryPanel.close();
+  };
+  const openScript = () => {
+    if (store.view !== 'edit') {
+      if (!scriptPanel.isOpen) scriptPanel.toggle();
+      store.setView('edit');
+    } else scriptPanel.toggle();
+  };
   const openLibrary = () => {
     if (store.view !== 'edit') {
       if (!libraryPanel.isOpen) libraryPanel.toggle();
@@ -119,6 +134,7 @@ async function main(): Promise<void> {
   // the transcript panel only shows in the edit view; from another view its button takes the user there
   const openTranscript = () => {
     if (!transcriptPanel.isOpen && libraryPanel.isOpen) libraryPanel.close();
+    if (!transcriptPanel.isOpen && scriptPanel.isOpen) scriptPanel.close();
     if (store.view !== 'edit') {
       if (!transcriptPanel.isOpen) transcriptPanel.toggle();
       store.setView('edit');
@@ -199,6 +215,7 @@ async function main(): Promise<void> {
     transcriptBtn.title = transcripts().busy ? 'Transcribing… (it goes on with the transcript closed)' : 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)';
   });
   const libraryBtn = h('button', { class: 'fx-btn library-btn', title: 'Sound library: search your sound effects, listen and insert them (Shift+Ctrl+B)', onclick: () => openLibrary() }, 'Sounds');
+  const scriptBtn = h('button', { class: 'fx-btn script-btn', title: 'Script: every line by character, tick off what is recorded, jump to scenes (Shift+Ctrl+J)', onclick: () => openScript() }, 'Script');
   const preShowBtn = h(
     'button',
     {
@@ -234,6 +251,7 @@ async function main(): Promise<void> {
     masterFxBtn,
     transcriptBtn,
     libraryBtn,
+    scriptBtn,
     preShowBtn,
     h('div', { class: 'spacer' }),
     projectName,
@@ -276,6 +294,7 @@ async function main(): Promise<void> {
     fxPanel.setHidden(store.view !== 'edit');
     transcriptPanel.setHidden(store.view !== 'edit');
     libraryPanel.setHidden(store.view !== 'edit');
+    scriptPanel.setHidden(store.view !== 'edit');
   };
 
   const renderStatus = () => {
@@ -330,6 +349,7 @@ async function main(): Promise<void> {
     if (kinds.has('save') && store.view === 'setup') setup.render();
     if (kinds.has('project') || kinds.has('selection')) transcriptPanel.refresh();
     if (kinds.has('project')) libraryPanel.refresh();
+    if (kinds.has('project')) scriptPanel.refresh();
     if (kinds.has('project')) {
       void transcripts().ensureLoaded();
       fxPanel.refresh();
@@ -358,6 +378,7 @@ async function main(): Promise<void> {
       fxPanel.updateMeters(store.transport.fxMeters);
       transcriptPanel.updatePosition();
       libraryPanel.updatePreview();
+      scriptPanel.updatePosition();
       if (store.view === 'setup') setup.updateMeters();
     }
     if (store.view === 'edit') timeline.draw();
@@ -473,6 +494,9 @@ async function main(): Promise<void> {
       case 'settings': return void settingsDialog.open();
       case 'transcript': return openTranscript();
       case 'sound-library': return openLibrary();
+      case 'script': return openScript();
+      case 'import-script':
+        return void importScriptFile().then((ok) => ok && !scriptPanel.isOpen && openScript());
       case 'transcribe':
         if (!transcriptPanel.isOpen) openTranscript();
         return void transcripts().transcribe();

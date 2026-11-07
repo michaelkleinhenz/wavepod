@@ -679,6 +679,59 @@ body.library-open .library-btn { background: var(--panel-2); color: var(--text);
 .settings-library-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drop-tag { position: fixed; z-index: 30; pointer-events: none; padding: 3px 8px; border-radius: 5px; background: var(--panel); border: 1px solid var(--accent); color: var(--text, #e6e6e6); font-size: 12px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
 
+/* script panel (View › Script, audio drama) */
+.script-panel { position: fixed; top: var(--panel-top, 52px); right: 0; bottom: 28px; width: 400px; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,0.35); display: flex; flex-direction: column; z-index: 5; outline: none; }
+body.script-open .fx-panel { right: 400px; }
+body.script-open .script-btn { background: var(--panel-2); color: var(--text); }
+.script-toolbar { display: flex; gap: 6px; padding: 4px 14px 8px; align-items: center; }
+.script-toolbar .spinner { width: 8px; height: 8px; }
+.script-scenes { flex: 1; min-width: 0; }
+.script-more { flex: none; width: 28px; padding: 0; }
+.script-summary { padding: 0 14px 8px; font-size: 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.script-title { grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.script-progress { display: flex; align-items: center; gap: 8px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 0; }
+.script-progress-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; min-width: 60px; }
+.script-progress-fill { height: 100%; background: var(--ok); border-radius: 3px; transition: width 0.3s; }
+.script-open-only { display: flex; align-items: center; gap: 4px; color: var(--muted); white-space: nowrap; }
+.script-cast { padding: 0 14px 8px; border-bottom: 1px solid var(--border); }
+.script-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.script-panel button.script-chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid color-mix(in srgb, var(--char-color) 55%, transparent); background: color-mix(in srgb, var(--char-color) 12%, transparent); }
+.script-chip .name { color: var(--char-color); font-weight: 700; }
+.script-chip .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.script-chip.done .count { color: var(--ok); }
+.script-panel button.script-chip.on { border-color: var(--char-color); background: var(--char-color); }
+.script-chip.on .name, .script-chip.on .count { color: #111; }
+.script-tracks { margin-top: 6px; font-size: 12px; }
+.script-tracks summary { cursor: pointer; color: var(--muted); }
+.script-cast-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.script-cast-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.script-cast-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.script-cast-row select { max-width: 180px; }
+.script-body { flex: 1; overflow: auto; padding: 6px 0 24px; user-select: none; }
+.script-empty { padding: 4px 14px; line-height: 1.5; }
+.script-empty code { color: var(--text); }
+.script-scene { position: sticky; top: -6px; z-index: 1; display: flex; gap: 8px; align-items: baseline; margin-top: 6px; padding: 6px 14px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; }
+.script-scene:hover .title { color: var(--accent); }
+.script-scene .title { flex: 1; min-width: 0; }
+.script-scene .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.script-scene.done .count { color: var(--ok); }
+.script-action { padding: 3px 14px 3px 44px; font-size: 12px; font-style: italic; color: var(--muted); line-height: 1.45; }
+.script-line { display: flex; gap: 8px; padding: 5px 14px 5px 10px; border-left: 2px solid transparent; cursor: pointer; }
+.script-line:hover { background: var(--panel-2); }
+.script-line.focus { border-left-color: var(--accent); background: rgba(92,141,255,0.10); }
+.script-line.current { background: rgba(92,141,255,0.24); }
+.script-tick { flex: none; width: 22px; height: 22px; padding: 0; margin-top: 1px; border-radius: 5px; font-size: 13px; line-height: 1; color: #fff; }
+.script-line.recorded .script-tick { background: var(--ok); border-color: var(--ok); }
+.script-line-main { flex: 1; min-width: 0; }
+.script-speaker { display: flex; gap: 6px; align-items: baseline; font-size: 11px; }
+.script-speaker .name { color: var(--char-color); font-weight: 700; }
+.script-speaker .note { color: var(--muted); font-style: italic; }
+.script-speaker .time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.script-line.placed .script-speaker .time { color: var(--accent); }
+.script-speaker .takes { padding: 0 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 10px; }
+.script-text { font-size: 13px; line-height: 1.5; }
+.script-line.recorded .script-text { color: var(--muted); }
+
 /* transcript › change words (speech synthesis, experimental) */
 .badge-experimental { display: inline-block; vertical-align: 3px; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn); border: 1px solid var(--warn); }
 .speech-dialog .speech-context { margin: 0 0 12px; padding: 8px 10px; border-left: 3px solid var(--track-color); background: var(--panel-2); border-radius: 0 6px 6px 0; line-height: 1.55; color: var(--muted); }

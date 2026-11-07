@@ -1,6 +1,57 @@
 # Audio drama
 
-WavePod has the tools for fiction and sound-rich productions: voice effects, rooms and distance, a searchable sound effects library and sound design on clips. Together with [track folders](tracks-mixing.md#track-folders), [automation](tracks-mixing.md#automation) and [stem export](export.md#stems) they cover a full audio drama.
+WavePod has the tools for fiction and sound-rich productions: a script that knows what is recorded, voice effects, rooms and distance, a searchable sound effects library and sound design on clips. Together with [track folders](tracks-mixing.md#track-folders), [automation](tracks-mixing.md#automation) and [stem export](export.md#stems) they cover a full audio drama.
+
+## Script
+
+Import the script and WavePod keeps track of every line: who speaks it, whether it is recorded and where its take is on the timeline.
+
+### Importing a script
+
+**File › Import Script…**, or **Import script…** in the script panel. Three formats work:
+
+- **Plain text** (`.txt`): one speech per line as `NAME: what they say`. A direction for the actor goes in brackets after the name: `BEN (whispering): It is late.` Lines starting with `INT.`, `EXT.`, `Scene 2`, `Szene 2` or `#` are scene headings. Everything else is a stage direction. A line `Title: …` at the top names the script.
+- **Fountain** (`.fountain`): the plain-text screenplay format that many writing apps export (Highland, Slugline, Fade In, Beat, WriterSolo…). Character names in capitals above their words, scene headings like `INT. PLATFORM - NIGHT`. Notes `[[…]]` and boneyard `/* … */` are left out.
+- **Final Draft** (`.fdx`).
+
+WavePod recognises Fountain in a `.txt` file by itself. Importing again (for a revised draft) keeps the ticks of every line that stayed the same.
+
+### The script panel
+
+Open **View › Script** (`Shift+Ctrl+J`), or click **Script** in the header. It shows:
+
+- the script's progress: how many lines are recorded,
+- every character with their recorded and total lines. Click a character to see only their lines (handy in a session with one actor), click again for everyone,
+- **Tracks**: the track each character is recorded on. Characters go to the track with their name by themselves (*Anna* for ANNA, *Dr. Hill* for HILL); pick another track here,
+- the lines, scene by scene, with stage directions in grey. **Open lines only** hides what is ticked off.
+
+### Ticking lines off while recording
+
+Click the box in front of a line to tick it off. WavePod notes where the playhead is, on the character's track, so the line can be found again later. In a recording session:
+
+1. Click the first line to record (or walk there with `↑` and `↓`).
+2. Record. After each line is done, press `Enter`: the line is ticked off at the playhead and the next open line is picked.
+3. `Delete` unticks the picked line.
+
+Ticked lines remember their place in the recording itself, so they stay found after cuts, moves and trims.
+
+### Lining up with the transcript
+
+**Line up** finds the lines in the recording by itself. It uses the [transcript](transcript.md) (and transcribes what is missing first, which needs the ElevenLabs key) and looks for each line on its character's track, allowing for misheard and missing words. Every line it finds is ticked off with its take.
+
+- When a line was recorded several times, the row says how many takes the transcript holds (for example *3 takes*). The best take is used; of equally good ones, the last, which is usually the one that was kept.
+- Very short lines (*Yes.*) are only looked for between the lines around them, so they aren't matched just anywhere.
+- Lines ticked by hand keep their place, and Line up never unticks a line.
+
+### Jumping
+
+- Click a line to jump to its take. Its time is selected too, so **Repeat** (`L`) plays it over and over. `Shift+Enter` does the same for the picked line.
+- Click a scene heading, or pick it in **Jump to scene…**, to jump to the first recorded line of that scene. The list shows each scene's progress.
+- While playing, the line you hear is highlighted.
+
+The **⋯** menu imports a new draft, ticks all lines off again or removes the script (the recording stays as it is). The script is saved with the episode. AI agents can read it with the `get_script` tool. See [AI agents (MCP)](ai-agents.md).
+
+The script, the sound library and the transcript share the right side of the window: opening one closes the others.
 
 ## Voice effects
 
@@ -37,7 +88,7 @@ Keep your sound effects and atmospheres in a folder and search them from inside 
 
 WAV, MP3, FLAC, Ogg, Opus, M4A and AIFF files are found. **Rescan** reads the folder again after you add sounds. Sounds you insert are copied into the episode, so it keeps working without the library.
 
-The sound library and the transcript share the right side of the window: opening one closes the other.
+The sound library, the script and the transcript share the right side of the window: opening one closes the others.
 
 ## Sound design on clips
 
@@ -63,8 +114,8 @@ A single fluffed line doesn't need a whole new take of the scene: select it, arm
 ## Typical audio drama setup
 
 1. **Track folders › Audio drama folders** creates Dialogue, SFX, Atmo and Music folders.
-2. Give each character a track in Dialogue, with Room & distance for the scene's place.
-3. Record each line in a loop (`Alt+Shift+R`) and comp the best take; fix single fluffed lines later with a [punch-in](recording.md#punch-in-re-record-one-line) (`Shift+R`).
+2. Give each character a track in Dialogue, named like the character, with Room & distance for the scene's place.
+3. Import the script. Record each line in a loop (`Alt+Shift+R`), comp the best take and tick the line off with `Enter`, or let **Line up** find the lines afterwards. Fix single fluffed lines later with a [punch-in](recording.md#punch-in-re-record-one-line) (`Shift+R`).
 4. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
 5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
 6. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).

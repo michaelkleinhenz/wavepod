@@ -27,7 +27,7 @@ WavePod has three views. Switch between them with the tabs at the top left or wi
 | View | What you do there |
 | --- | --- |
 | **Setup** (`Ctrl+1`) | Choose or create an episode (Project tab), pick your audio interface, check levels and create tracks (Audio tab). |
-| **Record & Edit** (`Ctrl+2`) | Record, play, cut and mix on the timeline. Filters, the transcript and the sound library open at the side. |
+| **Record & Edit** (`Ctrl+2`) | Record, play, cut and mix on the timeline. Filters, the transcript, the sound library and the script open at the side. |
 | **Chapters** (`Ctrl+3`) | Chapter titles, links and images, edit markers, regions and the episode details (title, cover, description). |
 
 ## The header

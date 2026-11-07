@@ -44,6 +44,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       ['L', 'Repeat: loop playback of the selection'],
       [`Shift+${mod}+T`, 'Transcript: click a word to jump, drag to select, Delete cuts, Enter or double-click changes the words (experimental)'],
       [`Shift+${mod}+B`, 'Sound library: type to search, ↑/↓ listen, Enter inserts at the playhead'],
+      [`Shift+${mod}+J`, 'Script: ↑/↓ pick a line, Enter ticks it off at the playhead and goes to the next, Shift+Enter jumps to its take'],
       [`Shift+${mod}+K`, 'Clean up pauses and hesitations'],
       [`${mod}+,`, 'Settings (ElevenLabs API key for transcripts)'],
       [`${mod}+X`, 'Ripple cut (closes the gap)'],

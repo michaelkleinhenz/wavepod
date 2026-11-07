@@ -47,6 +47,7 @@ Every change an agent makes is one undo step (`Ctrl+Z`), shows up in the FX pane
 | `list_tracks` | Tracks and the master with gain, pan, mute/solo, clips and filter names |
 | `list_markers` | Chapter and edit markers with times |
 | `get_transcript` | The episode's transcript as text |
+| `get_script` | The imported audio drama script: every line, whether it is recorded and where its take is |
 | `measure_loudness` | Loudness figures of the mix and every track, after the filters |
 | `list_filter_types` | Built-in filters with their parameters, units, ranges and defaults |
 | `list_vst_plugins` | Installed VST3 effects |
