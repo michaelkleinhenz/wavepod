@@ -347,7 +347,11 @@ export class SetupView {
       'section',
       { class: 'card' },
       h('h2', null, 'Second output'),
-      h('p', { class: 'muted' }, 'Send a second feed to two more outputs of the same device, for example to a stream, a second headphone amp or a mixer channel for the soundboard.'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Send a second feed to two more outputs of the same device, for example to a stream, a second headphone amp, a mixer channel for the soundboard, or back to a remote guest (mix-minus).',
+      ),
       h(
         'div',
         { class: 'grid' },
@@ -366,11 +370,53 @@ export class SetupView {
                 { value: 'master', label: 'Everything (same as your headphones)' },
                 { value: 'soundboard', label: 'Soundboard only' },
                 { value: 'episode', label: 'Episode playback without live jingles' },
+                { value: 'mixminus', label: 'Mix-minus for a remote guest' },
               ],
               (v) => this.apply({ output2Source: v as OutputSource }),
             )
           : null,
       ),
+      on && cfg.output2Source === 'mixminus' ? this.renderMixMinus(cfg) : null,
+    );
+  }
+
+  /** Which track is the remote guest: the guest feed carries every microphone but theirs. */
+  private renderMixMinus(cfg: DeviceConfig): HTMLElement {
+    const exclude = cfg.mixMinusExclude ?? [];
+    const tracks = store.project.tracks.filter((t) => t.kind !== 'soundboard' && t.inputChannels.length > 0);
+    const inputs = (t: { inputChannels: number[] }) => t.inputChannels.map((c) => c + 1).join(' and ');
+    const toggle = (channels: number[], leaveOut: boolean) => {
+      const rest = exclude.filter((c) => !channels.includes(c));
+      this.apply({ mixMinusExclude: leaveOut ? [...rest, ...channels].sort((a, b) => a - b) : rest });
+    };
+    const leftOut = tracks.filter((t) => t.inputChannels.every((c) => exclude.includes(c)));
+    return h(
+      'div',
+      { class: 'mix-minus' },
+      h(
+        'p',
+        { class: 'muted' },
+        'Connect these outputs to the line input of the computer running the call (Zoom, Teams, …) or to your phone hybrid. The guest hears all microphones, the soundboard and playback, but not themselves, so there is no echo. Tick the guest’s track:',
+      ),
+      tracks.length
+        ? h(
+            'div',
+            { class: 'mix-minus-tracks' },
+            ...tracks.map((t) =>
+              h(
+                'label',
+                { class: 'check' },
+                h('input', {
+                  type: 'checkbox',
+                  checked: t.inputChannels.every((c) => exclude.includes(c)),
+                  onchange: (e: Event) => toggle(t.inputChannels, (e.target as HTMLInputElement).checked),
+                }),
+                `Leave out ${t.name} (${t.inputChannels.length > 1 ? 'inputs' : 'input'} ${inputs(t)})`,
+              ),
+            ),
+          )
+        : h('p', { class: 'hint' }, 'Create a track for each microphone and for the guest first.'),
+      tracks.length && !leftOut.length ? h('p', { class: 'hint' }, 'Nothing is left out yet: the guest would hear themselves.') : null,
     );
   }
 

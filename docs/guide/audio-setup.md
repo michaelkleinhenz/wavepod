@@ -38,7 +38,22 @@ You can change a track's input later in the track header on the timeline. See [T
 If your device has more than one pair of outputs, **Second output** sends a second feed to two more outputs of the same device, for example to a stream, a second headphone amp or a mixer channel for the soundboard.
 
 - **Send to**: which output pair.
-- **What it carries**: *Everything (same as your headphones)*, *Soundboard only*, or *Episode playback without live jingles*.
+- **What it carries**: *Everything (same as your headphones)*, *Soundboard only*, *Episode playback without live jingles*, or *Mix-minus for a remote guest*.
+
+## Mix-minus for remote guests
+
+A guest on Zoom, Teams or the phone needs to hear you, but not themselves: if their own voice comes back to them through the call, they hear an echo with the call's delay, and the call can feed back. A mix-minus is the feed that carries everything except the guest.
+
+1. Record the guest on their own track, from the input where the call computer or phone hybrid comes in.
+2. On **Setup › Audio › Second output**, choose the outputs that go to the call under **Send to**, and *Mix-minus for a remote guest* under **What it carries**.
+3. Tick **Leave out** next to the guest's track.
+4. Connect those outputs to the line input of the call computer or phone hybrid, and pick that input as the microphone in the call app.
+
+The guest then hears every microphone that has a track, the soundboard and episode playback. Inputs no track records from are not sent, so a device's own stereo mix (which already contains the guest) never ends up in the feed. In pre-show only the microphones and the soundboard are sent. You can tick more than one track if several guests share one call, and you can change who is left out during a recording without interrupting it.
+
+The microphones in the feed come straight from the inputs, before any filters, and are a few milliseconds late (about two audio buffers; see **Buffer size** under **Advanced**), which the guest won't notice on top of the call's own delay. Your own headphones are not changed: listen to your microphones through your interface's direct monitoring as before.
+
+> **Tip:** Many podcast mixers, such as the RØDECaster, already make a mix-minus for their USB chat, Bluetooth and phone inputs. You only need WavePod's when your interface doesn't.
 
 ## Using a RØDECaster Pro II
 
