@@ -32,11 +32,12 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Distortion** | Saturation, clipping or fuzz, optionally with fewer bits and a lower sample rate. |
 | **Echo** | Repeats the sound after a delay, each repeat a little duller. |
 | **Room & distance** | Puts a voice into a place and moves it closer or further away. See [Audio drama](audio-drama.md#places). |
+| **Convolution reverb** | Puts the sound into a real room by convolving it with an impulse response (IR), a WAV recording of that room. See [Impulse responses](audio-drama.md#impulse-responses). |
 | **Pitch shift** | Makes a voice higher or lower without changing its speed. |
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |
 | **Chorus / flanger** | Chorus, flanger and vibrato: magic, dreams, teleports, ghosts. |
 
-Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, Pitch shift) add a little latency, which WavePod compensates, so tracks stay in sync.
+Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
 
 For the voice effects (telephone, robot, giant, …) and places (kitchen, church, forest, …), see [Audio drama](audio-drama.md).
 

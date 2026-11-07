@@ -2,7 +2,9 @@
 import type { Fx, FxMeter } from '../../shared/types';
 import { createProcessor, type FxProcessor } from './processors';
 
+/** What a processor instance is built from besides its parameters: a new key means a new instance. */
 function pluginKey(fx: Fx): string {
+  if (fx.type === 'convolution') return `ir:${fx.ir?.file ?? ''}`;
   return fx.plugin ? `${fx.plugin.path}|${fx.plugin.cid}|${fx.state ?? ''}` : '';
 }
 
@@ -42,7 +44,7 @@ export class FxChain {
     if (list === this.list) return;
     this.list = list;
     const next = (list ?? []).map((fx) => {
-      const old = this.slots.find((s) => s.id === fx.id && s.type === fx.type && (fx.type !== 'vst3' || s.key === pluginKey(fx)));
+      const old = this.slots.find((s) => s.id === fx.id && s.type === fx.type && s.key === pluginKey(fx));
       const proc = old?.proc ?? createProcessor(fx.type, this.sampleRate, fx);
       proc.setParams(fx.params);
       // a bypassed filter starts from a clean state when it is switched back on

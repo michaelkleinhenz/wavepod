@@ -1,6 +1,7 @@
 // The API the preload script exposes to the renderer as `window.wavepod`.
 import type {
   RecordingAlert,
+  ImpulseRef,
   AudioDevice,
   DeviceConfig,
   DeviceProfile,
@@ -76,6 +77,13 @@ export interface ZencastrImport {
   /** Absolute paths of the extracted files; `start` in seconds. */
   tracks: Array<{ name: string; soundboard?: boolean; parts: Array<{ path: string; start: number }> }>;
   skipped: string[];
+}
+
+/** An impulse response in the user's folder. */
+export interface ImpulseFile extends ImpulseRef {
+  seconds: number;
+  channels: number;
+  sampleRate: number;
 }
 
 export interface ImportedAudio {
@@ -372,6 +380,12 @@ export interface WavePodApi {
   deleteFxPreset(id: string): Promise<void>;
   showPresetsFolder(): Promise<void>;
 
+  // impulse responses for the convolution reverb (app-wide, in the Impulse responses folder next to Presets)
+  listImpulseResponses(): Promise<ImpulseFile[]>;
+  /** Copies an IR file (WAV or AIFF; asks for one without `path`) into the folder. Null if cancelled. */
+  importImpulseResponse(path?: string): Promise<ImpulseRef | null>;
+  showImpulseResponsesFolder(): Promise<void>;
+
   // events (return an unsubscribe function)
   onTransport(cb: (u: TransportUpdate) => void): () => void;
   onStatus(cb: (s: EngineStatus) => void): () => void;
@@ -538,4 +552,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'renameFxPreset',
   'deleteFxPreset',
   'showPresetsFolder',
+  'listImpulseResponses',
+  'importImpulseResponse',
+  'showImpulseResponsesFolder',
 ];

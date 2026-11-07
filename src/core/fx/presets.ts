@@ -1,7 +1,7 @@
 // Filter presets: named settings for one kind of filter (a built-in type, or one VST3 plug-in),
 // stored per user so they work in every episode. Pure helpers; the files live in main/presetStore.
-import type { Fx, FxPresetRef, FxType, VstParamInfo } from '../../shared/types';
-import { FX_DEFINITIONS, defaultParams, normalizeFx } from './definitions';
+import type { Fx, FxPresetRef, FxType, ImpulseRef, VstParamInfo } from '../../shared/types';
+import { FX_DEFINITIONS, defaultParams, irRef, normalizeFx } from './definitions';
 import { visibleVstParams } from './vst';
 
 /** What a preset file holds. */
@@ -14,6 +14,8 @@ export interface FxPreset {
   params: Record<string, number>;
   /** VST3 only: the plug-in's own state (base64), restored before the parameters. */
   state?: string;
+  /** Convolution reverb only: the impulse response. */
+  ir?: ImpulseRef;
 }
 
 export type FxPresetSource = 'factory' | 'program' | 'user';
@@ -55,7 +57,7 @@ export function presetEdited(fx: Fx): boolean {
 export function presetFromFx(fx: Fx, name: string): FxPreset {
   const clean = name.trim();
   if (!clean) throw new Error('Please give the preset a name.');
-  if (fx.type !== 'vst3') return { name: clean, type: fx.type, params: { ...fx.params } };
+  if (fx.type !== 'vst3') return { name: clean, type: fx.type, params: { ...fx.params }, ...(fx.type === 'convolution' && fx.ir ? { ir: { ...fx.ir } } : {}) };
   if (!fx.plugin) throw new Error('This filter has no plug-in.');
   return {
     name: clean,
@@ -87,7 +89,7 @@ export function normalizePreset(raw: unknown, fallbackName = 'Preset'): FxPreset
   if (!r.type || !FX_DEFINITIONS.some((d) => d.type === r.type)) return null;
   // clamp into range and fill missing values with defaults
   const fx = normalizeFx({ type: r.type, params });
-  return fx ? { name, type: r.type, params: fx.params } : null;
+  return fx ? { name, type: r.type, params: fx.params, ...(r.type === 'convolution' ? irRef(r.ir) : {}) } : null;
 }
 
 /** The filter set to a preset (same id, on/off state and plug-in). */
@@ -106,6 +108,8 @@ export function applyPreset(fx: Fx, preset: FxPreset, ref: Omit<FxPresetRef, 'si
     params = { ...defaultParams(fx.type), ...preset.params };
   }
   const next: Fx = { ...fx, params, preset: { ...ref, sig: paramSignature(params) } };
+  // a convolution preset brings its impulse response; one without keeps the current one
+  if (preset.ir) next.ir = { ...preset.ir };
   if (fx.type === 'vst3') {
     if (preset.state) next.state = preset.state;
     else delete next.state;
@@ -226,6 +230,13 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Stairwell', 'Fast flutter between hard walls.', { time: 45, feedback: 55, mix: 18, highCut: 5000, spread: 20 }],
     ['Stadium PA', 'Announcer bouncing off the stands.', { time: 260, feedback: 25, mix: 28, highCut: 3500, spread: 50 }],
     ['Dream', 'Long, soft ping-pong repeats for memories and inner voices.', { time: 380, feedback: 55, mix: 35, highCut: 2500, spread: 100 }],
+  ],
+  convolution: [
+    ['Subtle room', 'A dialogue voice in a furnished room: the room stays well below the voice.', { dry: 0, wet: -18, predelay: 0, length: 100, lowCut: 120, highCut: 9000, width: 100 }],
+    ['Room', 'The room clearly audible, as with a microphone a little further away.', { dry: 0, wet: -12, predelay: 0, length: 100, lowCut: 80, highCut: 12000, width: 100 }],
+    ['Large space', 'Halls, churches and stairwells: lots of room, a short pre-delay keeps the words clear.', { dry: 0, wet: -6, predelay: 15, length: 100, lowCut: 100, highCut: 10000, width: 100 }],
+    ['Short tail', 'Only the first part of the IR: the character of the room without its long decay.', { dry: 0, wet: -12, predelay: 0, length: 35, lowCut: 80, highCut: 12000, width: 100 }],
+    ['Wet only', 'Only the room, no dry signal: for a reverb on its own track or a voice heard entirely through a space.', { dry: -60, wet: 0, predelay: 0, length: 100, lowCut: 20, highCut: 20000, width: 100 }],
   ],
   space: [
     ['Close to the mic', 'Intimate and close: a little proximity bass, almost no room. Narrators, inner voices.', { distance: 0.4, size: 20, decay: 0.25, damping: 60, early: 9, room: 4, predelay: 2, width: 60 }],

@@ -9,6 +9,7 @@ import { Reverb } from './reverb';
 import { BandPass, DistortionMix, Echo } from './drama';
 import { Space } from './space';
 import { Chorus, PitchShift, RingMod } from './voiceMod';
+import { Convolution } from './convolution';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -360,6 +361,8 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new PitchShift(sampleRate);
     case 'ringmod':
       return new RingMod(sampleRate);
+    case 'convolution':
+      return new Convolution(sampleRate, fx?.ir);
     case 'chorus':
       return new Chorus(sampleRate);
   }

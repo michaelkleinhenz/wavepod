@@ -87,6 +87,26 @@ Its **Distance** (in metres) moves the speaker away: the voice gets quieter, los
 
 A room that sounds too big usually needs a shorter decay; one that sounds too reverberant needs less **Reverb** and **Reflections**. The **Reverb** filter has the same **Decay (RT60)** setting.
 
+## Impulse responses
+
+For the sound of one particular, real place, use the **Convolution reverb** filter with an impulse response (IR): a short WAV recording of how a room, car, hall or church answers a single click or sweep. Many free IR collections exist, for example the OpenAIR library, and many reverb plug-ins and sample packs come with IRs. You can also record your own: a balloon pop or a hand clap in the room, trimmed so the file starts with the bang.
+
+1. Add **Convolution reverb** from "+ Add filter".
+2. Click **Load…** and pick a WAV or AIFF file, or drop the file on the filter. WavePod copies it into the **Impulse responses** folder next to your Presets (Documents/WavePod/Impulse responses), so it can be used in every episode, template and preset.
+3. Choose it from the list next time. Files you copy into that folder (subfolders too) appear after **Look for new files**.
+
+The settings:
+
+- **Dry** and **Wet (room)** set the level of the original sound and of the room. IRs are levelled on loading, so 0 dB wet sounds about as loud as the dry voice. For dialogue in a furnished room start around −18 dB, for halls and churches around −6 dB. **Wet only** (Dry at −60 dB) gives only the room.
+- **Pre-delay** moves the room later, which keeps words clear in big spaces.
+- **Length** uses only the first part of the IR, with a short fade: the character of the room with less decay.
+- **Room low cut** and **Room high cut** shape only the room: cut lows to keep it from booming, highs for soft furnishings.
+- **Width** narrows a stereo IR.
+
+Mono IRs give the same room on both sides, stereo IRs keep their left and right. IRs are resampled to the episode's rate, and anything longer than 12 seconds is cut. The filter adds about 21 ms of latency, which WavePod compensates.
+
+Episodes refer to IRs by file name in your Impulse responses folder. To open an episode on another computer, copy that folder too; a missing IR is shown on the filter, and only the dry sound plays until you load it again.
+
 ## Sound library
 
 Keep your sound effects and atmospheres in a folder and search them from inside WavePod.

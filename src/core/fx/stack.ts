@@ -64,7 +64,7 @@ export function insertFx(project: Project, target: FxTarget, fx: Fx, index?: num
   });
 }
 
-export function updateFx(project: Project, target: FxTarget, id: string, patch: Partial<Pick<Fx, 'enabled' | 'params'>>): Project {
+export function updateFx(project: Project, target: FxTarget, id: string, patch: Partial<Pick<Fx, 'enabled' | 'params' | 'ir'>>): Project {
   return withList(project, target, (l) => l.map((f) => (f.id === id ? { ...f, ...patch, params: { ...f.params, ...(patch.params ?? {}) } } : f)));
 }
 

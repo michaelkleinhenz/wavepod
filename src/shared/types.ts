@@ -154,7 +154,7 @@ export interface EnvelopePoint {
   db: number;
 }
 
-export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'bandpass' | 'distortion' | 'echo' | 'space' | 'pitch' | 'ringmod' | 'chorus' | 'vst3';
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'bandpass' | 'distortion' | 'echo' | 'space' | 'pitch' | 'ringmod' | 'chorus' | 'convolution' | 'vst3';
 
 /** One filter in a track's or the master's filter stack. */
 export interface Fx {
@@ -172,6 +172,16 @@ export interface Fx {
   state?: string;
   /** The preset last loaded or saved for this filter, so the FX panel can show it (and whether it was changed since). */
   preset?: FxPresetRef;
+  /** Convolution reverb only: the impulse response it uses. */
+  ir?: ImpulseRef;
+}
+
+/** An impulse response file: a WAV in the user's "Impulse responses" folder (or an absolute path). */
+export interface ImpulseRef {
+  /** File name in the impulse response folder, e.g. "Living room.wav". */
+  file: string;
+  /** Display name. */
+  name: string;
 }
 
 /** Which preset a filter was set from. */

@@ -1,5 +1,5 @@
 // The filters WavePod offers, their parameters and defaults. Used by the UI and the processors.
-import type { Fx, FxType } from '../../shared/types';
+import type { Fx, FxType, ImpulseRef } from '../../shared/types';
 import { uid } from '../../shared/time';
 
 export interface FxParamSpec {
@@ -198,6 +198,22 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'convolution',
+    name: 'Convolution reverb',
+    aliases: ['Impulse response', 'IR reverb', 'Convolution', 'IR'],
+    description:
+      'Puts the sound into a real room, hall, car or church by convolving it with an impulse response (IR): a WAV recording of how that place answers a single click. Load an IR file, then set how much of the room you hear. Adds about 21 ms of latency, which WavePod compensates.',
+    params: [
+      db('dry', 'Dry', 0, -60, 0),
+      db('wet', 'Wet (room)', -12, -60, 12),
+      ms('predelay', 'Pre-delay', 0, 0, 200),
+      { key: 'length', label: 'Length', min: 5, max: 100, step: 1, default: 100, unit: '%' },
+      hz('lowCut', 'Room low cut', 20, 20, 2000),
+      hz('highCut', 'Room high cut', 20000, 1000, 20000),
+      { key: 'width', label: 'Width', min: 0, max: 100, step: 1, default: 100, unit: '%' },
+    ],
+  },
+  {
     type: 'pitch',
     name: 'Pitch shift',
     aliases: ['Pitch shifter', 'Pitch'],
@@ -280,7 +296,13 @@ export function normalizeFx(fx: Partial<Fx>): Fx | null {
     const v = Number(fx.params?.[p.key]);
     params[p.key] = Number.isFinite(v) ? Math.min(p.max, Math.max(p.min, v)) : p.default;
   }
-  return { id: fx.id ?? uid('fx'), type: fx.type, enabled: fx.enabled !== false, params, ...presetRef(fx) };
+  return { id: fx.id ?? uid('fx'), type: fx.type, enabled: fx.enabled !== false, params, ...presetRef(fx), ...(fx.type === 'convolution' ? irRef(fx.ir) : {}) };
+}
+
+/** A valid impulse response reference, or nothing. */
+export function irRef(ir: unknown): Pick<Fx, 'ir'> {
+  const r = ir as Partial<ImpulseRef> | undefined;
+  return r && typeof r.file === 'string' && r.file ? { ir: { file: r.file, name: typeof r.name === 'string' && r.name ? r.name : r.file.replace(/\.[^.]+$/, '') } } : {};
 }
 
 function presetRef(fx: Partial<Fx>): Pick<Fx, 'preset'> {

@@ -356,6 +356,13 @@ header .fx-btn { white-space: nowrap; flex: none; }
 .fx-presets { display: flex; gap: 4px; align-items: center; margin: 0 0 8px; }
 .fx-preset-select { flex: 1; min-width: 0; font-size: 11px; }
 .fx-preset-name { flex: 1; min-width: 0; font-size: 11px; }
+.fx-ir { margin: 0 0 8px; border-radius: 4px; }
+.fx-ir .fx-presets { margin: 0 0 4px; }
+.fx-ir.drop { outline: 1px dashed var(--accent); outline-offset: 2px; }
+.fx-ir-select { flex: 1; min-width: 0; font-size: 11px; }
+.fx-ir-load { width: auto; flex: none; padding: 0 8px; }
+.fx-ir-info { font-size: 11px; opacity: 0.75; }
+.fx-ir-info.warn { color: var(--warn); opacity: 1; }
 .fx-param { display: grid; grid-template-columns: 92px 1fr 64px; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 2px 0; }
 .fx-param input[type=range] { width: 100%; }
 .fx-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }

@@ -57,6 +57,7 @@ Every change an agent makes is one undo step (`Ctrl+Z`), shows up in the FX pane
 | `apply_voice_effect` | A voice effect or place (telephone, robot, church, …) |
 | `set_filter_stack`, `copy_filter_stack` | Replace a whole stack, or copy one to another track |
 | `list_filter_presets`, `apply_filter_preset`, `save_filter_preset` | Presets |
+| `list_impulse_responses`, `set_impulse_response` | Impulse responses for the Convolution reverb |
 | `set_automix` | Crosstalk removal on a track |
 | `set_track_automation` | Volume and pan automation |
 | `set_track_stem` | Which stem a track goes to |
