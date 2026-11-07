@@ -13,7 +13,7 @@ import { AudioEngine, defaultConfig, type TakeReport } from './audio/engine';
 import { RecordWorker } from './audio/takeSink';
 import { SOUNDBOARD_TRACK_ID } from '../core/soundboard';
 import { loopTakeClips } from '../core/takes';
-import { clearJournal, mergeRecording, recoverRecording, type Recovery } from '../core/recordingJournal';
+import { clearJournal, journalOwnerRunning, mergeRecording, readJournal, recoverRecording, type Recovery } from '../core/recordingJournal';
 import { formatMinutes } from '../core/recordingMonitor';
 import { RtAudioBackend } from './audio/rtaudioBackend';
 import { VstHostProcess, vstHostExecutable } from './vst/host';
@@ -60,6 +60,12 @@ import { LIBRARY_EXTENSIONS, addFavourites, normalizeFavourites, type FavouriteS
 
 // Carry settings over from the SoundPod era before anything reads userData.
 migrateUserData(app.getPath('appData'), app.getPath('userData'));
+
+// One WavePod at a time. A second copy would open the same episode and audio device, and could
+// take a running recording for an interrupted one. Starting it again brings this window forward.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+else app.on('second-instance', () => showMainWindow());
 
 interface Settings {
   device: DeviceConfig;
@@ -220,6 +226,11 @@ function discardAutoCreated(next: string): void {
 }
 
 function openProjectDir(dir: string): OpenedProject {
+  // Another WavePod (e.g. a second copy of the app) is recording into this episode right now.
+  const journal = readJournal(dir);
+  if (journal && journalOwnerRunning(journal)) {
+    throw new Error('Another WavePod is recording into this episode right now. Stop that recording first.');
+  }
   let project = loadProject(dir);
   discardAutoCreated(dir);
   // A take a crash interrupted: repair its files and put them back on their tracks.
@@ -1146,6 +1157,41 @@ function openHelp(topic?: string): void {
   void helpWin.loadFile(path.join(__dirname, '..', 'help', 'help.html'), hash ? { hash } : undefined);
 }
 
+/**
+ * Asks before a running recording ends because the app quits or its window closes. Returns true
+ * (after stopping and saving the take) when it may go ahead, false to keep recording.
+ */
+function confirmQuitWhileRecording(): boolean {
+  if (engine?.transportState !== 'recording') return true;
+  const opts: Electron.MessageBoxSyncOptions = {
+    type: 'warning',
+    title: 'Recording',
+    message: 'A recording is running.',
+    detail: 'Stop the recording, save it and quit?',
+    buttons: ['Keep recording', 'Stop and quit'],
+    defaultId: 0,
+    cancelId: 0,
+  };
+  const parent = win && !win.isDestroyed() ? win : null;
+  if (parent) showMainWindow();
+  const choice = parent ? dialog.showMessageBoxSync(parent, opts) : dialog.showMessageBoxSync(opts);
+  if (choice === 0) return false;
+  stopAndSave();
+  return true;
+}
+
+/** Brings the app window to the front (a second start of WavePod lands here), or opens it again. */
+function showMainWindow(): void {
+  if (!app.isReady()) return;
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
@@ -1188,18 +1234,7 @@ function createWindow(): void {
   });
   // Closing the window mid-take asks first.
   win.on('close', (e) => {
-    if (engine?.transportState !== 'recording' || !win) return;
-    const choice = dialog.showMessageBoxSync(win, {
-      type: 'warning',
-      title: 'Recording',
-      message: 'A recording is running.',
-      detail: 'Stop the recording, save it and quit?',
-      buttons: ['Keep recording', 'Stop and quit'],
-      defaultId: 0,
-      cancelId: 0,
-    });
-    if (choice === 0) e.preventDefault();
-    else stopAndSave();
+    if (!confirmQuitWhileRecording()) e.preventDefault();
   });
   win.on('closed', () => {
     win = null;
@@ -1209,6 +1244,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   // Windows shows notifications only for an app with an id (the installer uses the same one).
   if (process.platform === 'win32') app.setAppUserModelId('net.kleinhenz.wavepod');
   settings = loadSettings();
@@ -1303,7 +1339,13 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => {
+// Quit (Ctrl+Q / Cmd+Q, the menu, the Dock) mid-take asks first, like closing the window. This runs
+// before any window closes, so the window's own question would come too late.
+app.on('before-quit', (e) => {
+  if (!confirmQuitWhileRecording()) {
+    e.preventDefault();
+    return;
+  }
   void mcp?.dispose();
   void osc?.close();
   if (engine) {

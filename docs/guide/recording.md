@@ -119,7 +119,8 @@ WavePod is built so a recording survives crashes, power cuts and full disks. It 
 - If the recording was interrupted (a crash, a power cut), WavePod notices it the next time the episode opens: the files are repaired and put back on their tracks, and a dialog tells you so. A backup of the episode from before the repair is kept.
 - If the disk fills up, audio is held in memory (up to 1 GB) and written as soon as there is space again. WavePod won't start a take with less than a minute of space left.
 - If the audio interface drops out mid-take (a USB reset or a loose cable), the recording keeps running with silence, so all tracks stay in time. WavePod reconnects as soon as the device is back, and the gap gets a ⚠ edit marker.
-- Closing the window while recording asks first. If the window itself crashes, it reloads while the recording continues.
+- Closing the window or quitting the app (Ctrl+Q, ⌘Q, the menu or the Dock) while recording asks first. If the window itself crashes, it reloads while the recording continues.
+- Only one WavePod runs at a time: starting it again brings the open window to the front instead of opening the episode a second time.
 
 ### Problem warnings
 
