@@ -49,8 +49,8 @@ vsthost-test: ## Build the VST3 host plus the SDK's sample plug-ins, then run th
 dist: build vsthost ## Package for the current OS into release/
 	npx electron-builder --publish never
 
-dist-linux: build vsthost ## Package a Linux AppImage
-	npx electron-builder --linux AppImage --publish never
+dist-linux: build vsthost ## Package a Linux AppImage and a .deb (the .deb brings an AppArmor profile for Ubuntu 24.04+)
+	npx electron-builder --linux AppImage deb --publish never
 
 dist-win: build vsthost ## Package a Windows NSIS installer
 	npx electron-builder --win nsis --publish never

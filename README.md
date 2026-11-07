@@ -179,6 +179,14 @@ prints the options instead of crashing:
   ```
 - Development only, without the sandbox: `WAVEPOD_NO_SANDBOX=1 make start`.
 
+#### Linux: .deb or AppImage
+
+Releases include a `.deb` next to the AppImage. Prefer it on Ubuntu and
+Debian: it installs WavePod under `/opt/WavePod`, adds it to the app grid,
+and installs the AppArmor profile that lets Chromium's sandbox run on Ubuntu
+23.10+ (the AppImage fails there with the `SIGTRAP` described above). The
+AppImage also needs FUSE 2 (`sudo apt install libfuse2t64`).
+
 #### Linux: GNOME launcher
 
 The AppImage does not add itself to the app grid. To get WavePod (with its
@@ -473,7 +481,7 @@ best on the same audio interface.
 ## Releases
 
 Pushing a tag like `v0.1.0` runs `.github/workflows/release.yml`, which
-builds a Linux AppImage, a Windows NSIS installer and a macOS DMG and
+builds a Linux AppImage and .deb, a Windows NSIS installer and a macOS DMG and
 attaches them to a GitHub release. Builds are unsigned until signing
 certificates are configured as repository secrets.
 

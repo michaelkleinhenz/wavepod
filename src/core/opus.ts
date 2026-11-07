@@ -89,23 +89,47 @@ export class OggStream {
 
 // ---------------------------------------------------------------- resampling
 
-/** Streaming windowed-sinc resampler (stereo), good enough to bring 44.1 kHz speech to 48 kHz. */
+/** Kernel phases per input sample in the resampler's weight table (linearly interpolated between). */
+const PHASES = 256;
+
+/** Streaming windowed-sinc resampler (any channel count), good enough to bring 44.1 kHz speech to 48 kHz. */
 export class Resampler {
   private readonly ratio: number;
   private readonly taps = 16;
   private hist: Float32Array[];
   /** Position of the next output sample, in input samples relative to hist start. */
   private pos: number;
+  /** Normalised kernel weights: row p (taps values) for the fractional position p / PHASES. */
+  private readonly table: Float32Array;
 
   constructor(inRate: number, outRate: number, private channels: number) {
     this.ratio = inRate / outRate;
     this.hist = Array.from({ length: channels }, () => new Float32Array(this.taps));
     this.pos = this.taps / 2;
+    // Hann-windowed sinc, lowpass at the lower Nyquist when going down in rate. Computed once: per
+    // output sample only a table lookup is left, shared by all channels.
+    const half = this.taps / 2;
+    const cutoff = Math.min(1, 1 / this.ratio);
+    this.table = new Float32Array((PHASES + 1) * this.taps);
+    for (let p = 0; p <= PHASES; p++) {
+      const frac = p / PHASES;
+      let norm = 0;
+      const row = this.table.subarray(p * this.taps, (p + 1) * this.taps);
+      for (let k = -half + 1; k <= half; k++) {
+        const x = k - frac;
+        const w = 0.5 + 0.5 * Math.cos((Math.PI * x) / half);
+        const g = w * (x === 0 ? 1 : Math.sin(Math.PI * x * cutoff) / (Math.PI * x * cutoff));
+        row[k + half - 1] = g;
+        norm += g;
+      }
+      for (let t = 0; t < this.taps; t++) row[t] /= norm;
+    }
   }
 
   /** Resamples `n` frames; returns the output frames. */
   process(input: Float32Array[], n: number): Float32Array[] {
-    const half = this.taps / 2;
+    const taps = this.taps;
+    const half = taps / 2;
     // the working buffer: history then the new block
     const buf = this.hist.map((h, c) => {
       const b = new Float32Array(h.length + n);
@@ -114,32 +138,34 @@ export class Resampler {
       return b;
     });
     const len = buf[0].length;
-    const out: number[][] = Array.from({ length: this.channels }, () => []);
-    // lowpass at the lower Nyquist when going down in rate
-    const cutoff = Math.min(1, 1 / this.ratio);
+    const count = Math.max(0, Math.ceil((len - half - this.pos) / this.ratio) + 1);
+    const out = Array.from({ length: this.channels }, () => new Float32Array(count));
+    const weights = new Float32Array(taps);
+    const table = this.table;
+    let produced = 0;
     while (this.pos + half < len) {
       const base = Math.floor(this.pos);
-      const frac = this.pos - base;
+      const ph = (this.pos - base) * PHASES;
+      const p0 = Math.floor(ph);
+      const t = ph - p0;
+      const r0 = p0 * taps;
+      const r1 = r0 + taps;
+      for (let k = 0; k < taps; k++) weights[k] = table[r0 + k] + (table[r1 + k] - table[r0 + k]) * t;
+      const first = base - half + 1;
       for (let c = 0; c < this.channels; c++) {
+        const b = buf[c];
         let acc = 0;
-        let norm = 0;
-        for (let k = -half + 1; k <= half; k++) {
-          const x = k - frac;
-          const w = 0.5 + 0.5 * Math.cos((Math.PI * x) / half); // Hann
-          const s = x === 0 ? 1 : Math.sin(Math.PI * x * cutoff) / (Math.PI * x * cutoff);
-          const g = w * s;
-          acc += buf[c][base + k] * g;
-          norm += g;
-        }
-        out[c].push(acc / norm);
+        for (let k = 0; k < taps; k++) acc += b[first + k] * weights[k];
+        out[c][produced] = acc;
       }
+      produced++;
       this.pos += this.ratio;
     }
     // keep the last `taps` samples as history
-    const keepFrom = len - this.taps;
+    const keepFrom = len - taps;
     this.hist = buf.map((b) => b.slice(keepFrom));
     this.pos -= keepFrom;
-    return out.map((o) => Float32Array.from(o));
+    return out.map((o) => (produced === o.length ? o : o.slice(0, produced)));
   }
 }
 

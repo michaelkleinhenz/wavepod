@@ -8,7 +8,9 @@ import { acceleratorLabel, menuLabel } from '../core/menuText';
 import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, RecordOptions, VstPluginRef } from '../shared/types';
 import { prepareForEditing } from '../core/project';
 import { findProfile } from '../core/deviceProfiles';
-import { writeWavFile } from '../core/wav';
+import { WavWriter, writeWavFile } from '../core/wav';
+import { canStreamImport } from '../core/importAudio';
+import { readJsonSafely, writeJsonSafely } from '../core/safeJson';
 import { AudioEngine, defaultConfig, type TakeReport } from './audio/engine';
 import { RecordWorker } from './audio/takeSink';
 import { SOUNDBOARD_TRACK_ID } from '../core/soundboard';
@@ -27,11 +29,14 @@ import {
   createProjectDir,
   defaultEpisodeName,
   importImage,
+  isDamagedProject,
   isProjectDir,
   isUntouchedProject,
+  listBackups,
   listProjects,
   loadBackup,
   loadProject,
+  restoreNewestBackup,
   saveProject,
 } from './projectStore';
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
@@ -100,7 +105,19 @@ const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
 function loadSettings(): Settings {
   try {
-    const raw = JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) as Partial<Settings>;
+    const { data, from } = readJsonSafely(settingsPath());
+    if (from === 'backup') console.error('[settings] settings.json was damaged; using the copy from before the last change');
+    if (from === 'none' && fs.existsSync(settingsPath())) {
+      // unreadable and no copy: keep it for a look, the defaults below replace it on the next save
+      try {
+        fs.copyFileSync(settingsPath(), `${settingsPath()}.damaged`);
+      } catch {
+        /* nothing to keep */
+      }
+      console.error('[settings] settings.json is damaged and has no backup copy; starting with default settings');
+    }
+    if (!data || typeof data !== 'object') throw new Error('no settings yet');
+    const raw = data as Partial<Settings>;
     return {
       device: { ...defaultConfig(), ...(raw.device ?? {}) },
       lastProject: raw.lastProject ?? null,
@@ -132,8 +149,8 @@ function rememberChapterImageFolder(dir: string): void {
 
 function saveSettings(): void {
   try {
-    fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
-    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
+    // temp file + rename, with the previous version kept as settings.json.bak
+    writeJsonSafely(settingsPath(), settings);
   } catch (e) {
     console.error('could not save settings', e);
   }
@@ -195,7 +212,7 @@ let recordWorker: RecordWorker | null = null;
 /** Gets emergencies during a recording to the user, even with the window in the background. */
 let alerter: RecordingAlerter;
 /** A recovery to tell the user about once the window is there. */
-let recoveryNotice: string | null = null;
+let recoveryNotice: { text: string; title: string } | null = null;
 /** Temporary folder of the Zencastr import in progress. */
 let zencastrTmp: string | null = null;
 
@@ -264,7 +281,7 @@ function openProjectDir(dir: string): OpenedProject {
       showRecoveryNotice(parts.filter(Boolean).join('\n\n'));
     }
   }
-  current = { project, dir };
+  current = { project, dir, rev: ++projectRev };
   setSaveState({ state: 'saved' });
   // the project as opened is what a backup would hold; nothing to back up until it changes
   lastBackup = JSON.stringify(project);
@@ -273,6 +290,36 @@ function openProjectDir(dir: string): OpenedProject {
   saveSettings();
   if (win) win.setTitle(withAlertMark(win, `${project.name} — WavePod`));
   return current;
+}
+
+/**
+ * Opens an episode. A damaged project.json (cut short by a crash or power cut, edited by hand) is
+ * replaced by the newest backup that can be read, if the user agrees; the damaged file is kept.
+ */
+function openProjectDirRepairing(dir: string): OpenedProject {
+  if (isDamagedProject(dir)) {
+    const name = path.basename(dir);
+    const backups = listBackups(dir);
+    if (!backups.length) throw new Error(`The episode file of "${name}" (project.json) is damaged, and the episode has no backups to restore it from.`);
+    const opts: Electron.MessageBoxSyncOptions = {
+      type: 'warning',
+      title: 'Episode damaged',
+      message: `The episode file of "${name}" is damaged.`,
+      detail:
+        `WavePod keeps backups of every episode. Restore the newest one (${path.basename(backups[0])})?\n\n` +
+        'Changes made after that backup are lost; recordings and other media files are not touched. The damaged file is kept in the episode\'s backup folder.',
+      buttons: ['Restore backup', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    };
+    const parent = win && !win.isDestroyed() ? win : null;
+    const choice = parent ? dialog.showMessageBoxSync(parent, opts) : dialog.showMessageBoxSync(opts);
+    if (choice !== 0) throw new Error(`The episode file of "${name}" (project.json) is damaged.`);
+    const used = restoreNewestBackup(dir);
+    if (!used) throw new Error(`None of the backups of "${name}" could be read.`);
+    console.error(`[project] ${dir}: damaged project.json replaced by ${path.basename(used)}`);
+  }
+  return openProjectDir(dir);
 }
 
 function createNewProject(name?: string): OpenedProject {
@@ -310,17 +357,17 @@ function flushSave(): boolean {
   }
 }
 
-function showRecoveryNotice(text: string): void {
-  recoveryNotice = text;
+function showRecoveryNotice(text: string, title = 'Recording recovered'): void {
+  recoveryNotice = { text, title };
   console.error(`[recording] ${text}`);
   if (win && !win.isDestroyed() && !win.webContents.isLoading()) flushRecoveryNotice();
 }
 
 function flushRecoveryNotice(): void {
-  const text = recoveryNotice;
-  if (!text || !win || win.isDestroyed()) return;
+  const notice = recoveryNotice;
+  if (!notice || !win || win.isDestroyed()) return;
   recoveryNotice = null;
-  void dialog.showMessageBox(win, { type: 'info', title: 'Recording recovered', message: 'Recording recovered', detail: text, buttons: ['OK'] });
+  void dialog.showMessageBox(win, { type: 'info', title: notice.title, message: notice.title, detail: notice.text, buttons: ['OK'] });
 }
 
 /** Stops a running take and saves, before the app goes away. */
@@ -351,6 +398,25 @@ function backupNow(reason = ''): void {
 }
 
 /** Takes over a project edited in the renderer (or by an agent) and saves it shortly after. */
+/** Revisions of the open project, see OpenedProject.rev. Only ever goes up, across episodes too. */
+let projectRev = 0;
+
+/** The main process changed the project by itself: edits the window made before it heard of this are stale. */
+function bumpProjectRev(): number {
+  current.rev = ++projectRev;
+  return current.rev;
+}
+
+/** Takes over the window's project unless it was edited from an older revision (see OpenedProject.rev). */
+function updateFromWindow(project: Project, rev: number): boolean {
+  if (rev !== current.rev) {
+    console.error(`[project] ignored a change made on revision ${rev}; the project is at ${current.rev}`);
+    return false;
+  }
+  setCurrentProject(project);
+  return true;
+}
+
 function setCurrentProject(project: Project): void {
   current.project = project;
   engine.setProject(project);
@@ -368,7 +434,7 @@ const mcpHost: WavePodHost = {
   transportState: () => engine.transportState,
   apply: (project, summary) => {
     setCurrentProject(project);
-    send(IPC.projectEdited, { project, summary });
+    send(IPC.projectEdited, { project, rev: bumpProjectRev(), summary });
   },
   measureLoudness: () => handlers.measureLoudness() as Promise<LoudnessReport[]>,
   alignClips: (clipIds, refTrackId) => alignClipsTo(clipIds, refTrackId),
@@ -470,6 +536,30 @@ const ABOUT_LINKS: Record<AboutLink, string> = {
   source: 'https://github.com/michaelkleinhenz/wavepod',
   licenses: 'https://github.com/michaelkleinhenz/wavepod/blob/main/THIRD_PARTY_NOTICES.md',
 };
+
+/** Importing writes whole files on the main thread, where the audio callbacks run: not while recording. */
+function refuseImportWhileRecording(): void {
+  if (engine.transportState === 'recording') throw new Error('Stop recording before importing audio.');
+}
+
+/** A free media/<name>.wav in the open episode, created empty so a parallel import can't take it too. */
+function reserveMediaFile(name: string): string {
+  fs.mkdirSync(path.join(current.dir, 'media'), { recursive: true });
+  const base = name.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}_ -]+/gu, '_') || 'import';
+  for (let i = 1; ; i++) {
+    const rel = `media/${base}${i === 1 ? '' : `-${i}`}.wav`;
+    try {
+      fs.writeFileSync(path.join(current.dir, rel), '', { flag: 'wx' });
+      return rel;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+  }
+}
+
+/** Chunked imports the window is sending (importAudioBegin … importAudioEnd). */
+const importsInProgress = new Map<string, { rel: string; dir: string; writer: WavWriter }>();
+let importSeq = 0;
 
 const handlers: Record<InvokeMethod, Handler> = {
   getStatus: () => engine.status(),
@@ -589,7 +679,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     if (path.resolve(dir) === path.resolve(current.dir)) return current;
     if (engine.transportState !== 'stopped') engine.stop();
     flushSave();
-    return openProjectDir(dir);
+    return openProjectDirRepairing(dir);
   },
   listRecentProjects: () => listProjects(projectsRoot()),
   defaultEpisodeName: () => defaultEpisodeName(),
@@ -604,9 +694,9 @@ const handlers: Record<InvokeMethod, Handler> = {
     if (!isProjectDir(dir)) throw new Error('That folder does not contain a WavePod project (project.json).');
     if (engine.transportState !== 'stopped') engine.stop();
     flushSave();
-    return openProjectDir(dir);
+    return openProjectDirRepairing(dir);
   },
-  updateProject: (project: Project) => setCurrentProject(project),
+  updateProject: (project: Project, rev: number) => updateFromWindow(project, rev),
   listTemplates: () => listTemplates(templatesRoot()),
   saveTemplate: (name: string) => {
     flushSave();
@@ -686,13 +776,50 @@ const handlers: Record<InvokeMethod, Handler> = {
   // Relative paths (e.g. soundboard jingles copied from a template) are inside the project folder.
   readFile: (p: string) => new Uint8Array(fs.readFileSync(path.resolve(current.dir, p))),
   importAudio: (name: string, channels: Float32Array[], sampleRate: number) => {
-    const media = path.join(current.dir, 'media');
-    fs.mkdirSync(media, { recursive: true });
-    const base = name.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}_ -]+/gu, '_') || 'import';
-    let rel = `media/${base}.wav`;
-    for (let i = 2; fs.existsSync(path.join(current.dir, rel)); i++) rel = `media/${base}-${i}.wav`;
+    refuseImportWhileRecording();
+    const rel = reserveMediaFile(name);
     writeWavFile(path.join(current.dir, rel), channels, sampleRate, 24);
     return { file: rel, length: channels[0]?.length ?? 0 };
+  },
+  // A WAV file on disk is copied by a worker, block by block, so any length fits; null = not a WAV
+  // WavePod can stream, the window decodes it instead.
+  importAudioFile: async (src: string, name: string, sampleRate: number) => {
+    refuseImportWhileRecording();
+    if (!canStreamImport(src)) return null;
+    const dir = current.dir;
+    const rel = reserveMediaFile(name);
+    try {
+      const length = await runWorker<number>({ kind: 'importWav', project: current.project, dir, src, dest: path.join(dir, rel), sampleRate });
+      return { file: rel, length };
+    } catch (e) {
+      fs.rmSync(path.join(dir, rel), { force: true });
+      throw e;
+    }
+  },
+  // Decoded audio from the window arrives in chunks, so no single message has to carry hours of audio.
+  importAudioBegin: (name: string, channels: number, sampleRate: number) => {
+    refuseImportWhileRecording();
+    const rel = reserveMediaFile(name);
+    const id = `imp${++importSeq}`;
+    importsInProgress.set(id, { rel, dir: current.dir, writer: new WavWriter(path.join(current.dir, rel), channels, sampleRate, 24, 1 << 20, 0, { rf64: true }) });
+    return id;
+  },
+  importAudioChunk: (id: string, channels: Float32Array[]) => {
+    const imp = importsInProgress.get(id);
+    if (!imp) throw new Error('No such import');
+    imp.writer.write(channels);
+  },
+  importAudioEnd: (id: string, abort?: boolean) => {
+    const imp = importsInProgress.get(id);
+    if (!imp) throw new Error('No such import');
+    importsInProgress.delete(id);
+    const length = imp.writer.framesWritten;
+    imp.writer.close();
+    if (abort) {
+      fs.rmSync(path.join(imp.dir, imp.rel), { force: true });
+      return null;
+    }
+    return { file: imp.rel, length };
   },
   openTextFile: async (title: string, extensions: string[]) => {
     const res = await dialog.showOpenDialog(win!, { title, properties: ['openFile'], filters: [{ name: title, extensions }] });
@@ -1296,6 +1423,8 @@ app.whenReady().then(() => {
     const preparedForEditing = prepared !== project;
     project = prepared;
     current.project = project;
+    // a change the window sends from before the takes were in is stale now
+    const rev = bumpProjectRev();
     engine.setProject(project);
     // The journal goes only once the takes are safely in project.json.
     if (flushSave() && !report?.writeError) {
@@ -1309,14 +1438,20 @@ app.whenReady().then(() => {
     const loop = report?.loop;
     const first = takes.find((t) => t.trackId !== SOUNDBOARD_TRACK_ID);
     const passes = loop && first ? loopTakeClips(first.clip, loop, project.sampleRate).length : undefined;
-    send(IPC.recordingFinished, { takes, project, preparedForEditing, problems: report?.events.length ?? 0, ...(passes ? { passes } : {}) });
+    send(IPC.recordingFinished, { takes, project, rev, preparedForEditing, problems: report?.events.length ?? 0, ...(passes ? { passes } : {}) });
   });
 
+  const last = settings.lastProject;
   try {
-    if (settings.lastProject && isProjectDir(settings.lastProject)) openProjectDir(settings.lastProject);
-    else autoCreatedDir = createNewProject().dir;
+    if (last && isProjectDir(last)) openProjectDirRepairing(last);
+    else {
+      // e.g. on a drive that isn't connected: say where it was instead of quietly starting afresh
+      if (last) showRecoveryNotice(`WavePod couldn't find the last episode at\n${last}\n\nIf it is on a drive that isn't connected, connect it and open the episode with File › Open. WavePod started a new episode for now.`, 'Last episode not found');
+      autoCreatedDir = createNewProject().dir;
+    }
   } catch (e) {
     console.error('could not open last project', e);
+    showRecoveryNotice(`WavePod couldn't open the last episode at\n${last}\n\n${e instanceof Error ? e.message : String(e)}\n\nIts folder was left as it is. WavePod started a new episode for now.`, 'Last episode not opened');
     autoCreatedDir = createNewProject().dir;
   }
   engine.applyConfig(settings.device);

@@ -1,5 +1,6 @@
 // Decodes audio files (any format Chromium supports) and resamples to the project rate.
 import { api } from './store';
+import type { ImportedAudio } from '../shared/api';
 import { decodeAiff, isAiff } from '../core/aiff';
 
 export async function decodeFile(path: string, sampleRate: number): Promise<Float32Array[]> {
@@ -37,7 +38,40 @@ export async function decodeBytes(data: ArrayBuffer, sampleRate: number): Promis
     src.start();
     buffer = await off.startRendering();
   }
-  return Array.from({ length: channels }, (_, c) => buffer.getChannelData(c).slice());
+  // the buffer's own arrays: a copy would double the memory a long file needs
+  return Array.from({ length: channels }, (_, c) => buffer.getChannelData(c));
+}
+
+/** Frames per message when sending decoded audio to the main process (about 5 s at 48 kHz). */
+const UPLOAD_CHUNK = 1 << 18;
+
+/** Writes decoded audio into the episode's media folder, sent in chunks so hours of audio fit. */
+export async function uploadDecoded(name: string, channels: Float32Array[], sampleRate: number): Promise<ImportedAudio> {
+  const id = await api().importAudioBegin(name, channels.length, sampleRate);
+  try {
+    const n = channels[0]?.length ?? 0;
+    // slice(), not subarray(): a view would send its whole underlying buffer every time
+    for (let pos = 0; pos < n; pos += UPLOAD_CHUNK) await api().importAudioChunk(id, channels.map((c) => c.slice(pos, Math.min(n, pos + UPLOAD_CHUNK))));
+  } catch (e) {
+    await api().importAudioEnd(id, true).catch(() => undefined);
+    throw e;
+  }
+  return (await api().importAudioEnd(id))!;
+}
+
+/**
+ * Imports an audio file into the episode's media folder: a file on disk (`path`, or a dropped `file`
+ * that has one) that is a WAV is copied by the main process without passing through the window;
+ * anything else is decoded here and streamed over.
+ */
+export async function importAudioSource(src: { path?: string; file?: File; name: string }, sampleRate: number): Promise<ImportedAudio> {
+  const path = src.path || (src.file ? api().pathForFile(src.file) : '');
+  if (path) {
+    const streamed = await api().importAudioFile(path, src.name, sampleRate);
+    if (streamed) return streamed;
+  }
+  const channels = path ? await decodeFile(path, sampleRate) : await decodeBytes(await src.file!.arrayBuffer(), sampleRate);
+  return uploadDecoded(src.name, channels, sampleRate);
 }
 
 export function baseName(path: string): string {

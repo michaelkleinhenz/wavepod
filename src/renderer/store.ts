@@ -91,9 +91,13 @@ class Store {
     });
   }
 
+  /** The main process's revision of the project these edits build on (see OpenedProject.rev). */
+  rev = 0;
+
   /** Replaces the project without recording undo history (loading, engine updates). */
-  setProject(project: Project, dir?: string): void {
+  setProject(project: Project, dir?: string, rev?: number): void {
     this.project = project;
+    if (rev !== undefined) this.rev = rev;
     if (dir !== undefined && dir !== this.dir) {
       this.dir = dir;
       this.history.clear();
@@ -111,14 +115,14 @@ class Store {
     if (next === this.project) return;
     this.history.push(this.project);
     this.project = next;
-    void api().updateProject(next);
+    void api().updateProject(next, this.rev);
     this.notify('project');
   }
 
   /** Non-undoable change that should still be saved (e.g. arming, view tweaks). */
   patch(fn: (p: Project) => Project): void {
     this.project = fn(this.project);
-    void api().updateProject(this.project);
+    void api().updateProject(this.project, this.rev);
     this.notify('project');
   }
 
@@ -133,7 +137,7 @@ class Store {
   editLive(fn: (p: Project) => Project): void {
     if (!this.liveBase) this.liveBase = this.project;
     this.project = fn(this.project);
-    void api().updateProject(this.project);
+    void api().updateProject(this.project, this.rev);
     this.notify('project');
   }
 
@@ -145,10 +149,11 @@ class Store {
   }
 
   /** Takes over a project another client (an AI agent over MCP) changed in the main process, as one undo step. */
-  applyExternal(project: Project): void {
+  applyExternal(project: Project, rev: number): void {
     if (this.liveBase) this.commitLive();
     this.history.push(this.project);
     this.project = project;
+    this.rev = rev;
     this.notify('project');
   }
 
@@ -156,7 +161,7 @@ class Store {
     const p = this.history.undo(this.project);
     if (!p) return;
     this.project = p;
-    void api().updateProject(p);
+    void api().updateProject(p, this.rev);
     this.notify('project');
   }
 
@@ -164,7 +169,7 @@ class Store {
     const p = this.history.redo(this.project);
     if (!p) return;
     this.project = p;
-    void api().updateProject(p);
+    void api().updateProject(p, this.rev);
     this.notify('project');
   }
 

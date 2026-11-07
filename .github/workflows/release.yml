@@ -19,9 +19,12 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            name: Linux AppImage
+            name: Linux AppImage and .deb
             target: dist-linux
-            files: release/*.AppImage
+            # the .deb installs an AppArmor profile, which Ubuntu 24.04+ needs for Chromium's sandbox
+            files: |
+              release/*.AppImage
+              release/*.deb
           - os: windows-latest
             name: Windows installer
             target: dist-win
