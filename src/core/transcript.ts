@@ -23,6 +23,14 @@ export function wordsFromScribe(words: ScribeWord[], sampleRate: number): Transc
   return out.sort((a, b) => a.start - b.start);
 }
 
+/** The sound events (laughter, coughing, applause…) of the speech-to-text words, in file frames. */
+export function eventsFromScribe(words: ScribeWord[], sampleRate: number): TranscriptWord[] {
+  return (words ?? [])
+    .filter((w) => w.type === 'audio_event' && w.end > w.start)
+    .map((w) => ({ text: w.text?.trim() ?? '', start: Math.max(0, Math.round(w.start * sampleRate)), end: Math.round(w.end * sampleRate) }))
+    .sort((a, b) => a.start - b.start);
+}
+
 /** The word without punctuation, lower case: what filler and search matching look at. */
 export function bareWord(text: string): string {
   return text

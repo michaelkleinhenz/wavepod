@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addTrack, createProject } from '../src/core/project';
-import { timelineWords } from '../src/core/transcript';
+import { eventsFromScribe, timelineWords } from '../src/core/transcript';
 import { filterQuietWords, levelCurve, peakLevel, sameWord } from '../src/core/wordLevels';
 import { normalizeTranscriptionSettings } from '../src/core/elevenlabs';
 import * as path from 'node:path';
@@ -168,12 +168,55 @@ describe('word levels', () => {
     expect(words.filter((w) => w.trackId === p.tracks[1].id).map((w) => w.text)).toEqual(['haha']);
   });
 
+  it('follows quick changes of speaker, with echoes both ways', () => {
+    let p = createProject('T', SR);
+    p = addTrack(p, { name: 'Anna' });
+    p = addTrack(p, { name: 'Ben' });
+    p.tracks[0].clips.push(clip('a', 'anna.wav', 0));
+    p.tracks[1].clips.push(clip('b', 'ben.wav', 0));
+    // turns follow each other within half a second; each mic hears the other 6 dB down
+    const turns: Array<[string, number, string[]]> = [
+      ['a', 1, ['Hast', 'du', 'das', 'gesehen?']],
+      ['b', 2.3, ['Ja', 'klar,', 'war', 'super.']],
+      ['a', 3.6, ['Finde', 'ich', 'auch.']],
+      ['b', 4.6, ['Und', 'dann', 'Pause.']],
+    ];
+    const words = () =>
+      turns.flatMap(([_, t0, list]) => list.map((t, k) => [t, t0 + k * 0.25, t0 + k * 0.25 + 0.2] as [string, number, number]));
+    const spans = (who: string): Array<[number, number, number]> =>
+      turns.map(([w, t0, list]) => [t0, t0 + list.length * 0.25, w === who ? -20 : -26]);
+    const transcripts = { 'anna.wav': tr('anna.wav', words(), spans('a')), 'ben.wav': tr('ben.wav', words(), spans('b')) };
+    const out = timelineWords(p, transcripts, { crosstalkDb: 15, minLevelDb: 0, matchWords: true });
+    const said = (who: string) => turns.filter(([w]) => w === who).flatMap(([, , l]) => l);
+    expect(out.filter((w) => w.trackId === p.tracks[0].id).map((w) => w.text)).toEqual(said('a'));
+    expect(out.filter((w) => w.trackId === p.tracks[1].id).map((w) => w.text)).toEqual(said('b'));
+  });
+
+  it('uses the laughter the speech-to-text marked to pick the speaker', () => {
+    let p = createProject('T', SR);
+    p = addTrack(p, { name: 'Anna' });
+    p = addTrack(p, { name: 'Ben' });
+    p.tracks[0].clips.push(clip('a', 'anna.wav', 0));
+    p.tracks[1].clips.push(clip('b', 'ben.wav', 0));
+    const sentence: Array<[string, number, number]> = [['Das', 1, 1.2], ['war', 1.3, 1.5], ['lustig.', 1.6, 2.0]];
+    const ben = { ...tr('ben.wav', sentence.map(([t, a, b]) => [t, a + 0.01, b] as [string, number, number]), null), levels: levelCurve(audio([[1, 2.1, -10]]), PCM, SR), events: [{ text: '(lacht)', start: 0.9 * SR, end: 2.1 * SR }] };
+    const transcripts = { 'anna.wav': tr('anna.wav', sentence, [[1, 2.1, -20]]), 'ben.wav': ben };
+    const words = timelineWords(p, transcripts, { crosstalkDb: 15, minLevelDb: 0, matchWords: true });
+    expect(words.filter((w) => w.trackId === p.tracks[0].id).map((w) => w.text)).toEqual(['Das', 'war', 'lustig.']);
+    expect(words.filter((w) => w.trackId === p.tracks[1].id)).toHaveLength(0);
+  });
+
   it('does not drop words because another track only laughs or coughs', () => {
     const { p, transcripts } = episode();
     // Ben laughs loudly over Anna's "Hallo Ben" and nothing of it is transcribed on his track
     transcripts['ben.wav'] = tr('ben.wav', [['Hi', 4, 4.4]], [[1, 2, -8], [4, 4.5, -18]]);
     const words = timelineWords(p, transcripts, { crosstalkDb: 6, minLevelDb: 0, matchWords: true });
     expect(words.filter((w) => w.trackId === p.tracks[0].id).map((w) => w.text)).toEqual(['Hallo', 'Ben', 'ja']);
+  });
+
+  it('keeps the sound events of the speech-to-text apart from the words', () => {
+    const ev = eventsFromScribe([{ text: 'Hallo', start: 0.1, end: 0.4, type: 'word' }, { text: '(lacht)', start: 0.5, end: 1.5, type: 'audio_event' }], SR);
+    expect(ev).toEqual([{ text: '(lacht)', start: 0.5 * SR, end: 1.5 * SR }]);
   });
 
   it('matches words with one letter off only when they are long enough', () => {
