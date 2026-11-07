@@ -2094,7 +2094,9 @@ export class TimelineView {
       ctx.font = '10px system-ui, sans-serif';
       ctx.textBaseline = 'top';
       const jingle = track.kind === 'soundboard' ? store.project.soundboard.find((s) => jingleMediaFile(s.id, this.sr) === clip.file) : undefined;
-      const name = jingle ? `♪ ${jingle.name}` : clip.file.split('/').pop() ?? '';
+      // a part of the comp is named after its take
+      const take = clip.takeId ? track.takes?.find((k) => k.id === clip.takeId) : undefined;
+      const name = jingle ? `♪ ${jingle.name}` : take ? `Take ${take.n}` : clip.file.split('/').pop() ?? '';
       const tag = soundTag(clip);
       ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}${tag ? `  ${tag}` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
       if (clip.note) {
