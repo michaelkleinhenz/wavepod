@@ -3,6 +3,7 @@
 // the project is saved. If it is still there when the project is opened, the app (or the
 // computer) went down mid-take: the files are repaired and put on their tracks.
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { BitDepth, Project, RecordedTake, RecordingEvent } from '../shared/types';
 import { addClip, addMarker, addTrack } from './project';
@@ -38,6 +39,55 @@ export interface RecordingJournal {
   events: RecordingEvent[];
   /** Loop recording: the range the timeline jumped round in; each pass becomes a take. */
   loop?: [number, number];
+  /** The process recording the take and its computer, so another WavePod leaves a running take alone. */
+  owner?: JournalOwner;
+}
+
+export interface JournalOwner {
+  pid: number;
+  host: string;
+}
+
+/** Who is writing a journal: this process on this computer. */
+export function journalOwner(): JournalOwner {
+  return { pid: process.pid, host: os.hostname() };
+}
+
+export interface OwnerCheck {
+  pid: number;
+  host: string;
+  /** Milliseconds since the epoch. */
+  now: number;
+  /** Seconds since this computer started. */
+  uptime: number;
+  alive(pid: number): boolean;
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    // EPERM: the process exists but belongs to someone else
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+const OWNER_CHECK: () => OwnerCheck = () => ({ pid: process.pid, host: os.hostname(), now: Date.now(), uptime: os.uptime(), alive: processAlive });
+
+/**
+ * True while the take of `j` is still being recorded by another WavePod on this computer. Its
+ * files are open and growing then, so they must not be repaired or put on the timeline, and the
+ * journal must stay. A journal from before the last restart, or one whose process is gone, belongs
+ * to a take that was interrupted.
+ */
+export function journalOwnerRunning(j: RecordingJournal, check: OwnerCheck = OWNER_CHECK()): boolean {
+  const o = j.owner;
+  if (!o || typeof o.pid !== 'number' || o.pid === check.pid || o.host !== check.host) return false;
+  // the computer restarted since: the number may belong to another program by now
+  const started = Date.parse(j.startedAt);
+  if (!Number.isFinite(started) || started < check.now - check.uptime * 1000) return false;
+  return check.alive(o.pid);
 }
 
 /** Writes the journal so that it survives a crash or power cut (temp file, fsync, rename). */
@@ -139,11 +189,12 @@ export interface Recovery {
 /**
  * Recovers the take a crash interrupted, if the project folder has a journal.
  * Takes already in the project (the crash came after saving) are only repaired.
- * Leaves the journal in place; clear it once the returned project is saved.
+ * Leaves the journal in place; clear it once the returned project is saved. Returns null without
+ * touching anything while another WavePod is still recording that take (see journalOwnerRunning).
  */
-export function recoverRecording(dir: string, project: Project): Recovery | null {
+export function recoverRecording(dir: string, project: Project, check?: OwnerCheck): Recovery | null {
   const j = readJournal(dir);
-  if (!j) return null;
+  if (!j || journalOwnerRunning(j, check)) return null;
   let p = project;
   const has = (file: string) => p.tracks.some((t) => t.clips.some((c) => c.file === file) || !!t.takes?.some((tk) => tk.clips.some((c) => c.file === file)));
   let takes = 0;

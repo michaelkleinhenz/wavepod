@@ -38,7 +38,7 @@ import type { TakeFileSpec, TakeFilesOptions } from '../../core/takeFiles';
 import { RecordingMonitor, formatMinutes } from '../../core/recordingMonitor';
 import { loopFramePosition } from '../../core/takes';
 import type { RecordOptions } from '../../shared/types';
-import { clearJournal, writeJournal, type RecordingJournal } from '../../core/recordingJournal';
+import { clearJournal, journalOwner, writeJournal, type RecordingJournal } from '../../core/recordingJournal';
 import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
 import { markersCrossed, pingTone } from '../../core/markerPing';
@@ -714,6 +714,7 @@ export class AudioEngine extends EventEmitter {
       jingles: [],
       events: [],
       ...(loop ? { loop } : {}),
+      owner: journalOwner(),
     };
     writeJournal(this.projectDir, this.journal);
     try {

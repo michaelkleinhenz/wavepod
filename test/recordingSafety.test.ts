@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { WavReader, WavWriter, parseWavHeader, repairWav } from '../src/core/wav';
 import { TakeFiles } from '../src/core/takeFiles';
 import { RecordingMonitor } from '../src/core/recordingMonitor';
-import { JOURNAL_FILE, readJournal, recoverRecording, writeJournal, type RecordingJournal } from '../src/core/recordingJournal';
+import { JOURNAL_FILE, journalOwnerRunning, readJournal, recoverRecording, writeJournal, type OwnerCheck, type RecordingJournal } from '../src/core/recordingJournal';
 import { addTrack, createProject } from '../src/core/project';
 import { RecordWorker } from '../src/main/audio/takeSink';
 import { tmpDir } from './helpers';
@@ -364,6 +364,56 @@ describe('recording journal and recovery', () => {
     expect(again.takes).toBe(0);
     expect(again.project.markers).toHaveLength(1);
     expect(fs.existsSync(path.join(dir, JOURNAL_FILE))).toBe(true);
+  });
+});
+
+describe('a take another WavePod is still recording', () => {
+  const now = Date.parse('2026-11-07T12:00:00Z');
+  const journal = (owner?: RecordingJournal['owner'], startedAt = new Date(now - 60_000).toISOString()): RecordingJournal => ({
+    version: 1,
+    startedAt,
+    sampleRate: SR,
+    bitDepth: 24,
+    recordStart: 0,
+    takes: [],
+    jingles: [],
+    events: [],
+    ...(owner ? { owner } : {}),
+  });
+  // this process is 100 on "studio", up for an hour; 200 is running, everything else is gone
+  const check: OwnerCheck = { pid: 100, host: 'studio', now, uptime: 3600, alive: (pid) => pid === 200 };
+
+  it('counts as running only while its process is alive on this computer since the last restart', () => {
+    expect(journalOwnerRunning(journal({ pid: 200, host: 'studio' }), check)).toBe(true);
+    // the process is gone: the app crashed
+    expect(journalOwnerRunning(journal({ pid: 300, host: 'studio' }), check)).toBe(false);
+    // this very process: nobody else is recording it
+    expect(journalOwnerRunning(journal({ pid: 100, host: 'studio' }), check)).toBe(false);
+    // written before the computer restarted: the number may belong to another program now
+    expect(journalOwnerRunning(journal({ pid: 200, host: 'studio' }, new Date(now - 2 * 3600_000).toISOString()), check)).toBe(false);
+    // another computer (a shared folder) or a journal from before owners were stored
+    expect(journalOwnerRunning(journal({ pid: 200, host: 'laptop' }), check)).toBe(false);
+    expect(journalOwnerRunning(journal(), check)).toBe(false);
+  });
+
+  it('is left alone by recovery, journal and files included', () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'media'));
+    let p = createProject('Live', SR);
+    p = addTrack(p, { name: 'Host', inputChannels: [0] });
+    const files = new TakeFiles([{ path: path.join(dir, 'media/host.wav'), channels: [0] }], { sampleRate: SR, bitDepth: 24, deviceChannels: 1 });
+    files.write(new Float32Array(SR).fill(0.1));
+    const j: RecordingJournal = { ...journal({ pid: process.pid + 1, host: 'studio' }, new Date().toISOString()), takes: [{ trackId: p.tracks[0].id, trackName: 'Host', file: 'media/host.wav', channels: [0] }] };
+    writeJournal(dir, j);
+    const before = fs.readFileSync(path.join(dir, 'media/host.wav'));
+    const live: OwnerCheck = { pid: process.pid, host: 'studio', now: Date.now(), uptime: 3600, alive: () => true };
+    expect(recoverRecording(dir, p, live)).toBeNull();
+    expect(fs.readFileSync(path.join(dir, 'media/host.wav'))).toEqual(before);
+    expect(readJournal(dir)?.owner).toEqual({ pid: process.pid + 1, host: 'studio' });
+    // once that process is gone, the take is recovered as usual
+    const rec = recoverRecording(dir, p, { ...live, alive: () => false })!;
+    expect(rec.takes).toBe(1);
+    files.close();
   });
 });
 
