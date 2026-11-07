@@ -10,6 +10,7 @@ import { repairWav, syncDir, syncFd } from './wav';
 import { uid } from '../shared/time';
 import { SOUNDBOARD_TRACK_ID, ensureSoundboardTrack } from './soundboard';
 import { loopFramePosition, loopTakeClips, pickTake, recordTakes } from './takes';
+import { mergePunchTake, punchTakeClip } from './punch';
 
 export const JOURNAL_FILE = 'recording-in-progress.json';
 
@@ -28,6 +29,8 @@ export interface RecordingJournal {
   bitDepth: BitDepth;
   /** Timeline position where the take starts. */
   recordStart: number;
+  /** Punch-in pass: only [in, out) of the takes replaces the audio on their tracks. */
+  punch?: [number, number];
   takes: JournalTake[];
   /** Jingles of the take that already finished playing. */
   jingles: RecordedTake[];
@@ -95,6 +98,8 @@ export function mergeRecording(
   if (takes.some((t) => t.trackId === SOUNDBOARD_TRACK_ID)) p = ensureSoundboardTrack(p);
   for (const t of takes) {
     if (t.trackId === SOUNDBOARD_TRACK_ID) p = addClip(p, t.trackId, t.clip);
+    // a punch-in take replaces its range, keeping what was there as a take
+    else if (t.punch) p = mergePunchTake(p, t.trackId, t.clip, t.punch);
     else if (!info.loop) p = recordTakes(p, t.trackId, [t.clip]);
     else {
       const passes = loopTakeClips(t.clip, info.loop, sampleRate);
@@ -159,7 +164,14 @@ export function recoverRecording(dir: string, project: Project): Recovery | null
       trackId = p.tracks[p.tracks.length - 1].id;
     }
     const clip = { id: uid('clp'), file: t.file, start: j.recordStart, offset: 0, length: frames, gain: 0, fadeIn: 0, fadeOut: 0 };
-    p = mergeRecording(p, [{ trackId, clip }], { recordStart: j.recordStart, events: [], loop: j.loop }, j.sampleRate);
+    if (j.punch) {
+      // a punch pass: only its range goes back, as a take over what was there
+      const placed = punchTakeClip({ file: t.file, recordStart: j.recordStart, frames }, { in: j.punch[0], out: j.punch[1] }, j.sampleRate);
+      if (!placed) continue;
+      p = mergeRecording(p, [{ trackId, clip: placed.clip, punch: placed.range }], { recordStart: j.recordStart, events: [] }, j.sampleRate);
+    } else {
+      p = mergeRecording(p, [{ trackId, clip }], { recordStart: j.recordStart, events: [], loop: j.loop }, j.sampleRate);
+    }
     takes++;
     longest = Math.max(longest, frames / j.sampleRate);
   }

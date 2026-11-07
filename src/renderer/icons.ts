@@ -31,6 +31,8 @@ const PATHS = {
   play: '<path d="M8 5.6v12.8a1 1 0 0 0 1.52.85l10.2-6.4a1 1 0 0 0 0-1.7L9.52 4.75A1 1 0 0 0 8 5.6z" fill="currentColor"/>',
   pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="3.5" height="14" rx="1" fill="currentColor"/>',
   record: '<circle cx="12" cy="12" r="6.5" fill="currentColor"/>',
+  // punch-in: a record dot between two range brackets
+  punch: '<path d="M6 5H3v14h3M18 5h3v14h-3"/><circle cx="12" cy="12" r="4" fill="currentColor"/>',
   zoomSel: '<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><rect x="8" y="9" width="8" height="6" rx="1"/>',
 } as const;
 

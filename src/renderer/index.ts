@@ -28,6 +28,7 @@ import {
   syncLoop,
   togglePlay,
   toggleRecord,
+  punchIn,
   dropNamedChapter,
   jumpToRecordPosition,
   restoreBackup,
@@ -154,6 +155,12 @@ async function main(): Promise<void> {
   };
   const timeEl = h('span', null, '00:00:00.000');
   const recBtn = iconButton('record', { label: 'Record', shortcut: 'R' }, () => void toggleRecord(), 'transport rec');
+  const punchBtn = iconButton(
+    'punch',
+    { label: 'Punch in', shortcut: 'Shift+R', detail: 'Re-record the selected range on the armed tracks, with pre-roll (set in Settings › General)' },
+    () => void punchIn(),
+    'transport punch',
+  );
   const playBtn = iconButton('play', { label: 'Play / Pause', shortcut: 'Space' }, () => void togglePlay(), 'transport play');
   const stopBtn = iconButton('stop', { label: 'Stop' }, () => void stop(), 'transport');
   const repeatBtn = iconButton('repeat', { label: 'Repeat', shortcut: 'L', detail: 'Loop playback of the selected time range' }, toggleRepeat, 'transport repeat');
@@ -230,6 +237,7 @@ async function main(): Promise<void> {
       stopBtn,
       playBtn,
       recBtn,
+      punchBtn,
       repeatBtn,
       // The output meter sits inside the time display, so the header has no empty strip while it is silent.
       h(
@@ -316,7 +324,8 @@ async function main(): Promise<void> {
   const renderTransport = () => {
     const t = store.transport;
     timeEl.textContent = formatTimestamp(t.position / store.sampleRate);
-    recBtn.classList.toggle('on', t.state === 'recording');
+    recBtn.classList.toggle('on', t.state === 'recording' && !t.punch);
+    punchBtn.classList.toggle('on', t.state === 'recording' && !!t.punch);
     playBtn.classList.toggle('on', t.state === 'playing');
     setIcon(playBtn, t.state === 'playing' ? 'pause' : 'play');
     repeatBtn.classList.toggle('on', store.repeat);
@@ -467,6 +476,7 @@ async function main(): Promise<void> {
       case 'loudness-analysis':
         return void (!document.querySelector('.overlay') && loudnessDialog.open());
       case 'prepare-for-editing': return prepareForEditing();
+      case 'punch-in': return void punchIn();
       case 'redo': return store.redo();
       case 'view-setup': return store.setView('setup');
       case 'view-edit': return store.setView('edit');
@@ -536,6 +546,12 @@ async function main(): Promise<void> {
       if (id && !e.repeat) coughDown(id);
       return;
     }
+    // Alt+Shift+R: on macOS Option changes the character, so go by the key itself
+    if (e.code === 'KeyR' && e.altKey && e.shiftKey && store.transport.state !== 'recording') {
+      e.preventDefault();
+      void loopRecordSelection();
+      return;
+    }
     switch (e.key) {
       case ' ':
         e.preventDefault();
@@ -543,7 +559,7 @@ async function main(): Promise<void> {
         break;
       case 'r':
       case 'R':
-        void (e.shiftKey && store.transport.state !== 'recording' ? loopRecordSelection() : toggleRecord());
+        void (e.shiftKey && store.transport.state !== 'recording' ? (e.altKey ? loopRecordSelection() : punchIn()) : toggleRecord());
         break;
       case 't':
       case 'T':

@@ -112,11 +112,35 @@ export async function toggleRecord(): Promise<void> {
   }
 }
 
+/**
+ * Punch-in: re-records the selected time range on the armed tracks. Playback starts the pre-roll
+ * before the range so the speaker hears the lead-in, the take replaces only the range, and the
+ * pass stops by itself after the post-roll. Pressed while recording, it stops like Record does.
+ */
+export async function punchIn(): Promise<void> {
+  if (store.transport.state === 'recording') return stop();
+  const r = store.selection.range;
+  const start = r ? Math.max(0, Math.round(Math.min(r[0], r[1]))) : 0;
+  const end = r ? Math.round(Math.max(r[0], r[1])) : 0;
+  if (!(end > start)) return toast('Punch in: select the line to re-record first (drag over it in the ruler or an empty spot)');
+  if (!store.project.tracks.some((t) => t.armed && t.inputChannels.length)) return toast('Punch in: arm the track to re-record first', 'error');
+  try {
+    if (!(await soundcheck())) return;
+    if (store.transport.state === 'playing') await api().stop();
+    const sr = store.sampleRate;
+    const { preRoll, postRoll } = store.punchRoll;
+    await api().record({ punch: { start, end, preRoll: Math.round(preRoll * sr), postRoll: Math.round(postRoll * sr) } });
+    toast(`Punch in: ${preRoll ? `${preRoll} s pre-roll, then ` : ''}${((end - start) / sr).toFixed(1)} s are re-recorded`);
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
 /** Loop recording starts this many seconds before the selection, so the speaker hears a run-up. */
 const LOOP_PRE_ROLL_SECONDS = 2;
 
 /**
- * Loop recording (Shift+R): records the selected time range over and over until stopped, with a
+ * Loop recording (Alt+Shift+R): records the selected time range over and over until stopped, with a
  * short run-up before the first pass. Every pass becomes a take on each armed track.
  */
 export async function loopRecordSelection(): Promise<void> {
@@ -124,7 +148,7 @@ export async function loopRecordSelection(): Promise<void> {
   const r = store.selection.range;
   const a = r ? Math.round(Math.min(r[0], r[1])) : 0;
   const b = r ? Math.round(Math.max(r[0], r[1])) : 0;
-  if (!r || b - a < store.sampleRate / 4) return void toast('Select the time range of the line first (drag across the timeline), then press Shift+R to record takes of it in a loop');
+  if (!r || b - a < store.sampleRate / 4) return void toast('Select the time range of the line first (drag across the timeline), then press Alt+Shift+R to record takes of it in a loop');
   try {
     if (!(await soundcheck())) return;
     if (store.transport.state === 'playing') await api().stop();
@@ -154,7 +178,7 @@ export function cycleTakes(dir: 1 | -1): void {
     next = r.project;
     names.push(`${t.name}: take ${r.take.n}`);
   }
-  if (!names.length) return void toast('No takes at the playhead (record the same line again, or loop-record it with Shift+R)');
+  if (!names.length) return void toast('No takes at the playhead (record the same line again, or loop-record it with Alt+Shift+R)');
   store.edit(() => next);
   toast(names.join(' · '));
 }

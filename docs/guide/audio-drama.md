@@ -105,13 +105,17 @@ Loop seams get a short crossfade. Fades, the volume line, splits and trims work 
 
 ## Takes
 
-Actors rarely get a line right the first time. Select the line and press `Shift+R` to loop-record it: every pass becomes a take, and you pick the best one, or splice the best parts of several, in the take lanes. See [Takes and comping](recording.md#takes-and-comping).
+Actors rarely get a line right the first time. Select the line and press `Alt+Shift+R` to loop-record it: every pass becomes a take, and you pick the best one, or splice the best parts of several, in the take lanes. See [Takes and comping](recording.md#takes-and-comping).
+
+## Re-recording a line
+
+A single fluffed line doesn't need a whole new take of the scene: select it, arm the actor's track and press `Shift+R`. WavePod plays a few seconds before the line so the actor hears the cue, records only the selected range and crossfades the new take into the scene. The old version stays a take you can pick again. See [Punch-in](recording.md#punch-in-re-record-one-line).
 
 ## Typical audio drama setup
 
 1. **Track folders › Audio drama folders** creates Dialogue, SFX, Atmo and Music folders.
 2. Give each character a track in Dialogue, named like the character, with Room & distance for the scene's place.
-3. Import the script. Record each line in a loop (`Shift+R`), comp the best take and tick the line off with `Enter`, or let **Line up** find the lines afterwards.
+3. Import the script. Record each line in a loop (`Alt+Shift+R`), comp the best take and tick the line off with `Enter`, or let **Line up** find the lines afterwards. Fix single fluffed lines later with a [punch-in](recording.md#punch-in-re-record-one-line) (`Shift+R`).
 4. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
 5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
 6. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).

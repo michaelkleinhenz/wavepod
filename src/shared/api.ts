@@ -99,6 +99,7 @@ export type MenuCommand =
   | 'normalize-clips'
   | 'loudness-analysis'
   | 'prepare-for-editing'
+  | 'punch-in'
   | 'redo'
   | 'view-setup'
   | 'view-edit'
@@ -184,7 +185,10 @@ export interface WavePodApi {
   // transport
   play(from?: number): Promise<void>;
   stop(): Promise<RecordedTake[]>;
-  /** Starts recording the armed tracks at the playhead; `loop` records takes over and over (loop recording). */
+  /**
+   * Starts recording the armed tracks at the playhead; `loop` records takes over and over (loop
+   * recording), `punch` re-records only that range with pre-roll (punch-in).
+   */
   record(opts?: RecordOptions): Promise<string[]>;
   seek(position: number): Promise<void>;
   /** Tape-style scrub to `position` while the playhead is dragged (also while stopped); null ends it. */

@@ -853,7 +853,7 @@ let appMenu: Menu | null = null;
 const menuItems = new Map<string, MenuItem>();
 
 /** Shortcuts shown next to menu items whose keys the window handles itself. */
-const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'loop-record': 'Shift+R', 'next-take': 'T', 'previous-take': 'Shift+T' };
+const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'punch-in': 'Shift+R', 'loop-record': 'Alt+Shift+R', 'next-take': 'T', 'previous-take': 'Shift+T' };
 
 function menuModel(): MenuModelTop[] {
   menuItems.clear();
@@ -951,6 +951,8 @@ function buildMenu(): void {
         { label: 'Transcribe Episode', click: menuSend('transcribe') },
         { label: 'Clean Up Pauses and Hesitations…', accelerator: 'Shift+CmdOrCtrl+K', click: menuSend('cleanup') },
         { type: 'separator' },
+        // Shift+R is handled in the window like R, see MENU_KEY_HINTS
+        { id: 'punch-in', label: 'Punch In: Re-record Selection', click: menuSend('punch-in') },
         // Takes: the keys are handled in the window (single keys must not fire while typing), see MENU_KEY_HINTS.
         { id: 'loop-record', label: 'Loop-Record the Selection (Takes)', click: menuSend('loop-record') },
         { id: 'next-take', label: 'Next Take', click: menuSend('next-take') },

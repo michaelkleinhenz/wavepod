@@ -10,6 +10,7 @@ export const MIDI_ACTIONS: Array<{ action: MidiAction; label: string }> = [
   { action: 'chapter-marker', label: 'Chapter marker' },
   { action: 'edit-marker', label: 'Edit marker' },
   { action: 'record-toggle', label: 'Record on / off' },
+  { action: 'punch-in', label: 'Punch in: re-record the selection with pre-roll' },
   { action: 'play-toggle', label: 'Play / Pause' },
   { action: 'stop', label: 'Stop' },
   { action: 'prepare-for-editing', label: 'Prepare for editing' },
