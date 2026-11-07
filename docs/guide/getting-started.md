@@ -4,6 +4,12 @@ WavePod is a multitrack recorder and editor made for podcasts and audio dramas. 
 
 This guide explains every part of the app. Use the search field at the top left to find a topic, or press `F1` anywhere in WavePod to open the page that fits what you are doing.
 
+## Beta software
+
+WavePod is beta software that is still being tested, so the first time it starts it shows a notice about it. Please take it seriously: **always make a backup recording** of every show with something else, for example directly on your hardware mixer or audio interface (many record to an SD card or USB stick) or with a second recorder.
+
+WavePod does a lot to keep a take safe: it writes every take to disk as it happens and recovers it after a crash, detects dropouts, crackle and a full disk while you record, and raises a loud alarm with a system notification when the input device is lost (see [Recording safety](recording.md#recording-safety)). But while WavePod is in beta, anything can still happen. Read the notice again any time under **Help › Beta Notice**.
+
 ## Your first episode in five steps
 
 1. **Name the episode.** WavePod opens on **Setup › Project**. Type a name under **Start a new episode** and create it, or pick a template to start with your usual tracks and filters. See [Episodes and saving](episodes.md).
@@ -48,5 +54,6 @@ On macOS, read `Ctrl` as `⌘` (Command) throughout this guide. The help window 
 - **Help › Keyboard Shortcuts** (or `?` in the main window) shows every key at a glance. The same list is in this guide under [Keyboard shortcuts](shortcuts.md).
 - Most buttons explain themselves when you hold the mouse over them.
 - Something not working? See [Troubleshooting](troubleshooting.md), also under **Help › Troubleshooting**.
+- **Help › Beta Notice** shows the beta warning from the first start again. See [Beta software](#beta-software).
 - **Help › Report a Problem…** opens WavePod's issue tracker on GitHub in your browser.
 - **Help › About WavePod** (on macOS: **WavePod › About WavePod**) shows the version and the runtime details. **Copy version info** copies them for a bug report.

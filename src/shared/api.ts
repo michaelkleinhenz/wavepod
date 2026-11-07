@@ -107,6 +107,7 @@ export type MenuCommand =
   | 'shortcuts'
   | 'help'
   | 'about'
+  | 'beta-notice'
   | 'speed-up'
   | 'speed-down'
   | 'speed-normal'

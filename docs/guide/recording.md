@@ -74,7 +74,7 @@ When a take stops, WavePod reports how many takes were recorded.
 
 ## Recording safety
 
-WavePod is built so a recording survives crashes, power cuts and full disks:
+WavePod is built so a recording survives crashes, power cuts and full disks. It is still beta software, though, so always make a backup recording as well, for example on your hardware mixer (see [Beta software](getting-started.md#beta-software)).
 
 - Every bit of audio is written to disk the moment it arrives, by a separate writer. If the app crashes, at most a few milliseconds are lost; after a power cut, at most about two seconds.
 - Files larger than 4 GB are written as RF64 automatically.
