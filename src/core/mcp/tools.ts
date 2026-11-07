@@ -6,6 +6,7 @@ import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect } from '../fx/voiceEffec
 import { MASTER, VOICE_CHAIN, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, updateFx, type FxTarget } from '../fx/stack';
 import { findPresetEntry, presetEdited } from '../fx/presets';
 import type { FxPresetLibrary } from '../fx/presetLibrary';
+import type { ImpulseFile } from '../../shared/api';
 import { createVstFx, visibleVstParams, vstFailures } from '../fx/vst';
 import { projectLength, updateTrack } from '../project';
 import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
@@ -37,6 +38,8 @@ export interface WavePodHost {
   transcriptFilter?(): WordFilter | null;
   /** Filter presets (factory, plug-in programs and the user's own), or null if not available. */
   presets?: FxPresetLibrary | null;
+  /** The impulse responses in the user's folder, for the convolution reverb. */
+  impulses?(): ImpulseFile[];
   /** VST3 support, or null when this build has no plug-in host. */
   vst: {
     scan(): Promise<VstPluginInfo[]> | VstPluginInfo[];
@@ -179,7 +182,15 @@ function describeSpec(spec: FxParamSpec) {
 }
 
 async function describeFx(host: WavePodHost, fx: Fx, position: number) {
-  const base = { id: fx.id, position, type: fx.type, name: filterName(fx), enabled: fx.enabled, ...(fx.preset ? { preset: { name: fx.preset.name, edited: presetEdited(fx) } } : {}) };
+  const base = {
+    id: fx.id,
+    position,
+    type: fx.type,
+    name: filterName(fx),
+    enabled: fx.enabled,
+    ...(fx.preset ? { preset: { name: fx.preset.name, edited: presetEdited(fx) } } : {}),
+    ...(fx.type === 'convolution' ? { impulseResponse: fx.ir?.name ?? null } : {}),
+  };
   if (fx.type !== 'vst3') {
     const def = fxDefinition(fx.type);
     return { ...base, params: def.params.map((spec) => ({ key: spec.key, label: spec.label, value: fx.params[spec.key] ?? spec.default, unit: spec.unit ?? '' })) };
@@ -950,6 +961,33 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         const next = fxList(project, from.target).reduce((p, f) => insertFx(p, to.target, copyFx(f)), base);
         host.apply(next, `Copied the filters of ${from.name} to ${to.name}`);
         return stackResult(to.target, to.name);
+      },
+    },
+    {
+      name: 'list_impulse_responses',
+      description: "The impulse responses (WAV recordings of rooms) in the user's Impulse responses folder, for the convolution reverb filter. Use set_impulse_response to give a convolution filter one.",
+      inputSchema: obj({}, []),
+      annotations: { title: 'List impulse responses', ...READ },
+      run: () => ({ impulseResponses: (host.impulses?.() ?? []).map((f) => ({ name: f.name, seconds: Math.round(f.seconds * 100) / 100, channels: f.channels })) }),
+    },
+    {
+      name: 'set_impulse_response',
+      description: 'Sets which impulse response (by name, from list_impulse_responses) a convolution reverb filter uses. One undo step.',
+      inputSchema: obj({ target: TARGET, filter: FILTER, impulse: { type: 'string', description: 'Name from list_impulse_responses.' } }, ['target', 'filter', 'impulse']),
+      annotations: { title: 'Set impulse response', ...EDIT, idempotentHint: true },
+      run: async (args) => {
+        const project = host.project();
+        const { target, name } = resolveTarget(project, str(args, 'target', true));
+        const fx = resolveFilter(fxList(project, target), str(args, 'filter', true));
+        if (fx.type !== 'convolution') throw new ToolError(`${filterName(fx)} is not a convolution reverb.`);
+        const want = str(args, 'impulse', true)!.trim().toLowerCase();
+        const list = host.impulses?.() ?? [];
+        const ir = list.find((f) => f.name.toLowerCase() === want || f.file.toLowerCase() === want) ?? list.find((f) => f.name.toLowerCase().includes(want));
+        if (!ir) throw new ToolError(`No impulse response "${want}". Available: ${list.map((f) => f.name).join(', ') || 'none (the folder is empty)'}.`);
+        host.apply(updateFx(project, target, fx.id, { ir: { file: ir.file, name: ir.name } }), `${filterName(fx)} on ${name} now uses "${ir.name}"`);
+        const list2 = fxList(host.project(), target);
+        const i = list2.findIndex((f) => f.id === fx.id);
+        return { target, name, filter: await describeFx(host, list2[i], i) };
       },
     },
     {

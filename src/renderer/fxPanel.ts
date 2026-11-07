@@ -1,5 +1,6 @@
 // Filter stack editor for a track or the master bus: add, bypass, tweak, reorder and remove filters.
-import type { Fx, FxMeter, FxType, VstParamInfo, VstPluginInfo } from '../shared/types';
+import type { Fx, FxMeter, FxType, ImpulseRef, VstParamInfo, VstPluginInfo } from '../shared/types';
+import type { ImpulseFile } from '../shared/api';
 import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/definitions';
 import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, targetClipId, updateFx, type FxTarget } from '../core/fx/stack';
 import { presetEdited, presetKey, type FxPresetEntry } from '../core/fx/presets';
@@ -31,6 +32,11 @@ const PASTE_REPLACE = 'replace';
 
 /** Copied filters; kept for the whole session, so they can go onto tracks of another episode too. */
 let fxClipboard: FxClipboard | null = null;
+
+/** "2.1 s · stereo · 48 kHz" for an impulse response. */
+function impulseInfo(f: ImpulseFile): string {
+  return `${f.seconds.toFixed(f.seconds < 10 ? 2 : 1)} s · ${f.channels === 1 ? 'mono' : 'stereo'} · ${f.sampleRate / 1000} kHz`;
+}
 
 /** Display name of a filter. */
 function fxName(fx: Fx): string {
@@ -90,6 +96,8 @@ export class FxPanel {
   private meters = new Map<string, LiveMeter>();
   /** Preset lists by preset key (filter type or plug-in), loaded when a card first shows them. */
   private presets = new Map<string, FxPresetEntry[] | Promise<FxPresetEntry[]>>();
+  /** The impulse responses in the user's folder (loaded when a convolution filter is shown). */
+  private impulses: ImpulseFile[] | Promise<ImpulseFile[]> | null = null;
   /** The card whose preset row is a name field: saving a new preset or renaming the current one. */
   private naming: { fxId: string; mode: 'save' | 'rename' } | null = null;
   /** True outside the edit view: the panel keeps its target but stays off screen until the user is back. */
@@ -378,6 +386,7 @@ export class FxPanel {
         ? []
         : [
             this.presetRow(target, fx),
+            fx.type === 'convolution' ? this.impulseRow(target, fx) : null,
             meter?.el ?? null,
             curve,
             ...(vst ? this.vstParamRows(target, fx) : def!.params.map((spec) => this.paramRow(target, fx, spec, drawCurve))),
@@ -488,6 +497,108 @@ export class FxPanel {
       user ? h('button', { class: 'toggle', title: `Rename "${user.name}"`, onclick: () => ((this.naming = { fxId: fx.id, mode: 'rename' }), this.render()) }, '✎') : null,
       user ? h('button', { class: 'toggle remove', title: `Delete the preset "${user.name}"`, onclick: () => void this.deletePreset(target, fx) }, '🗑') : null,
     );
+  }
+
+  /** Convolution reverb: which impulse response it uses, from the user's folder or a new file. */
+  private impulseRow(target: FxTarget, fx: Fx): HTMLElement {
+    const LOAD = '__load';
+    const FOLDER = '__irfolder';
+    const REFRESH = '__refresh';
+    const list = Array.isArray(this.impulses) ? this.impulses : null;
+    if (!this.impulses) this.refreshImpulses();
+    const current = fx.ir ? list?.find((f) => f.file === fx.ir!.file) : undefined;
+    const missing = !!fx.ir && !!list && !current;
+    const setIr = (ir: ImpulseRef) => this.edit((p) => updateFx(p, target, fx.id, { ir }));
+    const load = (file?: string) =>
+      api()
+        .importImpulseResponse(file)
+        .then((ir) => {
+          if (!ir) return;
+          this.impulses = null;
+          setIr(ir);
+          toast(`Loaded the impulse response "${ir.name}"`);
+        })
+        .catch((err) => toast(errorMessage(err), 'error'));
+    const select = h(
+      'select',
+      {
+        class: 'fx-ir-select',
+        title: 'The impulse response: a recording of the room this filter puts the sound into',
+        onchange: (e: Event) => {
+          const el = e.target as HTMLSelectElement;
+          const v = el.value;
+          el.value = fx.ir?.file ?? '';
+          if (v === LOAD) void load();
+          else if (v === FOLDER) api().showImpulseResponsesFolder().catch((err) => toast(errorMessage(err), 'error'));
+          else if (v === REFRESH) this.refreshImpulses();
+          else {
+            const f = list?.find((x) => x.file === v);
+            if (f) setIr({ file: f.file, name: f.name });
+          }
+        },
+      },
+      fx.ir ? null : h('option', { value: '' }, 'Choose an impulse response…'),
+      missing ? h('option', { value: fx.ir!.file }, `${fx.ir!.name} (file not found)`) : null,
+      ...(list ?? []).map((f) => h('option', { value: f.file, title: impulseInfo(f) }, f.name)),
+      h(
+        'optgroup',
+        { label: '──────' },
+        h('option', { value: LOAD }, 'Load a WAV or AIFF file…'),
+        h('option', { value: FOLDER }, 'Show impulse responses folder'),
+        h('option', { value: REFRESH }, 'Look for new files'),
+      ),
+    ) as HTMLSelectElement;
+    select.value = fx.ir?.file ?? '';
+    const row = h(
+      'div',
+      { class: 'fx-ir' },
+      h('div', { class: 'fx-presets' }, select, h('button', { class: 'toggle fx-ir-load', title: 'Load a WAV or AIFF impulse response file', onclick: () => void load() }, 'Load…')),
+      h(
+        'div',
+        { class: `fx-ir-info${missing || !fx.ir ? ' warn' : ''}` },
+        !fx.ir
+          ? 'No impulse response yet: load a WAV file of a room, or drop one here. Until then only the dry sound plays.'
+          : missing
+            ? `"${fx.ir.file}" is not in your Impulse responses folder. Load it again, or copy it there.`
+            : current
+              ? impulseInfo(current)
+              : '',
+      ),
+    );
+    row.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        e.stopPropagation();
+        row.classList.add('drop');
+      }
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drop'));
+    row.addEventListener('drop', (e) => {
+      row.classList.remove('drop');
+      const file = e.dataTransfer?.files[0];
+      const filePath = file ? api().pathForFile(file) : undefined;
+      if (!filePath) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void load(filePath);
+    });
+    return row;
+  }
+
+  private refreshImpulses(): void {
+    const pending = api()
+      .listImpulseResponses()
+      .then((list) => {
+        this.impulses = list;
+        this.render();
+        return list;
+      })
+      .catch((err) => {
+        this.impulses = [];
+        toast(errorMessage(err), 'error');
+        return [];
+      });
+    this.impulses = pending;
   }
 
   private presetList(fx: Fx): Promise<FxPresetEntry[]> {

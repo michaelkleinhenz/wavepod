@@ -42,6 +42,8 @@ import {
 import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate } from './templateStore';
 import { deleteUserPreset, listUserPresets, loadUserPreset, renameUserPreset, saveUserPreset } from './presetStore';
 import { createPresetLibrary } from '../core/fx/presetLibrary';
+import { setImpulseDir } from '../core/fx/convolution';
+import { importImpulse, listImpulses } from './impulseStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
 import { exportDialogDir } from './exportPaths';
@@ -179,6 +181,11 @@ function templatesRoot(): string {
 /** The user's filter presets, shared by all episodes. */
 function presetsRoot(): string {
   return path.join(projectsRoot(), 'Presets');
+}
+
+/** The user's impulse responses for the convolution reverb, shared by all episodes. */
+function impulseRoot(): string {
+  return path.join(projectsRoot(), 'Impulse responses');
 }
 
 /** Name of the open input device, stored with a template as a hint for its channel mapping. */
@@ -446,6 +453,7 @@ const mcpHost: WavePodHost = {
   get presets() {
     return presetLibrary;
   },
+  impulses: () => listImpulses(impulseRoot()),
   get vst() {
     const exe = vstExe;
     if (!exe || !vstHost) return null;
@@ -488,7 +496,7 @@ const speech = new SpeechService({
 function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'exportWorker.js'), {
-      workerData: { ...(data as object), vstExe, vstBridge: path.join(__dirname, 'vstBridge.js') },
+      workerData: { ...(data as object), vstExe, vstBridge: path.join(__dirname, 'vstBridge.js'), impulseDir: impulseRoot() },
     });
     worker.on('message', (msg: { type: string; result?: T; progress?: unknown; message?: string }) => {
       if (msg.type === 'progress') onProgress?.(msg.progress);
@@ -969,6 +977,29 @@ const handlers: Record<InvokeMethod, Handler> = {
     fs.mkdirSync(presetsRoot(), { recursive: true });
     return shell.openPath(presetsRoot()).then(() => undefined);
   },
+
+  listImpulseResponses: () => {
+    setImpulseDir(impulseRoot());
+    return listImpulses(impulseRoot());
+  },
+  importImpulseResponse: async (file?: string) => {
+    setImpulseDir(impulseRoot());
+    if (!file) {
+      const res = await dialog.showOpenDialog(win!, {
+        title: 'Load an impulse response',
+        defaultPath: fs.existsSync(impulseRoot()) ? impulseRoot() : undefined,
+        properties: ['openFile'],
+        filters: [{ name: 'Impulse responses (WAV, AIFF)', extensions: ['wav', 'wave', 'aif', 'aiff'] }],
+      });
+      if (res.canceled || !res.filePaths[0]) return null;
+      file = res.filePaths[0];
+    }
+    return importImpulse(impulseRoot(), file);
+  },
+  showImpulseResponsesFolder: () => {
+    fs.mkdirSync(impulseRoot(), { recursive: true });
+    return shell.openPath(impulseRoot()).then(() => undefined);
+  },
 };
 
 const presetLibrary = createPresetLibrary(
@@ -1388,6 +1419,7 @@ app.whenReady().then(() => {
   // Windows shows notifications only for an app with an id (the installer uses the same one).
   if (process.platform === 'win32') app.setAppUserModelId('net.kleinhenz.wavepod');
   settings = loadSettings();
+  setImpulseDir(impulseRoot());
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
   engine.setMarkerPing(settings.markerPing);

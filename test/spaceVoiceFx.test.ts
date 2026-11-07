@@ -179,3 +179,37 @@ describe('Chorus / flanger', () => {
     expect(at1k).toBeLessThan(rms(L, 4800) * Math.SQRT2 * 0.8);
   });
 });
+
+describe('Realistic room decay', () => {
+  /** RT60 (T20) of the impulse response of the reverb tail alone. */
+  function rt60(params: Record<string, number>) {
+    const p = createProcessor('reverb', SR);
+    p.setParams({ ...createFx('reverb').params, mix: 30, predelay: 0, width: 100, ...params });
+    const n = SR * 6;
+    const L = new Float32Array(n);
+    const R = new Float32Array(n);
+    L[0] = R[0] = 1;
+    for (let i = 0; i < n; i += 480) p.process(L.subarray(i, i + 480), R.subarray(i, i + 480), 480);
+    L[0] = 0; // the dry impulse
+    const sch = new Float64Array(n);
+    let acc = 0;
+    for (let i = n - 1; i >= 0; i--) sch[i] = acc += L[i] * L[i];
+    const at = (d: number) => {
+      let i = 0;
+      while (10 * Math.log10(sch[i] / sch[0]) > d) i++;
+      return i;
+    };
+    return ((at(-25) - at(-5)) / SR) * 3;
+  }
+
+  it.each([0.3, 1, 3])('Decay sets the RT60 (%f s), whatever the room size', (decay) => {
+    for (const size of [10, 90]) expect(rt60({ size, decay, damping: 0 })).toBeCloseTo(decay, 1);
+  });
+
+  it('furnished rooms are short and quiet, big stone rooms long', () => {
+    const decay = (name: string) => factoryPresets('space').find((p) => p.preset.name === name)!.preset.params.decay;
+    for (const room of ['Living room', 'Bedroom', 'Office', 'Car', 'Close to the mic']) expect(decay(room), room).toBeLessThanOrEqual(0.5);
+    expect(decay('Church')).toBeGreaterThan(2);
+    expect(decay('Church')).toBeLessThan(5);
+  });
+});

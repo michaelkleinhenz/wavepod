@@ -1,7 +1,7 @@
 // Filter presets: named settings for one kind of filter (a built-in type, or one VST3 plug-in),
 // stored per user so they work in every episode. Pure helpers; the files live in main/presetStore.
-import type { Fx, FxPresetRef, FxType, VstParamInfo } from '../../shared/types';
-import { FX_DEFINITIONS, defaultParams, normalizeFx } from './definitions';
+import type { Fx, FxPresetRef, FxType, ImpulseRef, VstParamInfo } from '../../shared/types';
+import { FX_DEFINITIONS, defaultParams, irRef, normalizeFx } from './definitions';
 import { visibleVstParams } from './vst';
 
 /** What a preset file holds. */
@@ -14,6 +14,8 @@ export interface FxPreset {
   params: Record<string, number>;
   /** VST3 only: the plug-in's own state (base64), restored before the parameters. */
   state?: string;
+  /** Convolution reverb only: the impulse response. */
+  ir?: ImpulseRef;
 }
 
 export type FxPresetSource = 'factory' | 'program' | 'user';
@@ -55,7 +57,7 @@ export function presetEdited(fx: Fx): boolean {
 export function presetFromFx(fx: Fx, name: string): FxPreset {
   const clean = name.trim();
   if (!clean) throw new Error('Please give the preset a name.');
-  if (fx.type !== 'vst3') return { name: clean, type: fx.type, params: { ...fx.params } };
+  if (fx.type !== 'vst3') return { name: clean, type: fx.type, params: { ...fx.params }, ...(fx.type === 'convolution' && fx.ir ? { ir: { ...fx.ir } } : {}) };
   if (!fx.plugin) throw new Error('This filter has no plug-in.');
   return {
     name: clean,
@@ -87,7 +89,7 @@ export function normalizePreset(raw: unknown, fallbackName = 'Preset'): FxPreset
   if (!r.type || !FX_DEFINITIONS.some((d) => d.type === r.type)) return null;
   // clamp into range and fill missing values with defaults
   const fx = normalizeFx({ type: r.type, params });
-  return fx ? { name, type: r.type, params: fx.params } : null;
+  return fx ? { name, type: r.type, params: fx.params, ...(r.type === 'convolution' ? irRef(r.ir) : {}) } : null;
 }
 
 /** The filter set to a preset (same id, on/off state and plug-in). */
@@ -106,6 +108,8 @@ export function applyPreset(fx: Fx, preset: FxPreset, ref: Omit<FxPresetRef, 'si
     params = { ...defaultParams(fx.type), ...preset.params };
   }
   const next: Fx = { ...fx, params, preset: { ...ref, sig: paramSignature(params) } };
+  // a convolution preset brings its impulse response; one without keeps the current one
+  if (preset.ir) next.ir = { ...preset.ir };
   if (fx.type === 'vst3') {
     if (preset.state) next.state = preset.state;
     else delete next.state;
@@ -187,16 +191,16 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Remote guest', 'Laptop or headset recordings with a noise floor.', { reduction: 18, threshold: 8 }],
   ],
   reverb: [
-    ['Small room', 'A touch of space for a voice that sounds too close and dry.', { size: 25, damping: 60, mix: 8, predelay: 5, width: 70 }],
-    ['Studio', 'A natural, unobtrusive room.', { size: 40, damping: 55, mix: 12, predelay: 10, width: 100 }],
-    ['Hall', 'Large and open, for jingles and intros.', { size: 80, damping: 40, mix: 25, predelay: 25, width: 100 }],
-    ['Phone / flashback', 'Narrow and boxy, for a sound effect on a voice.', { size: 15, damping: 80, mix: 30, predelay: 0, width: 20 }],
-    ['Music bed', 'Softens and widens a dry music bed.', { size: 60, damping: 50, mix: 20, predelay: 15, width: 100 }],
-    ['Bathroom', 'Small, hard and tiled: bright, short reflections.', { size: 30, damping: 10, mix: 28, predelay: 2, width: 60 }],
-    ['Next room', 'Heard through a doorway: dull, mostly room. Put it after a Band-pass "Next room".', { size: 35, damping: 90, mix: 50, predelay: 5, width: 40 }],
-    ['Cathedral', 'Stone church: a long, open tail.', { size: 100, damping: 30, mix: 40, predelay: 40, width: 100 }],
-    ['Cave', 'Huge and dark, with a late, heavy tail.', { size: 92, damping: 75, mix: 45, predelay: 60, width: 100 }],
-    ['Dream', 'Soft and washed out, for memories and inner voices.', { size: 85, damping: 60, mix: 45, predelay: 20, width: 100 }],
+    ['Small room', 'A touch of space for a voice that sounds too close and dry.', { size: 25, decay: 0.35, damping: 60, mix: 5, predelay: 5, width: 70 }],
+    ['Studio', 'A natural, unobtrusive room.', { size: 40, decay: 0.45, damping: 55, mix: 7, predelay: 10, width: 100 }],
+    ['Hall', 'Large and open, for jingles and intros.', { size: 80, decay: 1.8, damping: 40, mix: 13, predelay: 25, width: 100 }],
+    ['Phone / flashback', 'Narrow and boxy, for a sound effect on a voice.', { size: 15, decay: 0.25, damping: 80, mix: 21, predelay: 0, width: 20 }],
+    ['Music bed', 'Softens and widens a dry music bed.', { size: 60, decay: 1.2, damping: 50, mix: 11, predelay: 15, width: 100 }],
+    ['Bathroom', 'Small, hard and tiled: bright, short reflections.', { size: 30, decay: 0.8, damping: 10, mix: 12, predelay: 2, width: 60 }],
+    ['Next room', 'Heard through a doorway: dull, mostly room. Put it after a Band-pass "Next room".', { size: 35, decay: 0.5, damping: 90, mix: 37, predelay: 5, width: 40 }],
+    ['Cathedral', 'Stone church: a long, open tail.', { size: 100, decay: 3.5, damping: 30, mix: 20, predelay: 40, width: 100 }],
+    ['Cave', 'Huge and dark, with a late, heavy tail.', { size: 92, decay: 2.8, damping: 75, mix: 22, predelay: 60, width: 100 }],
+    ['Dream', 'Soft and washed out, for memories and inner voices.', { size: 85, decay: 2.2, damping: 60, mix: 29, predelay: 20, width: 100 }],
   ],
   bandpass: [
     ['Telephone', 'Classic landline band (300 Hz to 3.4 kHz).', { lowCut: 300, highCut: 3400, slope: 24, gain: 3 }],
@@ -227,27 +231,34 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Stadium PA', 'Announcer bouncing off the stands.', { time: 260, feedback: 25, mix: 28, highCut: 3500, spread: 50 }],
     ['Dream', 'Long, soft ping-pong repeats for memories and inner voices.', { time: 380, feedback: 55, mix: 35, highCut: 2500, spread: 100 }],
   ],
+  convolution: [
+    ['Subtle room', 'A dialogue voice in a furnished room: the room stays well below the voice.', { dry: 0, wet: -18, predelay: 0, length: 100, lowCut: 120, highCut: 9000, width: 100 }],
+    ['Room', 'The room clearly audible, as with a microphone a little further away.', { dry: 0, wet: -12, predelay: 0, length: 100, lowCut: 80, highCut: 12000, width: 100 }],
+    ['Large space', 'Halls, churches and stairwells: lots of room, a short pre-delay keeps the words clear.', { dry: 0, wet: -6, predelay: 15, length: 100, lowCut: 100, highCut: 10000, width: 100 }],
+    ['Short tail', 'Only the first part of the IR: the character of the room without its long decay.', { dry: 0, wet: -12, predelay: 0, length: 35, lowCut: 80, highCut: 12000, width: 100 }],
+    ['Wet only', 'Only the room, no dry signal: for a reverb on its own track or a voice heard entirely through a space.', { dry: -60, wet: 0, predelay: 0, length: 100, lowCut: 20, highCut: 20000, width: 100 }],
+  ],
   space: [
-    ['Close to the mic', 'Intimate and close: a little proximity bass, almost no room. Narrators, inner voices.', { distance: 0.4, size: 20, damping: 60, early: 10, room: 5, predelay: 2, width: 60 }],
-    ['Living room', 'A furnished room: soft and short.', { size: 35, damping: 75, early: 30, room: 14, predelay: 6, width: 80 }],
-    ['Bedroom', 'Small and soft: bed, curtains, carpet.', { size: 25, damping: 85, early: 22, room: 8, predelay: 4, width: 70 }],
-    ['Small kitchen', 'Tiles, cupboards and a window: small, bright and a little clattery.', { size: 28, damping: 25, early: 45, room: 18, predelay: 3, width: 70 }],
-    ['Bathroom', 'Small, hard and tiled: bright, dense reflections.', { size: 30, damping: 10, early: 55, room: 28, predelay: 2, width: 60 }],
-    ['Car', 'Inside a car: tiny, dead and boxy.', { size: 4, damping: 90, early: 55, room: 6, predelay: 0, width: 40 }],
-    ['Office', 'A plain office or meeting room.', { size: 40, damping: 55, early: 30, room: 15, predelay: 8, width: 90 }],
-    ['Classroom', 'Hard walls and a high ceiling: a little echoey.', { size: 55, damping: 40, early: 40, room: 22, predelay: 12, width: 100 }],
-    ['Stairwell', 'Concrete stairs: hard, long and fluttering.', { size: 70, damping: 15, early: 55, room: 32, predelay: 10, width: 70 }],
-    ['Basement', 'Low and dull, bare concrete.', { size: 45, damping: 70, early: 45, room: 22, predelay: 6, width: 60 }],
-    ['Garage / warehouse', 'Big, empty and hard.', { size: 80, damping: 30, early: 35, room: 32, predelay: 25, width: 100 }],
-    ['Church', 'A stone church: a long, open tail.', { size: 100, damping: 30, early: 25, room: 42, predelay: 40, width: 100 }],
-    ['Concert hall', 'Large and warm.', { size: 90, damping: 50, early: 30, room: 32, predelay: 30, width: 100 }],
-    ['Cave', 'Huge and dark, with a heavy tail.', { size: 95, damping: 70, early: 40, room: 46, predelay: 55, width: 100 }],
-    ['Tunnel', 'Long, hard and metallic.', { size: 85, damping: 20, early: 60, room: 38, predelay: 20, width: 50 }],
-    ['Forest', 'Outdoors among trees: no walls, only a soft scatter of reflections.', { size: 60, damping: 85, early: 18, room: 7, predelay: 18, width: 100 }],
-    ['Open field', 'Out in the open: almost dry, a little ground reflection.', { size: 15, damping: 80, early: 8, room: 2, predelay: 4, width: 100 }],
-    ['Street', 'Between houses: a few clear reflections off the facades.', { size: 70, damping: 45, early: 30, room: 6, predelay: 25, width: 100 }],
-    ['Across the room', 'Living room, the speaker a few steps away.', { distance: 4, size: 35, damping: 75, early: 30, room: 14, predelay: 6, width: 80 }],
-    ['Far away outdoors', 'Someone calling from a distance in the open.', { distance: 25, size: 20, damping: 80, early: 10, room: 3, predelay: 6, width: 100 }],
+    ['Close to the mic', 'Intimate and close: a little proximity bass, almost no room. Narrators, inner voices.', { distance: 0.4, size: 20, decay: 0.25, damping: 60, early: 9, room: 4, predelay: 2, width: 60 }],
+    ['Living room', 'A furnished room: soft and short.', { size: 35, decay: 0.4, damping: 75, early: 18, room: 9, predelay: 6, width: 80 }],
+    ['Bedroom', 'Small and soft: bed, curtains, carpet.', { size: 25, decay: 0.3, damping: 85, early: 19, room: 7, predelay: 4, width: 70 }],
+    ['Small kitchen', 'Tiles, cupboards and a window: small, bright and a little clattery.', { size: 28, decay: 0.55, damping: 25, early: 29, room: 11, predelay: 3, width: 70 }],
+    ['Bathroom', 'Small, hard and tiled: bright, dense reflections.', { size: 30, decay: 0.8, damping: 10, early: 36, room: 19, predelay: 2, width: 60 }],
+    ['Car', 'Inside a car: tiny, dead and boxy.', { size: 4, decay: 0.07, damping: 90, early: 32, room: 3, predelay: 0, width: 40 }],
+    ['Office', 'A plain office or meeting room.', { size: 40, decay: 0.5, damping: 55, early: 22, room: 11, predelay: 8, width: 90 }],
+    ['Classroom', 'Hard walls and a high ceiling: a little echoey.', { size: 55, decay: 0.7, damping: 40, early: 26, room: 15, predelay: 12, width: 100 }],
+    ['Stairwell', 'Concrete stairs: hard, long and fluttering.', { size: 70, decay: 1.6, damping: 15, early: 43, room: 25, predelay: 10, width: 70 }],
+    ['Basement', 'Low and dull, bare concrete.', { size: 45, decay: 0.9, damping: 70, early: 43, room: 21, predelay: 6, width: 60 }],
+    ['Garage / warehouse', 'Big, empty and hard.', { size: 80, decay: 1.8, damping: 30, early: 28, room: 26, predelay: 25, width: 100 }],
+    ['Church', 'A stone church: a long, open tail.', { size: 100, decay: 2.8, damping: 30, early: 24, room: 40, predelay: 40, width: 100 }],
+    ['Concert hall', 'Large and warm.', { size: 90, decay: 2.0, damping: 50, early: 30, room: 33, predelay: 30, width: 100 }],
+    ['Cave', 'Huge and dark, with a heavy tail.', { size: 95, decay: 2.5, damping: 70, early: 37, room: 42, predelay: 55, width: 100 }],
+    ['Tunnel', 'Long, hard and metallic.', { size: 85, decay: 2.2, damping: 20, early: 53, room: 33, predelay: 20, width: 50 }],
+    ['Forest', 'Outdoors among trees: no walls, only a soft scatter of reflections.', { size: 60, decay: 0.8, damping: 85, early: 16, room: 6, predelay: 18, width: 100 }],
+    ['Open field', 'Out in the open: almost dry, a little ground reflection.', { size: 15, decay: 0.3, damping: 80, early: 6, room: 2, predelay: 4, width: 100 }],
+    ['Street', 'Between houses: a few clear reflections off the facades.', { size: 70, decay: 0.9, damping: 45, early: 23, room: 5, predelay: 25, width: 100 }],
+    ['Across the room', 'Living room, the speaker a few steps away.', { distance: 4, size: 35, decay: 0.4, damping: 75, early: 18, room: 9, predelay: 6, width: 80 }],
+    ['Far away outdoors', 'Someone calling from a distance in the open.', { distance: 25, size: 20, decay: 0.3, damping: 80, early: 8, room: 3, predelay: 6, width: 100 }],
   ],
   pitch: [
     ['Slightly lower (−2)', 'A touch deeper and bigger, still natural.', { semitones: -2 }],

@@ -8,6 +8,7 @@ import { alignClips, stretchWav } from '../core/align';
 import { importWav } from '../core/importAudio';
 import { setVstHost } from '../core/fx/vst';
 import { VstHostProcess } from './vst/host';
+import { setImpulseDir } from '../core/fx/convolution';
 
 interface Job {
   kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav';
@@ -27,11 +28,14 @@ interface Job {
   mono?: boolean;
   vstExe?: string | null;
   vstBridge?: string;
+  /** Where convolution filters find their impulse responses. */
+  impulseDir?: string;
   /** importWav: the episode's sample rate. */
   sampleRate?: number;
 }
 
 const job = workerData as Job;
+if (job.impulseDir) setImpulseDir(job.impulseDir);
 // VST3 filters render through a host process of this worker's own
 const usesVst = job.kind !== 'clips' && job.kind !== 'align' && job.kind !== 'stretch' && job.kind !== 'importWav' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
 const vstHost = usesVst && job.vstExe && job.vstBridge ? new VstHostProcess(job.vstExe, job.vstBridge) : null;

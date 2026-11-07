@@ -10,14 +10,23 @@ class Comb {
   private buf: Float32Array;
   private i = 0;
   private store = 0;
+  /** Delay in use (≤ buffer length): small rooms use shorter, denser combs. */
+  len: number;
+  /** Loop gain, set from the decay time and the delay. */
+  feedback = 0.84;
   constructor(len: number) {
     this.buf = new Float32Array(len);
+    this.len = len;
   }
-  tick(x: number, feedback: number, damp: number): number {
+  setLength(n: number): void {
+    this.len = Math.max(1, Math.min(this.buf.length, n));
+    if (this.i >= this.len) this.i = 0;
+  }
+  tick(x: number, damp: number): number {
     const y = this.buf[this.i];
     this.store = y * (1 - damp) + this.store * damp;
-    this.buf[this.i] = x + this.store * feedback;
-    if (++this.i === this.buf.length) this.i = 0;
+    this.buf[this.i] = x + this.store * this.feedback;
+    if (++this.i >= this.len) this.i = 0;
     return y;
   }
   reset(): void {
@@ -52,7 +61,6 @@ export class Reverb implements FxProcessor {
   private pre: Float32Array;
   private preIdx = 0;
   private preLen = 0;
-  private feedback = 0.84;
   private damp = 0.2;
   private wet = 0.2;
   private dry = 1;
@@ -69,7 +77,25 @@ export class Reverb implements FxProcessor {
 
   setParams(p: Record<string, number>): void {
     const size = (p.size ?? 50) / 100;
-    this.feedback = 0.7 + 0.28 * size;
+    const combs = [...this.combsL, ...this.combsR];
+    if (Number.isFinite(p.decay) && p.decay > 0) {
+      // Decay is the RT60 in seconds: every comb loses 60 dB in that time, whatever its length.
+      // Small rooms also get shorter combs, so their few reflections come close together instead
+      // of ringing at the 25–37 ms spacing of a big room.
+      const scale = 0.35 + 0.65 * size;
+      const s = this.sr / 44100;
+      COMBS.forEach((c, k) => {
+        this.combsL[k].setLength(Math.round(c * s * scale));
+        this.combsR[k].setLength(Math.round((c + STEREO_SPREAD) * s * scale));
+      });
+      for (const c of combs) c.feedback = Math.min(0.985, Math.pow(10, (-3 * c.len) / (p.decay * this.sr)));
+    } else {
+      // classic Freeverb: room size sets the loop gain (never shorter than about 0.6 s)
+      for (const c of combs) {
+        c.setLength(Infinity);
+        c.feedback = 0.7 + 0.28 * size;
+      }
+    }
     this.damp = ((p.damping ?? 50) / 100) * 0.4;
     const mix = (p.mix ?? 15) / 100;
     // the classic Freeverb input scaling keeps the wet level in range
@@ -92,8 +118,8 @@ export class Reverb implements FxProcessor {
       let outL = 0;
       let outR = 0;
       for (let k = 0; k < 8; k++) {
-        outL += this.combsL[k].tick(x, this.feedback, this.damp);
-        outR += this.combsR[k].tick(x, this.feedback, this.damp);
+        outL += this.combsL[k].tick(x, this.damp);
+        outR += this.combsR[k].tick(x, this.damp);
       }
       for (let k = 0; k < 4; k++) {
         outL = this.apsL[k].tick(outL);
@@ -120,8 +146,8 @@ export class Reverb implements FxProcessor {
       let l = 0;
       let r = 0;
       for (let k = 0; k < 8; k++) {
-        l += this.combsL[k].tick(x, this.feedback, this.damp);
-        r += this.combsR[k].tick(x, this.feedback, this.damp);
+        l += this.combsL[k].tick(x, this.damp);
+        r += this.combsR[k].tick(x, this.damp);
       }
       for (let k = 0; k < 4; k++) {
         l = this.apsL[k].tick(l);
