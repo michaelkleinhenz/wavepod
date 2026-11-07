@@ -36,6 +36,8 @@ import {
 import { WavReader, writeWavFile } from '../../core/wav';
 import type { TakeFileSpec, TakeFilesOptions } from '../../core/takeFiles';
 import { RecordingMonitor, formatMinutes } from '../../core/recordingMonitor';
+import { loopFramePosition } from '../../core/takes';
+import type { RecordOptions } from '../../shared/types';
 import { clearJournal, writeJournal, type RecordingJournal } from '../../core/recordingJournal';
 import { inProcessSink, type TakeSink, type TakeSinkFactory } from './takeSink';
 import type { AudioBackend, StreamHandle } from './backend';
@@ -64,7 +66,10 @@ export interface TakeReport {
   events: RecordingEvent[];
   /** Set if the files could not be finished cleanly; the journal is then kept for recovery. */
   writeError: string | null;
+  /** Loop recording: the range the timeline jumped round in; each pass becomes a take. */
+  loop?: [number, number];
 }
+
 
 function freeBytesAt(dir: string): number | null {
   try {
@@ -159,6 +164,8 @@ export class AudioEngine extends EventEmitter {
   private scrubber: Scrubber | null = null;
   /** Repeat range [start, end) in frames: playback that reaches `end` continues at `start`. */
   private loop: [number, number] | null = null;
+  /** Loop recording: the range the take's timeline jumps round in (fixed for the whole take). */
+  private recLoop: [number, number] | null = null;
   private recordStart = 0;
   private recordedFrames = 0;
   private recorders: Recorder[] = [];
@@ -516,7 +523,8 @@ export class AudioEngine extends EventEmitter {
   }
 
   get position(): number {
-    return this.state === 'recording' ? this.recordStart + this.recordedFrames : this.playPos;
+    if (this.state !== 'recording') return this.playPos;
+    return this.recLoop ? loopFramePosition(this.recordedFrames, this.recordStart, this.recLoop) : this.recordStart + this.recordedFrames;
   }
 
   get playbackSpeed(): number {
@@ -585,20 +593,27 @@ export class AudioEngine extends EventEmitter {
     this.emitTransport();
   }
 
-  /** Sets (or clears) the range that playback repeats. Recording is never looped. */
+  /** Sets (or clears) the range that playback repeats. Recording loops only when asked to (record({ loop })). */
   setLoop(range: [number, number] | null): void {
     const start = range ? Math.max(0, Math.round(range[0])) : 0;
     const end = range ? Math.round(range[1]) : 0;
     this.loop = range && end > start ? [start, end] : null;
   }
 
-  /** Whether playback is inside or before the repeat range, so it wraps instead of running on. */
+  /** The range the timeline jumps round in now: the repeat range while playing, the take's loop while loop recording. */
+  private get activeLoop(): [number, number] | null {
+    return this.state === 'playing' ? this.loop : this.state === 'recording' ? this.recLoop : null;
+  }
+
+  /** Whether the playhead is inside or before the active loop, so it wraps instead of running on. */
   private get looping(): boolean {
-    return this.state === 'playing' && !!this.loop && this.playPos < this.loop[1];
+    const loop = this.activeLoop;
+    return !!loop && this.playPos < loop[1];
   }
 
   /** Frames to render before the repeat jump or the end of the last clip, or `frames` if neither is in this block. */
   private framesUntilJump(frames: number): number {
+    if (this.state === 'recording') return this.looping ? Math.min(frames, this.recLoop![1] - this.playPos) : frames;
     if (this.state !== 'playing') return frames;
     const until = this.looping ? this.loop![1] : this.clipsEnd();
     return this.playPos < until ? Math.min(frames, until - this.playPos) : frames;
@@ -607,9 +622,15 @@ export class AudioEngine extends EventEmitter {
   /** Advances the playhead: jumps back to the repeat start, or stops at the end of the last clip. */
   private advance(frames: number): void {
     const wasLooping = this.looping;
+    const loop = this.activeLoop;
     this.playPos += frames;
+    // loop recording: the other tracks play the loop over and over along with the passes
+    if (this.state === 'recording') {
+      if (wasLooping && this.playPos === loop![1]) this.playPos = loop![0];
+      return;
+    }
     if (this.state !== 'playing') return;
-    if (wasLooping && this.playPos === this.loop![1]) this.playPos = this.loop![0];
+    if (wasLooping && this.playPos === loop![1]) this.playPos = loop![0];
     else if (!wasLooping && this.playPos >= this.clipsEnd()) {
       this.state = 'stopped';
       this.stopFallbackClock();
@@ -622,8 +643,12 @@ export class AudioEngine extends EventEmitter {
     return clipsEnd(this.project);
   }
 
-  /** Starts recording all armed tracks at the playhead. Returns the files being written. */
-  record(): string[] {
+  /**
+   * Starts recording all armed tracks at the playhead. Returns the files being written. With
+   * `loop`, the timeline jumps back to the loop start at its end until stopped (loop recording);
+   * the take is one file per track, cut into a take per pass when it stops.
+   */
+  record(options: RecordOptions = {}): string[] {
     if (this.state === 'recording') return this.recorders.map((r) => r.file);
     this.scrubber = null;
     if (!this.input) throw new Error('No input device is open. Choose one in Setup.');
@@ -646,6 +671,7 @@ export class AudioEngine extends EventEmitter {
     if (free !== null && free < bytesPerSecond * MIN_DISK_SECONDS) {
       throw new Error(`The disk is full: there is not even room for a minute of recording (${Math.round(free / 1e6)} MB free).`);
     }
+    const loop = options.loop && options.loop[1] > options.loop[0] && this.playPos < options.loop[1] ? ([Math.max(0, Math.round(options.loop[0])), Math.round(options.loop[1])] as [number, number]) : null;
     const stamp = timestamp();
     const recorders: Recorder[] = armed.map((t) => {
       let rel = path.join('media', `${safeFileName(t.name)}-${stamp}.wav`);
@@ -678,6 +704,7 @@ export class AudioEngine extends EventEmitter {
       })),
       jingles: [],
       events: [],
+      ...(loop ? { loop } : {}),
     };
     writeJournal(this.projectDir, this.journal);
     try {
@@ -699,6 +726,7 @@ export class AudioEngine extends EventEmitter {
     this.freeBytes = { value: free, at: performance.now() };
     this.recordStart = this.playPos;
     this.recordedFrames = 0;
+    this.recLoop = loop;
     this.jingleTakes = [];
     this.state = 'recording';
     this.emitTransport();
@@ -742,7 +770,8 @@ export class AudioEngine extends EventEmitter {
     let report: TakeReport | null = null;
     if (wasRecording) {
       ({ takes, report } = this.finishRecording());
-      this.playPos = this.recordStart + this.recordedFrames;
+      // after loop recording the playhead waits at the loop start, ready for the next go
+      this.playPos = report.loop ? report.loop[0] : this.recordStart + this.recordedFrames;
     }
     this.state = 'stopped';
     this.emitTransport();
@@ -786,7 +815,8 @@ export class AudioEngine extends EventEmitter {
     for (const v of this.voices) this.finishJingle(v);
     takes.push(...this.jingleTakes.map(({ trackId, clip }) => ({ trackId, clip })));
     this.jingleTakes = [];
-    const report: TakeReport = { recordStart: this.recordStart, events: this.monitor?.events ?? [], writeError: done.error };
+    const report: TakeReport = { recordStart: this.recordStart, events: this.monitor?.events ?? [], writeError: done.error, ...(this.recLoop ? { loop: this.recLoop } : {}) };
+    this.recLoop = null;
     this.monitor = null;
     this.journal = null;
     return { takes, report };
@@ -1163,6 +1193,7 @@ export class AudioEngine extends EventEmitter {
     };
     if (this.state === 'recording') {
       update.recordingPeaks = this.takeLivePeaks();
+      if (this.recLoop) update.recordLoop = this.recLoop;
       update.health = this.checkHealth();
       if (this.jingleTakes.length) {
         update.recordedJingles = this.jingleTakes.map((t) => ({ slotId: t.slotId, start: t.clip.start, length: t.clip.length }));

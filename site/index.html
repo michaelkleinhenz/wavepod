@@ -76,7 +76,8 @@
         <span class="line shine">Every voice, every room.</span>
       </h1>
       <p class="lead reveal" data-only="drama">
-        WavePod is a free studio for fiction. Record your cast, turn a voice into
+        WavePod is a free studio for fiction. Import the script and tick off every
+        line your cast records, loop a line until it's right and splice the best take together, turn a voice into
         a phone call, a robot or a ghost in one click, put it in a stairwell six
         metres away, walk the footsteps from left to right, lay rain from your
         sound library and deliver dialogue, music and effects stems. Fully Open
@@ -229,6 +230,42 @@
           whole scene. Right-click a clip, done.</p>
         </article>
 
+        <article class="card span-3 wide script-card reveal">
+          <div class="viz viz-script" aria-hidden="true">
+            <div class="sp-head"><b>The Night Train</b><span class="sp-btn">Line up</span></div>
+            <div class="sp-prog"><i></i><span class="sp-count"></span></div>
+            <div class="sp-chips"><span style="--c:#4fc3f7">NARRATOR</span><span style="--c:#f06292">ANNA</span><span style="--c:#81c784">BEN</span><span style="--c:#ffb74d">CONDUCTOR</span></div>
+            <div class="sl sl-scene">INT. PLATFORM 4 - NIGHT</div>
+            <div class="sl" style="--c:#4fc3f7"><i></i><b>NARRATOR</b><span>It was the last train out of the city…</span><time>0:01</time></div>
+            <div class="sl" style="--c:#f06292"><i></i><b>ANNA</b><span>Is this the night train to Vienna?</span><em>2 takes</em><time>0:10</time></div>
+            <div class="sl" style="--c:#81c784"><i></i><b>BEN</b><span>It is. And it is late again.</span><time>0:13</time></div>
+            <div class="sl sl-scene">INT. COMPARTMENT</div>
+            <div class="sl" style="--c:#ffb74d"><i></i><b>CONDUCTOR</b><span>Tickets, please.</span><time>0:24</time></div>
+          </div>
+          <h3>The script beside the timeline. Every line ticked off.</h3>
+          <p>Import the script as plain text (<em>ANNA: line</em>), Fountain or Final Draft.
+          WavePod lists every line scene by scene, in the colour of the character's track,
+          and counts what each actor still has to record. Press <kbd>Enter</kbd> in the session
+          and the line is ticked off at the playhead, the next one is ready. Or record first and
+          press <em>Line up</em>: WavePod finds every line in the transcript, takes and all.
+          Click a line to hear its take, click a scene to jump there.</p>
+        </article>
+
+        <article class="card span-3 wide takes-card reveal">
+          <div class="viz viz-takes" aria-hidden="true">
+            <div class="tk-row tk-comp"><span>Comp</span><i class="seg sa"></i><i class="seg sb"></i><i class="seg sc"></i></div>
+            <div class="tk-row tk-lane t1"><span>Take 1</span><b></b><em class="pick pc"></em></div>
+            <div class="tk-row tk-lane t2"><span>Take 2</span><b></b><em class="pick pa"></em></div>
+            <div class="tk-row tk-lane t3"><span>Take 3</span><b></b><em class="pick pb"></em></div>
+          </div>
+          <h3>Every take kept. Splice the best of them.</h3>
+          <p>Select a line and press <em>Shift+R</em>: WavePod plays a two-second run-up,
+          then loops the line while your actor reads it again and again. Every pass
+          becomes a take, stacked in lanes under the track. Click a take to hear it in
+          the scene, or swipe across the best words of each one to splice them into a
+          single performance. Nothing is thrown away, and <em>T</em> flips through the takes.</p>
+        </article>
+
         <article class="card span-2 reveal">
           <div class="viz viz-stems" aria-hidden="true">
             <div class="mixbar"><span>Mix</span></div>
@@ -244,19 +281,6 @@
         </article>
 
         <article class="card reveal">
-          <div class="viz viz-script" aria-hidden="true">
-            <div class="sl sl-scene">INT. PLATFORM 4 - NIGHT</div>
-            <div class="sl" style="--c:#f06292"><i></i><b>ANNA</b><span>Is this the night train?</span><em>2 takes</em></div>
-            <div class="sl" style="--c:#81c784"><i></i><b>BEN</b><span>It is. And it is late.</span></div>
-            <div class="sl" style="--c:#ffb74d"><i></i><b>CONDUCTOR</b><span>Tickets, please.</span></div>
-          </div>
-          <h3>Your script, ticked off</h3>
-          <p>Import the script as plain text, Fountain or Final Draft. Tick lines off with
-          <kbd>Enter</kbd> while recording, or let <em>Line up</em> find every line in the
-          transcript, takes and all. Click a line or a scene to jump there.</p>
-        </article>
-
-        <article class="card reveal">
           <div class="viz viz-duck" aria-hidden="true">
             <div class="duck-row dlg"><span>Dialogue</span><i></i><i></i></div>
             <div class="duck-row mus"><span>Music</span><b></b></div>
@@ -268,7 +292,7 @@
 
         <article class="card span-3 wide studio-too reveal">
           <div class="viz viz-chips" aria-hidden="true">
-            <span>16 inputs at once</span><span>Crash-safe takes</span><span>Music ducking</span>
+            <span>16 inputs at once</span><span>Crash-safe takes</span><span>Loop recording</span><span>Music ducking</span>
             <span>Noise reduction</span><span>De-esser</span><span>VST3 plug-ins</span>
             <span>Edit by transcript</span><span>Scene &amp; chapter markers</span><span>Tape scrubbing</span>
             <span>WAV · FLAC · MP3 · Opus</span><span>AI agents via MCP</span>
@@ -468,6 +492,7 @@
       <div class="tour-set" data-only="drama">
       <div class="tabs reveal" role="tablist" aria-label="Audio drama screenshots">
         <button role="tab" aria-selected="true">Timeline</button>
+        <button role="tab" aria-selected="false">Takes</button>
         <button role="tab" aria-selected="false">Voice effects</button>
         <button role="tab" aria-selected="false">Room &amp; distance</button>
         <button role="tab" aria-selected="false">Sound library</button>
@@ -479,6 +504,7 @@
       <div class="tilt reveal">
         <div class="tilt-inner">
           <figure class="shot active" data-caption="Dialogue, SFX, Atmo and Music folders, scene markers, and footsteps panned across with an automation lane."><img src="img/drama-timeline.png" width="1440" height="1040" loading="lazy" alt="WavePod timeline of an audio drama with Dialogue, SFX, Atmo and Music track folders, scene markers and a pan automation lane on the footsteps track"></figure>
+          <figure class="shot" data-caption="Four takes of Mara's line, comped from takes 2, 4 and 3 by swiping across the take lanes."><img src="img/drama-takes.png" width="1440" height="1040" loading="lazy" alt="Take lanes under Mara's track with four loop-recorded takes; the comp on the track plays parts of take 2, take 4 and take 3, framed in each lane"></figure>
           <figure class="shot" data-caption="Mara is on the phone: the Telephone voice effect is band-pass, distortion and compressor, all editable."><img src="img/drama-voice.png" width="1440" height="1040" loading="lazy" alt="Filter panel for the track Mara (phone) with Band-pass set to Telephone and Distortion set to Phone grit, with live meters during playback"></figure>
           <figure class="shot" data-caption="Inspector Hale shouts down a stairwell, six and a half metres from the mic."><img src="img/drama-room.png" width="1440" height="1040" loading="lazy" alt="Room and distance filter on Inspector Hale's track, set to Stairwell with a distance of 6.5 metres"></figure>
           <figure class="shot" data-caption="Search your own sound effects folder, pre-listen and drop sounds on the timeline."><img src="img/drama-library.png" width="1440" height="1040" loading="lazy" alt="Sound library panel searching for door, with door sounds from the Doors folder listed"></figure>

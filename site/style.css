@@ -680,16 +680,60 @@ html[data-mode="drama"] .spots { opacity: 1; }
 @media (max-width: 640px) { .studio-too .viz-chips { height: auto !important; padding: 16px 12px; } }
 
 /* script card (audio drama) */
-.viz-script { display: grid; gap: 6px; padding: 12px 14px; height: 150px; align-content: center; }
-.sl { display: grid; grid-template-columns: 16px auto 1fr auto; gap: 8px; align-items: center; font-size: .72rem; color: var(--dim); white-space: nowrap; }
-.sl span { overflow: hidden; text-overflow: ellipsis; }
-.sl b { font: 700 .66rem "JetBrains Mono", monospace; color: var(--c); letter-spacing: .04em; }
-.sl em { font-style: normal; font-size: .6rem; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 999px; }
-.sl i { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line-2); position: relative; animation: tick 4.8s infinite; }
-.sl i::after { content: "✓"; position: absolute; inset: 0; display: grid; place-content: center; font-size: 10px; color: #fff; opacity: 0; animation: tickmark 4.8s infinite; }
-.sl:nth-child(3) i, .sl:nth-child(3) i::after { animation-delay: .8s; }
-.sl:nth-child(4) i, .sl:nth-child(4) i::after { animation-delay: 1.6s; }
-.sl-scene { font: 700 .62rem "JetBrains Mono", monospace; letter-spacing: .08em; color: var(--text); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
-@keyframes tick { 0%, 15% { background: transparent; border-color: var(--line-2); } 22%, 88% { background: #43a047; border-color: #43a047; } 100% { background: transparent; } }
-@keyframes tickmark { 0%, 15% { opacity: 0; } 22%, 88% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .sl i, .sl i::after { animation: none; background: #43a047; border-color: #43a047; opacity: 1; } }
+.card.wide .viz-script { display: grid; align-content: center; gap: 6px; padding: 14px 16px; min-height: 230px; }
+.sp-head { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; }
+.sp-btn { font: 600 .66rem "JetBrains Mono", monospace; padding: 2px 9px; border-radius: 6px; border: 1px solid rgb(var(--glow) / .6); color: var(--text); animation: sp-press 7.2s infinite; }
+.sp-prog { display: flex; align-items: center; gap: 10px; }
+.sp-prog i { flex: 1; height: 5px; border-radius: 3px; background: rgb(255 255 255 / .08); position: relative; overflow: hidden; }
+.sp-prog i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 0; background: #43a047; border-radius: 3px; animation: sp-fill 7.2s infinite; }
+.sp-count { font: 600 .62rem "JetBrains Mono", monospace; color: var(--dim); min-width: 74px; text-align: right; }
+.sp-count::after { content: "0 of 4 recorded"; animation: sp-count 7.2s steps(1) infinite; }
+.sp-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 2px; }
+.sp-chips span { font: 700 .58rem "JetBrains Mono", monospace; color: var(--c); padding: 1px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 12%, transparent); }
+.sl { display: grid; grid-template-columns: 16px auto 1fr auto auto; gap: 8px; align-items: center; font-size: .74rem; color: var(--dim); white-space: nowrap; }
+.sl span { overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.sl b { font: 700 .64rem "JetBrains Mono", monospace; color: var(--c); letter-spacing: .04em; }
+.sl em { font-style: normal; font-size: .58rem; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 999px; opacity: 0; animation: sp-show 7.2s infinite; animation-delay: var(--d); }
+.sl time { font: .62rem "JetBrains Mono", monospace; color: rgb(var(--glow)); opacity: 0; animation: sp-show 7.2s infinite; animation-delay: var(--d); }
+.sl i { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line-2); position: relative; animation: tick 7.2s infinite; animation-delay: var(--d); }
+.sl i::after { content: "✓"; position: absolute; inset: 0; display: grid; place-content: center; font-size: 10px; color: #fff; opacity: 0; animation: tickmark 7.2s infinite; animation-delay: var(--d); }
+.sl:nth-child(5) { --d: 0s; } .sl:nth-child(6) { --d: .35s; } .sl:nth-child(7) { --d: .7s; } .sl:nth-child(9) { --d: 1.05s; }
+.sl em { grid-column: 4; } .sl time { grid-column: 5; }
+.sl-scene { grid-template-columns: 1fr; font: 700 .6rem "JetBrains Mono", monospace; letter-spacing: .08em; color: var(--text); border-bottom: 1px solid var(--line); padding: 4px 0 3px; }
+@keyframes tick { 0%, 30% { background: transparent; border-color: var(--line-2); } 36%, 90% { background: #43a047; border-color: #43a047; } 100% { background: transparent; } }
+@keyframes tickmark { 0%, 30% { opacity: 0; } 36%, 90% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sp-show { 0%, 30% { opacity: 0; } 36%, 90% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sp-press { 0%, 20%, 34%, 100% { background: transparent; } 24%, 30% { background: rgb(var(--glow) / .45); } }
+@keyframes sp-fill { 0%, 30% { width: 0; } 50%, 90% { width: 100%; } 100% { width: 0; } }
+@keyframes sp-count { 0% { content: "0 of 4 recorded"; } 40% { content: "4 of 4 recorded"; } 92% { content: "0 of 4 recorded"; } }
+@media (max-width: 640px) { .card.wide .viz-script { height: auto !important; } .sl em { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sl i, .sl i::after, .sl em, .sl time, .sp-btn, .sp-prog i::after, .sp-count::after { animation: none; }
+  .sl i { background: #43a047; border-color: #43a047; } .sl i::after, .sl em, .sl time { opacity: 1; }
+  .sp-prog i::after { width: 100%; } .sp-count::after { content: "4 of 4 recorded"; }
+}
+
+/* takes and comping: three take lanes, a swipe picks a part of each, the comp fills up */
+.card.wide .viz-takes { display: grid; align-content: center; gap: 7px; padding: 14px 16px; min-height: 190px; }
+.tk-row { position: relative; height: 30px; border-radius: 7px; background: rgb(255 255 255 / .04); overflow: hidden; }
+.tk-row span { position: absolute; left: 8px; top: 3px; z-index: 2; font: 600 .66rem "JetBrains Mono", monospace; color: var(--text); text-shadow: 0 1px 4px #000; }
+.tk-comp { height: 36px; background: rgb(255 255 255 / .07); border-top: 2px solid rgb(var(--glow)); margin-bottom: 4px; }
+.tk-lane b { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 30%, var(--c) 30% 70%, transparent 70%); -webkit-mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); opacity: .45; }
+.t1 { --c: var(--au1); } .t1 b { clip-path: polygon(0 40%, 18% 20%, 35% 55%, 60% 25%, 80% 45%, 100% 30%, 100% 70%, 80% 55%, 60% 75%, 35% 45%, 18% 80%, 0 60%); }
+.t2 { --c: var(--au2); } .t2 b { clip-path: polygon(0 25%, 22% 45%, 40% 15%, 62% 50%, 85% 20%, 100% 40%, 100% 60%, 85% 80%, 62% 50%, 40% 85%, 22% 55%, 0 75%); }
+.t3 { --c: var(--au3); } .t3 b { clip-path: polygon(0 45%, 25% 15%, 45% 40%, 70% 10%, 88% 35%, 100% 20%, 100% 80%, 88% 65%, 70% 90%, 45% 60%, 25% 85%, 0 55%); }
+.pick { position: absolute; top: 0; bottom: 0; border: 2px solid var(--c); border-radius: 7px; background: color-mix(in srgb, var(--c) 22%, transparent); box-shadow: 0 0 18px -4px var(--c); transform-origin: left; }
+.pa { left: 0; width: 38%; animation: tk-a 7s var(--ease) infinite; }
+.pb { left: 38%; width: 29%; animation: tk-b 7s var(--ease) infinite; }
+.pc { left: 67%; width: 33%; animation: tk-c 7s var(--ease) infinite; }
+.seg { position: absolute; top: 4px; bottom: 4px; border-radius: 5px; background: linear-gradient(180deg, transparent 22%, var(--c) 22% 78%, transparent 78%); -webkit-mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); }
+.sa { --c: var(--au2); left: 0; width: 38%; animation: tk-sa 7s infinite; }
+.sb { --c: var(--au3); left: 38%; width: 29%; animation: tk-sb 7s infinite; }
+.sc { --c: var(--au1); left: 67%; width: 33%; animation: tk-sc 7s infinite; }
+@keyframes tk-a { 0%, 4% { transform: scaleX(0); opacity: 0; } 5% { opacity: 1; } 16%, 86% { transform: scaleX(1); opacity: 1; } 94%, 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes tk-b { 0%, 22% { transform: scaleX(0); opacity: 0; } 23% { opacity: 1; } 34%, 86% { transform: scaleX(1); opacity: 1; } 94%, 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes tk-c { 0%, 40% { transform: scaleX(0); opacity: 0; } 41% { opacity: 1; } 52%, 86% { transform: scaleX(1); opacity: 1; } 94%, 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes tk-sa { 0%, 15% { opacity: 0; } 18%, 86% { opacity: 1; } 94%, 100% { opacity: 0; } }
+@keyframes tk-sb { 0%, 33% { opacity: 0; } 36%, 86% { opacity: 1; } 94%, 100% { opacity: 0; } }
+@keyframes tk-sc { 0%, 51% { opacity: 0; } 54%, 86% { opacity: 1; } 94%, 100% { opacity: 0; } }
+@media (max-width: 640px) { .card.wide .viz-takes { height: auto !important; } }

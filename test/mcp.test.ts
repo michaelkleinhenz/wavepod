@@ -3,6 +3,7 @@ import { McpServer } from '../src/core/mcp/protocol';
 import { createWavePodServer, type WavePodHost } from '../src/core/mcp/tools';
 import { addTrack, createProject } from '../src/core/project';
 import { fxList } from '../src/core/fx/stack';
+import { recordTake } from '../src/core/takes';
 import { startMcpHttpServer, type McpHttpServer } from '../src/main/mcp/httpServer';
 import type { Fx, Project, VstParamInfo, VstPluginInfo } from '../src/shared/types';
 import { VST_PARAM_BYPASS } from '../src/shared/types';
@@ -286,6 +287,30 @@ describe('MCP track automation', () => {
     expect(r.isError).toBe(true);
     r = await call(server, 'set_track_automation', { track: 'Host', lane: 'volume', points: [{ seconds: -1, value: 0 }] });
     expect(r.isError).toBe(true);
+  });
+});
+
+describe('MCP takes', () => {
+  it('lists takes and plays a whole take or a part of one', async () => {
+    const fake = fakeHost();
+    const server = createWavePodServer(fake.host, '1');
+    const sr = fake.project.sampleRate;
+    const id = fake.project.tracks[1].id;
+    let p = fake.project;
+    for (const f of ['a.wav', 'b.wav', 'c.wav']) p = recordTake(p, id, { id: f, file: f, start: sr, offset: 0, length: 2 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    fake.host.apply(p, 'setup');
+    let r = await call(server, 'list_takes', { track: 'Guest' });
+    expect(r.data.takes.map((t: { take: number }) => t.take)).toEqual([1, 2, 3]);
+    expect(r.data.takes[2].playing).toEqual([{ startSeconds: 1, endSeconds: 3 }]);
+    r = await call(server, 'use_take', { track: 'Guest', take: 1 });
+    expect(r.data.playing).toEqual([{ startSeconds: 1, endSeconds: 3 }]);
+    expect(fake.project.tracks[1].clips.map((c) => c.file)).toEqual(['a.wav']);
+    r = await call(server, 'use_take', { track: 'Guest', take: 2, startSeconds: 2, endSeconds: 2.5 });
+    expect(fake.project.tracks[1].clips.map((c) => c.file)).toEqual(['a.wav', 'b.wav', 'a.wav']);
+    expect(fake.summaries.at(-1)).toBe('Guest: take 2 (part)');
+    expect((await call(server, 'use_take', { track: 'Guest', take: 9 })).isError).toBe(true);
+    expect((await call(server, 'use_take', { track: 'Guest', take: 2, startSeconds: 10, endSeconds: 11 })).isError).toBe(true);
+    expect((await call(server, 'list_takes', { track: 'Host' })).data.takes).toEqual([]);
   });
 });
 

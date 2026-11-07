@@ -11,6 +11,7 @@ import { projectLength, updateTrack } from '../project';
 import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
 import { STEM_CHOICES, trackStem } from '../stems';
 import { setTrackAutomation, showTrackAutomation } from '../automation';
+import { compTake, pickTake, takeSpan, takeUsage } from '../takes';
 import { FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addFolder, folderOf, removeFolder, setTrackFolder, updateFolder } from '../folders';
 import { paragraphs, timelineWords } from '../transcript';
 import { scriptCharacters, scriptProgress, scriptSummary } from '../script';
@@ -55,7 +56,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals. Lines recorded several times are kept as takes: list_takes shows them, use_take plays a whole take or splices part of one into the comp.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -590,6 +591,65 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         host.apply(project, points.length ? `${lane === 'volume' ? 'Volume' : 'Pan'} automation on ${name}` : `Cleared ${lane} automation on ${name}`);
         const t = host.project().tracks.find((x) => x.id === target);
         return { track: name, lane, points: (t?.automation?.[lane] ?? []).map((q) => ({ seconds: round(q.pos / project.sampleRate, 3), value: round(q.value, 2) })) };
+      },
+    },
+    {
+      name: 'list_takes',
+      description:
+        'Lists the takes of a track: every pass recorded over the same lines (loop recording, retakes), with where each one is on the timeline and which parts of it the comp plays now. ' +
+        'Takes exist when a line was recorded more than once; use_take picks one, or splices part of one into the comp.',
+      inputSchema: obj({ track: { type: 'string', description: 'Track id or name.' } }, ['track']),
+      annotations: { title: 'List takes', ...READ },
+      run: (args) => {
+        const p = host.project();
+        const { target, name } = resolveTarget(p, str(args, 'track', true));
+        if (target === MASTER) throw new ToolError('The master bus has no takes; use a track.');
+        const t = p.tracks.find((x) => x.id === target)!;
+        const sec = (f: number) => round(f / p.sampleRate, 3);
+        return {
+          track: name,
+          takes: (t.takes ?? []).map((k) => {
+            const [a, b] = takeSpan(k);
+            return { take: k.n, id: k.id, startSeconds: sec(a), endSeconds: sec(b), playing: takeUsage(t, k.id).map(([x, y]) => ({ startSeconds: sec(x), endSeconds: sec(y) })) };
+          }),
+        };
+      },
+    },
+    {
+      name: 'use_take',
+      description:
+        'Makes a take play (comping). Without times the whole take replaces what plays over its stretch; with startSeconds and endSeconds only that part of the take is spliced into the comp, e.g. take 2 for the first sentence and take 3 for the rest. ' +
+        'Nothing is deleted: the other takes stay and can be picked again.',
+      inputSchema: obj(
+        {
+          track: { type: 'string', description: 'Track id or name.' },
+          take: { type: 'number', description: 'Take number, as list_takes shows it.' },
+          startSeconds: { type: 'number', minimum: 0 },
+          endSeconds: { type: 'number', minimum: 0 },
+        },
+        ['track', 'take'],
+      ),
+      annotations: { title: 'Use take', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const { target, name } = resolveTarget(project, str(args, 'track', true));
+        if (target === MASTER) throw new ToolError('The master bus has no takes; use a track.');
+        const t = project.tracks.find((x) => x.id === target)!;
+        const n = Number(args.take);
+        const take = t.takes?.find((k) => k.n === n);
+        if (!take) throw new ToolError(`${name} has no take ${args.take}${t.takes?.length ? ` (takes: ${t.takes.map((k) => k.n).join(', ')})` : ' (it has no takes)'}.`);
+        const hasRange = args.startSeconds !== undefined || args.endSeconds !== undefined;
+        if (hasRange) {
+          const a = Number(args.startSeconds);
+          const b = Number(args.endSeconds);
+          if (!(a >= 0) || !(b > a)) throw new ToolError('Give both startSeconds and endSeconds, with endSeconds after startSeconds.');
+          const next = compTake(project, target, take.id, Math.round(a * project.sampleRate), Math.round(b * project.sampleRate));
+          if (next === project) throw new ToolError(`Take ${n} has no audio between ${a} s and ${b} s.`);
+          project = next;
+        } else project = pickTake(project, target, take.id);
+        host.apply(project, `${name}: take ${n}${hasRange ? ' (part)' : ''}`);
+        const after = host.project().tracks.find((x) => x.id === target)!;
+        return { track: name, take: n, playing: takeUsage(after, take.id).map(([x, y]) => ({ startSeconds: round(x / project.sampleRate, 3), endSeconds: round(y / project.sampleRate, 3) })) };
       },
     },
     {
