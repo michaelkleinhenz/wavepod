@@ -18,3 +18,25 @@ export function pingTone(sampleRate: number, kind: Marker['kind'] = 'chapter'): 
   }
   return out;
 }
+
+/**
+ * The take beep: 100 ms at 1 kHz, played on the monitor output when a loop-recording pass starts,
+ * so the performer knows a new take begins. Never recorded, never in the guest's mix-minus feed.
+ */
+export function takeBeepTone(sampleRate: number): Float32Array {
+  const n = Math.round(sampleRate * 0.1);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const env = Math.sin((Math.PI * i) / n) ** 2;
+    out[i] = 0.3 * env * Math.sin((2 * Math.PI * 1000 * i) / sampleRate);
+  }
+  return out;
+}
+
+/**
+ * Where in a block of `n` frames starting at `from` a loop pass starts (the loop start is reached),
+ * or -1. A wrap lands exactly on the start, so the next block that begins there counts.
+ */
+export function passStartIn(from: number, n: number, loop: readonly [number, number]): number {
+  return n > 0 && from <= loop[0] && loop[0] < from + n ? loop[0] - from : -1;
+}
