@@ -1,4 +1,5 @@
-// Audio drama scripts: import (plain "CHARACTER: line" text, Fountain, Final Draft .fdx), the cast
+// Audio drama scripts: import (plain "CHARACTER: line" text, Fountain, Final Draft .fdx, PlotGod
+// audioplay JSON), the cast
 // (which track each character is recorded on), ticking lines off as recorded and finding each
 // line in the recording from the transcript ("Line up"). A recorded line is kept as a frame range
 // of its media file, like transcript words, so it stays found through every cut and move.
@@ -6,10 +7,10 @@ import type { Frames, Project, Script, ScriptLine, ScriptTake, TimelineWord, Tra
 import { uid } from '../shared/time';
 import { bareWord } from './transcript';
 
-export type ScriptFormat = 'plain' | 'fountain' | 'fdx';
+export type ScriptFormat = 'plain' | 'fountain' | 'fdx' | 'plotgod';
 
 /** File types the import dialog offers. */
-export const SCRIPT_EXTENSIONS = ['txt', 'fountain', 'spmd', 'fdx', 'md'];
+export const SCRIPT_EXTENSIONS = ['txt', 'fountain', 'spmd', 'fdx', 'md', 'json'];
 
 export interface ParsedScript {
   title: string;
@@ -102,6 +103,12 @@ export function parsePlainScript(text: string): { title: string; lines: ScriptLi
       continue;
     }
     const d = plainDialogue(t);
+    // "ANNA: (whispering)" with the words on the next lines: the brackets are the direction
+    const lone = d && /^\(([^()]*)\)$/.exec(d.text.trim());
+    if (d && lone) {
+      d.note = [d.note, lone[1].trim()].filter(Boolean).join(', ');
+      d.text = '';
+    }
     if (d && d.text.trim()) {
       last = line('dialogue', d.text, { character: d.name, ...(d.note ? { note: d.note } : {}) });
       out.push(last);
@@ -256,11 +263,90 @@ export function parseFdx(xml: string): { title: string; lines: ScriptLine[] } {
   return { title, lines: out };
 }
 
+// PlotGod project export: { project, chapters: [{ Chapter, Scenes: [{ Meta, Content }] }],
+// characters }. Each scene's Content is a screenplay in plain text ("# Scene title", "SZENE 1 - …"
+// slug line, "[SFX: …]" cues, "NAME: (direction)" above the words).
+
+type Json = Record<string, unknown>;
+const obj = (v: unknown): Json | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : null);
+const field = (o: Json | null, ...keys: string[]): unknown => {
+  if (!o) return undefined;
+  for (const k of keys) if (k in o) return o[k];
+  return undefined;
+};
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+const byOrder = (a: { order: number }, b: { order: number }) => a.order - b.order;
+
+/** The parsed JSON when the text is a PlotGod export, else null. */
+function plotGodData(text: string): Json | null {
+  const t = text.replace(/^\uFEFF/, '').trimStart();
+  if (!t.startsWith('{')) return null;
+  let data: Json | null;
+  try {
+    data = obj(JSON.parse(t));
+  } catch {
+    return null;
+  }
+  const chapters = field(data, 'chapters', 'Chapters');
+  if (!Array.isArray(chapters)) return null;
+  return chapters.some((c) => Array.isArray(field(obj(c), 'Scenes', 'scenes'))) ? data : null;
+}
+
+/** Scene text that came out of a rich-text editor as HTML: paragraphs to lines. */
+function htmlToText(s: string): string {
+  if (!/<(p|br|div|h\d)\b/i.test(s)) return s;
+  return decodeXml(s.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|h\d)>/gi, '\n\n'));
+}
+
+/** PlotGod audioplay export: chapters become scene headings, each scene is read like a plain script. */
+export function parsePlotGod(text: string): { title: string; lines: ScriptLine[] } {
+  const data = plotGodData(text);
+  if (!data) return { title: '', lines: [] };
+  const project = obj(field(data, 'project', 'Project'));
+  const title = cleanText(str(field(project, 'name', 'title')));
+  const chapters = (field(data, 'chapters', 'Chapters') as unknown[])
+    .map((c, i) => {
+      const o = obj(c);
+      const meta = obj(field(o, 'Chapter', 'chapter'));
+      const order = Number(field(meta, 'order'));
+      const scenes = field(o, 'Scenes', 'scenes');
+      return { title: str(field(meta, 'title')), order: Number.isFinite(order) ? order : i, scenes: Array.isArray(scenes) ? scenes : [] };
+    })
+    .sort(byOrder);
+  const out: ScriptLine[] = [];
+  for (const ch of chapters) {
+    if (ch.title.trim() && chapters.length > 1) out.push(line('scene', ch.title));
+    const scenes = ch.scenes
+      .map((s, i) => {
+        const o = obj(s);
+        const meta = obj(field(o, 'Meta', 'meta'));
+        const order = Number(field(meta, 'order'));
+        return { title: str(field(meta, 'title')), order: Number.isFinite(order) ? order : i, content: htmlToText(str(field(o, 'Content', 'content'))) };
+      })
+      .sort(byOrder);
+    for (const sc of scenes) {
+      // "**SARAH:**" / "**SARAH**:" from the editor's bold: a plain cue
+      const rows = sc.content.split(/\r?\n/).map((r) => r.replace(/^(\s*)([*_]{1,3})([^*_\n]+?)(:?)\2(:?)/, (m, sp: string, _e, name: string, c1: string, c2: string) => (c1 || c2 ? `${sp}${name}:` : m)));
+      const first = rows.findIndex((r) => r.trim());
+      // "# Scene 1 - title" right above the slug line "SCENE 1 - OFFICE - NIGHT": one heading is enough
+      if (first >= 0 && /^#{1,6}\s/.test(rows[first].trim())) {
+        const next = rows.slice(first + 1).find((r) => r.trim())?.trim() ?? '';
+        if (SCENE_PREFIX.test(next) || SCENE_WORD.test(next)) rows.splice(first, 1);
+      }
+      const body = parsePlainScript(rows.join('\n')).lines;
+      if (sc.title.trim() && body[0]?.kind !== 'scene') out.push(line('scene', sc.title));
+      out.push(...body);
+    }
+  }
+  return { title, lines: out };
+}
+
 /** Which format a script file is in, from its name and its text. */
 export function detectScriptFormat(text: string, fileName = ''): ScriptFormat {
   const ext = /\.([a-z0-9]+)$/i.exec(fileName)?.[1]?.toLowerCase() ?? '';
   if (ext === 'fdx' || /<FinalDraft\b/i.test(text.slice(0, 2000))) return 'fdx';
   if (ext === 'fountain' || ext === 'spmd') return 'fountain';
+  if (plotGodData(text)) return 'plotgod';
   // plain text with "NAME: line" rows, or Fountain-like upper-case cues above the words?
   const rows = text.split(/\r?\n/);
   let colon = 0;
@@ -280,7 +366,8 @@ export function detectScriptFormat(text: string, fileName = ''): ScriptFormat {
 /** Reads a script file: the format is picked from the file name and the text. */
 export function parseScript(text: string, fileName = ''): ParsedScript {
   const format = detectScriptFormat(text, fileName);
-  const r = format === 'fdx' ? parseFdx(text) : format === 'fountain' ? parseFountain(text) : parsePlainScript(text);
+  const r =
+    format === 'fdx' ? parseFdx(text) : format === 'plotgod' ? parsePlotGod(text) : format === 'fountain' ? parseFountain(text) : parsePlainScript(text);
   // one spelling per character: the first one used
   const spelling = new Map<string, string>();
   for (const l of r.lines) {

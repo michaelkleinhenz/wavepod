@@ -1,5 +1,5 @@
 // View › Script: the audio drama script beside the timeline. Import a plain-text, Fountain or
-// Final Draft script; every line shows who speaks it, ticks off as recorded and, once its take is
+// Final Draft script or a PlotGod audioplay export; every line shows who speaks it, ticks off as recorded and, once its take is
 // known, jumps there. "Line up" finds the lines in the transcript; while recording, Enter ticks the
 // focused line at the playhead and moves on to the next open one.
 import type { Project, ScriptLine } from '../shared/types';
@@ -51,13 +51,13 @@ const save = (key: string, value: string) => {
 /** Opens a script file and puts it into the episode (keeping what a previous draft had recorded). */
 export async function importScriptFile(): Promise<boolean> {
   try {
-    const res = await api().openTextFile('Script (plain text, Fountain or Final Draft)', SCRIPT_EXTENSIONS);
+    const res = await api().openTextFile('Script (plain text, Fountain, Final Draft or PlotGod)', SCRIPT_EXTENSIONS);
     if (!res) return false;
     const name = res.path.replace(/^.*[\\/]/, '');
     const parsed = parseScript(res.text, name);
     const n = parsed.lines.filter((l) => l.kind === 'dialogue').length;
     if (!n) {
-      toast(`No lines found in ${name}. Write them as "NAME: what they say", or use Fountain or Final Draft.`, 'error');
+      toast(`No lines found in ${name}. Write them as "NAME: what they say", or use Fountain, Final Draft or a PlotGod export.`, 'error');
       return false;
     }
     const had = !!store.project.script;
@@ -350,7 +350,7 @@ export class ScriptPanel {
     const busy = this.lining || t.busy;
     this.toolbar.replaceChildren();
     append(this.toolbar, [
-      h('button', { class: script ? 'small' : 'small primary', title: 'Plain text (NAME: line), Fountain (.fountain) or Final Draft (.fdx)', onclick: () => void importScriptFile() }, script ? 'Import…' : 'Import script…'),
+      h('button', { class: script ? 'small' : 'small primary', title: 'Plain text (NAME: line), Fountain (.fountain), Final Draft (.fdx) or PlotGod audioplay (.json)', onclick: () => void importScriptFile() }, script ? 'Import…' : 'Import script…'),
       script
         ? h(
             'button',
@@ -491,7 +491,7 @@ export class ScriptPanel {
           'div',
           { class: 'script-empty muted' },
           h('p', null, 'Import the script of your audio drama to see every line by character, tick lines off as they are recorded and jump to scenes.'),
-          h('p', null, 'Plain text with one line per speech, like ', h('code', null, 'ANNA: Is this the night train?'), ', Fountain (.fountain) and Final Draft (.fdx) work. Scene headings (INT. …, Scene 2, # …) become jump points.'),
+          h('p', null, 'Plain text with one line per speech, like ', h('code', null, 'ANNA: Is this the night train?'), ', Fountain (.fountain), Final Draft (.fdx) and PlotGod audioplay exports (.json) work. Scene headings (INT. …, Scene 2, # …) become jump points.'),
           h('p', null, 'Name the tracks like the characters and Line up finds each line in the transcript by itself.'),
         ),
       );

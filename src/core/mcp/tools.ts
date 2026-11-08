@@ -747,7 +747,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
       run: (args) => {
         const p = host.project();
         const script = p.script;
-        if (!script) return { imported: false, note: 'No script yet. The user can import one in WavePod: File › Import Script… (plain text, Fountain or Final Draft).' };
+        if (!script) return { imported: false, note: 'No script yet. The user can import one in WavePod: File › Import Script… (plain text, Fountain, Final Draft or PlotGod).' };
         let lines = scriptSummary(p);
         if (bool(args, 'open')) lines = lines.filter((l) => l.kind === 'scene' || (l.kind === 'dialogue' && !l.recorded));
         const names = new Map(p.tracks.map((t) => [t.id, t.name]));
