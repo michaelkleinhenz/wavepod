@@ -132,6 +132,7 @@ export type MenuCommand =
   | 'transcript'
   | 'sound-library'
   | 'script'
+  | 'script-window'
   | 'import-script'
   | 'transcribe'
   | 'cleanup'

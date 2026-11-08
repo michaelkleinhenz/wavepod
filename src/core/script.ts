@@ -23,6 +23,10 @@ export interface ParsedScript {
 /** Scene headings: INT./EXT. (and German INNEN/AUSSEN), "Scene 3", "Szene 3:", "# …". */
 const SCENE_PREFIX = /^(?:(?:INT|EXT|EST|INNEN|AUSSEN|AUẞEN|AUßEN)\b\.?|INT\.?\s*\/\s*EXT\.?|I\/E\b)/i;
 const SCENE_WORD = /^(?:scene|szene|sc\.|act|akt|chapter|kapitel)\s*[\dIVXLC]*\b\s*[:.\-–—]?/i;
+/** Headings that start an act rather than a scene. */
+const ACT_WORD = /^(?:act|akt|aufzug|chapter|kapitel|part|teil)\b/i;
+/** Level of a plain scene heading: below every act and section. */
+const SCENE_LEVEL = 9;
 /** Fountain character extensions that are no direction for the actor. */
 const CONTD = /^(cont'?d|continued|cont\.|forts\.?)$/i;
 
@@ -97,7 +101,9 @@ export function parsePlainScript(text: string): { title: string; lines: ScriptLi
     }
     const md = /^#{1,6}\s+(.+)$/.exec(t);
     if (md || SCENE_PREFIX.test(t) || (SCENE_WORD.test(t) && t.length < 120 && !plainDialogue(t)?.text.trim().includes(' '))) {
-      out.push(line('scene', md ? md[1] : t.replace(/^\.(?=\S)/, '')));
+      const heading = line('scene', md ? md[1] : t.replace(/^\.(?=\S)/, ''));
+      if (ACT_WORD.test(heading.text)) heading.level = 1;
+      out.push(heading);
       last = null;
       blank = false;
       continue;
@@ -158,7 +164,7 @@ export function parseFountain(text: string): { title: string; lines: ScriptLine[
     const after = isBlank(i - 1);
     // section (# Act One) and scene heading (INT. … / .FORCED)
     if (/^#+\s*\S/.test(t)) {
-      out.push(line('scene', t.replace(/^#+\s*/, '')));
+      out.push(line('scene', t.replace(/^#+\s*/, ''), { level: Math.min(6, /^#+/.exec(t)![0].length) }));
       continue;
     }
     if (after && (SCENE_PREFIX.test(t) || /^\.[^.]/.test(t))) {
@@ -225,6 +231,10 @@ export function parseFdx(xml: string): { title: string; lines: ScriptLine[] } {
     switch (type.toLowerCase()) {
       case 'scene heading':
         out.push(line('scene', text));
+        speaker = null;
+        break;
+      case 'new act':
+        out.push(line('scene', text, { level: 1 }));
         speaker = null;
         break;
       case 'character':
@@ -315,7 +325,7 @@ export function parsePlotGod(text: string): { title: string; lines: ScriptLine[]
     .sort(byOrder);
   const out: ScriptLine[] = [];
   for (const ch of chapters) {
-    if (ch.title.trim() && chapters.length > 1) out.push(line('scene', ch.title));
+    if (ch.title.trim() && chapters.length > 1) out.push(line('scene', ch.title, { level: 1 }));
     const scenes = ch.scenes
       .map((s, i) => {
         const o = obj(s);
@@ -403,6 +413,7 @@ export function normalizeScript(raw: unknown): Script | undefined {
       text: l.text,
       ...(kind === 'dialogue' && typeof l.character === 'string' ? { character: l.character } : {}),
       ...(typeof l.note === 'string' && l.note ? { note: l.note } : {}),
+      ...(kind === 'scene' && Number.isInteger(l.level) && l.level! >= 1 && l.level! <= 6 ? { level: l.level } : {}),
       ...(l.recorded ? { recorded: true } : {}),
       ...(take
         ? {
@@ -593,41 +604,95 @@ export interface ScriptScene {
   /** Index into script.lines of the heading (-1: lines before the first heading). */
   index: number;
   title: string;
+  /** 1 for an act, 2… for parts of one, undefined for a scene. */
+  level?: number;
+  /** Index just after the heading's last line: an act runs to the next act, a scene to the next heading. */
+  end: number;
+  /** Dialogue lines in it (an act counts those of its scenes). */
   lines: number;
   recorded: number;
 }
 
-export function scriptScenes(script: Script): ScriptScene[] {
-  const out: ScriptScene[] = [];
-  let cur: ScriptScene | null = null;
-  script.lines.forEach((l, i) => {
-    if (l.kind === 'scene') {
-      cur = { index: i, title: l.text, lines: 0, recorded: 0 };
-      out.push(cur);
-      return;
-    }
-    if (l.kind !== 'dialogue') return;
-    if (!cur) {
-      cur = { index: -1, title: 'Opening', lines: 0, recorded: 0 };
-      out.push(cur);
-    }
-    cur.lines++;
-    if (l.recorded) cur.recorded++;
+/** How deep a heading sits: acts (1) hold parts (2…), which hold scenes. Not a heading: 0. */
+export function headingLevel(l: ScriptLine | undefined): number {
+  if (!l || l.kind !== 'scene') return 0;
+  return l.level ?? (ACT_WORD.test(l.text) ? 1 : SCENE_LEVEL);
+}
+
+/** Index just after the last line under the heading at index i (the script's end for the last one). */
+export function sectionEnd(lines: readonly ScriptLine[], i: number): number {
+  const level = headingLevel(lines[i]);
+  if (!level) return i + 1;
+  for (let j = i + 1; j < lines.length; j++) {
+    const l = headingLevel(lines[j]);
+    if (l && l <= level) return j;
+  }
+  return lines.length;
+}
+
+/** For every line, whether a folded heading above it hides it (the folded headings themselves stay). */
+export function foldedLines(lines: readonly ScriptLine[], folded: ReadonlySet<string>): boolean[] {
+  const hidden = new Array<boolean>(lines.length).fill(false);
+  if (!folded.size) return hidden;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].kind !== 'scene' || !folded.has(lines[i].id)) continue;
+    const end = sectionEnd(lines, i);
+    for (let j = i + 1; j < end; j++) hidden[j] = true;
+    i = end - 1;
+  }
+  return hidden;
+}
+
+/** Indexes of the headings a line sits under, outermost first (the act, then the scene). */
+export function headingsAbove(lines: readonly ScriptLine[], index: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i <= index && i < lines.length; i++) if (lines[i].kind === 'scene' && i !== index && sectionEnd(lines, i) > index) out.push(i);
+  return out;
+}
+
+/** Ids of the headings to fold so that only the part holding the line stays open. */
+export function foldAllBut(lines: readonly ScriptLine[], index: number): Set<string> {
+  const keep = new Set(headingsAbove(lines, index));
+  if (lines[index]?.kind === 'scene') keep.add(index);
+  const out = new Set<string>();
+  lines.forEach((l, i) => {
+    if (l.kind === 'scene' && !keep.has(i)) out.add(l.id);
   });
   return out;
 }
 
-/** Where a scene starts on the timeline: its earliest recorded line, or null if none is. */
+export function scriptScenes(script: Script): ScriptScene[] {
+  const lines = script.lines;
+  const out: ScriptScene[] = [];
+  const first = lines.findIndex((l) => l.kind === 'scene');
+  const count = (from: number, to: number) => {
+    let n = 0;
+    let rec = 0;
+    for (let i = from; i < to; i++) {
+      if (lines[i].kind !== 'dialogue') continue;
+      n++;
+      if (lines[i].recorded) rec++;
+    }
+    return { lines: n, recorded: rec };
+  };
+  const opening = count(0, first < 0 ? lines.length : first);
+  if (opening.lines) out.push({ index: -1, title: 'Opening', end: first < 0 ? lines.length : first, ...opening });
+  lines.forEach((l, i) => {
+    if (l.kind !== 'scene') return;
+    const end = sectionEnd(lines, i);
+    const level = headingLevel(l);
+    out.push({ index: i, title: l.text, ...(level < SCENE_LEVEL ? { level } : {}), end, ...count(i + 1, end) });
+  });
+  return out;
+}
+
+/** Where a scene (or act) starts on the timeline: its earliest recorded line, or null if none is. */
 export function sceneStart(project: Project, sceneIndex: number, placed = placedLines(project)): Frames | null {
   const script = project.script;
   if (!script) return null;
-  let end = script.lines.length;
-  for (let i = Math.max(0, sceneIndex + 1); i < script.lines.length; i++) {
-    if (script.lines[i].kind === 'scene') {
-      end = i;
-      break;
-    }
-  }
+  const lines = script.lines;
+  const first = lines.findIndex((l) => l.kind === 'scene');
+  const end = sceneIndex >= 0 ? sectionEnd(lines, sceneIndex) : first < 0 ? lines.length : first;
   let best: number | null = null;
   for (const p of placed) if (p.index > sceneIndex && p.index < end && (best === null || p.start < best)) best = p.start;
   return best;
@@ -909,6 +974,7 @@ export function scriptSummary(project: Project): Array<Record<string, unknown>> 
     const track = lineTrack(script, l);
     return {
       kind: l.kind,
+      ...(l.kind === 'scene' && headingLevel(l) < SCENE_LEVEL ? { act: true } : {}),
       ...(l.character ? { character: l.character } : {}),
       ...(track && names.has(track) ? { track: names.get(track) } : {}),
       ...(l.note ? { note: l.note } : {}),

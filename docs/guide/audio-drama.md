@@ -10,10 +10,10 @@ Import the script and WavePod keeps track of every line: who speaks it, whether 
 
 **File › Import Script…**, or **Import script…** in the script panel. Four formats work:
 
-- **Plain text** (`.txt`): one speech per line as `NAME: what they say`. A direction for the actor goes in brackets after the name: `BEN (whispering): It is late.` Lines starting with `INT.`, `EXT.`, `Scene 2`, `Szene 2` or `#` are scene headings. Everything else is a stage direction. A line `Title: …` at the top names the script.
+- **Plain text** (`.txt`): one speech per line as `NAME: what they say`. A direction for the actor goes in brackets after the name: `BEN (whispering): It is late.` Lines starting with `INT.`, `EXT.`, `Scene 2`, `Szene 2` or `#` are scene headings; `Act 1`, `Akt 1`, `Chapter 1` or `Kapitel 1` start an act. Everything else is a stage direction. A line `Title: …` at the top names the script.
 - **Fountain** (`.fountain`): the plain-text screenplay format that many writing apps export (Highland, Slugline, Fade In, Beat, WriterSolo…). Character names in capitals above their words, scene headings like `INT. PLATFORM - NIGHT`. Notes `[[…]]` and boneyard `/* … */` are left out.
 - **Final Draft** (`.fdx`).
-- **PlotGod** audioplay (`.json`): the project export of a PlotGod audioplay. Every act becomes a scene heading, followed by its scenes in order. Inside a scene, `NAME: (direction)` above the words is a line with its direction, the slug line (`SZENE 1 - SARAHS PRAXIS - ABEND`) is the scene heading and cues like `[SFX: …]`, `[MUSIK: …]` or `[Pause]` are stage directions. The script takes the project's name.
+- **PlotGod** audioplay (`.json`): the project export of a PlotGod audioplay. Every act becomes an act heading, followed by its scenes in order. Inside a scene, `NAME: (direction)` above the words is a line with its direction, the slug line (`SZENE 1 - SARAHS PRAXIS - ABEND`) is the scene heading and cues like `[SFX: …]`, `[MUSIK: …]` or `[Pause]` are stage directions. The script takes the project's name.
 
 WavePod recognises Fountain in a `.txt` file by itself. Importing again (for a revised draft) keeps the ticks of every line that stayed the same.
 
@@ -25,6 +25,29 @@ Open **View › Script** (`Shift+Ctrl+J`), or click **Script** in the header. It
 - every character with their recorded and total lines. Click a character to see only their lines (handy in a session with one actor), click again for everyone,
 - **Tracks**: the track each character is recorded on. Characters go to the track with their name by themselves (*Anna* for ANNA, *Dr. Hill* for HILL); pick another track here,
 - the lines, scene by scene, with stage directions in grey. **Open lines only** hides what is ticked off.
+
+### Folding acts and scenes
+
+Fold away what you are not recording to keep your eyes on the scene at hand.
+
+- Click the arrow (**▾**) in front of an act or scene heading to fold it; click it again (**▸**) to unfold. A folded act hides all of its scenes. The heading still shows how many of its lines are recorded.
+- **⋯ › Show Only the Current Scene** folds every act and scene except the one with the picked line.
+- **⋯ › Fold All Acts and Scenes** leaves only the headings, an outline of the whole script. **⋯ › Unfold All** opens everything again.
+- When `Enter` ticks off the last line of a scene, the next scene unfolds by itself. Picking a scene in **Jump to scene…** unfolds it too.
+
+Acts come from the script: PlotGod acts, Fountain sections (`# Act One`), Final Draft *New Act* paragraphs and headings starting with *Act*, *Akt*, *Chapter* or *Kapitel*. Folding is remembered on this computer and never changes the episode. A PlotGod script imported before acts were recognised shows them as scenes until you import it again.
+
+### Script window for remote actors
+
+Click **⧉** in the script panel's toolbar, or choose **View › Script in New Window**, to open the script in a window of its own. Share that window in Zoom, Teams or any video call and the actor reads along while you record.
+
+- The window follows the panel: the picked line is highlighted and kept in the middle, ticks show up as you press `Enter`, and the line playing back is marked.
+- The top shows the script's title, the act and scene of the picked line and how much is recorded.
+- **A−** and **A+** (or `Ctrl` `+` / `Ctrl` `−`, or `Ctrl` and the mouse wheel) change the text size, so the script stays readable in a shared screen.
+- **All characters** shows only one character's lines in the window, for a session with one actor, while the panel still shows everyone.
+- Folded acts and scenes are folded in the window as well. Clicking and the keys work there just like in the panel.
+
+The panel can be closed while the window stays open. Closing WavePod closes the window too; click **⧉** again to close it yourself.
 
 ### Ticking lines off while recording
 
@@ -47,7 +70,7 @@ Ticked lines remember their place in the recording itself, so they stay found af
 ### Jumping
 
 - Click a line to jump to its take. Its time is selected too, so **Repeat** (`L`) plays it over and over. `Shift+Enter` does the same for the picked line.
-- Click a scene heading, or pick it in **Jump to scene…**, to jump to the first recorded line of that scene. The list shows each scene's progress.
+- Click an act or scene heading, or pick it in **Jump to scene…**, to jump to the first recorded line of that act or scene. The list shows the progress of each, with the scenes indented under their act.
 - While playing, the line you hear is highlighted.
 
 The **⋯** menu imports a new draft, ticks all lines off again or removes the script (the recording stays as it is). The script is saved with the episode. AI agents can read it with the `get_script` tool. See [AI agents (MCP)](ai-agents.md).

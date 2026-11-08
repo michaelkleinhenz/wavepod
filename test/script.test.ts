@@ -5,6 +5,10 @@ import {
   autoCast,
   createScript,
   detectScriptFormat,
+  foldAllBut,
+  foldedLines,
+  headingLevel,
+  headingsAbove,
   lineAt,
   lineTokens,
   lineUpScript,
@@ -16,6 +20,8 @@ import {
   scriptCharacters,
   scriptProgress,
   scriptScenes,
+  scriptSummary,
+  sectionEnd,
   setCast,
   setLineRecorded,
   settleTakes,
@@ -319,5 +325,96 @@ describe('ticking lines', () => {
     expect(scriptProgress(r.script!)).toEqual({ lines: 5, recorded: 4 });
     expect(removeScript(r).script).toBeUndefined();
     expect(normalizeProject(JSON.parse(JSON.stringify(removeScript(r)))).script).toBeUndefined();
+  });
+});
+
+describe('acts and folding', () => {
+  const ACTS = `Title: Two Acts
+
+Act 1: Departure
+Scene 1: Platform
+ANNA: Is this the night train?
+Scene 2: Compartment
+BEN: Tickets, please.
+ANNA: Here.
+
+Act 2: Arrival
+Scene 3: Vienna
+BEN: We are here.
+`;
+
+  it('tells acts from scenes in every format', () => {
+    const plain = parseScript(ACTS, 'x.txt').lines.filter((l) => l.kind === 'scene');
+    expect(plain.map((l) => [l.text, headingLevel(l)])).toEqual([
+      ['Act 1: Departure', 1],
+      ['Scene 1: Platform', 9],
+      ['Scene 2: Compartment', 9],
+      ['Act 2: Arrival', 1],
+      ['Scene 3: Vienna', 9],
+    ]);
+    const fountain = parseScript('# Act One\n\n## Sequence\n\nINT. TRAIN - NIGHT\n\nANNA\nHello.\n', 'x.fountain').lines.filter((l) => l.kind === 'scene');
+    expect(fountain.map((l) => headingLevel(l))).toEqual([1, 2, 9]);
+    const fdx = parseScript('<FinalDraft><Content><Paragraph Type="New Act"><Text>ACT ONE</Text></Paragraph><Paragraph Type="Scene Heading"><Text>INT. TRAIN</Text></Paragraph><Paragraph Type="Character"><Text>ANNA</Text></Paragraph><Paragraph Type="Dialogue"><Text>Hi.</Text></Paragraph></Content></FinalDraft>', 'x.fdx').lines;
+    expect(fdx.map((l) => [l.kind, headingLevel(l)])).toEqual([
+      ['scene', 1],
+      ['scene', 9],
+      ['dialogue', 0],
+    ]);
+    // PlotGod chapters are acts, whatever they are called
+    const json = JSON.stringify({
+      project: { name: 'P' },
+      chapters: [
+        { Chapter: { title: 'Der Anfang', order: 0 }, Scenes: [{ Meta: { title: 'Szene 1', order: 0 }, Content: 'SARAH: Hallo.' }] },
+        { Chapter: { title: 'Das Ende', order: 1 }, Scenes: [{ Meta: { title: 'Szene 2', order: 0 }, Content: 'SARAH: Tschüss.' }] },
+      ],
+    });
+    expect(parseScript(json, 'p.json').lines.filter((l) => l.kind === 'scene').map((l) => [l.text, headingLevel(l)])).toEqual([
+      ['Der Anfang', 1],
+      ['Szene 1', 9],
+      ['Das Ende', 1],
+      ['Szene 2', 9],
+    ]);
+  });
+
+  it('counts an act over its scenes and jumps to its first take', () => {
+    const p = createProject('T', SR);
+    const script = createScript(p, parseScript(ACTS, 'x.txt'));
+    script.lines[4].recorded = true;
+    expect(scriptScenes(script).map((s) => [s.title, s.level ?? 0, s.lines, s.recorded])).toEqual([
+      ['Act 1: Departure', 1, 3, 1],
+      ['Scene 1: Platform', 0, 1, 0],
+      ['Scene 2: Compartment', 0, 2, 1],
+      ['Act 2: Arrival', 1, 1, 0],
+      ['Scene 3: Vienna', 0, 1, 0],
+    ]);
+    const lines = script.lines;
+    expect(sectionEnd(lines, 0)).toBe(6); // act 1 runs to act 2
+    expect(sectionEnd(lines, 1)).toBe(3); // scene 1 to scene 2
+    expect(sectionEnd(lines, 7)).toBe(lines.length);
+    const q = { ...p, script };
+    expect(sceneStart(q, 0, [{ index: 4, start: 5 * SR }, { index: 2, start: 9 * SR }])).toBe(5 * SR);
+    expect(scriptSummary(q).filter((l) => l.act).map((l) => l.text)).toEqual(['Act 1: Departure', 'Act 2: Arrival']);
+  });
+
+  it('folds an act with its scenes, or everything but the current scene', () => {
+    const p = createProject('T', SR);
+    const lines = createScript(p, parseScript(ACTS, 'x.txt')).lines;
+    const shown = (folded: Set<string>) =>
+      foldedLines(lines, folded)
+        .map((hidden, i) => (hidden ? null : lines[i].text))
+        .filter(Boolean);
+    expect(shown(new Set([lines[0].id]))).toEqual(['Act 1: Departure', 'Act 2: Arrival', 'Scene 3: Vienna', 'We are here.']);
+    expect(shown(new Set([lines[3].id]))).toEqual(['Act 1: Departure', 'Scene 1: Platform', 'Is this the night train?', 'Scene 2: Compartment', 'Act 2: Arrival', 'Scene 3: Vienna', 'We are here.']);
+    expect(headingsAbove(lines, 4)).toEqual([0, 3]);
+    const focus = foldAllBut(lines, 4);
+    expect(shown(focus)).toEqual(['Act 1: Departure', 'Scene 1: Platform', 'Scene 2: Compartment', 'Tickets, please.', 'Here.', 'Act 2: Arrival']);
+  });
+
+  it('keeps act levels through saving and loading', () => {
+    const p = createProject('T', SR);
+    const q = { ...p, script: createScript(p, parseScript('# Act One\n\nINT. TRAIN\n\nANNA\nHello.\n', 'x.fountain')) };
+    const loaded = normalizeProject(JSON.parse(JSON.stringify(q)));
+    expect(loaded.script).toEqual(q.script);
+    expect(loaded.script!.lines[0].level).toBe(1);
   });
 });
