@@ -750,7 +750,7 @@ html[data-mode="drama"] .spots { opacity: 1; }
 .pa { left: 0; width: 38%; animation: tk-a 7s var(--ease) infinite; }
 .pb { left: 38%; width: 29%; animation: tk-b 7s var(--ease) infinite; }
 .pc { left: 67%; width: 33%; animation: tk-c 7s var(--ease) infinite; }
-.seg { position: absolute; top: 4px; bottom: 4px; border-radius: 5px; background: linear-gradient(180deg, transparent 22%, var(--c) 22% 78%, transparent 78%); -webkit-mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); }
+.tk-seg { position: absolute; top: 4px; bottom: 4px; border-radius: 5px; background: linear-gradient(180deg, transparent 22%, var(--c) 22% 78%, transparent 78%); -webkit-mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px); }
 .sa { --c: var(--au2); left: 0; width: 38%; animation: tk-sa 7s infinite; }
 .sb { --c: var(--au3); left: 38%; width: 29%; animation: tk-sb 7s infinite; }
 .sc { --c: var(--au1); left: 67%; width: 33%; animation: tk-sc 7s infinite; }
