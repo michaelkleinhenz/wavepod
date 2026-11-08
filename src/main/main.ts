@@ -1242,6 +1242,7 @@ function buildMenu(): void {
         { label: 'Transcript', accelerator: 'Shift+CmdOrCtrl+T', click: menuSend('transcript') },
         { label: 'Sound Library', accelerator: 'Shift+CmdOrCtrl+B', click: menuSend('sound-library') },
         { label: 'Script', accelerator: 'Shift+CmdOrCtrl+J', click: menuSend('script') },
+        { label: 'Script in New Window', click: menuSend('script-window') },
         { type: 'separator' },
         // The keys > and < are handled in the window (they sit on different keys per layout); the
         // in-app menu bar only shows them, see MENU_KEY_HINTS.
@@ -1287,6 +1288,7 @@ function buildMenu(): void {
 }
 
 let helpWin: BrowserWindow | null = null;
+let scriptWin: BrowserWindow | null = null;
 
 /** Help pages are addressed as `topic` or `topic/anchor`, e.g. `export/stems`. */
 const HELP_ADDRESS = /^[a-z0-9-]+(\/[a-z0-9-]+)?$/;
@@ -1390,6 +1392,39 @@ function createWindow(): void {
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.webContents.on('did-finish-load', () => flushRecoveryNotice());
+  // The only window the app opens itself is the script window (View › Script in New Window): an
+  // empty page the main window fills and keeps in sync. Links go to the browser.
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    if (url === 'about:blank' && frameName === 'wavepod-script') {
+      const bounds = win?.getBounds();
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 760,
+          height: 900,
+          minWidth: 380,
+          minHeight: 320,
+          ...(bounds ? { x: bounds.x + Math.max(0, bounds.width - 800), y: bounds.y + 40 } : {}),
+          backgroundColor: '#15171c',
+          title: 'Script – WavePod',
+          autoHideMenuBar: true,
+          ...(process.platform === 'darwin' ? {} : { icon: path.join(__dirname, '..', 'icon.png') }),
+          webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+        },
+      };
+    }
+    if (/^https?:/i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('did-create-window', (child) => {
+    scriptWin = child;
+    // the app's menu belongs to the main window
+    if (process.platform !== 'darwin') child.removeMenu();
+    child.webContents.on('will-navigate', (e) => e.preventDefault());
+    child.on('closed', () => {
+      if (scriptWin === child) scriptWin = null;
+    });
+  });
   // never navigate away from the app, e.g. to an audio file dropped next to the timeline
   win.webContents.on('will-navigate', (e) => {
     e.preventDefault();
@@ -1411,6 +1446,7 @@ function createWindow(): void {
     win = null;
     // the help window belongs to the app window; left open alone it would keep the app running
     if (helpWin && !helpWin.isDestroyed()) helpWin.close();
+    if (scriptWin && !scriptWin.isDestroyed()) scriptWin.close();
   });
 }
 

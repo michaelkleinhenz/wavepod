@@ -495,6 +495,7 @@ async function main(): Promise<void> {
       case 'transcript': return openTranscript();
       case 'sound-library': return openLibrary();
       case 'script': return openScript();
+      case 'script-window': return scriptPanel.openWindow();
       case 'import-script':
         return void importScriptFile().then((ok) => ok && !scriptPanel.isOpen && openScript());
       case 'transcribe':

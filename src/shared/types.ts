@@ -324,6 +324,8 @@ export interface ScriptLine {
   character?: string;
   /** Direction for the actor, e.g. "whispering" or "V.O.". */
   note?: string;
+  /** Headings above scenes: 1 is an act (or chapter), 2 a part of one. Scene headings have none. */
+  level?: number;
   /** Ticked off as recorded. */
   recorded?: boolean;
   take?: ScriptTake;

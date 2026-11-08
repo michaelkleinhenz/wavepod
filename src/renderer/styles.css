@@ -755,6 +755,38 @@ body.script-open .script-btn { background: var(--panel-2); color: var(--text); }
 .script-speaker .takes { padding: 0 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 10px; }
 .script-text { font-size: 13px; line-height: 1.5; }
 .script-line.recorded .script-text { color: var(--muted); }
+.script-popout { flex: none; width: 28px; padding: 0; }
+.script-popout.on { background: var(--panel-2); border-color: var(--accent); color: var(--accent); }
+/* folding acts and scenes */
+.script-scene { align-items: center; padding-left: 8px; }
+button.script-fold { flex: none; width: 20px; height: 20px; padding: 0; border: none; background: none; color: var(--muted); font-size: 11px; line-height: 1; }
+button.script-fold:hover:not(:disabled) { color: var(--text); background: var(--panel-2); }
+.script-scene.act { position: relative; font-size: 12px; background: var(--panel-2); color: var(--text); letter-spacing: 0.06em; }
+.script-scene.act ~ .script-scene:not(.act) { padding-left: 20px; }
+.script-scene.folded { border-bottom-style: dashed; }
+.script-scene.folded .title { color: var(--muted); }
+
+/* the script in a window of its own, to share with an actor on a video call */
+body.script-window { height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); --script-zoom: 1.6; }
+.script-window-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.script-window-heading { flex: 1; min-width: 200px; }
+.script-window-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.script-window-scene { color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 15px; }
+.script-window-progress { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.script-window-tools { display: flex; gap: 6px; align-items: center; }
+.script-window-characters { max-width: 200px; }
+.script-window .script-body { padding-bottom: 45vh; }
+.script-window .script-scene { font-size: calc(11px * var(--script-zoom)); padding-top: calc(6px * var(--script-zoom)); padding-bottom: calc(6px * var(--script-zoom)); }
+.script-window .script-scene.act { font-size: calc(12px * var(--script-zoom)); }
+.script-window button.script-fold { width: calc(20px * var(--script-zoom)); height: calc(20px * var(--script-zoom)); font-size: calc(11px * var(--script-zoom)); }
+.script-window .script-action { font-size: calc(12px * var(--script-zoom)); padding-left: calc(44px * var(--script-zoom)); }
+.script-window .script-line { gap: calc(8px * var(--script-zoom)); padding-top: calc(5px * var(--script-zoom)); padding-bottom: calc(5px * var(--script-zoom)); }
+.script-window .script-tick { width: calc(22px * var(--script-zoom)); height: calc(22px * var(--script-zoom)); font-size: calc(13px * var(--script-zoom)); }
+.script-window .script-speaker { font-size: calc(11px * var(--script-zoom)); }
+.script-window .script-speaker .takes { font-size: calc(10px * var(--script-zoom)); }
+.script-window .script-text { font-size: calc(13px * var(--script-zoom)); }
+.script-window .script-line.focus { border-left-width: 4px; background: rgba(92,141,255,0.20); }
+.script-window .script-line.focus .script-text { color: var(--text); }
 
 /* transcript › change words (speech synthesis, experimental) */
 .badge-experimental { display: inline-block; vertical-align: 3px; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn); border: 1px solid var(--warn); }
