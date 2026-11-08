@@ -63,9 +63,19 @@ Ticked lines remember their place in the recording itself, so they stay found af
 
 **Line up** finds the lines in the recording by itself. It uses the [transcript](transcript.md) (and transcribes what is missing first, which needs the ElevenLabs key) and looks for each line on its character's track, allowing for misheard and missing words. Every line it finds is ticked off with its take.
 
-- When a line was recorded several times, the row says how many takes the transcript holds (for example *3 takes*). The best take is used; of equally good ones, the last, which is usually the one that was kept.
+- When a line was recorded several times, the row says how many takes the transcript holds (for example *3 takes*). The best take is used; of equally good ones, the last, which is usually the one that was kept. To split them apart, see [Cutting around every take](#cutting-around-every-take).
 - Very short lines (*Yes.*) are only looked for between the lines around them, so they aren't matched just anywhere.
 - Lines ticked by hand keep their place, and Line up never unticks a line.
+
+### Cutting around every take
+
+When you record a line several times in one go (without [loop recording](recording.md#takes-and-comping)), all takes sit one after another in the same clip. WavePod finds every one of them in the transcript and cuts the track around them, so you can listen to each take on its own and keep the best one.
+
+- Right-click a line and choose **Cut Around Every Take**. The track is split before and after each take of the line, and the clips holding the takes are selected.
+- Right-click an act or scene heading and choose **Cut Around Every Take in This Scene** (or *Act*) to do this for all of its lines, for example when you recorded the whole scene twice.
+- **⋯ › Cut Around Every Take of Every Line** does it for the whole script.
+
+Only cuts are made: nothing is removed, moved or faded, and the episode plays exactly as before. Delete the takes you don't want yourself afterwards (`Delete` on the selected clip, or a [ripple delete](editing.md#deleting-and-cutting) to close the gap). Each cut leaves a little room before and after a take, but never reaches into the words around it. Cutting again where the clips are already cut does nothing. Like Line up, it needs the [transcript](transcript.md), and the line's character on the right track.
 
 ### Jumping
 

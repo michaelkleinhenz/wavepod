@@ -724,6 +724,9 @@ interface Match {
   /** Indices into the word list of the first and last matched word. */
   first: number;
   last: number;
+  /** Indices into the line of the first and last matched word. */
+  lineFirst: number;
+  lineLast: number;
   score: number;
 }
 
@@ -745,10 +748,16 @@ function alignWindow(line: string[], tokens: string[], from: number, to: number)
   let j = m;
   let first = -1;
   let last = -1;
+  let lineFirst = 0;
+  let lineLast = 0;
   while (i > 0 && j > 0) {
     if (sameWord(line[i - 1], tokens[from + j - 1]) && dp[i][j] === dp[i - 1][j - 1] + 1) {
-      if (last < 0) last = from + j - 1;
+      if (last < 0) {
+        last = from + j - 1;
+        lineLast = i - 1;
+      }
       first = from + j - 1;
+      lineFirst = i - 1;
       i--;
       j--;
     } else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
@@ -757,15 +766,35 @@ function alignWindow(line: string[], tokens: string[], from: number, to: number)
   // words of the take that aren't in the line (a fluffed restart) lower the score a little
   const spread = last - first + 1;
   const extra = Math.max(0, spread - matched);
-  return { first, last, score: matched / n - Math.min(0.2, extra / (4 * n)) };
+  return { first, last, lineFirst, lineLast, score: matched / n - Math.min(0.2, extra / (4 * n)) };
+}
+
+/** One place a line was spoken: a take, recorded in one go with others or on its own. */
+export interface LineOccurrence {
+  trackId: string;
+  /** First and last word of the take on the timeline. */
+  start: Frames;
+  end: Frames;
+  score: number;
+  /** Where to cut before and after the take: a little room, but never into the words around it. */
+  cutStart: Frames;
+  cutEnd: Frames;
 }
 
 export interface LineUpResult {
   /** lineId → where the line was found. */
   found: Map<string, ScriptTake & { start: Frames; end: Frames; score: number }>;
+  /** lineId → every take of the line in the transcript, by time. */
+  occurrences: Map<string, LineOccurrence[]>;
   /** Dialogue lines with words to look for. */
   searched: number;
 }
+
+/** Room left before and after a take when cutting around it (seconds). */
+const CUT_BEFORE = 0.25;
+const CUT_AFTER = 0.35;
+/** Longest pause inside a take between a misheard first or last word and the rest (seconds). */
+const WORD_GAP = 0.7;
 
 /** Needed share of a line's words for it to count as found. */
 function threshold(n: number): number {
@@ -784,7 +813,8 @@ function threshold(n: number): number {
 export function lineUpScript(project: Project, words: TimelineWord[]): LineUpResult {
   const script = project.script;
   const found: LineUpResult['found'] = new Map();
-  if (!script || !words.length) return { found, searched: 0 };
+  const occurrences: LineUpResult['occurrences'] = new Map();
+  if (!script || !words.length) return { found, occurrences, searched: 0 };
   const tokens = words.map((w) => bareWord(w.text));
   // word indices per track, and per word on that track (for seeding candidates)
   const byTrack = new Map<string, number[]>();
@@ -815,7 +845,8 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
   };
 
   type Hit = { first: number; last: number; score: number };
-  const search = (lineToks: string[], trackId: string | undefined, within?: [Frames, Frames]): { best: Hit; takes: number } | null => {
+  const sr = project.sampleRate;
+  const search = (lineToks: string[], trackId: string | undefined, within?: [Frames, Frames]): { best: Hit; takes: Hit[] } | null => {
     const { list, toks, pos } = indexFor(trackId);
     const n = lineToks.length;
     // seed from the line's rarest words (common ones like "the" would try everything)
@@ -833,10 +864,15 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
       const to = Math.min(toks.length, s + n + slack);
       const m = alignWindow(lineToks, toks, from, to);
       if (!m || m.score < threshold(n)) continue;
-      const first = list[m.first];
-      const last = list[m.last];
-      if (within && (words[first].start < within[0] || words[first].start > within[1])) continue;
-      hits.push({ first, last, score: m.score });
+      if (within && (words[list[m.first]].start < within[0] || words[list[m.first]].start > within[1])) continue;
+      // a misheard first or last word ("Venice" for "Vienna") still belongs to the take: the words
+      // right before and after it count as long as the line has unmatched words left there
+      let a = m.first;
+      let b = m.last;
+      const close = (x: number, y: number) => words[list[y]].start - words[list[x]].end < WORD_GAP * sr;
+      for (let k = m.lineFirst; k > 0 && a > 0 && close(a - 1, a); k--) a--;
+      for (let k = m.lineLast; k < n - 1 && b < toks.length - 1 && close(b, b + 1); k++) b++;
+      hits.push({ first: list[a], last: list[b], score: m.score });
     }
     if (!hits.length) return null;
     // distinct takes: overlapping hits are the same take
@@ -845,14 +881,41 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
     for (const h of hits) if (!takes.some((t) => words[h.first].start <= words[t.last].end && words[h.last].end >= words[t.first].start)) takes.push(h);
     const top = takes[0].score;
     const best = takes.filter((t) => t.score >= top - 0.05).sort((a, b) => words[b.first].start - words[a.first].start)[0];
-    return { best, takes: takes.length };
+    return { best, takes };
   };
 
-  const record = (l: ScriptLine, r: { best: Hit; takes: number }) => {
+  // the words of each track by time, to keep cuts out of the words around a take
+  const sideIndex = new Map<string, Frames[][]>();
+  const neighbours = (trackId: string): Frames[][] => {
+    let ends = sideIndex.get(trackId);
+    if (!ends) {
+      const ws = words.filter((w) => w.trackId === trackId).sort((a, b) => a.start - b.start);
+      sideIndex.set(trackId, (ends = [ws.map((w) => w.start), ws.map((w) => w.end)]));
+    }
+    return ends;
+  };
+  const occurrence = (h: Hit): LineOccurrence => {
+    const a = words[h.first];
+    const b = words[h.last];
+    const [starts, ends] = neighbours(a.trackId);
+    let cutStart = Math.max(0, a.start - Math.round(CUT_BEFORE * sr));
+    let cutEnd = b.end + Math.round(CUT_AFTER * sr);
+    // the word before the take ends before it starts; cut halfway between them at the latest
+    let before = -1;
+    for (let k = 0; k < ends.length && starts[k] < a.start; k++) if (ends[k] <= a.start) before = Math.max(before, ends[k]);
+    if (before >= 0) cutStart = Math.max(cutStart, Math.round((before + a.start) / 2));
+    const after = starts.find((st) => st >= b.end);
+    if (after !== undefined) cutEnd = Math.min(cutEnd, Math.round((b.end + after) / 2));
+    return { trackId: a.trackId, start: a.start, end: b.end, score: h.score, cutStart: Math.min(cutStart, a.start), cutEnd: Math.max(cutEnd, b.end) };
+  };
+
+  const record = (l: ScriptLine, r: { best: Hit; takes: Hit[] }) => {
     const a = words[r.best.first];
     const b = words[r.best.last];
     const take = takeAt(project, a.start, b.end, a.trackId);
-    found.set(l.id, { ...take, auto: true, ...(r.takes > 1 ? { takes: r.takes } : {}), start: a.start, end: b.end, score: r.best.score });
+    const n = r.takes.length;
+    found.set(l.id, { ...take, auto: true, ...(n > 1 ? { takes: n } : {}), start: a.start, end: b.end, score: r.best.score });
+    occurrences.set(l.id, r.takes.map(occurrence).sort((x, y) => x.start - y.start));
   };
 
   const dialogue = script.lines.filter((l) => l.kind === 'dialogue');
@@ -867,23 +930,24 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
     const r = search(t, lineTrack(script, l));
     if (r) record(l, r);
   }
-  // short lines: only between the found lines around them
+  // short lines: only between the found lines around them (from the first take of the line
+  // before to the last take of the line after, so every take of a repeated passage counts)
   dialogue.forEach((l, i) => {
     const t = toks.get(l.id)!;
     if (!t.length || t.length >= 3) return;
     let lo = 0;
     let hi = Infinity;
     for (let k = i - 1; k >= 0; k--) {
-      const f = found.get(dialogue[k].id);
+      const f = occurrences.get(dialogue[k].id);
       if (f) {
-        lo = f.start;
+        lo = f[0].start;
         break;
       }
     }
     for (let k = i + 1; k < dialogue.length; k++) {
-      const f = found.get(dialogue[k].id);
+      const f = occurrences.get(dialogue[k].id);
       if (f) {
-        hi = f.start;
+        hi = f[f.length - 1].start;
         break;
       }
     }
@@ -891,7 +955,7 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
     const r = search(t, lineTrack(script, l), [lo, hi]);
     if (r) record(l, r);
   });
-  return { found, searched };
+  return { found, occurrences, searched };
 }
 
 /**
@@ -909,6 +973,64 @@ export function applyLineUp(project: Project, result: LineUpResult): Project {
     return { ...l, recorded: true, take };
   });
   return { ...project, script: { ...script, lines } };
+}
+
+// ---------------------------------------------------------------- cutting around takes
+
+/** Cuts closer than this to a clip edge are left out: they would only leave a sliver (seconds). */
+const MIN_PIECE = 0.02;
+
+export interface TakeCuts {
+  project: Project;
+  /** Cuts made. */
+  cuts: number;
+  /** The clips that now hold a take from end to end. */
+  clipIds: string[];
+}
+
+/**
+ * Splits the clips on each take's track before and after the take (at its cut points). Only
+ * cuts: no audio is removed, moved or faded, and a seamless split plays exactly as before.
+ */
+export function cutAroundTakes(project: Project, takes: readonly LineOccurrence[]): TakeCuts {
+  const minPiece = Math.round(MIN_PIECE * project.sampleRate);
+  const byTrack = new Map<string, Frames[]>();
+  for (const o of takes) {
+    let list = byTrack.get(o.trackId);
+    if (!list) byTrack.set(o.trackId, (list = []));
+    list.push(o.cutStart, o.cutEnd);
+  }
+  let cuts = 0;
+  const tracks = project.tracks.map((t) => {
+    const at = byTrack.get(t.id);
+    if (!at) return t;
+    let clips = t.clips;
+    for (const pos of [...new Set(at)].sort((a, b) => a - b)) {
+      const next: typeof clips = [];
+      for (const c of clips) {
+        if (!c.sound && pos - c.start >= minPiece && c.start + c.length - pos >= minPiece) {
+          const left = pos - c.start;
+          next.push({ ...c, length: left, fadeOut: 0 }, { ...c, id: uid('clp'), start: pos, offset: c.offset + left, length: c.length - left, fadeIn: 0 });
+          cuts++;
+        } else next.push(c);
+      }
+      clips = next;
+    }
+    return clips === t.clips ? t : { ...t, clips };
+  });
+  if (!cuts) return { project, cuts: 0, clipIds: holding(project, takes) };
+  const out = { ...project, tracks };
+  return { project: out, cuts, clipIds: holding(out, takes) };
+}
+
+/** Clips that hold a take. */
+function holding(project: Project, takes: readonly LineOccurrence[]): string[] {
+  const out = new Set<string>();
+  for (const o of takes) {
+    const t = project.tracks.find((x) => x.id === o.trackId);
+    for (const c of t?.clips ?? []) if (c.start < o.end && c.start + c.length > o.start) out.add(c.id);
+  }
+  return [...out];
 }
 
 // ---------------------------------------------------------------- edits

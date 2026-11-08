@@ -4,6 +4,7 @@ import {
   applyLineUp,
   autoCast,
   createScript,
+  cutAroundTakes,
   detectScriptFormat,
   foldAllBut,
   foldedLines,
@@ -284,6 +285,57 @@ describe('lining up with the transcript', () => {
     expect(placed[0].start / SR).toBeCloseTo(1, 1);
     const gone = rippleDelete(q, 4.5 * SR, 8 * SR);
     expect(placedLines(gone).some((x) => x.index === 2)).toBe(false);
+  });
+
+  it('finds every take of a line recorded one after another', () => {
+    const { p, transcripts } = recorded();
+    const r = lineUpScript(p, timelineWords(p, transcripts));
+    const lines = p.script!.lines;
+    const takes = r.occurrences.get(lines[2].id)!;
+    expect(takes.map((o) => Math.round(o.start / SR))).toEqual([1, 5]);
+    expect(takes.every((o) => o.trackId === p.tracks[0].id)).toBe(true);
+    // the fluffed take ends on its misheard last word ("Venice"), not before it
+    expect(takes[0].end / SR).toBeCloseTo(3.7, 2);
+    // a little room around each take, but never into the words of the take next to it
+    const [a, b] = takes;
+    expect(a.cutStart).toBe(Math.round(0.75 * SR));
+    expect(a.cutEnd).toBeGreaterThan(a.end);
+    expect(a.cutEnd).toBeLessThanOrEqual(b.cutStart);
+    expect(b.cutStart).toBeLessThan(b.start);
+    expect(b.cutEnd).toBe(b.end + Math.round(0.35 * SR));
+    expect(r.occurrences.get(lines[3].id)).toHaveLength(1);
+  });
+
+  it('cuts before and after each take, removing nothing', () => {
+    const { p, transcripts } = recorded();
+    const r = lineUpScript(p, timelineWords(p, transcripts));
+    const takes = r.occurrences.get(p.script!.lines[2].id)!;
+    const res = cutAroundTakes(p, takes);
+    const anna = res.project.tracks[0].clips;
+    expect(res.cuts).toBe(4);
+    expect(anna).toHaveLength(5);
+    // the pieces still play the same audio, end to end, without gaps or fades
+    for (let k = 1; k < anna.length; k++) {
+      expect(anna[k].start).toBe(anna[k - 1].start + anna[k - 1].length);
+      expect(anna[k].offset - anna[k].start).toBe(anna[0].offset - anna[0].start);
+    }
+    expect(anna.reduce((n, c) => n + c.length, 0)).toBe(30 * SR);
+    expect(anna.map((c) => c.start)).toEqual([0, takes[0].cutStart, takes[0].cutEnd, takes[1].cutStart, takes[1].cutEnd].sort((x, y) => x - y));
+    // Ben's track is left alone; the clips holding the takes come back to select
+    expect(res.project.tracks[1].clips).toEqual(p.tracks[1].clips);
+    expect(res.clipIds).toEqual([anna[1].id, anna[3].id]);
+    // a second time there's nothing left to cut
+    const again = cutAroundTakes(res.project, takes);
+    expect(again.cuts).toBe(0);
+    expect(again.project).toBe(res.project);
+    expect(again.clipIds).toEqual(res.clipIds);
+  });
+
+  it('leaves no slivers at clip edges', () => {
+    const { p, transcripts } = recorded();
+    const takes = lineUpScript(p, timelineWords(p, transcripts)).occurrences.get(p.script!.lines[2].id)!;
+    const edge = { ...takes[0], cutStart: 5, cutEnd: takes[0].cutEnd };
+    expect(cutAroundTakes(p, [edge]).cuts).toBe(1);
   });
 
   it('does not overwrite lines ticked by hand', () => {
