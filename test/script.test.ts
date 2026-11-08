@@ -122,6 +122,54 @@ describe('script import', () => {
     expect(detectScriptFormat(PLAIN, 'night.txt')).toBe('plain');
   });
 
+  it('reads a PlotGod audioplay export', () => {
+    const scene = (title: string, order: number, content: string) => ({ Meta: { id: `s${order}`, title, order }, Content: content });
+    const json = JSON.stringify({
+      version: 1,
+      project: { name: 'Das Echo', type: 'audioplay' },
+      chapters: [
+        {
+          Chapter: { title: 'Akt 2 - Fetzen', order: 1 },
+          Scenes: [scene('Szene 3', 0, '# Szene 3\n\n**SARAH:**\nIch bin hier.')],
+        },
+        {
+          Chapter: { title: 'Akt 1 - Der Anruf', order: 0 },
+          Scenes: [
+            scene('Szene 2 - Rat', 1, 'HARTMANN: (warm)\nSarah! Komm herein.'),
+            scene(
+              'Szene 1 - Abend',
+              0,
+              '# Szene 1 - Abend\n\nSZENE 1 - PRAXIS - ABEND\n\n[SFX: Telefon klingelt]\n\nSARAH: (professionell)\nPraxis Dr. Meyer.\nGuten Abend.\n\n[Pause]\n\nDIE STIMME:\nSarah...',
+            ),
+          ],
+        },
+      ],
+      characters: [{ name: 'DR. SARAH MEYER' }],
+    });
+    expect(detectScriptFormat(json, 'Das_Echo.json')).toBe('plotgod');
+    const s = parseScript(json, 'Das_Echo.json');
+    expect(s.format).toBe('plotgod');
+    expect(s.title).toBe('Das Echo');
+    expect(s.lines.map((l) => [l.kind, l.character ?? '', l.text, l.note ?? ''])).toEqual([
+      ['scene', '', 'Akt 1 - Der Anruf', ''],
+      ['scene', '', 'SZENE 1 - PRAXIS - ABEND', ''],
+      ['action', '', 'SFX: Telefon klingelt', ''],
+      ['dialogue', 'SARAH', 'Praxis Dr. Meyer. Guten Abend.', 'professionell'],
+      ['action', '', 'Pause', ''],
+      ['dialogue', 'DIE STIMME', 'Sarah...', ''],
+      ['scene', '', 'Szene 2 - Rat', ''],
+      ['dialogue', 'HARTMANN', 'Sarah! Komm herein.', 'warm'],
+      ['scene', '', 'Akt 2 - Fetzen', ''],
+      ['scene', '', 'Szene 3', ''],
+      ['dialogue', 'SARAH', 'Ich bin hier.', ''],
+    ]);
+  });
+
+  it('leaves other JSON alone', () => {
+    expect(detectScriptFormat('{"chapters": "none"}', 'x.json')).not.toBe('plotgod');
+    expect(parseScript('{"a": 1}', 'x.json').lines.filter((l) => l.kind === 'dialogue')).toEqual([]);
+  });
+
   it('reads Final Draft', () => {
     const s = parseScript(FDX, 'night.fdx');
     expect(s.format).toBe('fdx');

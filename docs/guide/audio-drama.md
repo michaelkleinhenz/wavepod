@@ -8,11 +8,12 @@ Import the script and WavePod keeps track of every line: who speaks it, whether 
 
 ### Importing a script
 
-**File › Import Script…**, or **Import script…** in the script panel. Three formats work:
+**File › Import Script…**, or **Import script…** in the script panel. Four formats work:
 
 - **Plain text** (`.txt`): one speech per line as `NAME: what they say`. A direction for the actor goes in brackets after the name: `BEN (whispering): It is late.` Lines starting with `INT.`, `EXT.`, `Scene 2`, `Szene 2` or `#` are scene headings. Everything else is a stage direction. A line `Title: …` at the top names the script.
 - **Fountain** (`.fountain`): the plain-text screenplay format that many writing apps export (Highland, Slugline, Fade In, Beat, WriterSolo…). Character names in capitals above their words, scene headings like `INT. PLATFORM - NIGHT`. Notes `[[…]]` and boneyard `/* … */` are left out.
 - **Final Draft** (`.fdx`).
+- **PlotGod** audioplay (`.json`): the project export of a PlotGod audioplay. Every act becomes a scene heading, followed by its scenes in order. Inside a scene, `NAME: (direction)` above the words is a line with its direction, the slug line (`SZENE 1 - SARAHS PRAXIS - ABEND`) is the scene heading and cues like `[SFX: …]`, `[MUSIK: …]` or `[Pause]` are stage directions. The script takes the project's name.
 
 WavePod recognises Fountain in a `.txt` file by itself. Importing again (for a revised draft) keeps the ticks of every line that stayed the same.
 
