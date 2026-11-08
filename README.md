@@ -131,7 +131,9 @@ make help      # all targets
 
 Requires Node.js 22, CMake and a C++ compiler: `npm ci` compiles a patched copy
 of the `audify` audio module (see `patches/` and `scripts/build-audify.mjs`;
-the upstream prebuilt binary crashes under Electron 43+). On Linux this also
+the upstream prebuilt binary crashes under Electron 43+). `npm install` or
+`npm rebuild` can put that prebuilt back; `make build` and every `make dist*`
+notice this and compile the patched copy again before bundling. On Linux this also
 needs the ALSA and PulseAudio headers (`sudo apt install libasound2-dev
 libpulse-dev pkg-config` on Debian/Ubuntu). VST3 support needs the helper in `native/vsthost`:
 `make vsthost` builds it (CMake 3.25+ and a C++17 compiler; it downloads
