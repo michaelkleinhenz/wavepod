@@ -9,7 +9,7 @@
   "homepage": "https://github.com/michaelkleinhenz/wavepod",
   "repository": "github:michaelkleinhenz/wavepod",
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/build-audify.mjs && node scripts/build.mjs",
     "start": "npm run build && node scripts/start.mjs",
     "dev": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",

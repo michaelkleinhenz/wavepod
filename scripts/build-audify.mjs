@@ -20,6 +20,11 @@
 // compile it here.
 //
 // Skips the build when the module was already built from the current patch.
+// The stamp also records the hash of the binary we built: audify's own install
+// script (prebuild-install, e.g. on `npm install` or `npm rebuild`) replaces
+// build/Release/audify.node with the unpatched prebuilt and leaves the stamp
+// alone, and a packaged app with that binary traps at start. Any binary we
+// did not build is rebuilt. `npm run build` (and so `make build`, `make start`, `make dist-*`) runs this too.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -41,11 +46,16 @@ if (patches.length === 0) {
 }
 const hash = createHash('sha256');
 for (const p of patches) hash.update(readFileSync(join(patchDir, p)));
-const stamp = `${hash.digest('hex')} ${process.platform}-${process.arch}`;
+const patchStamp = `${hash.digest('hex')} ${process.platform}-${process.arch}`;
+const binaryHash = () => createHash('sha256').update(readFileSync(binary)).digest('hex');
+const stampFor = () => `${patchStamp} ${binaryHash()}`;
 
-if (existsSync(binary) && existsSync(stampFile) && readFileSync(stampFile, 'utf8') === stamp) {
+if (existsSync(binary) && existsSync(stampFile) && readFileSync(stampFile, 'utf8') === stampFor()) {
   console.log('[build-audify] audify is already built from the current patch');
   process.exit(0);
+}
+if (existsSync(binary) && existsSync(stampFile) && readFileSync(stampFile, 'utf8').startsWith(patchStamp)) {
+  console.log('[build-audify] audify.node was replaced (e.g. by the unpatched prebuilt); rebuilding');
 }
 
 // RtAudio's CMake silently drops ALSA/PulseAudio when their headers are
@@ -71,5 +81,5 @@ if (result.status !== 0 || !existsSync(binary)) {
   console.error('[build-audify] building audify failed; see the output above');
   process.exit(1);
 }
-writeFileSync(stampFile, stamp);
+writeFileSync(stampFile, stampFor());
 console.log('[build-audify] done');

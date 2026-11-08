@@ -24,3 +24,24 @@ describe('audify patch', () => {
     expect(text).not.toMatch(/^Binary files /m);
   });
 });
+
+// audify's install script (prebuild-install) can swap the patched binary back
+// for the upstream prebuilt, which traps under Electron 43+. The build, and so
+// every dist target, re-checks the binary first.
+describe('audify build step', () => {
+  const root = join(__dirname, '..');
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+
+  it('runs before bundling', () => {
+    expect(pkg.scripts.build).toMatch(/^node scripts\/build-audify\.mjs && /);
+    for (const name of ['dist', 'dist:linux', 'dist:win', 'dist:mac']) {
+      expect(pkg.scripts[name]).toMatch(/^npm run build && /);
+    }
+  });
+
+  it('only trusts a binary whose hash it recorded', () => {
+    const script = readFileSync(join(root, 'scripts', 'build-audify.mjs'), 'utf8');
+    expect(script).toMatch(/binaryHash\(\)/);
+    expect(script).toMatch(/writeFileSync\(stampFile, stampFor\(\)\)/);
+  });
+});
