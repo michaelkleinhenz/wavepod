@@ -3,17 +3,20 @@
 // known, jumps there. "Line up" finds the lines in the transcript; while recording, Enter ticks the
 // focused line at the playhead and moves on to the next open one. Acts and scenes fold away, and the
 // script opens in a window of its own (to share with an actor on a video call) that follows the panel.
-import type { Project, ScriptLine } from '../shared/types';
+// Right-click a line (or a scene) to cut the track around every take of it the transcript holds.
+import type { Project, ScriptLine, TimelineWord } from '../shared/types';
 import {
   SCRIPT_EXTENSIONS,
   applyLineUp,
   characterKey,
   createScript,
+  cutAroundTakes,
   foldAllBut,
   foldedLines,
   headingLevel,
   headingsAbove,
   lineAt,
+  lineTokens,
   lineTrack,
   lineUpScript,
   parseScript,
@@ -21,6 +24,7 @@ import {
   removeScript,
   replaceScript,
   sceneStart,
+  sectionEnd,
   scriptCharacters,
   scriptProgress,
   scriptScenes,
@@ -28,6 +32,7 @@ import {
   setLineRecorded,
   settleTakes,
   takeAt,
+  type LineOccurrence,
   type PlacedLine,
 } from '../core/script';
 import { formatTimestamp } from '../shared/time';
@@ -135,6 +140,7 @@ export class ScriptPanel {
       this.main.body,
     );
     this.main.body.addEventListener('click', (e) => this.click(e, this.main));
+    this.main.body.addEventListener('contextmenu', (e) => this.contextMenu(e, this.main));
     this.el.addEventListener('keydown', (e) => this.key(e, this.main));
     transcripts().subscribe(() => this.shown && this.renderToolbar());
     window.addEventListener('beforeunload', () => this.popout?.win.close());
@@ -226,20 +232,25 @@ export class ScriptPanel {
 
   // ---------------------------------------------------------------- actions
 
+  /** The transcript's words (transcribing what's missing first), or null with a hint why not. */
+  private async transcriptWords(what: string): Promise<TimelineWord[] | null> {
+    const t = transcripts();
+    await t.ensureLoaded();
+    if (!t.complete) await t.transcribe(false);
+    const words = t.words();
+    if (words.length) return words;
+    toast(`${what} needs a transcript of the recording: Transcribe first (ElevenLabs key in Edit › Settings)`);
+    return null;
+  }
+
   /** Finds the lines in the transcript (transcribing what's missing first). */
   async lineUp(): Promise<void> {
     if (this.lining || !store.project.script) return;
-    const t = transcripts();
     this.lining = true;
     this.renderToolbar();
     try {
-      await t.ensureLoaded();
-      if (!t.complete) await t.transcribe(false);
-      const words = t.words();
-      if (!words.length) {
-        toast('Line up needs a transcript of the recording: Transcribe first (ElevenLabs key in Edit › Settings)');
-        return;
-      }
+      const words = await this.transcriptWords('Line up');
+      if (!words) return;
       const r = lineUpScript(store.project, words);
       store.edit((p) => applyLineUp(p, r));
       const multi = [...r.found.values()].filter((f) => (f.takes ?? 1) > 1).length;
@@ -254,6 +265,98 @@ export class ScriptPanel {
       this.lining = false;
       this.renderToolbar();
     }
+  }
+
+  /**
+   * Cuts the track before and after every take of the given lines (dialogue line indexes) the
+   * transcript holds, also takes recorded one after another without the takes feature. Only cuts:
+   * nothing is removed or moved, that's left to the user.
+   */
+  async cutAroundTakes(indexes: number[], what: string): Promise<void> {
+    const script = store.project.script;
+    if (this.lining || !script) return;
+    const ids = indexes.map((i) => script.lines[i]).filter((l) => l?.kind === 'dialogue' && lineTokens(l.text).length).map((l) => l.id);
+    if (!ids.length) return toast(`No lines with words to look for in ${what}`);
+    this.lining = true;
+    this.renderToolbar();
+    try {
+      const words = await this.transcriptWords('Cutting around takes');
+      if (!words) return;
+      const r = lineUpScript(store.project, words);
+      const takes: LineOccurrence[] = ids.flatMap((id) => r.occurrences.get(id) ?? []);
+      if (!takes.length) {
+        toast(ids.length === 1 ? 'This line was not found in the transcript. Is its character on the right track?' : `None of the lines of ${what} were found in the transcript`);
+        return;
+      }
+      const lines = ids.filter((id) => r.occurrences.has(id)).length;
+      const res = cutAroundTakes(store.project, takes);
+      if (res.cuts) store.edit(() => res.project);
+      // one line: its takes are selected, to compare them or delete the bad ones
+      if (ids.length === 1) {
+        seek(takes[0].cutStart);
+        store.select({ range: null, rangeTracks: null, clipIds: new Set(res.clipIds) });
+      }
+      const n = takes.length;
+      const found = ids.length === 1 ? `${n} take${n === 1 ? '' : 's'} of the line` : `${n} take${n === 1 ? '' : 's'} of ${lines} line${lines === 1 ? '' : 's'}`;
+      toast(res.cuts ? `Cut around ${found} (${res.cuts} cut${res.cuts === 1 ? '' : 's'}). Nothing was removed.` : `Found ${found}; the clips are already cut there`);
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      this.lining = false;
+      this.renderToolbar();
+    }
+  }
+
+  /** Right-click on a line or an act/scene heading. */
+  private contextMenu(e: MouseEvent, view: LinesView): void {
+    const t = e.target as HTMLElement;
+    const script = store.project.script;
+    if (!script) return;
+    const scene = t.closest<HTMLElement>('[data-scene]');
+    const row = t.closest<HTMLElement>('[data-line]');
+    if (!scene && !row) return;
+    e.preventDefault();
+    const busy = this.lining || transcripts().busy;
+    if (scene) {
+      const i = Number(scene.dataset.scene);
+      const act = headingLevel(script.lines[i]) < 9;
+      const kind = act ? 'act' : 'scene';
+      const end = sectionEnd(script.lines, i);
+      const inside = Array.from({ length: end - i - 1 }, (_, k) => i + 1 + k).filter((k) => this.visible(k, view, true));
+      showContextMenu(
+        [
+          { label: `Jump to This ${act ? 'Act' : 'Scene'}`, run: () => this.jumpToScene(i, view) },
+          { kind: 'separator' },
+          {
+            label: `Cut Around Every Take in This ${act ? 'Act' : 'Scene'}`,
+            enabled: !busy && inside.length > 0,
+            title: `Splits the tracks before and after each take of every line of this ${kind} the transcript holds. Nothing is removed.`,
+            run: () => void this.cutAroundTakes(inside, `this ${kind}`),
+          },
+        ],
+        e.clientX,
+        e.clientY,
+      );
+      return;
+    }
+    const i = Number(row!.dataset.line);
+    const l = script.lines[i];
+    this.setFocus(i);
+    showContextMenu(
+      [
+        { label: 'Jump to Take', enabled: this.placedAt.has(i), run: () => this.jump(i) },
+        { label: l.recorded ? 'Untick' : 'Tick Off at the Playhead', run: () => this.toggleLine(i) },
+        { kind: 'separator' },
+        {
+          label: l.take?.takes ? `Cut Around Every Take (${l.take.takes})` : 'Cut Around Every Take',
+          enabled: !busy,
+          title: 'Splits the track before and after each take of this line the transcript holds, and selects them. Nothing is removed.',
+          run: () => void this.cutAroundTakes([i], 'this line'),
+        },
+      ],
+      e.clientX,
+      e.clientY,
+    );
   }
 
   /** Ticks a line as recorded at the playhead, or unticks it. */
@@ -440,6 +543,12 @@ export class ScriptPanel {
       [
         { label: has ? 'Import a New Draft…' : 'Import Script…', title: 'Lines that stay the same keep their recorded ticks', run: () => void importScriptFile() },
         { label: 'Tick All Lines Off', enabled: has, run: () => this.untickAll() },
+        {
+          label: 'Cut Around Every Take of Every Line',
+          enabled: has && !this.lining,
+          title: 'Splits the tracks before and after each take of each line the transcript holds. Nothing is removed.',
+          run: () => void this.cutAroundTakes(store.project.script!.lines.map((_, k) => k), 'the script'),
+        },
         { kind: 'separator' },
         { label: 'Show Only the Current Scene', enabled: has, title: 'Folds every other act and scene', run: () => this.foldToCurrent() },
         { label: 'Fold All Acts and Scenes', enabled: has, run: () => this.foldAll(true) },
@@ -796,7 +905,7 @@ export class ScriptPanel {
             h('span', { class: 'name' }, l.character ?? ''),
             l.note ? h('span', { class: 'note' }, `(${l.note})`) : null,
             placed ? h('span', { class: 'time' }, formatTimestamp(placed.start / p.sampleRate, false)) : null,
-            l.take?.takes ? h('span', { class: 'takes', title: `The transcript holds ${l.take.takes} takes of this line; the best one (of equally good ones the last) is marked` }, `${l.take.takes} takes`) : null,
+            l.take?.takes ? h('span', { class: 'takes', title: `The transcript holds ${l.take.takes} takes of this line; the best one (of equally good ones the last) is marked. Right-click to cut around every take.` }, `${l.take.takes} takes`) : null,
           ),
           h('div', { class: 'script-text' }, l.text),
         ),
