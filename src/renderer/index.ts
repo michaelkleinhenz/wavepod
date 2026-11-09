@@ -71,6 +71,7 @@ import { ScriptPanel, importScriptFile } from './scriptPanel';
 import { CleanupDialog } from './cleanupDialog';
 import { transcripts } from './transcripts';
 import { RecordingAlertModal } from './recordingAlert';
+import { shortcutLetter } from './shortcutKey';
 
 function formatDuration(seconds: number): string {
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
@@ -512,23 +513,25 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (isTyping(e) || document.querySelector('.overlay')) return;
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && !e.shiftKey && !e.altKey && (e.code === 'KeyX' || e.code === 'KeyY' || e.code === 'KeyC' || e.code === 'KeyV')) {
+    // by the letter on the key, not its position (Z and Y swap on German keyboards)
+    const letter = mod && !e.altKey ? shortcutLetter(e) : null;
+    if (!e.shiftKey && (letter === 'X' || letter === 'Y' || letter === 'C' || letter === 'V')) {
       // handled here as well as in the Edit menu, whichever sees the key first
       e.preventDefault();
       editKeyAt = Date.now();
-      if (e.code === 'KeyX') rippleCut();
-      else if (e.code === 'KeyY') muteSelection();
-      else if (e.code === 'KeyC') copySelection();
+      if (letter === 'X') rippleCut();
+      else if (letter === 'Y') muteSelection();
+      else if (letter === 'C') copySelection();
       else pasteClipboard(false);
       return;
     }
-    if (mod && e.shiftKey && !e.altKey && e.code === 'KeyV') {
+    if (e.shiftKey && letter === 'V') {
       e.preventDefault();
       editKeyAt = Date.now();
       pasteClipboard(true);
       return;
     }
-    if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyA') {
+    if (!e.shiftKey && letter === 'A') {
       e.preventDefault();
       editKeyAt = Date.now();
       selectAllClips();
