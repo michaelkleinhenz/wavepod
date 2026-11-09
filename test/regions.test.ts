@@ -3,13 +3,28 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { exportProject } from '../src/core/exporter';
 import { addTrack, createProject, insertSilence, normalizeProject, rippleDelete } from '../src/core/project';
-import { addRegion, normalizeRegions, regionOutputBase, removeRegion, updateRegion } from '../src/core/regions';
+import { addRegion, MAX_REGION_TITLE, normalizeRegions, regionOutputBase, removeRegion, renameRegion, updateRegion } from '../src/core/regions';
 import { rippleMove, rippleSet } from '../src/core/rippleMove';
 import { projectFromTemplate, projectToTemplate } from '../src/core/template';
 import { writeWavFile } from '../src/core/wav';
 import { sine, tmpDir } from './helpers';
 
 describe('regions', () => {
+  it('renames a region: tidied, capped, empty falls back to Part n', () => {
+    let p = createProject('R', 48000);
+    p = addRegion(p, 0, 100).project;
+    p = addRegion(p, 200, 300).project;
+    const [a, b] = p.regions!;
+    p = renameRegion(p, b.id, '  Bonus   segment ');
+    expect(p.regions![1].title).toBe('Bonus segment');
+    expect(p.regions![0].title).toBe(a.title);
+    p = renameRegion(p, b.id, '   ');
+    expect(p.regions![1].title).toBe('Part 2');
+    p = renameRegion(p, a.id, 'x'.repeat(500));
+    expect(p.regions![0].title).toHaveLength(MAX_REGION_TITLE);
+    expect(renameRegion(p, 'nope', 'Y')).toBe(p);
+  });
+
   it('adds, renames and removes regions, sorted by start', () => {
     let p = createProject('R', 48000);
     p = addRegion(p, 500, 300).project;

@@ -240,7 +240,7 @@ export function regionFromSelection(): void {
   const span = selectionSpan(store.project, store.selection.range, store.selection.clipIds);
   if (!span || span[1] <= span[0]) return toast('Select a time range (or clips) to make a region');
   store.edit((p) => addRegion(p, span[0], span[1]).project);
-  toast('Region added. Rename it in the Chapters view; export it with “Each region as its own file”.');
+  toast('Region added. Double-click its name on the ruler to rename it; export it with “Each region as its own file”.');
 }
 
 /** Shift+M: a chapter marker whose title can be typed right away, without stopping anything. */

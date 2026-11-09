@@ -1,7 +1,7 @@
 // Record & Edit view: track headers, canvas timeline with waveforms, markers, selection and transport following.
 import { LevelMeter } from './levelMeter';
 import { selectionSpan } from '../core/navigation';
-import type { AutomationLane, AutomationPoint, Clip, EnvelopePoint, Marker, PeakLevel, Project, Take, Track, TrackFolder } from '../shared/types';
+import type { AutomationLane, AutomationPoint, Clip, EnvelopePoint, Marker, PeakLevel, Project, Region, Take, Track, TrackFolder } from '../shared/types';
 import { compTake, deleteTake, deleteUnusedTakes, flattenTakes, loopPass, pickTake, takeInUse, takeUsage } from '../core/takes';
 import { DRAMA_FOLDERS, FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addDramaFolders, addFolder, audibleTracks, removeFolder, setTrackFolder, timelineRows, updateFolder, type TimelineRow } from '../core/folders';
 import { askName } from './nameDialog';
@@ -26,6 +26,7 @@ import { edgeScrollSpeed } from '../core/edgeScroll';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
 import { openClipMenu, promptClipName } from './clipMenu';
+import { openRegionMenu, promptRegionName } from './regionMenu';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform, type WaveLayout } from './waveform';
 import { clipPieces, loopSeams, minClipOffset, soundTag } from '../core/clipSound';
@@ -160,6 +161,8 @@ export class TimelineView {
   private hoverClipId: string | null = null;
   /** Marker labels as last drawn in the ruler, for hover text. */
   private markerLabels: (LabelLayout & { title: string })[] = [];
+  /** Where each region's name is drawn on the ruler (double-click it to rename). */
+  private regionLabels: Array<{ id: string; x0: number; x1: number }> = [];
   private snapBtn = iconButton('snap', { label: 'Snapping' }, null, 'snap-btn');
   /** Opens the filter stack of a track. */
   onOpenFx: (trackId: string) => void = () => {};
@@ -220,6 +223,13 @@ export class TimelineView {
   private zoomBack: { pxPerSec: number; viewStart: number } | null = null;
 
   /** Shift+Z: zooms to the selected range or clips; pressed again (or with nothing selected), zooms back. */
+  /** The region under ruler x (the innermost if they overlap). */
+  private regionAt(x: number): Region | null {
+    const f = this.frameOf(x);
+    const hits = (store.project.regions ?? []).filter((g) => f >= g.start && f <= g.end);
+    return hits.sort((a, b) => a.end - a.start - (b.end - b.start))[0] ?? null;
+  }
+
   toggleZoomToSelection(span: [number, number] | null): boolean {
     if (this.zoomBack && !span) {
       ({ pxPerSec: this.pxPerSec, viewStart: this.viewStart } = this.zoomBack);
@@ -1097,6 +1107,7 @@ export class TimelineView {
     this.markerLabels = layoutMarkerLabels(markerXs, measure, { offset: 11, gap: 4 }).map((l) => ({ ...l, title: titles.get(l.id) ?? '' }));
     // regions: bands in the marker lane, behind the markers
     ctx.textBaseline = 'middle';
+    this.regionLabels = [];
     for (const r of store.project.regions ?? []) {
       const x0 = this.cx(this.xOf(r.start));
       const x1 = this.cx(this.xOf(r.end));
@@ -1117,7 +1128,10 @@ export class TimelineView {
       const nextMarker = this.markerLabels.find((l) => l.x - 11 > tx);
       const room = Math.min(x1, nextMarker ? nextMarker.x - 11 : Infinity) - tx - 6;
       const text = room > 20 ? fitText(label, room, (t) => ctx.measureText(t).width) : '';
-      if (text) ctx.fillText(text, tx, RULER_H + MARKER_H / 2 - 1);
+      if (text) {
+        ctx.fillText(text, tx, RULER_H + MARKER_H / 2 - 1);
+        this.regionLabels.push({ id: r.id, x0: tx - 2, x1: tx + ctx.measureText(text).width + 2 });
+      }
     }
     // markers
     for (const m of store.project.markers) {
@@ -2560,7 +2574,8 @@ export class TimelineView {
       const onEdge = !onMarker && this.hitRangeEdge(x, null);
       this.rulerCanvas.style.cursor = onPlayhead || onEdge ? 'ew-resize' : '';
       const label = y >= RULER_H && !onPlayhead ? this.markerLabelAt(x) : null;
-      this.rulerCanvas.title = onPlayhead ? 'Drag to move the playhead' : label ? label.title : '';
+      const region = y >= RULER_H && !onPlayhead && !label && this.regionLabels.some((l) => x >= l.x0 && x <= l.x1) ? this.regionAt(x) : null;
+      this.rulerCanvas.title = onPlayhead ? 'Drag to move the playhead' : label ? label.title : region ? `${region.title}: double-click to rename, right-click for more` : '';
     });
     this.rulerCanvas.addEventListener('dblclick', (e) => {
       const { x, y } = local(e, this.rulerCanvas);
@@ -2571,10 +2586,22 @@ export class TimelineView {
         store.setView('chapters');
         return;
       }
-      // double-click a region: select its time range
-      const f = this.frameOf(x);
-      const r = (store.project.regions ?? []).find((g) => f >= g.start && f <= g.end);
+      // double-click a region's name: rename it; elsewhere in the region: select its time range
+      const label = this.regionLabels.find((l) => x >= l.x0 && x <= l.x1);
+      if (label && store.transport.state !== 'recording') {
+        this.drag = null;
+        return promptRegionName(label.id, e.clientX - 8, e.clientY - 12);
+      }
+      const r = this.regionAt(x);
       if (r) store.select({ range: [r.start, r.end], rangeTracks: null, clipIds: new Set(), markerId: null });
+    });
+    this.rulerCanvas.addEventListener('contextmenu', (e) => {
+      const { x, y } = local(e, this.rulerCanvas);
+      const r = y >= RULER_H && !this.hitMarker(x) ? this.regionAt(x) : null;
+      if (!r) return;
+      e.preventDefault();
+      this.drag = null;
+      openRegionMenu({ region: r, pageX: e.clientX, pageY: e.clientY, zoomTo: (span) => this.toggleZoomToSelection(span) });
     });
 
     this.canvas.addEventListener('mouseleave', () => {
