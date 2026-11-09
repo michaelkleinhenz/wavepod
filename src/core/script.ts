@@ -566,7 +566,72 @@ export function settleTakes(project: Project): Project {
     changed = true;
     return { ...l, take: { ...take, ...(l.take.auto ? { auto: true } : {}) } };
   });
-  return changed ? { ...project, script: { ...script, lines } } : project;
+  return changed ? nameScriptClips({ ...project, script: { ...script, lines } }) : project;
+}
+
+// ---------------------------------------------------------------- clip names
+
+/** Longest name given to a clip after its script line (characters, with the "…"). */
+export const SCRIPT_CLIP_NAME_MAX = 32;
+
+/**
+ * A clip name for a line: the role and the first few words, e.g. "SARAH: Where were you last…",
+ * cut at a word (or, for one long word, inside it) so it is at most `max` characters long.
+ */
+export function scriptClipName(l: Pick<ScriptLine, 'character' | 'text'>, max = SCRIPT_CLIP_NAME_MAX): string {
+  const role = (l.character ?? '').replace(/\s+/g, ' ').trim();
+  const text = l.text.replace(/\s+/g, ' ').trim();
+  const full = role ? (text ? `${role}: ${text}` : role) : text;
+  if (full.length <= max) return full;
+  const room = max - 1;
+  const cut = full.slice(0, room + 1);
+  const space = cut.lastIndexOf(' ');
+  // at a word, if that keeps more than the role
+  const head = space > (role ? role.length + 1 : 0) ? cut.slice(0, space) : full.slice(0, room);
+  return `${head.replace(/[\s,;:.!?\-–—]+$/u, '')}…`;
+}
+
+/** A clip may be named after the one line in it if it isn't much longer than the line (seconds). */
+const NAME_SLACK = 2;
+const NAME_MAX_UNKNOWN = 60;
+
+/**
+ * Names unnamed clips that hold exactly one script line after that line ("ROLE: first words…").
+ * A clip with several lines, or much longer than its line, keeps showing its file name.
+ */
+export function nameScriptClips(project: Project): Project {
+  const script = project.script;
+  if (!script) return project;
+  const sr = project.sampleRate;
+  const byTrack = new Map<string, Array<{ line: ScriptLine; start: Frames; end?: Frames }>>();
+  for (const l of script.lines) {
+    if (l.kind !== 'dialogue' || !l.take) continue;
+    const p = takePosition(project, l.take, lineTrack(script, l));
+    if (!p?.trackId) continue;
+    let list = byTrack.get(p.trackId);
+    if (!list) byTrack.set(p.trackId, (list = []));
+    list.push({ line: l, start: p.start, ...(p.end !== undefined ? { end: p.end } : {}) });
+  }
+  let changed = false;
+  const tracks = project.tracks.map((t) => {
+    const placed = byTrack.get(t.id);
+    if (!placed || t.kind === 'soundboard') return t;
+    let touched = false;
+    const clips = t.clips.map((c) => {
+      if (c.name || c.sound) return c;
+      const inside = placed.filter((p) => p.start >= c.start && p.start < c.start + c.length);
+      if (inside.length !== 1 || !inside[0].line.text.trim()) return c;
+      const p = inside[0];
+      const longest = p.end !== undefined ? 3 * (p.end - p.start) + NAME_SLACK * sr : NAME_MAX_UNKNOWN * sr;
+      if (c.length > longest) return c;
+      touched = true;
+      return { ...c, name: scriptClipName(p.line) };
+    });
+    if (!touched) return t;
+    changed = true;
+    return { ...t, clips };
+  });
+  return changed ? { ...project, tracks } : project;
 }
 
 export interface PlacedLine {
@@ -771,6 +836,8 @@ function alignWindow(line: string[], tokens: string[], from: number, to: number)
 
 /** One place a line was spoken: a take, recorded in one go with others or on its own. */
 export interface LineOccurrence {
+  /** The script line this is a take of. */
+  lineId?: string;
   trackId: string;
   /** First and last word of the take on the timeline. */
   start: Frames;
@@ -915,7 +982,7 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
     const take = takeAt(project, a.start, b.end, a.trackId);
     const n = r.takes.length;
     found.set(l.id, { ...take, auto: true, ...(n > 1 ? { takes: n } : {}), start: a.start, end: b.end, score: r.best.score });
-    occurrences.set(l.id, r.takes.map(occurrence).sort((x, y) => x.start - y.start));
+    occurrences.set(l.id, r.takes.map((h) => ({ lineId: l.id, ...occurrence(h) })).sort((x, y) => x.start - y.start));
   };
 
   const dialogue = script.lines.filter((l) => l.kind === 'dialogue');
@@ -972,7 +1039,7 @@ export function applyLineUp(project: Project, result: LineUpResult): Project {
     const { start: _s, end: _e, score: _score, ...take } = f;
     return { ...l, recorded: true, take };
   });
-  return { ...project, script: { ...script, lines } };
+  return nameScriptClips({ ...project, script: { ...script, lines } });
 }
 
 // ---------------------------------------------------------------- cutting around takes
@@ -1001,6 +1068,8 @@ export function cutAroundTakes(project: Project, takes: readonly LineOccurrence[
     list.push(o.cutStart, o.cutEnd);
   }
   let cuts = 0;
+  /** Pieces made by these cuts: they are named after their line even if the clip had a name. */
+  const pieces = new Set<string>();
   const tracks = project.tracks.map((t) => {
     const at = byTrack.get(t.id);
     if (!at) return t;
@@ -1010,7 +1079,10 @@ export function cutAroundTakes(project: Project, takes: readonly LineOccurrence[
       for (const c of clips) {
         if (!c.sound && pos - c.start >= minPiece && c.start + c.length - pos >= minPiece) {
           const left = pos - c.start;
-          next.push({ ...c, length: left, fadeOut: 0 }, { ...c, id: uid('clp'), start: pos, offset: c.offset + left, length: c.length - left, fadeIn: 0 });
+          const a = { ...c, length: left, fadeOut: 0 };
+          const b = { ...c, id: uid('clp'), start: pos, offset: c.offset + left, length: c.length - left, fadeIn: 0 };
+          next.push(a, b);
+          pieces.add(a.id).add(b.id);
           cuts++;
         } else next.push(c);
       }
@@ -1018,9 +1090,37 @@ export function cutAroundTakes(project: Project, takes: readonly LineOccurrence[
     }
     return clips === t.clips ? t : { ...t, clips };
   });
-  if (!cuts) return { project, cuts: 0, clipIds: holding(project, takes) };
-  const out = { ...project, tracks };
+  const out = nameTakeClips(cuts ? { ...project, tracks } : project, takes, pieces);
   return { project: out, cuts, clipIds: holding(out, takes) };
+}
+
+/**
+ * Names each clip that is one take of a line (it lies within the take's cut points) after the
+ * line. Clips the user named keep their name, unless they were just cut.
+ */
+function nameTakeClips(project: Project, takes: readonly LineOccurrence[], pieces: ReadonlySet<string>): Project {
+  const script = project.script;
+  if (!script) return project;
+  const lines = new Map(script.lines.map((l) => [l.id, l]));
+  let changed = false;
+  const tracks = project.tracks.map((t) => {
+    const mine = takes.filter((o) => o.trackId === t.id && o.lineId && lines.get(o.lineId)?.text.trim());
+    if (!mine.length) return t;
+    let touched = false;
+    const clips = t.clips.map((c) => {
+      if (c.sound || (c.name && !pieces.has(c.id))) return c;
+      const o = mine.find((x) => c.start >= x.cutStart && c.start + c.length <= x.cutEnd && c.start < x.end && c.start + c.length > x.start);
+      if (!o) return c;
+      const name = scriptClipName(lines.get(o.lineId!)!);
+      if (c.name === name) return c;
+      touched = true;
+      return { ...c, name };
+    });
+    if (!touched) return t;
+    changed = true;
+    return { ...t, clips };
+  });
+  return changed ? { ...project, tracks } : project;
 }
 
 /** Clips that hold a take. */

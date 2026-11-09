@@ -13,12 +13,14 @@ import {
   lineAt,
   lineTokens,
   lineUpScript,
+  nameScriptClips,
   parseScript,
   placedLines,
   removeScript,
   replaceScript,
   sceneStart,
   scriptCharacters,
+  scriptClipName,
   scriptProgress,
   scriptScenes,
   scriptSummary,
@@ -468,5 +470,45 @@ BEN: We are here.
     const loaded = normalizeProject(JSON.parse(JSON.stringify(q)));
     expect(loaded.script).toEqual(q.script);
     expect(loaded.script!.lines[0].level).toBe(1);
+  });
+});
+
+describe('clip names from the script', () => {
+  it('names a clip by role and first words, cut at a word', () => {
+    expect(scriptClipName({ character: 'ANNA', text: 'Is this the night train to Vienna?' })).toBe('ANNA: Is this the night train…');
+    expect(scriptClipName({ character: 'BEN', text: 'Tickets, please.' })).toBe('BEN: Tickets, please.');
+    expect(scriptClipName({ character: 'ANNA', text: 'Is this the night train to Vienna?' }, 16)).toBe('ANNA: Is this…');
+    expect(scriptClipName({ character: 'BEN', text: 'Donaudampfschifffahrtsgesellschaft' }, 16)).toBe('BEN: Donaudampf…');
+    // never longer than the limit
+    for (const max of [10, 20, 32]) expect(scriptClipName({ character: 'DR. SARAH MEYER', text: 'Well, well, well. Look who finally decided to show up.' }, max).length).toBeLessThanOrEqual(max);
+  });
+
+  it('names the pieces holding each take when cutting around takes', () => {
+    const { p, transcripts } = recorded();
+    const r = lineUpScript(p, timelineWords(p, transcripts));
+    const takes = r.occurrences.get(p.script!.lines[2].id)!;
+    const res = cutAroundTakes(p, takes);
+    const anna = res.project.tracks[0].clips;
+    expect(anna.map((c) => c.name)).toEqual([undefined, 'ANNA: Is this the night train…', undefined, 'ANNA: Is this the night train…', undefined]);
+    // a name the user gives a take stays when cutting again
+    const renamed = { ...res.project, tracks: res.project.tracks.map((t, i) => (i ? t : { ...t, clips: t.clips.map((c, k) => (k === 3 ? { ...c, name: 'Keep this one' } : c)) })) };
+    expect(cutAroundTakes(renamed, takes).project.tracks[0].clips[3].name).toBe('Keep this one');
+  });
+
+  it('names a clip that holds exactly one found line, not one with several', () => {
+    const { p, transcripts } = recorded();
+    // Ben's line is a clip of its own; Anna's track is one long clip with every line
+    p.tracks[1].clips = [
+      { id: 'b1', file: 'media/ben.wav', start: 8 * SR, offset: 8 * SR, length: 4 * SR, gain: 0, fadeIn: 0, fadeOut: 0 },
+      { id: 'b2', file: 'media/ben.wav', start: 17 * SR, offset: 17 * SR, length: 13 * SR, gain: 0, fadeIn: 0, fadeOut: 0 },
+    ];
+    const q = applyLineUp(p, lineUpScript(p, timelineWords(p, transcripts)));
+    expect(q.tracks[0].clips[0].name).toBeUndefined();
+    expect(q.tracks[1].clips[0].name).toBe('BEN: It is. And it is late…');
+    // Tickets, please. is short and the clip is long
+    expect(q.tracks[1].clips[1].name).toBeUndefined();
+    // a name already there is kept
+    const named = { ...p, tracks: p.tracks.map((t, i) => (i === 1 ? { ...t, clips: t.clips.map((c) => ({ ...c, name: 'Mine' })) } : t)) };
+    expect(nameScriptClips(applyLineUp(named, lineUpScript(named, timelineWords(named, transcripts)))).tracks[1].clips[0].name).toBe('Mine');
   });
 });

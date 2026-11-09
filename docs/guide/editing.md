@@ -76,10 +76,16 @@ Right-click a clip for every clip command. It works on all selected clips if the
 - **Show volume line**, **Reset volume line**
 - **Clip gain…**, **Reset clip gain**, **Normalise to −16 LUFS** (or the target picked in **Loudness analysis**), **Loudness analysis…**
 - **Sound design**: **Reverse**, **Speed…**, **Loop**, **Loop to next clip**, **Loop over selection**, **Play as recorded**. See [Audio drama](audio-drama.md#sound-design-on-clips).
-- **Colour** swatches and **Note…**
+- **Colour** swatches, **Rename…**, **Reset name** and **Note…**
 - **Select all on this track**, **Zoom to clip**
 - **Region from clip**, **Align to track…**
 - **Takes** (on a track with takes): the takes under the clip, to switch to one, and **Show take lanes**. See [Takes and comping](recording.md#takes-and-comping).
+
+## Clip names
+
+Each clip shows its name at the top: the file it plays, *Take n* for a part of a [comp](recording.md#takes-and-comping), or a name you give it. To rename a clip, double-click its name (or right-click it and choose **Rename…**), type the new name and press `Enter`; `Esc` cancels. With several clips selected, **Rename…** in the clip menu gives all of them the name you type. Clear the name, or choose **Reset name**, to show the file name again. The name stays with the clip when you split, copy or move it.
+
+Clips in an [audio drama script](audio-drama.md#clip-names-from-the-script) are named after their line.
 
 ## Colours and notes
 

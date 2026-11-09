@@ -7,6 +7,7 @@ import {
   colorClips,
   duplicateClips,
   removeClipFades,
+  renameClips,
   resetClipEnvelopes,
   setClipGain,
   showClipEnvelopes,
@@ -85,6 +86,19 @@ describe('duplicate clips', () => {
 });
 
 describe('clip properties', () => {
+  it('renames clips and goes back to the file name with an empty name', () => {
+    const p = renameClips(project(), new Set(['a1', 'b1']), '  Intro   take 2 ');
+    expect([p.tracks[0].clips[0].name, p.tracks[1].clips[0].name, p.tracks[0].clips[1].name]).toEqual(['Intro take 2', 'Intro take 2', undefined]);
+    expect('name' in renameClips(p, new Set(['a1']), '  ').tracks[0].clips[0]).toBe(false);
+    expect(renameClips(project(), new Set(['a1']), 'x'.repeat(500)).tracks[0].clips[0].name).toHaveLength(120);
+  });
+
+  it('keeps the name on both halves of a split', () => {
+    const p = renameClips(project(), new Set(['a1']), 'Intro');
+    const r = splitClipsAt(p, new Set(['a1']), 500);
+    expect(r.project.tracks[0].clips.filter((c) => c.name === 'Intro')).toHaveLength(2);
+  });
+
   it('sets and clamps clip gain', () => {
     const p = setClipGain(project(), new Set(['a1', 'a2']), -3.04);
     expect(p.tracks[0].clips.map((c) => c.gain)).toEqual([-3, -3]);

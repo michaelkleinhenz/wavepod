@@ -25,7 +25,7 @@ import { snap, snapTargets } from '../core/snap';
 import { edgeScrollSpeed } from '../core/edgeScroll';
 import { normalizeClips } from './loudnessDialog';
 import { store } from './store';
-import { openClipMenu } from './clipMenu';
+import { openClipMenu, promptClipName } from './clipMenu';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform, type WaveLayout } from './waveform';
 import { clipPieces, loopSeams, minClipOffset, soundTag } from '../core/clipSound';
@@ -79,6 +79,8 @@ const TICK_STEPS = [
 ];
 /** Volume-line toggle shown at the top left of a hovered clip (offsets from the clip's top left). */
 const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
+/** Top of a clip where its name is drawn: double-click there renames it (px from the row top). */
+const NAME_STRIP_PX = 18;
 /** The clip's filter button, right of the volume-line toggle. */
 const FX_BTN = { x: VOL_BTN.x + VOL_BTN.w + 4, y: VOL_BTN.y, w: 28, h: VOL_BTN.h };
 const clipFxCount = (clip: Clip) => clip.fx?.filter((f) => f.enabled).length ?? 0;
@@ -2177,7 +2179,7 @@ export class TimelineView {
       const jingle = track.kind === 'soundboard' ? store.project.soundboard.find((s) => jingleMediaFile(s.id, this.sr) === clip.file) : undefined;
       // a part of the comp is named after its take
       const take = clip.takeId ? track.takes?.find((k) => k.id === clip.takeId) : undefined;
-      const name = jingle ? `♪ ${jingle.name}` : take ? `Take ${take.n}` : clip.file.split('/').pop() ?? '';
+      const name = clip.name ? clip.name : jingle ? `♪ ${jingle.name}` : take ? `Take ${take.n}` : clip.file.split('/').pop() ?? '';
       const tag = soundTag(clip);
       ctx.fillText(`${name}${clip.gain ? `  ${clip.gain > 0 ? '+' : ''}${clip.gain} dB` : ''}${tag ? `  ${tag}` : ''}`, Math.max(g.x, 0) + 5, g.y + 6, Math.max(10, g.w - 10));
       if (clip.note) {
@@ -2648,7 +2650,7 @@ export class TimelineView {
         return;
       }
       const autoArea = this.inAutomationArea(x, y);
-      this.canvas.title = autoArea ? `Double-click to add a ${LANE_NAME[autoArea.lane].toLowerCase()} point` : this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit?.clip.note ? `${hit.clip.note}\n\nRight-click for clip options` : hit ? 'Right-click for clip options' : '';
+      this.canvas.title = autoArea ? `Double-click to add a ${LANE_NAME[autoArea.lane].toLowerCase()} point` : this.inEnvelopeArea(x, y) ? 'Double-click to add a volume point' : hit && !hit.fade && y - hit.trackIndex * TRACK_H < NAME_STRIP_PX ? `${hit.clip.name ?? hit.clip.file.split('/').pop()}\n\nDouble-click to rename` : hit?.clip.note ? `${hit.clip.note}\n\nRight-click for clip options` : hit ? 'Right-click for clip options' : '';
       this.canvas.style.cursor = hit?.edge ? 'ew-resize' : hit ? 'grab' : 'text';
     });
 
@@ -2692,6 +2694,13 @@ export class TimelineView {
         const next = FADE_SHAPES[(FADE_SHAPES.findIndex((f) => f.id === cur) + 1) % FADE_SHAPES.length];
         store.edit((p) => updateClip(p, fadeHit.clip.id, { [key]: next.id }));
         toast(`Fade ${fadeHit.fade}: ${next.label}`);
+        return;
+      }
+      // the clip's name strip: rename it in place
+      if (fadeHit && !env && y - fadeHit.trackIndex * TRACK_H < NAME_STRIP_PX && store.transport.state !== 'recording') {
+        const c = fadeHit.clip;
+        const r = this.canvas.getBoundingClientRect();
+        promptClipName(c.id, Math.max(0, this.xOf(c.start)) + r.left + 2, fadeHit.trackIndex * TRACK_H + r.top + 4);
         return;
       }
       const area = env ?? this.inEnvelopeArea(x, y);

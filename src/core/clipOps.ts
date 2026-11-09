@@ -102,6 +102,19 @@ export function colorClips(project: Project, ids: ReadonlySet<string>, color: st
   });
 }
 
+/** Longest clip name kept (characters). */
+export const MAX_CLIP_NAME = 120;
+
+/** Names the clips; an empty name goes back to showing the file name. */
+export function renameClips(project: Project, ids: ReadonlySet<string>, name: string): Project {
+  const clean = name.replace(/\s+/g, ' ').trim().slice(0, MAX_CLIP_NAME);
+  return mapClips(project, ids, (c) => {
+    if (clean) c.name = clean;
+    else delete c.name;
+    return c;
+  });
+}
+
 /** Every clip on the track the clip is on. */
 export function clipsOnSameTrack(project: Project, clipId: string): Set<string> {
   const t = project.tracks.find((x) => x.clips.some((c) => c.id === clipId));

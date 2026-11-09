@@ -77,6 +77,14 @@ When you record a line several times in one go (without [loop recording](recordi
 
 Only cuts are made: nothing is removed, moved or faded, and the episode plays exactly as before. Delete the takes you don't want yourself afterwards (`Delete` on the selected clip, or a [ripple delete](editing.md#deleting-and-cutting) to close the gap). Each cut leaves a little room before and after a take, but never reaches into the words around it. Cutting again where the clips are already cut does nothing. Like Line up, it needs the [transcript](transcript.md), and the line's character on the right track.
 
+### Clip names from the script
+
+Clips that hold one line of the script are named after it: the role and the first few words, for example *ANNA: Is this the night train…*. Names are kept short (32 characters at most) and cut at a word.
+
+- **Cut Around Every Take** names each clip holding a take after its line, so the takes of a line are easy to tell apart on the timeline.
+- **Line up**, and lines ticked while recording, name a clip when it holds exactly that one line and not much more, for example when you record each line on its own.
+- Clips you have [renamed](editing.md#clip-names) keep their name. A clip with several lines keeps showing its file name.
+
 ### Jumping
 
 - Click a line to jump to its take. Its time is selected too, so **Repeat** (`L`) plays it over and over. `Shift+Enter` does the same for the picked line.

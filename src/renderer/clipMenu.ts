@@ -11,10 +11,12 @@ import {
   loopClips,
   loopClipsOver,
   loopClipsToNext,
+  MAX_CLIP_NAME,
   resetClipsSound,
   reverseClips,
   setClipsRate,
   removeClipFades,
+  renameClips,
   resetClipEnvelopes,
   setClipGain,
   showClipEnvelopes,
@@ -77,7 +79,7 @@ export function openClipMenu(o: ClipMenuOptions): void {
   const rateText = rates.size === 1 ? formatRate(clipRate(clips[0])) : 'mixed';
 
   const entries: ContextMenuEntry[] = [
-    { kind: 'header', label: one ? clipName(clips[0].file) : `${n} clips selected` },
+    { kind: 'header', label: one ? (clips[0].name ?? clipName(clips[0].file)) : `${n} clips selected` },
     { label: 'Split here', enabled: !recording && canSplitAt(store.project, ids, o.at), title: 'Split at the mouse position', run: () => split(o.at) },
     { label: 'Split at playhead', accel: 'S', enabled: !recording && canSplitAt(store.project, ids, pos), run: () => split(pos) },
     { kind: 'separator' },
@@ -146,6 +148,13 @@ export function openClipMenu(o: ClipMenuOptions): void {
     { label: 'Play as recorded', enabled: !recording && clips.some((c) => c.sound), title: 'Undo reverse, speed and loop', run: () => edit((p) => resetClipsSound(p, ids)) },
     { kind: 'separator' },
     { kind: 'custom', el: swatches(ids, clips) },
+    {
+      label: one ? 'Rename…' : `Rename ${n} clips…`,
+      enabled: !recording,
+      title: 'The name shown on the clip (empty: the file name)',
+      run: () => promptClipName(ids, o.pageX, o.pageY),
+    },
+    { label: 'Reset name', enabled: !recording && clips.some((c) => c.name), title: 'Show the file name again', run: () => edit((p) => renameClips(p, ids, '')) },
     {
       label: one && clips[0].note ? 'Edit note…' : 'Note…',
       enabled: one,
@@ -221,6 +230,46 @@ function promptGain(ids: Set<string>, current: number, x: number, y: number): vo
     h('span', { class: 'muted' }, 'Clip gain'),
     input,
     h('span', { class: 'muted' }, 'dB'),
+  );
+  document.body.append(box);
+  input.focus();
+  input.select();
+}
+
+/**
+ * A small field over the clip to type its name (Enter applies, Esc cancels; empty goes back to
+ * the file name). With several clips, all get the typed name.
+ */
+export function promptClipName(clipIds: string | Iterable<string>, x: number, y: number): void {
+  document.querySelector('.gain-prompt')?.remove();
+  const ids = new Set(typeof clipIds === 'string' ? [clipIds] : clipIds);
+  const clips = targetClips(store.project, ids);
+  if (!clips.length) return;
+  const names = new Set(clips.map((c) => c.name ?? clipName(c.file)));
+  const input = h('input', { class: 'clip-name-input', value: names.size === 1 ? [...names][0] : '', maxlength: MAX_CLIP_NAME, spellcheck: false, placeholder: clipName(clips[0].file) }) as HTMLInputElement;
+  let done = false;
+  const close = (apply: boolean) => {
+    if (done) return;
+    done = true;
+    box.remove();
+    if (!apply) return;
+    const value = input.value.trim();
+    // typing the file name back is the same as no name
+    const name = clips.every((c) => value === clipName(c.file)) ? '' : value;
+    if (clips.every((c) => (c.name ?? '') === name)) return;
+    store.edit((p) => renameClips(p, ids, name));
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') close(true);
+    else if (e.key === 'Escape') close(false);
+  });
+  input.addEventListener('blur', () => close(true));
+  const box = h(
+    'div',
+    { class: 'title-prompt gain-prompt clip-name-prompt', style: { left: `${Math.max(0, Math.min(x, window.innerWidth - 420))}px`, top: `${Math.max(0, Math.min(y, window.innerHeight - 60))}px`, transform: 'none' } },
+    h('span', { class: 'muted' }, clips.length === 1 ? 'Clip name' : `Name of ${clips.length} clips`),
+    input,
   );
   document.body.append(box);
   input.focus();
