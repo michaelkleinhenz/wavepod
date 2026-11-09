@@ -134,8 +134,11 @@ of the `audify` audio module (see `patches/` and `scripts/build-audify.mjs`;
 the upstream prebuilt binary crashes under Electron 43+). `npm install` or
 `npm rebuild` can put that prebuilt back; `make build` and every `make dist*`
 notice this and compile the patched copy again before bundling. On Linux this also
-needs the ALSA and PulseAudio headers (`sudo apt install libasound2-dev
-libpulse-dev pkg-config` on Debian/Ubuntu). VST3 support needs the helper in `native/vsthost`:
+needs the ALSA and PulseAudio headers: `sudo apt install libasound2-dev
+libpulse-dev pkg-config` on Debian/Ubuntu, `sudo dnf install alsa-lib-devel
+pulseaudio-libs-devel pkgconf` on Fedora. If the JACK headers are installed too
+(`libjack-jackd2-dev`, or `pipewire-jack-audio-connection-kit-devel` on Fedora),
+the build also includes JACK; they are optional. VST3 support needs the helper in `native/vsthost`:
 `make vsthost` builds it (CMake 3.25+ and a C++17 compiler; it downloads
 Steinberg's VST3 SDK), and `make dist*` builds it automatically. Without it
 WavePod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`

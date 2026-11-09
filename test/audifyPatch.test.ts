@@ -23,6 +23,13 @@ describe('audify patch', () => {
     }
     expect(text).not.toMatch(/^Binary files /m);
   });
+
+  // pkg-config's jack_LIBRARIES is just "jack" without its -L folder; on Fedora
+  // PipeWire's libjack.so is outside the default path and the link failed.
+  it.each(patches)('%s links JACK by full path', (name) => {
+    const text = readFileSync(join(dir, name), 'utf8');
+    expect(text).toMatch(/^\+\s*list\(APPEND LINKLIBS \$\{jack_LINK_LIBRARIES\}\)/m);
+  });
 });
 
 // audify's install script (prebuild-install) can swap the patched binary back

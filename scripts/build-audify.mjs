@@ -16,6 +16,8 @@
 //  - every RtAudio instance that never opened a stream warned "no open stream
 //    to close!" when it was garbage collected;
 //  - probing ALSA printed "Invalid CTL pulse" on systems without that plug-in.
+//  - RtAudio linked JACK as a bare -ljack, which failed where libjack.so is
+//    not on the default linker path (Fedora's PipeWire JACK).
 // The prebuilt binary that audify downloads has none of these fixes, so we
 // compile it here.
 //

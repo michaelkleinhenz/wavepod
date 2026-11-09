@@ -222,6 +222,22 @@ index 99b0442..edfe682 100644
      double _outputVolume;
      double _outputMultiplier;
  };
+diff --git a/node_modules/audify/vendor/rtaudio/CMakeLists.txt b/node_modules/audify/vendor/rtaudio/CMakeLists.txt
+index 9ce111f..3d7ca86 100644
+--- a/node_modules/audify/vendor/rtaudio/CMakeLists.txt
++++ b/node_modules/audify/vendor/rtaudio/CMakeLists.txt
+@@ -114,7 +114,10 @@ if (RTAUDIO_API_JACK AND jack_FOUND)
+   list(APPEND API_DEFS "-D__UNIX_JACK__")
+   list(APPEND API_LIST "jack")
+   if(jack_FOUND)
+-    list(APPEND LINKLIBS ${jack_LIBRARIES})
++    # Full paths: jack_LIBRARIES is only "jack" and loses the -L folder, so
++    # linking failed where libjack.so is not on the default path (Fedora's
++    # PipeWire JACK lives in /usr/lib64/pipewire-0.3/jack).
++    list(APPEND LINKLIBS ${jack_LINK_LIBRARIES})
+     list(APPEND INCDIRS ${jack_INCLUDEDIR})
+   else()
+     list(APPEND LINKLIBS ${JACK_LIB})
 diff --git a/node_modules/audify/vendor/rtaudio/RtAudio.cpp b/node_modules/audify/vendor/rtaudio/RtAudio.cpp
 index 73cee2b..f8e4b51 100644
 --- a/node_modules/audify/vendor/rtaudio/RtAudio.cpp
