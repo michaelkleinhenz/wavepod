@@ -58,7 +58,19 @@ A region is a named part of the episode, for example two episodes recorded in on
 1. Select a time range.
 2. Click **Region from selection** in the timeline toolbar (or right-click a clip › **Region from clip**).
 
-Regions show on the ruler and are listed in the Chapters view, where you can rename them and change their start and end. **Select on the timeline** selects a region's range; double-clicking a region on the ruler does the same. **×** deletes it.
+Regions show on the ruler and are listed in the Chapters view, where you can rename them and change their start and end. **Select on the timeline** selects a region's range. **×** deletes it.
+
+### Renaming regions
+
+New regions are called *Part 1*, *Part 2* and so on. To give one a name:
+
+- **Double-click the region's name** on the ruler, type the new name and press `Enter` (`Esc` keeps the old name).
+- Or **right-click the region** on the ruler › **Rename…**.
+- Or type in its **Title** field in the Chapters view.
+
+Clearing the name gives the region its *Part n* name back. The name is used for the [exported file](export.md#parts-of-the-episode).
+
+Right-clicking a region on the ruler also offers **Select range**, **Zoom to region**, **Show in Chapters view** and **Delete region** (which removes only the region, not the audio). Double-clicking a region anywhere but its name selects its time range.
 
 The export can write each region as its own file. See [Exporting](export.md#parts-of-the-episode).
 

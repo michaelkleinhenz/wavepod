@@ -28,6 +28,17 @@ export function updateRegion(project: Project, id: string, patch: Partial<Omit<R
   return p;
 }
 
+export const MAX_REGION_TITLE = 120;
+
+/** Renames a region (whitespace tidied, capped); an empty title falls back to "Part n" by its position. */
+export function renameRegion(project: Project, id: string, title: string): Project {
+  const list = project.regions ?? [];
+  const index = list.findIndex((r) => r.id === id);
+  if (index < 0) return project;
+  const clean = title.replace(/\s+/g, ' ').trim().slice(0, MAX_REGION_TITLE);
+  return updateRegion(project, id, { title: clean || `Part ${index + 1}` });
+}
+
 export function removeRegion(project: Project, id: string): Project {
   const p = structuredClone(project);
   p.regions = (p.regions ?? []).filter((r) => r.id !== id);
