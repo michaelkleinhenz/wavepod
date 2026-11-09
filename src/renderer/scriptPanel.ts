@@ -290,7 +290,7 @@ export class ScriptPanel {
       }
       const lines = ids.filter((id) => r.occurrences.has(id)).length;
       const res = cutAroundTakes(store.project, takes);
-      if (res.cuts) store.edit(() => res.project);
+      if (res.project !== store.project) store.edit(() => res.project);
       // one line: its takes are selected, to compare them or delete the bad ones
       if (ids.length === 1) {
         seek(takes[0].cutStart);

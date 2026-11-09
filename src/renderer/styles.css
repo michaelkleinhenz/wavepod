@@ -484,6 +484,7 @@ ul.soundcheck li.error { color: var(--danger, #e53935); }
 button.primary.danger { background: #c62828; border-color: #c62828; }
 .title-prompt { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
 .title-prompt input { width: 280px; }
+.clip-name-prompt > span { white-space: nowrap; }
 
 /* level meters with target zone, peak hold and clip light */
 .level-meter { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }

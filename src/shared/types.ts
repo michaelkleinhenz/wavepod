@@ -25,6 +25,8 @@ export interface Clip {
   envelope?: EnvelopePoint[];
   /** Volume line is drawn and editable on the clip. */
   showEnvelope?: boolean;
+  /** Name shown at the top of the clip, set by the user or after a script line; the file name when not set. */
+  name?: string;
   /** Storyboard: a colour and a free-text note for the clip. */
   color?: string;
   note?: string;
