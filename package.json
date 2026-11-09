@@ -1,7 +1,7 @@
 {
   "name": "wavepod",
   "productName": "WavePod",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "A simple multitrack DAW for podcasting",
   "author": "Michael Kleinhenz <michael@kleinhenz.net>",
   "license": "MIT",
