@@ -35,19 +35,23 @@ You can change a track's input later in the track header on the timeline. See [T
 
 ## Second output
 
-If your device has more than one pair of outputs, **Second output** sends a second feed to two more outputs of the same device, for example to a stream, a second headphone amp or a mixer channel for the soundboard.
+**Second output** sends a second feed to two more outputs of the device you listen on, or to another output device such as a USB headset, a second sound card or a virtual cable into a call app. Use it for a stream, a second headphone amp, a mixer channel for the soundboard or a remote guest.
 
-- **Send to**: which output pair.
+- **Send to**: *Off*, a free pair of the device you listen on (*Outputs 3 and 4*), or another device (with its pair, if it has more than one).
 - **What it carries**: *Everything (same as your headphones)*, *Soundboard only*, *Episode playback without live jingles*, or *Mix-minus for a remote guest*.
+
+Another device runs on its own clock, so WavePod passes the feed to it through a small buffer: it is a few milliseconds later than your headphones, and it keeps itself in step when the two clocks drift apart. If the device you listen on has only one pair of outputs and no other output device is connected, the card says so: connect one and click **Look for devices again**.
+
+On Linux, **System default** (PulseAudio / PipeWire) has just two outputs. Other devices show up in the list if the audio driver can reach them (see [No audio devices](troubleshooting.md#no-audio-devices)).
 
 ## Mix-minus for remote guests
 
 A guest on Zoom, Teams or the phone needs to hear you, but not themselves: if their own voice comes back to them through the call, they hear an echo with the call's delay, and the call can feed back. A mix-minus is the feed that carries everything except the guest.
 
 1. Record the guest on their own track, from the input where the call computer or phone hybrid comes in.
-2. On **Setup › Audio › Second output**, choose the outputs that go to the call under **Send to**, and *Mix-minus for a remote guest* under **What it carries**.
+2. On **Setup › Audio › Second output**, choose where the call gets its audio under **Send to**, and *Mix-minus for a remote guest* under **What it carries**.
 3. Tick **Leave out** next to the guest's track.
-4. Connect those outputs to the line input of the call computer or phone hybrid, and pick that input as the microphone in the call app.
+4. Connect those outputs to the line input of the call computer or phone hybrid, and pick that input as the microphone in the call app. If the call runs on the same computer, send the feed to a virtual audio cable (for example VB-CABLE on Windows, BlackHole on macOS, or a PipeWire null sink on Linux) and pick the cable as the microphone in the call app.
 
 The guest then hears every microphone that has a track, the soundboard and episode playback. Inputs no track records from are not sent, so a device's own stereo mix (which already contains the guest) never ends up in the feed. In pre-show only the microphones and the soundboard are sent. You can tick more than one track if several guests share one call, and you can change who is left out during a recording without interrupting it.
 

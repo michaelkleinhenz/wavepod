@@ -46,7 +46,7 @@ export function mixMinusLeavesOutSomething(tracks: Track[], exclude: number[]): 
   return tracks.some((t) => t.kind !== 'soundboard' && t.inputChannels.some((c) => exclude.includes(c)));
 }
 
-/** A stereo ring buffer from the input callback to the output callback, with a bounded delay. */
+/** A stereo ring buffer from one audio callback to another (input to output, or output to a second device), with a bounded delay. */
 export class MixMinusBuffer {
   private left: Float32Array;
   private right: Float32Array;
@@ -83,12 +83,8 @@ export class MixMinusBuffer {
     // keep only the newest `cap` frames of a buffer larger than the whole ring
     const skip = Math.max(0, frames - cap);
     const n = frames - skip;
-    if (this.fill + n > cap) {
-      // the output fell behind (or isn't running): drop the oldest, down to the target delay
-      const keep = Math.max(0, Math.min(this.fill, this.targetDelay - n));
-      this.readPos = (this.readPos + this.fill - keep) % cap;
-      this.fill = keep;
-    }
+    // the output fell behind (or isn't running): drop the oldest, down to the target delay
+    this.makeRoom(n);
     let w = (this.readPos + this.fill) % cap;
     for (let i = skip; i < frames; i++) {
       let l = 0;
@@ -104,6 +100,29 @@ export class MixMinusBuffer {
       if (++w === cap) w = 0;
     }
     this.fill += n;
+  }
+
+  /** Queues `frames` frames of stereo audio (e.g. a second output's feed for another device). */
+  writeStereo(L: Float32Array, R: Float32Array, frames: number): void {
+    const cap = this.maxDelay;
+    const skip = Math.max(0, frames - cap);
+    const n = frames - skip;
+    this.makeRoom(n);
+    let w = (this.readPos + this.fill) % cap;
+    for (let i = skip; i < frames; i++) {
+      this.left[w] = L[i];
+      this.right[w] = R[i];
+      if (++w === cap) w = 0;
+    }
+    this.fill += n;
+  }
+
+  /** Drops the oldest frames, down to the target delay, if `n` more wouldn't fit. */
+  private makeRoom(n: number): void {
+    if (this.fill + n <= this.maxDelay) return;
+    const keep = Math.max(0, Math.min(this.fill, this.targetDelay - n));
+    this.readPos = (this.readPos + this.fill - keep) % this.maxDelay;
+    this.fill = keep;
   }
 
   /** Adds up to `frames` queued frames into `L`/`R`; returns how many there were. */

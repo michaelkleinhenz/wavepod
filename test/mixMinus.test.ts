@@ -3,6 +3,8 @@ import { MixMinusBuffer, mixMinusLeavesOutSomething, mixMinusSources } from '../
 import { AudioEngine, VIRTUAL_API } from '../src/main/audio/engine';
 import { addTrack, createProject } from '../src/core/project';
 import type { Project } from '../src/shared/types';
+import { secondOutputChoices, secondOutputValue } from '../src/core/secondOutput';
+import type { AudioDevice, DeviceConfig } from '../src/shared/types';
 import { tmpDir } from './helpers';
 
 function studio(): Project {
@@ -78,6 +80,19 @@ describe('MixMinusBuffer', () => {
     expect(L[got - 1] * 1e6).toBeCloseTo(n - 4, 0);
   });
 
+  it('carries stereo audio from one callback to another', () => {
+    const b = new MixMinusBuffer(256, 128);
+    const L = new Float32Array(100).fill(0.5);
+    const R = new Float32Array(100).fill(-0.5);
+    for (let k = 0; k < 10; k++) b.writeStereo(L, R, 100);
+    expect(b.buffered).toBeLessThanOrEqual(256);
+    const oL = new Float32Array(100);
+    const oR = new Float32Array(100);
+    expect(b.readInto(100, oL, oR)).toBe(100);
+    expect(oL[50]).toBe(0.5);
+    expect(oR[50]).toBe(-0.5);
+  });
+
   it('wraps around the ring without losing frames', () => {
     const b = new MixMinusBuffer(256, 128);
     const L = new Float32Array(100);
@@ -151,5 +166,83 @@ describe('AudioEngine mix-minus', () => {
     e.onInput(input(480, e.input.channels));
     const out = e.onOutput(480, 4);
     expect(out[100 * 4 + 2]).toBe(0);
+  });
+});
+
+describe('second output choices', () => {
+  const dev = (id: number, name: string, outputChannels: number): AudioDevice => ({
+    id, name, inputChannels: 0, outputChannels, sampleRates: [48000], preferredSampleRate: 48000, isDefaultInput: false, isDefaultOutput: false,
+  });
+  const cfg = (c: Partial<DeviceConfig>): DeviceConfig => ({ api: 'x', inputDeviceId: null, outputDeviceId: 1, sampleRate: 48000, bufferSize: 512, outputFirstChannel: 0, ...c });
+
+  it('offers other devices when the listening device has only one pair', () => {
+    const devices = [dev(1, 'Laptop', 2), dev(2, 'USB headset', 2), dev(3, 'Interface', 4), dev(4, 'Mic only', 0)];
+    expect(secondOutputChoices(devices, cfg({}))).toEqual([
+      { value: '2:0', label: 'USB headset' },
+      { value: '3:0', label: 'Interface: Outputs 1 and 2' },
+      { value: '3:2', label: 'Interface: Outputs 3 and 4' },
+    ]);
+    expect(secondOutputChoices([dev(1, 'Laptop', 2)], cfg({}))).toEqual([]);
+  });
+
+  it('offers the free pairs of the listening device first', () => {
+    const devices = [dev(1, 'Interface', 6), dev(2, 'USB headset', 2)];
+    expect(secondOutputChoices(devices, cfg({ outputFirstChannel: 2 })).map((c) => c.value)).toEqual(['main:0', 'main:4', '2:0']);
+    expect(secondOutputValue(cfg({ output2FirstChannel: 4 }))).toBe('main:4');
+    expect(secondOutputValue(cfg({ output2FirstChannel: 0, output2DeviceId: 2 }))).toBe('2:0');
+    expect(secondOutputValue(cfg({ output2FirstChannel: 2, output2DeviceId: 1 }))).toBe('main:2');
+  });
+});
+
+describe('AudioEngine second output on another device', () => {
+  let engine: AudioEngine;
+  afterEach(() => engine?.dispose());
+
+  it('feeds a separate device with the guest mix-minus and the soundboard', () => {
+    engine = new AudioEngine(null);
+    // listen on the 2-output device, send the guest feed to outputs 3/4 of the other one
+    const s = engine.applyConfig({
+      api: VIRTUAL_API,
+      inputDeviceId: 1,
+      outputDeviceId: 1,
+      sampleRate: 48000,
+      bufferSize: 480,
+      outputFirstChannel: 0,
+      output2DeviceId: 2,
+      output2FirstChannel: 2,
+      output2Source: 'mixminus',
+      mixMinusExclude: [2, 3],
+    });
+    expect(s.error).toBeNull();
+    expect(s.config.output2DeviceId).toBe(2);
+    engine.setProject(studio(), tmpDir());
+    const e = engine as unknown as {
+      onInput(b: Float32Array): void;
+      onOutput(n: number, nch: number): Float32Array;
+      onOutput2(n: number, nch: number): Float32Array;
+      input: { channels: number };
+      output2: unknown;
+    };
+    expect(e.output2).not.toBeNull();
+    e.onInput(input(480, e.input.channels, (c) => [0.1, 0.2, 0.5, 0.5][c] ?? 0.9));
+    const main = e.onOutput(480, 2);
+    expect(main[200]).toBe(0); // live inputs never on the headphones
+    let out = e.onOutput2(480, 4);
+    expect(out[100 * 4 + 0]).toBe(0);
+    expect(out[100 * 4 + 2]).toBeCloseTo(0.3, 5); // host + co-host on outputs 3/4
+    expect(out[100 * 4 + 3]).toBeCloseTo(0.3, 5);
+
+    engine.loadSound('s', [new Float32Array(48000).fill(0.25)]);
+    engine.playSound('s');
+    e.onOutput(480, 2);
+    out = e.onOutput2(480, 4);
+    expect(out[100 * 4 + 2]).toBeCloseTo(0.25, 2); // the jingle comes over from the main output
+  });
+
+  it('falls back to the listening device when both are the same', () => {
+    engine = new AudioEngine(null);
+    const s = engine.applyConfig({ api: VIRTUAL_API, inputDeviceId: 1, outputDeviceId: 2, sampleRate: 48000, bufferSize: 480, outputFirstChannel: 0, output2DeviceId: 2, output2FirstChannel: 2 });
+    expect(s.config.output2DeviceId).toBeNull();
+    expect((engine as unknown as { output2: unknown }).output2).toBeNull();
   });
 });

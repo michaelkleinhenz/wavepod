@@ -136,6 +136,13 @@ export class AudioEngine extends EventEmitter {
   /** The devices the streams were opened on, to find them again after they drop out (ids can change). */
   private inputDevice: AudioDevice | null = null;
   private outputDevice: AudioDevice | null = null;
+  /** The second output when it is on a device of its own (otherwise it rides along on `output`). */
+  private output2: StreamHandle | null = null;
+  /** What the main output callback rendered for the separate second output, on its way there. */
+  private feed2: MixMinusBuffer | null = null;
+  private feedBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  private out2Buf = new Float32Array(0);
+  private mix2Buf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   /** When the input last delivered a buffer (performance.now()). */
   private lastInputMs = 0;
   /** Watches the input and reconnects it when it drops out. */
@@ -315,6 +322,14 @@ export class AudioEngine extends EventEmitter {
       const err = this.openOutputOn(outDev);
       if (err) errors.push(err);
     }
+    const out2Id = this.config.output2DeviceId;
+    if (out2Id !== null && out2Id !== undefined && (out2Id === outDev?.id || this.config.output2FirstChannel === null || this.config.output2FirstChannel === undefined)) {
+      this.config.output2DeviceId = null; // the listening device itself, or off
+    } else if (out2Id !== null && out2Id !== undefined) {
+      const dev2 = devices.find((d) => d.id === out2Id && d.outputChannels > 0);
+      const err = dev2 ? this.openOutput2On(dev2) : 'The device for the second output is not connected.';
+      if (err) errors.push(err);
+    }
     if (errors.length) this.error = [this.error, ...errors].filter(Boolean).join('\n');
     this.updateMixMinus();
     this.startMeters();
@@ -349,7 +364,8 @@ export class AudioEngine extends EventEmitter {
     try {
       if (this.config.outputFirstChannel + 2 > dev.outputChannels) this.config.outputFirstChannel = 0;
       const second = this.config.output2FirstChannel;
-      if (second !== null && second !== undefined && (second + 2 > dev.outputChannels || second === this.config.outputFirstChannel)) {
+      const sameDevice = this.config.output2DeviceId === null || this.config.output2DeviceId === undefined || this.config.output2DeviceId === dev.id;
+      if (sameDevice && second !== null && second !== undefined && (second + 2 > dev.outputChannels || second === this.config.outputFirstChannel)) {
         this.config.output2FirstChannel = null;
       }
       this.output = this.backend().openOutput({
@@ -365,6 +381,28 @@ export class AudioEngine extends EventEmitter {
       return null;
     } catch (e) {
       return `Could not open output "${dev.name}" (${this.config.api}, ${dev.outputChannels} ch, ${this.config.sampleRate} Hz, ${this.config.bufferSize} frames): ${(e as Error).message}`;
+    }
+  }
+
+  /** Opens the second output on a device of its own; returns an error message if that fails. */
+  private openOutput2On(dev: AudioDevice): string | null {
+    const c = this.config;
+    if ((c.output2FirstChannel ?? 0) + 2 > dev.outputChannels) c.output2FirstChannel = 0;
+    // up to four device buffers on the way from the main output; after a clock-drift drop, two
+    this.feed2 = new MixMinusBuffer(Math.max(4 * c.bufferSize, 1024), Math.max(2 * c.bufferSize, 512));
+    try {
+      this.output2 = this.backend().openOutput({
+        deviceId: dev.id,
+        channels: dev.outputChannels,
+        sampleRate: c.sampleRate,
+        frameSize: c.bufferSize,
+        pull: (n) => this.onOutput2(n, dev.outputChannels),
+        onError: (m) => this.reportError(`Second output: ${m}`),
+      });
+      return null;
+    } catch (e) {
+      this.feed2 = null;
+      return `Could not open the second output "${dev.name}" (${c.api}, ${dev.outputChannels} ch, ${c.sampleRate} Hz): ${(e as Error).message}`;
     }
   }
 
@@ -485,6 +523,9 @@ export class AudioEngine extends EventEmitter {
     this.stopWatchdog();
     this.input?.close();
     this.output?.close();
+    this.output2?.close();
+    this.output2 = null;
+    this.feed2 = null;
     this.input = null;
     this.output = null;
     this.inputDevice = null;
@@ -1044,12 +1085,14 @@ export class AudioEngine extends EventEmitter {
     const sb2 = src2 === 'episode' ? 0 : 1;
     const first = Math.min(this.config.outputFirstChannel, Math.max(0, nch - 2));
     const second = this.config.output2FirstChannel;
-    const has2 = second !== null && second !== undefined && second + 1 < nch && second !== first;
+    // a second output on another device gets its feed through feed2 instead of a pair here
+    const feed2 = this.feed2;
+    const has2 = !feed2 && second !== null && second !== undefined && second + 1 < nch && second !== first;
     // the take beep goes to whoever monitors: the main pair, and a second pair that copies it
     const beep2 = src2 === 'master' ? beep : null;
     // the guest feed: live microphones without the guest's own, on top of jingles and playback
     let mm: Float32Array[] | null = null;
-    if (src2 === 'mixminus' && this.mixMinus) {
+    if (src2 === 'mixminus' && this.mixMinus && has2) {
       if (this.mmBuf[0].length < frames) this.mmBuf = [new Float32Array(frames), new Float32Array(frames)];
       mm = this.mmBuf;
       mm[0].fill(0, 0, frames);
@@ -1069,6 +1112,42 @@ export class AudioEngine extends EventEmitter {
         out[i * nch + second] = L[i] * tl2 + SL[i] * sb2 + (mm ? mm[0][i] : 0) + bp2;
         out[i * nch + second + 1] = R[i] * tl2 + SR[i] * sb2 + (mm ? mm[1][i] : 0) + bp2;
       }
+    }
+    if (feed2) {
+      if (this.feedBuf[0].length < frames) this.feedBuf = [new Float32Array(frames), new Float32Array(frames)];
+      const [FL, FR] = this.feedBuf;
+      for (let i = 0; i < frames; i++) {
+        const bp2 = beep2 ? beep2[i] : 0;
+        FL[i] = L[i] * tl2 + SL[i] * sb2 + bp2;
+        FR[i] = R[i] * tl2 + SR[i] * sb2 + bp2;
+      }
+      feed2.writeStereo(FL, FR, frames);
+    }
+    return out;
+  }
+
+  /**
+   * The second output on a device of its own: what the main output rendered for it, plus the live
+   * guest feed straight from the inputs (so the microphones don't wait for the main output too).
+   */
+  private onOutput2(frames: number, nch: number): Float32Array {
+    if (this.out2Buf.length !== frames * nch) this.out2Buf = new Float32Array(frames * nch);
+    if (this.mix2Buf[0].length < frames) this.mix2Buf = [new Float32Array(frames), new Float32Array(frames)];
+    const out = this.out2Buf;
+    const [L, R] = this.mix2Buf;
+    out.fill(0);
+    L.fill(0, 0, frames);
+    R.fill(0, 0, frames);
+    this.feed2?.readInto(frames, L, R);
+    if ((this.config.output2Source ?? 'master') === 'mixminus') this.mixMinus?.buf.readInto(frames, L, R);
+    const first = Math.max(0, Math.min(this.config.output2FirstChannel ?? 0, nch - 2));
+    for (let i = 0; i < frames; i++) {
+      if (nch === 1) {
+        out[i] = (L[i] + R[i]) / 2;
+        continue;
+      }
+      out[i * nch + first] = L[i];
+      out[i * nch + first + 1] = R[i];
     }
     return out;
   }

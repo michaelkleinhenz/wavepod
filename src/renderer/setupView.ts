@@ -4,6 +4,7 @@
 import type { BitDepth, DeviceConfig, DeviceProfile, EngineStatus, OutputSource } from '../shared/types';
 import { addTrack } from '../core/project';
 import { suggestTracks } from '../core/deviceProfiles';
+import { secondOutputChoices, secondOutputValue } from '../core/secondOutput';
 import { LevelMeter } from './levelMeter';
 import { append, clear, disclosure, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
@@ -338,29 +339,46 @@ export class SetupView {
   }
 
   /** The optional second output pair (stream mix, a second headphone amp, …). */
-  private renderSecondOutput(s: EngineStatus): HTMLElement | null {
+  private renderSecondOutput(s: EngineStatus): HTMLElement {
     const cfg = s.config;
-    const pairs = this.outputPairs(s);
-    if (pairs.length < 2) return null;
     const on = cfg.output2FirstChannel !== null && cfg.output2FirstChannel !== undefined;
-    return h(
+    const choices = secondOutputChoices(store.devices, cfg);
+    const card = h(
       'section',
       { class: 'card' },
       h('h2', null, 'Second output'),
       h(
         'p',
         { class: 'muted' },
-        'Send a second feed to two more outputs of the same device, for example to a stream, a second headphone amp, a mixer channel for the soundboard, or back to a remote guest (mix-minus).',
+        'Send a second feed to two more outputs of your device or to another device, for example to a stream, a second headphone amp, a mixer channel for the soundboard, or back to a remote guest (mix-minus).',
       ),
+    );
+    if (!choices.length) {
+      card.append(
+        h(
+          'p',
+          { class: 'hint' },
+          'The device you listen on has only one pair of outputs, and there is no other output device. Connect a second one (a USB headset or sound card, or a virtual cable into your call app), then click “Look for devices again” above.',
+        ),
+      );
+      return card;
+    }
+    const current = on ? secondOutputValue(cfg) : null;
+    append(card, [
       h(
         'div',
         { class: 'grid' },
         this.select(
           'Send to',
-          cfg.output2FirstChannel ?? null,
-          pairs.filter((p) => p.value !== cfg.outputFirstChannel),
-          (v) => this.apply({ output2FirstChannel: v === '' ? null : Number(v) }),
+          current,
+          choices,
+          (v) => {
+            if (v === '') return void this.apply({ output2FirstChannel: null, output2DeviceId: null });
+            const [dev, ch] = v.split(':');
+            this.apply({ output2DeviceId: dev === 'main' ? null : Number(dev), output2FirstChannel: Number(ch) });
+          },
           'Off',
+          'Outputs on the device you listen on, or on another device. Another device can be a few milliseconds late.',
         ),
         on
           ? this.select<OutputSource>(
@@ -377,7 +395,8 @@ export class SetupView {
           : null,
       ),
       on && cfg.output2Source === 'mixminus' ? this.renderMixMinus(cfg) : null,
-    );
+    ]);
+    return card;
   }
 
   /** Which track is the remote guest: the guest feed carries every microphone but theirs. */
@@ -396,7 +415,7 @@ export class SetupView {
       h(
         'p',
         { class: 'muted' },
-        'Connect these outputs to the line input of the computer running the call (Zoom, Teams, …) or to your phone hybrid. The guest hears all microphones, the soundboard and playback, but not themselves, so there is no echo. Tick the guest’s track:',
+        'Connect these outputs to the line input of the computer running the call (Zoom, Teams, …) or to your phone hybrid. If the call runs on this computer, send it to a virtual cable and pick that as the microphone in the call app. The guest hears all microphones, the soundboard and playback, but not themselves, so there is no echo. Tick the guest’s track:',
       ),
       tracks.length
         ? h(
@@ -606,3 +625,4 @@ export class SetupView {
     this.meterEls.forEach((m, i) => m?.update(peaks[i] ?? 0, raw[i] ?? 0));
   }
 }
+

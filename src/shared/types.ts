@@ -512,6 +512,11 @@ export interface DeviceConfig {
   outputFirstChannel: number;
   /** A second stereo output pair (first zero-based channel), e.g. for a stream or a guest feed; null for none. */
   output2FirstChannel?: number | null;
+  /**
+   * The device the second pair is on; null or unset for the listening device (outputDeviceId). Another
+   * device (a USB headset, a virtual cable into Zoom) gets its own stream, fed through a small buffer.
+   */
+  output2DeviceId?: number | null;
   /** What the second pair carries. */
   output2Source?: OutputSource;
   /** For a 'mixminus' second output: the inputs (zero-based) of the remote guest that the feed leaves out. */
