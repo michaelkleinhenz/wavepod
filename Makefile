@@ -1,7 +1,7 @@
 # WavePod build entry points. Run `make help` for a list.
 NPM ?= npm
 
-.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac icons desktop-install desktop-uninstall clean distclean
+.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac icons desktop-install desktop-uninstall release clean distclean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -80,6 +80,11 @@ desktop-install: ## Add WavePod to the GNOME app grid (WAVEPOD_EXEC=/path/to/Wav
 desktop-uninstall: ## Remove the launcher added by desktop-install
 	rm -f "$(XDG_DATA_HOME)/applications/wavepod.desktop" "$(XDG_DATA_HOME)/icons/hicolor/scalable/apps/wavepod.svg"
 	for s in $(ICON_SIZES); do rm -f "$(XDG_DATA_HOME)/icons/hicolor/$${s}x$${s}/apps/wavepod.png"; done
+
+# Bumps package.json to VERSION, commits, tags vVERSION and pushes both; the tag runs release.yml.
+release: ## Cut a release: set version, commit, tag and push (VERSION=x.y.z)
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z"; exit 1; }
+	scripts/release.sh "$(VERSION)"
 
 clean: ## Remove build output
 	rm -rf dist release native/vsthost/build native/vsthost/bin

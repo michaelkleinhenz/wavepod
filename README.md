@@ -494,8 +494,20 @@ certificates are configured as repository secrets.
 
 The app version comes from the tag: the workflow sets `package.json`'s
 `version` to the tag without its `v` before packaging, so tagging `v0.7.0`
-builds an app whose Help › About shows 0.7.0. There is no need to edit
-`package.json` for a release; the version there only shows in local builds.
+builds an app whose Help › About shows 0.7.0.
+
+To cut a release, run this on an up-to-date `main` with a clean working tree:
+
+```sh
+make release VERSION=0.7.0
+```
+
+It sets `package.json` and `package-lock.json` to the new version, commits
+that as "Release v0.7.0", creates the tag `v0.7.0` and pushes the commit and
+the tag together, which starts the release workflow. It refuses to run on
+another branch, with uncommitted changes, when `main` differs from
+`origin/main`, or when the tag already exists, and asks before changing
+anything (`YES=1` skips the question).
 
 ## Third-party components
 
