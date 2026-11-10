@@ -104,6 +104,8 @@ export class Mixer {
   private automix: Automix | null = null;
   private amBufs: Float32Array[][] = [];
   private amGains: Float32Array[] = [];
+  /** What each automixed track sounds like before its filters: the automix decides who speaks from this. */
+  private amDetect: Float32Array[][] = [];
 
   private _project: Project;
 
@@ -293,19 +295,33 @@ export class Mixer {
     if (am.next !== position) am.reset();
     while (this.amBufs.length < mixed.length) this.amBufs.push([new Float32Array(0), new Float32Array(0)]);
     while (this.amGains.length < mixed.length) this.amGains.push(new Float32Array(0));
+    while (this.amDetect.length < mixed.length) this.amDetect.push([new Float32Array(0), new Float32Array(0)]);
     const bufs = this.amBufs.slice(0, mixed.length);
+    const detect = this.amDetect.slice(0, mixed.length);
     const prevPeaks = mixed.map((t) => this.trackPeaks.get(t.id) ?? 0);
     mixed.forEach((track, t) => {
       if (bufs[t][0].length < frames) {
         bufs[t] = this.amBufs[t] = [new Float32Array(frames), new Float32Array(frames)];
         this.amGains[t] = new Float32Array(frames);
+        detect[t] = this.amDetect[t] = [new Float32Array(frames), new Float32Array(frames)];
       }
       bufs[t][0].fill(0, 0, frames);
       bufs[t][1].fill(0, 0, frames);
       this.renderTrackInto(track, position, frames, bufs[t]);
+      // Who speaks is judged on the clips before the track's filters (with its fixed gain): a compressor
+      // or leveler holds a loud word back on the speaker's track but leaves the quiet bleed of it on the
+      // other track alone, which brought the bleed close enough to open that track for the whole word.
+      this.renderRaw(track, position, frames, detect[t]);
+      const g = dbToGain(track.gain + folderGainOf(this.project, track));
+      if (g !== 1) {
+        for (let i = 0; i < frames; i++) {
+          detect[t][0][i] *= g;
+          detect[t][1][i] *= g;
+        }
+      }
     });
     const depths = mixed.map((t) => t.automix?.depth ?? AUTOMIX_DEFAULT_DEPTH);
-    am.process(mixed.map((t) => t.id), bufs, depths, frames, this.amGains);
+    am.process(mixed.map((t) => t.id), detect, depths, frames, this.amGains);
     am.next = position + frames;
     mixed.forEach((track, t) => {
       const [bl, br] = bufs[t];
