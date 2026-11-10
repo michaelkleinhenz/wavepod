@@ -746,6 +746,11 @@ export interface ExportResult {
 export interface ExportProgress {
   phase: string;
   fraction: number;
+  /**
+   * Which step of a mix export this is: the first pass that only measures (analysing), the
+   * limiter fitting between the passes (preparing), or the second pass that writes the files.
+   */
+  step?: 'analysing' | 'preparing' | 'writing';
   /** Waveform of the mix rendered since the last report, for the progress display. */
   wave?: ExportWave;
   /** Loudness of the mix up to the current position. */
