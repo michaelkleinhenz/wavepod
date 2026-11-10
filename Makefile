@@ -1,7 +1,7 @@
 # WavePod build entry points. Run `make help` for a list.
 NPM ?= npm
 
-.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac icons desktop-install desktop-uninstall release clean distclean
+.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac icons desktop-install desktop-uninstall release wiki clean distclean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -85,6 +85,11 @@ desktop-uninstall: ## Remove the launcher added by desktop-install
 release: ## Cut a release: set version, commit, tag and push (VERSION=x.y.z)
 	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z"; exit 1; }
 	scripts/release.sh "$(VERSION)"
+
+wiki: ## Preview the GitHub wiki pages in dist/wiki (CI publishes them from main)
+	npx --yes esbuild@0.28.2 src/help/topics.ts --bundle --format=esm --platform=node --loader:.md=text --log-level=warning --outfile=dist/wiki-topics.mjs
+	node scripts/build-wiki.mjs dist/wiki-topics.mjs dist/wiki
+	@rm -f dist/wiki-topics.mjs
 
 clean: ## Remove build output
 	rm -rf dist release native/vsthost/build native/vsthost/bin

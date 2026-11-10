@@ -1,0 +1,60 @@
+name: Wiki
+
+# Publishes the user guide (docs/guide), the install and build steps from README.md, the roadmap
+# and the third-party notices to the GitHub wiki. The wiki is generated: edit the files in the
+# repository, never the wiki pages. Needs the wiki switched on and its first page saved once by
+# hand (Settings › Features › Wikis, then the Wiki tab › Create the first page › Save).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'THIRD_PARTY_NOTICES.md'
+      - 'src/help/topics.ts'
+      - 'src/renderer/shortcuts.ts'
+      - 'scripts/build-wiki.mjs'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build wiki pages
+        run: |
+          npx --yes esbuild@0.28.2 src/help/topics.ts --bundle --format=esm --platform=node \
+            --loader:.md=text --log-level=warning --outfile="$RUNNER_TEMP/topics.mjs"
+          node scripts/build-wiki.mjs "$RUNNER_TEMP/topics.mjs" "$RUNNER_TEMP/wiki-pages"
+      - name: Push to the wiki
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          url="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+          if ! git clone --depth 1 "$url" "$RUNNER_TEMP/wiki"; then
+            echo "::error::Could not clone the wiki. Switch it on under Settings › Features › Wikis and save its first page once by hand."
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/wiki"
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r "$RUNNER_TEMP/wiki-pages/." .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki is up to date."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "Update wiki from ${GITHUB_SHA::7}"
+          git push
