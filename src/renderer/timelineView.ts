@@ -29,7 +29,7 @@ import { openClipMenu, promptClipName } from './clipMenu';
 import { openRegionMenu, promptRegionName } from './regionMenu';
 import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { drawFileWaveform, drawLevelsWaveform, type WaveLayout } from './waveform';
-import { clipPieces, loopSeams, minClipOffset, soundTag } from '../core/clipSound';
+import { clipPieces, loopSeams, soundTag, trimClip } from '../core/clipSound';
 
 /** Where a clip is drawn: its (possibly dragged or trimmed) place on the timeline. */
 interface ClipGeo {
@@ -1943,7 +1943,9 @@ export class TimelineView {
     const moving: Array<{ clip: Clip; g: ClipGeo }> = [];
     this.rows.forEach((r, ti) => {
       if (r.kind !== 'track') return;
-      for (const clip of r.track.clips) {
+      for (const c of r.track.clips) {
+        // a clip whose edge is dragged is drawn as it will be (it may have turned into a loop)
+        const clip = d.kind === 'trim' && d.clipId === c.id ? trimmed(d.orig, d.side, d.delta) : c;
         const g = this.clipGeometry(ti, clip);
         if (g.trackIndex === i) (this.isDragged(clip.id) ? moving : still).push({ clip, g });
       }
@@ -3184,14 +3186,9 @@ function coughKey(trackId: string): string {
   return n >= 1 && n <= 9 ? ` (Shift+${n})` : '';
 }
 
-function trimmed(orig: Clip, side: 'left' | 'right', delta: number): Pick<Clip, 'start' | 'length' | 'offset'> {
-  const minLen = 64;
-  if (side === 'right') {
-    return { start: orig.start, offset: orig.offset, length: Math.max(minLen, orig.length + delta) };
-  }
-  // left edge: can't go before the start of the source file (a loop or reversed clip can grow to the timeline start)
-  const d = Math.max(minClipOffset(orig) - orig.offset, -orig.start, Math.min(orig.length - minLen, delta));
-  return { start: orig.start + d, offset: orig.offset + d, length: orig.length - d };
+/** The clip with an edge dragged by `delta`; past the end of its audio it loops (see trimClip). */
+function trimmed(orig: Clip, side: 'left' | 'right', delta: number): Clip {
+  return trimClip(orig, side, delta, store.requestPeaks(orig.file)?.length);
 }
 
 function formatDb(db: number): string {
