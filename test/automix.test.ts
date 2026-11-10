@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { Automix } from '../src/core/automix';
 import { Mixer, ReaderCache } from '../src/core/mixer';
 import { addTrack, createProject, normalizeProject } from '../src/core/project';
 import { writeWavFile } from '../src/core/wav';
@@ -93,5 +94,75 @@ describe('automix', () => {
     p = addTrack(p, { name: 'A', automix: { enabled: true, depth: -24 } });
     const q = normalizeProject(JSON.parse(JSON.stringify(p)));
     expect(q.tracks[0].automix).toEqual({ enabled: true, depth: 24 });
+  });
+
+  it('keeps crosstalk down when a word bleeds in louder than usual', () => {
+    // speech-like noise in syllables and words; A talks alone for 20 s, then both talk for 10 s.
+    // B's mic hears A 9 dB down, but every quarter second that varies by up to ±4 dB (head turns,
+    // loud words): the old automix opened B fully for a word whenever the bleed came within 3 dB.
+    const sr = 8000;
+    const n = 30 * sr;
+    const rng = (seed: number) => {
+      let s = seed >>> 0;
+      return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32) * 2 - 1;
+    };
+    const voice = (seed: number, from: number) => {
+      const r = rng(seed);
+      const out = new Float32Array(n);
+      let i = 0;
+      let lp = 0;
+      while (i < n) {
+        const syllables = 2 + Math.floor((r() + 1) * 2);
+        for (let k = 0; k < syllables && i < n; k++) {
+          const len = Math.floor(sr * (0.12 + (r() + 1) * 0.07));
+          const amp = 0.25 * 10 ** ((r() * 6) / 20);
+          for (let j = 0; j < len && i < n; j++, i++) {
+            lp += 0.3 * (r() - lp);
+            out[i] = i >= from ? amp * Math.sqrt(Math.sin((Math.PI * j) / len)) * lp * 3 : 0;
+          }
+          i += Math.floor(sr * (0.02 + (r() + 1) * 0.03));
+        }
+        i += Math.floor(sr * (0.1 + (r() + 1) * 0.25));
+      }
+      return out;
+    };
+    const A = voice(1, 0);
+    const B = voice(7, 20 * sr);
+    const vary = rng(99);
+    const seg = sr / 4;
+    const kA = Array.from({ length: n / seg + 1 }, () => 10 ** ((-9 + 4 * vary()) / 20));
+    const kB = Array.from({ length: n / seg + 1 }, () => 10 ** ((-9 + 4 * vary()) / 20));
+    const d = Math.round(0.003 * sr);
+    const ma = new Float32Array(n).map((_, i) => A[i] + kB[Math.floor(i / seg)] * (i >= d ? B[i - d] : 0));
+    const mb = new Float32Array(n).map((_, i) => B[i] + kA[Math.floor(i / seg)] * (i >= d ? A[i - d] : 0));
+    const am = new Automix(sr);
+    const ga = new Float32Array(n);
+    const gb = new Float32Array(n);
+    for (let p = 0; p < n; p += 512) {
+      const f = Math.min(512, n - p);
+      const a = ma.subarray(p, p + f);
+      const b = mb.subarray(p, p + f);
+      am.process(['a', 'b'], [[a, a], [b, b]], [24, 24], f, [ga.subarray(p, p + f), gb.subarray(p, p + f)]);
+    }
+    // while only A talks, B never opens up (above −6 dB) for 30 ms or longer
+    let opens = 0;
+    let run = 0;
+    for (let i = sr; i < 19.5 * sr; i++) {
+      run = gb[i] > 0.5 ? run + 1 : 0;
+      if (run === Math.round(0.03 * sr)) opens++;
+    }
+    expect(opens).toBe(0);
+    const energy = (x: Float32Array, g: Float32Array | null, a: number, b: number) => {
+      let e = 0;
+      for (let i = a; i < b; i++) e += (x[i] * (g ? g[i] : 1)) ** 2;
+      return e;
+    };
+    const cut = (x: Float32Array, g: Float32Array, a: number, b: number) => 10 * Math.log10(energy(x, null, a, b) / energy(x, g, a, b));
+    // B's bleed is well down, A itself untouched
+    expect(cut(mb, gb, sr, 19.5 * sr)).toBeGreaterThan(9);
+    expect(cut(ma, ga, sr, 19.5 * sr)).toBeLessThan(0.1);
+    // both talking: both stay up
+    expect(cut(ma, ga, 20.5 * sr, n)).toBeLessThan(1.5);
+    expect(cut(mb, gb, 20.5 * sr, n)).toBeLessThan(1.5);
   });
 });
