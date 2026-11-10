@@ -2,7 +2,7 @@
 
 **File › Export…** (`Ctrl+E`) turns the episode into files you can publish: the finished mix, chapter files, and if you need them, stems. The export uses exactly what you hear: every cut, fade, volume line, filter, ducking and automix.
 
-The dialog is laid out top to bottom like the export dialogs of other audio programs: what to export, where the files go, the format, the loudness, then **Export**.
+The dialog is laid out in two columns like the export dialogs of other audio programs: on the left what to export, where the files go and the stems, on the right the format and the loudness. **Export** is at the bottom right. In a narrow window the two columns stack.
 
 ## What to export
 
