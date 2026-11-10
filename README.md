@@ -1,113 +1,50 @@
 # WavePod
 
-A world class DAW and editing suite for podcasts and audio plays, built with Electron. It also covers what
-[Ultraschall](https://ultraschall.fm/) is loved for, without needing Reaper:
+**Record and edit your podcast or audio drama like a document.** WavePod is
+a free, open-source multitrack recorder and editor for Linux, Windows and
+macOS. Everything [Ultraschall](https://ultraschall.fm/) is loved for, as one
+app you install and start, with no Reaper underneath.
 
-- **Multichannel USB interfaces** such as the RØDECaster Pro II (all 16
-  multitrack channels), RØDECaster Duo, Zoom PodTrak, Focusrite and other
-  class-compliant devices, through RtAudio (Core Audio, WASAPI/ASIO,
-  ALSA/PulseAudio/JACK).
-- **One track per speaker** in one click: known devices are recognised and
-  their channels labelled (Combo 1–4, USB Chat, Bluetooth, …).
-- **Crash-safe recording** to 16/24/32-bit WAV, one file per track, with
-  the waveform drawn live while recording. The timeline scrolls with the
-  recording, keeping the red cursor in view.
-- **Editing for podcasters**: split, move (also to other tracks), trim,
-  fades by dragging a clip's top corners, ripple cut across all tracks
-  (`Ctrl+X`), mute/solo, gain, undo/redo. Dragged edges snap to clip
-  edges on other tracks, markers and the playhead (toolbar `Snap`, hold
-  `Alt` to drag freely). Time selections can be resized by dragging their
-  edges.
-- **Loudness**: EBU R128 analysis of the mix, every track or selected clips
-  (Loudness… in the toolbar, `Shift+Ctrl+L`) with the figures Ultraschall
-  shows: integrated, loudness range (LRA), short-term and momentary maximum,
-  true peak and sample peak, plus a short-term loudness curve against the
-  target. **Normalise** (`Alt+Shift+N`) sets the clip gain of the selected
-  clips so each reaches the target (−16 LUFS by default) without the true
-  peak going over the ceiling. The export normalises the mix to −16 / −19 /
-  −23 LUFS; where the peaks would go over the ceiling, a look-ahead
-  true-peak limiter holds them so the target is still reached.
-- **Volume line** per clip (hover a clip and click `Vol` at its top left):
-  double-click to add points, drag points or the line up and down; the
-  waveform shows the result. `Ctrl+Y` silences the selected range on the
-  tracks it was dragged across.
-- **Pan and volume automation** per track (the `Auto` button in the track
-  header): show the volume or pan lane on the track, double-click to add
-  breakpoints and drag them, e.g. to walk a voice from left to right or to
-  bring the music bed down under a scene. Volume automation works on top of
-  the track gain, after the track's filters; pan automation replaces the
-  track's pan (the header shows `lane`) while it has points. Ripple cuts and
-  ripple moves take the points along. Each track's pan can also be set in its
-  header (click the value to type `L 40`, `C` or `R 25`).
-- **Track folders** for big productions such as audio dramas (the folder
-  button in the toolbar, or right-click a track header › Move to folder):
-  group tracks into Dialogue, SFX, Atmo, Music or any folder you name. A
-  folder's row has one mute, solo and group volume for all its tracks (the
-  volume is added to each track's own gain) and a meter showing the loudest
-  of them. Fold a folder to hide its tracks; its row still shows where they
-  have clips, and a time selection over it covers all of them. Files dropped
-  on a folder's row land on a new track in that folder. Folders are kept in
-  templates. MCP tools: `create_folder`, `move_tracks_to_folder`,
-  `update_folder`, `remove_folder`.
-- **Tape-style scrubbing**: drag the playhead and you hear the timeline at
-  the speed and in the direction you move it, pitch and all, also while
-  stopped. Held still, it falls silent; let go and playback (if it was
-  running) carries on from there.
-- Dragging a clip straight up or down to another track keeps its time
-  position, so the tracks stay in sync.
-- While dragging a clip, an edge, a selection or a marker, the view
-  scrolls when the mouse nears or leaves the edge of the timeline (faster
-  the further out), so a clip can be carried anywhere in one drag.
-- **Zoom down to single samples**: waveforms use multi-resolution peaks
-  (cached in `.peaks` files next to the audio), so long multitrack episodes
-  scroll smoothly; past the finest peak level the samples themselves are
-  drawn, as a line with a dot per sample at the deepest zoom.
-- **Chapter markers** while recording (`M`), edit markers for later fixes (`E`).
-- **Soundboard** for jingles (keys `1`–`9`) with loop and soft fade-in.
-  Jingles played while recording land on a Soundboard track, so they are
-  part of the edit and the export.
-- **Filters** on every track and the master: high-pass, EQ, noise gate,
-  compressor, de-esser, limiter and Dynamics (a port of Ultraschall's
-  Dynamics: target-loudness
-  leveler with noise gate). Add, bypass, tweak while playing and reorder
-  them in the FX panel; they apply live and in the export. While playing,
-  each filter shows live in/out levels and how much gain it is applying. Installed
-  **VST3 plug-ins** work in the same stack, with plain sliders instead of
-  the plug-in's own window; they run in a separate process, so a crashing
-  plug-in can't take a recording down. Every slider's value (filter
-  parameters, VST3 parameters, track gain) can be clicked to type an exact
-  number, e.g. `-3,5 dB`, `1.2 kHz` or `250 ms`; Enter applies it (kept within
-  the slider's range), Escape cancels.
-- **Filter presets**: every filter card has a preset menu. Every built-in filter
-  comes with factory presets tuned for speech, e.g. Compressor *Spoken word*,
-  EQ *Clarity for dynamic mics*, Noise reduction *Computer fan* (hover one to
-  see what it is for), plus *Default*; VST3 plug-ins offer their
-  own programs (factory presets) there instead of a program slider. *Save as
-  preset…* stores the current settings (for VST3 including the plug-in's
-  state) as your own preset, available in every episode; rename (✎) or delete
-  (🗑) the one that's loaded. The menu shows "(edited)" once you change a value
-  after loading. Your presets are JSON files in `Documents/WavePod/Presets/`,
-  one folder per filter or plug-in, so they can be copied to another machine.
-- **Copy and paste filters**: *Copy all* in a track's filter panel copies its
-  whole stack; the copy button on a filter card copies just that filter. Open
-  another track (or Master FX) and use *Paste…* to add the filters at the end
-  or top, or to replace the stack. When the copied filter is the same kind as
-  a card (same built-in filter or the same VST3 plug-in), that card offers
-  *Paste settings*, which keeps its place and bypass. Copies include VST3
-  state and the preset label, work across episodes, and are one undo step.
-- **Templates**: save an episode's setup (tracks and their input channels,
-  filter stacks including Master FX and VST3 settings, soundboard jingles)
-  with File › Save as Template…, and start the next episode from it with
-  File › New Episode from Template… (`Shift+Ctrl+N`) or the Setup view.
-  No recordings, markers, volume lines or automation are stored in a template.
-- **AI agents** (opt-in): a local MCP server lets Claude Desktop, Claude
-  Code and other MCP clients build and tweak filter stacks, apply the voice
-  chain and read tracks, markers and loudness.
-- **Export**: MP3 with ID3 chapters (CHAP/CTOC), WAV, stems, and chapter
-  files (Podlove Simple Chapters, Podcasting 2.0 JSON, mp4chaps, Audacity
-  labels). Stems come one per track, or as dialogue, music and effects
-  (plus an optional M&E mix) for broadcasters and festivals; each track's
-  stem is picked in the export dialog and saved with the episode.
+**[Download WavePod](https://github.com/michaelkleinhenz/wavepod/releases/latest)**
+· [Website](https://michaelkleinhenz.github.io/wavepod/)
+· [User guide](docs/guide/README.md)
+
+### What makes it different
+
+- **Edit by text.** Get a transcript, delete words to cut the audio, and
+  clean up pauses, ums and retakes in one go. Crosstalk is filtered out
+  per speaker.
+- **Every mic on its own track, in one click.** All 16 channels of a
+  RØDECaster Pro II, a Zoom PodTrak, a Focusrite or any other multichannel
+  USB interface, with channels recognised and named.
+- **Recording you can trust.** Each take is written to disk as it happens and
+  recovered after a crash. If an input drops out or the disk fills up,
+  WavePod raises a loud alarm instead of failing silently.
+- **Built-in post-production.** Leveler, noise reduction, de-esser, EQ,
+  compressor and a true-peak limiter on every track, plus your own VST3
+  plug-ins, which run in a separate process so a crashing plug-in can't take
+  a recording down. You don't need a paid online service to make it sound
+  finished.
+- **Made for audio drama too.** Import a script and tick off lines as you
+  record. Keep every take and comp the best parts. Punch in, use voice
+  effects and convolution reverb, and pull from a sound effects library.
+  Export dialogue, music and effects stems.
+
+### Everything a podcast needs
+
+- Chapter markers while recording (`M`), a soundboard whose jingles land in
+  the recording, and cough buttons that mute you live but can be undone later.
+- Fast editing: ripple cut, snapping, crossfades, volume lines, automation,
+  track folders, tape-style scrubbing, and listening at up to 3× speed.
+- Loudness done right: EBU R128 analysis and export to −16 LUFS or any other
+  target, mono or stereo.
+- One export: MP3, FLAC, Opus or WAV with chapters, chapter images and cover
+  art embedded, plus Podlove, Podcasting 2.0 and mp4chaps chapter files.
+  Split a recording into regions and export each one as its own file.
+- A mix-minus feed for remote guests, sync for tracks from separate
+  recorders, templates for your show, and MIDI, OSC and Stream Deck control.
+- Optional MCP server, so AI agents like Claude can build filter chains and
+  read your episode.
 
 The **user guide** explains every feature step by step. In the app it opens
 with **Help › WavePod Help** (`F1`, at the page for the view or dialog you are
