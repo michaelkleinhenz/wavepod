@@ -12,15 +12,21 @@ A world class DAW and editing suite for podcasts and audio plays, built with Ele
 - **Crash-safe recording** to 16/24/32-bit WAV, one file per track, with
   the waveform drawn live while recording. The timeline scrolls with the
   recording, keeping the red cursor in view.
-- **Cough buttons**: hold `Shift`+`1`–`9` (or a track's `C` button) to mute
-  a speaker; the audio is still recorded and the muted region can be
-  adjusted or removed later.
 - **Editing for podcasters**: split, move (also to other tracks), trim,
   fades by dragging a clip's top corners, ripple cut across all tracks
   (`Ctrl+X`), mute/solo, gain, undo/redo. Dragged edges snap to clip
   edges on other tracks, markers and the playhead (toolbar `Snap`, hold
   `Alt` to drag freely). Time selections can be resized by dragging their
   edges.
+- **Loudness**: EBU R128 analysis of the mix, every track or selected clips
+  (Loudness… in the toolbar, `Shift+Ctrl+L`) with the figures Ultraschall
+  shows: integrated, loudness range (LRA), short-term and momentary maximum,
+  true peak and sample peak, plus a short-term loudness curve against the
+  target. **Normalise** (`Alt+Shift+N`) sets the clip gain of the selected
+  clips so each reaches the target (−16 LUFS by default) without the true
+  peak going over the ceiling. The export normalises the mix to −16 / −19 /
+  −23 LUFS; where the peaks would go over the ceiling, a look-ahead
+  true-peak limiter holds them so the target is still reached.
 - **Volume line** per clip (hover a clip and click `Vol` at its top left):
   double-click to add points, drag points or the line up and down; the
   waveform shows the result. `Ctrl+Y` silences the selected range on the
@@ -94,15 +100,6 @@ A world class DAW and editing suite for podcasts and audio plays, built with Ele
   with File › Save as Template…, and start the next episode from it with
   File › New Episode from Template… (`Shift+Ctrl+N`) or the Setup view.
   No recordings, markers, volume lines or automation are stored in a template.
-- **Loudness**: EBU R128 analysis of the mix, every track or selected clips
-  (Loudness… in the toolbar, `Shift+Ctrl+L`) with the figures Ultraschall
-  shows: integrated, loudness range (LRA), short-term and momentary maximum,
-  true peak and sample peak, plus a short-term loudness curve against the
-  target. **Normalise** (`Alt+Shift+N`) sets the clip gain of the selected
-  clips so each reaches the target (−16 LUFS by default) without the true
-  peak going over the ceiling. The export normalises the mix to −16 / −19 /
-  −23 LUFS; where the peaks would go over the ceiling, a look-ahead
-  true-peak limiter holds them so the target is still reached.
 - **AI agents** (opt-in): a local MCP server lets Claude Desktop, Claude
   Code and other MCP clients build and tweak filter stacks, apply the voice
   chain and read tracks, markers and loudness.
