@@ -340,6 +340,52 @@ describe('lining up with the transcript', () => {
     expect(cutAroundTakes(p, [edge]).cuts).toBe(1);
   });
 
+  it('splits contractions and leaves out hesitations and laughing', () => {
+    expect(lineTokens("Ähm, don't you think we'll make it? Haha!")).toEqual(['do', 'not', 'you', 'think', 'we', "'ll", 'make', 'it']);
+    expect(lineTokens('I cannot – it’s gone, umm, gone.')).toEqual(['i', 'can', 'not', 'it', "'s", 'gone', 'gone']);
+  });
+
+  it('finds lines said a bit differently: hesitations, laughing, contractions, other words', () => {
+    const { p } = recorded();
+    const words = (list: string, at: number) =>
+      list.split(' ').map((text, i) => ({ text, start: Math.round((at + i * 0.4) * SR), end: Math.round((at + i * 0.4 + 0.3) * SR) }));
+    const tr = (file: string, w: Array<{ text: string; start: number; end: number }>): FileTranscript => ({ version: 1, file, sampleRate: SR, language: 'en', model: 'scribe_v2', created: '', words: w });
+    const transcripts = {
+      'media/anna.wav': tr('media/anna.wav', [
+        ...words('(laughs) Haha, umm, is this the night train to Vienna?', 1),
+        ...words("Then we'll just wait.", 14),
+        ...words('I lost my ticket somewhere on the platforms.', 22),
+      ]),
+      'media/ben.wav': tr('media/ben.wav', [...words("It's, uh, it's late again.", 9), ...words('Umm, tickets, uh, please.', 18)]),
+    };
+    const r = lineUpScript(p, timelineWords(p, transcripts));
+    const lines = p.script!.lines;
+    // the take starts at the first word of the line, after the laugh and the "umm"
+    expect(r.found.get(lines[2].id)!.start / SR).toBeCloseTo(1 + 3 * 0.4, 1);
+    expect(r.found.get(lines[3].id)!.start / SR).toBeCloseTo(9, 1);
+    expect(r.found.get(lines[4].id)!.start / SR).toBeCloseTo(14, 1);
+    expect(r.found.get(lines[7].id)!.start / SR).toBeCloseTo(18 + 0.4, 1);
+    expect(r.found.get(lines[8].id)!.start / SR).toBeCloseTo(22, 1);
+    // the cut before a take keeps clear of the hesitation in front of it
+    const take = r.occurrences.get(lines[7].id)![0];
+    expect(take.cutStart).toBeGreaterThan(Math.round((18 + 0.3) * SR));
+  });
+
+  it('still does not match lines that were not said', () => {
+    const { p } = recorded();
+    const tr = (file: string, text: string): FileTranscript => ({
+      version: 1,
+      file,
+      sampleRate: SR,
+      language: 'en',
+      model: 'scribe_v2',
+      created: '',
+      words: text.split(' ').map((t, i) => ({ text: t, start: Math.round((1 + i * 0.4) * SR), end: Math.round((1 + i * 0.4 + 0.3) * SR) })),
+    });
+    const r = lineUpScript(p, timelineWords(p, { 'media/anna.wav': tr('media/anna.wav', 'Is that the late bus to Berlin, umm, again?') }));
+    expect(r.found.size).toBe(0);
+  });
+
   it('does not overwrite lines ticked by hand', () => {
     const { p, transcripts } = recorded();
     const id = p.script!.lines[2].id;

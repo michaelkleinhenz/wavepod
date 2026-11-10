@@ -5,7 +5,7 @@
 // of its media file, like transcript words, so it stays found through every cut and move.
 import type { Frames, Project, Script, ScriptLine, ScriptTake, TimelineWord, Track } from '../shared/types';
 import { uid } from '../shared/time';
-import { bareWord } from './transcript';
+import { bareWord, isFiller } from './transcript';
 
 export type ScriptFormat = 'plain' | 'fountain' | 'fdx' | 'plotgod';
 
@@ -770,20 +770,94 @@ export function lineTokens(text: string): string[] {
   return text
     .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
     .split(/[\s—–/]+|-{2,}/)
-    .map(bareWord)
-    .filter(Boolean);
+    .flatMap(matchTokens);
 }
 
+/** Laughing written out as words: "haha", "hehe", "hihi", "hahaha"… */
+const LAUGH = /^(?:ha|h[aeio](?:h[aeio])+h?)$/;
+/** Words spoken as two: what they are compared as. */
+const SPLIT_WORDS = new Map<string, string[]>([
+  ['cannot', ['can', 'not']],
+  ['gonna', ['going', 'to']],
+  ['wanna', ['want', 'to']],
+  ['gotta', ['got', 'to']],
+  ['lemme', ['let', 'me']],
+  ['gimme', ['give', 'me']],
+]);
+/** "n't" on these doesn't leave the word in front: can't, won't, shan't. */
+const NOT_BASE: Record<string, string> = { ca: 'can', wo: 'will', sha: 'shall' };
+/** What a contraction ending ("it's", "we'll", German "geht's") can stand for. */
+const SHORT_FORMS = new Map<string, string[]>([
+  ["'s", ['is', 'has', 'us', 'es']],
+  ["'m", ['am']],
+  ["'re", ['are']],
+  ["'ve", ['have']],
+  ["'ll", ['will']],
+  ["'d", ['would', 'had']],
+]);
+
+/**
+ * A spoken word as the line-up compares it: lower case without punctuation, contractions split
+ * ("we'll" → we 'll, "don't" → do not), and nothing for hesitations (äh, ähm, uh) and laughing,
+ * which are often said around and inside a line without being in the script.
+ */
+function matchTokens(text: string): string[] {
+  const t = text.trim();
+  // a sound event written into the transcript: "(laughs)", "[laughter]"
+  if (/^[([].*[)\]]$/.test(t)) return [];
+  const w = bareWord(t.replace(/[’‘`´]/g, "'"));
+  if (!w || isFiller(w) || /^u+m{2,}$/.test(w) || LAUGH.test(w)) return [];
+  const split = SPLIT_WORDS.get(w);
+  if (split) return split;
+  if (w.endsWith("n't") && w.length > 3) {
+    const base = w.slice(0, -3);
+    return [NOT_BASE[base] ?? base, 'not'];
+  }
+  const short = /^(.+?)('s|'m|'re|'ve|'ll|'d)$/.exec(w);
+  if (short) return [short[1].replace(/'/g, ''), short[2]];
+  return [w.replace(/'/g, '')];
+}
+
+/** Letters to change, add or drop to turn one word into the other; anything above `max` is max + 1. */
+function editDistance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let low = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      low = Math.min(low, cur[j]);
+    }
+    if (low > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * True when a word of the line and a spoken one count as the same: equal, a contraction and what
+ * it stands for ('ll / will), the same word with another ending (walked / walking, train /
+ * trains), or a letter or two off (colour / color, a misheard word; two only in long words).
+ */
 function sameWord(a: string, b: string): boolean {
   if (a === b) return true;
-  if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false;
-  // one letter off: "colour"/"color", a misheard ending
-  let i = 0;
-  while (i < a.length && a[i] === b[i]) i++;
-  let j = 0;
-  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++;
-  return a.length - i - j <= 1 && b.length - i - j <= 1;
+  if (SHORT_FORMS.get(a)?.includes(b) || SHORT_FORMS.get(b)?.includes(a)) return true;
+  if (a.length < 4 || b.length < 4) return false;
+  let p = 0;
+  while (p < a.length && a[p] === b[p]) p++;
+  if (p >= 4 && a.length - p <= 3 && b.length - p <= 3) return true;
+  const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+  let same = spellingCache.get(key);
+  if (same === undefined) {
+    const max = Math.min(a.length, b.length) >= 8 ? 2 : 1;
+    same = editDistance(a, b, max) <= max;
+    if (spellingCache.size > 50000) spellingCache.clear();
+    spellingCache.set(key, same);
+  }
+  return same;
 }
+const spellingCache = new Map<string, boolean>();
 
 interface Match {
   /** Indices into the word list of the first and last matched word. */
@@ -872,7 +946,9 @@ function threshold(n: number): number {
 
 /**
  * Finds the script's lines in the transcript: each line is looked for on its character's track
- * (or on all tracks for characters without one), allowing for misheard and missing words. When
+ * (or on all tracks for characters without one), allowing for misheard, missing and extra words,
+ * hesitations and laughing around or inside a line, contractions (we'll / we will) and words with
+ * another ending (walked / walking). When
  * a line was recorded several times, the best take wins, and of equally good ones the last
  * (the take that was kept). Very short lines ("Yes.") are only looked for between the lines
  * around them, so they aren't matched just anywhere.
@@ -882,23 +958,30 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
   const found: LineUpResult['found'] = new Map();
   const occurrences: LineUpResult['occurrences'] = new Map();
   if (!script || !words.length) return { found, occurrences, searched: 0 };
-  const tokens = words.map((w) => bareWord(w.text));
-  // word indices per track, and per word on that track (for seeding candidates)
+  // the words as compared (hesitations and laughing dropped, contractions split), each token
+  // with the index of the word it came from
+  const tokens = words.map((w) => (w.filler ? [] : matchTokens(w.text)));
   const byTrack = new Map<string, number[]>();
   for (let i = 0; i < words.length; i++) {
-    if (!tokens[i]) continue;
+    if (!tokens[i].length) continue;
     let list = byTrack.get(words[i].trackId);
     if (!list) byTrack.set(words[i].trackId, (list = []));
     list.push(i);
   }
-  const all = words.map((_, i) => i).filter((i) => tokens[i]);
+  const all = words.map((_, i) => i).filter((i) => tokens[i].length);
   const indexCache = new Map<string, { list: number[]; toks: string[]; pos: Map<string, number[]> }>();
   const indexFor = (trackId: string | undefined) => {
     const key = trackId && byTrack.has(trackId) ? trackId : '*';
     let idx = indexCache.get(key);
     if (!idx) {
-      const list = key === '*' ? all : byTrack.get(key)!;
-      const toks = list.map((i) => tokens[i]);
+      const list: number[] = [];
+      const toks: string[] = [];
+      for (const i of key === '*' ? all : byTrack.get(key)!) {
+        for (const t of tokens[i]) {
+          list.push(i);
+          toks.push(t);
+        }
+      }
       const pos = new Map<string, number[]>();
       toks.forEach((t, k) => {
         let a = pos.get(t);
