@@ -9,6 +9,8 @@ app you install and start, with no Reaper underneath.
 · [Website](https://michaelkleinhenz.github.io/wavepod/)
 · [User guide](docs/guide/README.md)
 
+![WavePod's timeline: one track per speaker, chapter markers and a soundboard track](site/img/timeline.png)
+
 ### What makes it different
 
 - **Edit by text.** Get a transcript, delete words to cut the audio, and
@@ -29,6 +31,19 @@ app you install and start, with no Reaper underneath.
   record. Keep every take and comp the best parts. Punch in, use voice
   effects and convolution reverb, and pull from a sound effects library.
   Export dialogue, music and effects stems.
+
+<table>
+  <tr>
+    <td width="33%"><img src="site/img/transcript.png" alt="Transcript panel: select words to cut them from the audio"></td>
+    <td width="33%"><img src="site/img/drama-script.png" alt="Script panel with recorded lines ticked off next to the timeline"></td>
+    <td width="33%"><img src="site/img/drama-takes.png" alt="Take lanes with the best parts of four takes comped together"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Edit by text</b>: select words, press Delete</td>
+    <td align="center"><b>Script</b>: tick off lines as you record</td>
+    <td align="center"><b>Takes</b>: comp the best parts</td>
+  </tr>
+</table>
 
 ### Everything a podcast needs
 
