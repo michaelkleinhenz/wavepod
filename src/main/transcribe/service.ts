@@ -3,7 +3,7 @@
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import type { FileTranscript, Project, TranscribeProgress, TranscriptionInfo, TranscriptionSettings, TranscriptionSettingsInput } from '../../shared/types';
-import { filesToTranscribe } from '../../core/transcript';
+import { filesToTranscribe, isWholeTranscript, mergeTranscript, selectionToTranscribe } from '../../core/transcript';
 import { SCRIBE_MODELS, TRANSCRIPT_LANGUAGES, normalizeTranscriptionSettings } from '../../core/elevenlabs';
 import { deleteTranscript, loadTranscript, loadTranscripts, saveTranscript } from './store';
 import type { TranscribeJob } from './worker';
@@ -20,6 +20,13 @@ export interface TranscriptionHost {
   progress(p: TranscribeProgress): void;
   /** A file's transcript was made or removed (null). */
   updated(file: string, t: FileTranscript | null): void;
+}
+
+export interface TranscribeOptions {
+  trackIds?: string[];
+  redo?: boolean;
+  /** Only what this timeline range plays [from, to) (frames). */
+  range?: [number, number];
 }
 
 export class TranscriptionService {
@@ -111,15 +118,18 @@ export class TranscriptionService {
 
   /**
    * Transcribes the files of the given tracks (all speech tracks if none) that have no transcript
-   * yet, or all of them with `redo`.
+   * yet, or all of them with `redo`. With a `range` (timeline frames), only the parts of the files
+   * that range plays and that aren't transcribed yet.
    */
-  async transcribe(opts: { trackIds?: string[]; redo?: boolean } = {}): Promise<{ transcribed: number; stopped: boolean }> {
+  async transcribe(opts: TranscribeOptions = {}): Promise<{ transcribed: number; stopped: boolean }> {
     if (this.busy) throw new Error('A transcription is already running.');
     const apiKey = this.host.apiKey();
     if (!apiKey) throw new Error('Add your ElevenLabs API key first: Settings › Transcription.');
     const project = this.host.project();
     const dir = this.host.dir();
-    const todo = filesToTranscribe(project, (f) => !opts.redo && !!loadTranscript(dir, f), opts.trackIds);
+    const todo: Array<{ file: string; trackId: string; spans?: Array<[number, number]> }> = opts.range
+      ? selectionToTranscribe(project, opts.range, (f) => loadTranscript(dir, f), opts.trackIds)
+      : filesToTranscribe(project, (f) => !opts.redo && isWholeTranscript(loadTranscript(dir, f)), opts.trackIds);
     if (!todo.length) return { transcribed: 0, stopped: false };
     const names = new Map(project.tracks.map((t) => [t.id, t.name]));
     const job: TranscribeJob = {
@@ -127,7 +137,8 @@ export class TranscriptionService {
       // tests point it at a local mock server
       base: process.env.WAVEPOD_ELEVENLABS_BASE || undefined,
       settings: this.host.settings(),
-      files: todo.map((t) => ({ abs: path.isAbsolute(t.file) ? t.file : path.join(dir, t.file), file: t.file, name: names.get(t.trackId) ?? '' })),
+      files: todo.map((t) => ({ abs: path.isAbsolute(t.file) ? t.file : path.join(dir, t.file), file: t.file, name: names.get(t.trackId) ?? '', ...(t.spans ? { spans: t.spans } : {}) })),
+      projectRate: project.sampleRate,
     };
     let transcribed = 0;
     return new Promise((resolve, reject) => {
@@ -143,9 +154,11 @@ export class TranscriptionService {
         if (msg.type === 'progress') this.host.progress(msg.progress!);
         else if (msg.type === 'file') {
           // the episode may have been switched meanwhile: the transcript belongs to the folder it started in
-          saveTranscript(dir, msg.transcript!);
+          // a selection's parts join what the file's transcript already has
+          const t = msg.transcript!.spans ? mergeTranscript(loadTranscript(dir, msg.transcript!.file), msg.transcript!) : msg.transcript!;
+          saveTranscript(dir, t);
           transcribed++;
-          if (this.host.dir() === dir) this.host.updated(msg.transcript!.file, msg.transcript!);
+          if (this.host.dir() === dir) this.host.updated(t.file, t);
         } else if (msg.type === 'done') finish(() => resolve({ transcribed, stopped: !!msg.stopped }));
         else if (msg.type === 'error') finish(() => reject(new Error(msg.message)));
       });

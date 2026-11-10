@@ -240,6 +240,119 @@ export function filesToTranscribe(project: Project, have: (file: string) => bool
   return out;
 }
 
+/** True if the transcript covers its whole file (not just the parts of a selection). */
+export function isWholeTranscript(t: FileTranscript | null | undefined): boolean {
+  return !!t && !t.spans;
+}
+
+/** Sorts spans and joins the ones that touch or overlap. */
+export function unionSpans(spans: ReadonlyArray<readonly [number, number]>): Array<[number, number]> {
+  const sorted = spans.filter(([a, b]) => b > a).map(([a, b]) => [a, b] as [number, number]).sort((x, y) => x[0] - y[0]);
+  const out: Array<[number, number]> = [];
+  for (const s of sorted) {
+    const last = out[out.length - 1];
+    if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+    else out.push(s);
+  }
+  return out;
+}
+
+/** The parts of `spans` that `covered` leaves out (both sorted and joined). */
+export function subtractSpans(spans: ReadonlyArray<readonly [number, number]>, covered: ReadonlyArray<readonly [number, number]>): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const [a0, b] of spans) {
+    let a = a0;
+    for (const [c, d] of covered) {
+      if (d <= a || c >= b) continue;
+      if (c > a) out.push([a, c]);
+      a = Math.max(a, d);
+      if (a >= b) break;
+    }
+    if (a < b) out.push([a, b]);
+  }
+  return out;
+}
+
+/** Room transcribed around a selection, so words at its edges aren't cut in half (seconds). */
+export const SELECTION_PAD = 1;
+/** Leftover bits shorter than this aren't worth a transcription of their own (seconds). */
+const MIN_SPAN = 0.3;
+
+/**
+ * What a timeline selection still needs transcribed: per file of the speech tracks (only the
+ * given ones if any), the parts of it the selection plays that its transcript doesn't cover yet,
+ * with a little room around them. Spans are [from, to) in clip-offset units (project frames into
+ * the file). Clips with sound design (reversed, sped up, looped) are left out like everywhere
+ * else in the transcript.
+ */
+export function selectionToTranscribe(
+  project: Project,
+  range: readonly [Frames, Frames],
+  have: (file: string) => FileTranscript | null | undefined,
+  trackIds?: readonly string[] | null,
+): Array<{ file: string; trackId: string; spans: Array<[Frames, Frames]> }> {
+  const sr = project.sampleRate;
+  const pad = Math.round(SELECTION_PAD * sr);
+  const [r0, r1] = range[0] <= range[1] ? range : [range[1], range[0]];
+  const byFile = new Map<string, { trackId: string; spans: Array<[Frames, Frames]> }>();
+  for (const t of project.tracks) {
+    if (t.kind === 'soundboard' || (trackIds?.length && !trackIds.includes(t.id))) continue;
+    for (const c of t.clips) {
+      if (c.sound) continue;
+      const a = Math.max(r0, c.start);
+      const b = Math.min(r1, c.start + c.length);
+      if (b <= a) continue;
+      const from = Math.max(0, c.offset + (a - c.start) - pad);
+      const to = c.offset + (b - c.start) + pad;
+      let e = byFile.get(c.file);
+      if (!e) byFile.set(c.file, (e = { trackId: t.id, spans: [] }));
+      e.spans.push([from, to]);
+    }
+  }
+  const out: Array<{ file: string; trackId: string; spans: Array<[Frames, Frames]> }> = [];
+  for (const [file, e] of byFile) {
+    const t = have(file);
+    if (isWholeTranscript(t)) continue;
+    // covered parts are kept in file frames; spans here count in project frames
+    const scale = t ? sr / (t.sampleRate || sr) : 1;
+    const covered = (t?.spans ?? []).map(([a, b]) => [Math.round(a * scale), Math.round(b * scale)] as [number, number]);
+    // pad only counts as room: a part that's covered except for its padding is done
+    const needed = subtractSpans(unionSpans(e.spans.map(([a, b]) => [a + pad, b - pad])), covered).filter(([a, b]) => b - a >= MIN_SPAN * sr);
+    if (!needed.length) continue;
+    out.push({ file, trackId: e.trackId, spans: unionSpans(needed.map(([a, b]) => [Math.max(0, a - pad), b + pad])) });
+  }
+  return out;
+}
+
+/**
+ * Adds the transcript of some parts of a file (`part.spans`) to what's there: words heard in
+ * those parts replace the old ones, the rest stay. A whole-file transcript stays whole.
+ */
+export function mergeTranscript(old: FileTranscript | null | undefined, part: FileTranscript): FileTranscript {
+  if (!part.spans) return part;
+  if (!old) return part;
+  const scale = part.sampleRate / (old.sampleRate || part.sampleRate);
+  const rescale = (ws: TranscriptWord[] | undefined) => (ws ?? []).map((w) => (scale === 1 ? w : { ...w, start: Math.round(w.start * scale), end: Math.round(w.end * scale) }));
+  // old words wholly inside a new part are heard again there; one reaching over its edge stays
+  const inside = (w: TranscriptWord) => part.spans!.some(([a, b]) => w.start >= a && w.end <= b);
+  const merge = (oldWords: TranscriptWord[], newWords: TranscriptWord[]) => {
+    const kept = oldWords.filter((w) => !inside(w));
+    // a word cut at the edge of a new part is already there from before: keep the whole one
+    const added = newWords.filter((w) => !kept.some((k) => w.start < k.end && w.end > k.start));
+    return [...kept, ...added].sort((a, b) => a.start - b.start);
+  };
+  const { spans: newSpans, ...rest } = part;
+  const merged: FileTranscript = {
+    ...rest,
+    words: merge(rescale(old.words), part.words),
+    events: merge(rescale(old.events), part.events ?? []),
+    levels: part.levels ?? old.levels,
+  };
+  // a whole-file transcript stays whole
+  if (old.spans) merged.spans = unionSpans([...old.spans.map(([a, b]) => [Math.round(a * scale), Math.round(b * scale)] as [number, number]), ...newSpans]);
+  return merged;
+}
+
 /** Where a file's transcript is stored inside the project folder. */
 export function transcriptPath(file: string): string {
   const safe = file.replace(/[\\/:]+/g, '_').replace(/^_+/, '');

@@ -1,7 +1,7 @@
 // The episode's transcripts in the renderer: loaded per episode, updated as files finish,
 // and turned into timeline words (cached until the project or a transcript changes).
 import type { FileTranscript, Project, TimelineWord, TranscribeProgress } from '../shared/types';
-import { allTimelineWords } from '../core/transcript';
+import { allTimelineWords, isWholeTranscript, selectionToTranscribe } from '../core/transcript';
 import { filterQuietWords, type WordFilter } from '../core/wordLevels';
 import { errorMessage, toast } from './dom';
 import { api, store } from './store';
@@ -71,9 +71,14 @@ class Transcripts {
     return this.files.size;
   }
 
-  /** True if every speech track's files have a transcript. */
+  /** True if every speech track's files have a transcript (of the whole file, not just a selection). */
   get complete(): boolean {
-    return store.project.tracks.filter((t) => t.kind !== 'soundboard').every((t) => t.clips.every((c) => this.files.has(c.file)));
+    return store.project.tracks.filter((t) => t.kind !== 'soundboard').every((t) => t.clips.every((c) => isWholeTranscript(this.files.get(c.file))));
+  }
+
+  /** True if everything the timeline range plays (on these tracks, or all) is transcribed. */
+  covers(range: [number, number], trackIds?: string[] | null): boolean {
+    return !selectionToTranscribe(store.project, range, (f) => this.files.get(f), trackIds).length;
   }
 
   words(): TimelineWord[] {
@@ -93,8 +98,11 @@ class Transcripts {
     return this.cache;
   }
 
-  /** Transcribes what's missing (or everything again with redo). */
-  async transcribe(redo = false): Promise<void> {
+  /**
+   * Transcribes what's missing (or everything again with redo). With a `range`, only what that
+   * part of the timeline plays (on `trackIds`, or all speech tracks), and quietly.
+   */
+  async transcribe(redo = false, range?: [number, number], trackIds?: string[] | null): Promise<void> {
     if (this.busy) return;
     const info = await api().getTranscriptionInfo();
     if (!info.hasKey) {
@@ -106,8 +114,10 @@ class Transcripts {
     this.busy = true;
     this.emit();
     try {
-      const r = await api().transcribe({ redo });
-      if (r.stopped) toast(`Transcription stopped${r.transcribed ? ` after ${r.transcribed} file${r.transcribed === 1 ? '' : 's'}` : ''}`);
+      const r = await api().transcribe(range ? { range, ...(trackIds?.length ? { trackIds } : {}) } : { redo });
+      if (range) {
+        if (r.stopped) toast('Transcription stopped');
+      } else if (r.stopped) toast(`Transcription stopped${r.transcribed ? ` after ${r.transcribed} file${r.transcribed === 1 ? '' : 's'}` : ''}`);
       else if (!r.transcribed) toast('Everything is transcribed already');
       else toast(`Transcribed ${r.transcribed} file${r.transcribed === 1 ? '' : 's'}`);
     } catch (e) {

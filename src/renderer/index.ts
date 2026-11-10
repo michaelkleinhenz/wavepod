@@ -355,6 +355,7 @@ async function main(): Promise<void> {
     if (kinds.has('project') || kinds.has('selection')) transcriptPanel.refresh();
     if (kinds.has('project')) libraryPanel.refresh();
     if (kinds.has('project')) scriptPanel.refresh();
+    if (kinds.has('selection')) scriptPanel.selectionChanged();
     if (kinds.has('project')) {
       void transcripts().ensureLoaded();
       fxPanel.refresh();

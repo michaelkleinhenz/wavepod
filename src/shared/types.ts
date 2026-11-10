@@ -368,6 +368,11 @@ export interface FileTranscript {
   levels?: TranscriptLevels;
   /** Sounds the speech-to-text heard (laughter, coughing…), in file frames; transcripts made since WavePod keeps them. */
   events?: TranscriptWord[];
+  /**
+   * Only these parts of the file are transcribed ([from, to) in file frames, sorted, not
+   * overlapping): a transcript of a timeline selection. Not set when the whole file is.
+   */
+  spans?: Array<[Frames, Frames]>;
 }
 
 /** A coarse level curve: one byte per `step` file frames, dB below full scale, base64 encoded. */

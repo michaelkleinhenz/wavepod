@@ -67,6 +67,14 @@ Ticked lines remember their place in the recording itself, so they stay found af
 - Very short lines (*Yes.*) are only looked for between the lines around them, so they aren't matched just anywhere.
 - Lines ticked by hand keep their place, and Line up never unticks a line.
 
+#### Lining up a part of the recording
+
+To line up only part of the recording, for example the scene you just recorded, select that time range on the timeline first (drag on the ruler, or across some tracks). The button then reads **Line up selection**: WavePod transcribes only that part of the recording, with a second of room on each side, and looks for the lines only there. Lines outside the selection stay as they are.
+
+- Dragging across some tracks only looks at those tracks, so lines of characters on other tracks aren't found.
+- Parts that are transcribed already aren't sent again, so lining up the next scene only transcribes what's new.
+- The [transcript panel](transcript.md) shows the words of every part transcribed this way. **Transcribe** there still transcribes the whole episode, including the files only partly done.
+
 ### Cutting around every take
 
 When you record a line several times in one go (without [loop recording](recording.md#takes-and-comping)), all takes sit one after another in the same clip. WavePod finds every one of them in the transcript and cuts the track around them, so you can listen to each take on its own and keep the best one.
