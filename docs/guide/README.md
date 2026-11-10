@@ -47,3 +47,6 @@ plain Markdown.
 - A new page is registered in `src/help/topics.ts`. `test/help.test.ts` checks that every link
   resolves and that every menu command, built-in filter, voice effect and MCP tool is described,
   so a new feature needs a line in the guide.
+- The [GitHub wiki](https://github.com/michaelkleinhenz/wavepod/wiki) is built from these pages by
+  `.github/workflows/wiki.yml` on every push to `main` (`make wiki` previews it in `dist/wiki`).
+  Don't edit the wiki itself; changes there are overwritten.

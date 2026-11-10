@@ -7,7 +7,7 @@ app you install and start, with no Reaper underneath.
 
 **[Download WavePod](https://github.com/michaelkleinhenz/wavepod/releases/latest)**
 · [Website](https://michaelkleinhenz.github.io/wavepod/)
-· [User guide](docs/guide/README.md)
+· [User guide (wiki)](https://github.com/michaelkleinhenz/wavepod/wiki)
 
 ![WavePod's timeline: one track per speaker, chapter markers and a soundboard track](site/img/timeline.png)
 
@@ -63,8 +63,20 @@ app you install and start, with no Reaper underneath.
 
 The **user guide** explains every feature step by step. In the app it opens
 with **Help › WavePod Help** (`F1`, at the page for the view or dialog you are
-in), with a contents list and full-text search; the pages are also readable
-here in [docs/guide/](docs/guide/README.md).
+in), with a contents list and full-text search. Online it is the
+**[WavePod wiki](https://github.com/michaelkleinhenz/wavepod/wiki)**, made from the same pages in
+[docs/guide/](docs/guide/README.md):
+
+- [Installation](https://github.com/michaelkleinhenz/wavepod/wiki/Installation) and [Getting started](https://github.com/michaelkleinhenz/wavepod/wiki/Getting-started)
+- [Recording](https://github.com/michaelkleinhenz/wavepod/wiki/Recording), [Editing clips](https://github.com/michaelkleinhenz/wavepod/wiki/Editing-clips) and
+  [Tracks and mixing](https://github.com/michaelkleinhenz/wavepod/wiki/Tracks-and-mixing)
+- [Filters and effects](https://github.com/michaelkleinhenz/wavepod/wiki/Filters-and-effects),
+  [Audio drama](https://github.com/michaelkleinhenz/wavepod/wiki/Audio-drama) and
+  [Transcript and text editing](https://github.com/michaelkleinhenz/wavepod/wiki/Transcript-and-text-editing)
+- [Chapters and markers](https://github.com/michaelkleinhenz/wavepod/wiki/Chapters-and-markers),
+  [Loudness](https://github.com/michaelkleinhenz/wavepod/wiki/Loudness) and [Exporting](https://github.com/michaelkleinhenz/wavepod/wiki/Exporting)
+- [Keyboard shortcuts](https://github.com/michaelkleinhenz/wavepod/wiki/Keyboard-shortcuts) and
+  [Troubleshooting](https://github.com/michaelkleinhenz/wavepod/wiki/Troubleshooting)
 
 See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.
 
