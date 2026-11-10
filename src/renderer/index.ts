@@ -132,6 +132,10 @@ async function main(): Promise<void> {
     } else libraryPanel.toggle();
   };
   window.addEventListener('wavepod:open-settings', () => void settingsDialog.open());
+  window.addEventListener('wavepod:export-region', (e) => {
+    if (store.transport.state === 'recording' || document.querySelector('.overlay')) return;
+    exportDialog.open((e as CustomEvent<string>).detail);
+  });
   // the transcript panel only shows in the edit view; from another view its button takes the user there
   const openTranscript = () => {
     if (!transcriptPanel.isOpen && libraryPanel.isOpen) libraryPanel.close();

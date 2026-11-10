@@ -58,7 +58,7 @@ A region is a named part of the episode, for example two episodes recorded in on
 1. Select a time range.
 2. Click **Region from selection** in the timeline toolbar (or right-click a clip › **Region from clip**).
 
-Regions show on the ruler and are listed in the Chapters view, where you can rename them and change their start and end. **Select on the timeline** selects a region's range. **×** deletes it.
+Regions show on the ruler and are listed in the Chapters view, where you can rename them and change their start and end. **Select on the timeline** selects a region's range, **Export…** exports just that region, and **×** deletes it.
 
 ### Renaming regions
 
@@ -68,11 +68,11 @@ New regions are called *Part 1*, *Part 2* and so on. To give one a name:
 - Or **right-click the region** on the ruler › **Rename…**.
 - Or type in its **Title** field in the Chapters view.
 
-Clearing the name gives the region its *Part n* name back. The name is used for the [exported file](export.md#parts-of-the-episode).
+Clearing the name gives the region its *Part n* name back. The name is used for the [exported file](export.md#what-to-export).
 
-Right-clicking a region on the ruler also offers **Select range**, **Zoom to region**, **Show in Chapters view** and **Delete region** (which removes only the region, not the audio). Double-clicking a region anywhere but its name selects its time range.
+Right-clicking a region on the ruler also offers **Select range**, **Zoom to region**, **Export Region…**, **Show in Chapters view** and **Delete region** (which removes only the region, not the audio). Double-clicking a region anywhere but its name selects its time range.
 
-The export can write each region as its own file. See [Exporting](export.md#parts-of-the-episode).
+The export can write one region, or each region as its own file. See [Exporting one region](export.md#exporting-one-region).
 
 ## Checks before export
 

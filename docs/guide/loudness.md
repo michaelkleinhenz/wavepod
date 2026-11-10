@@ -12,7 +12,7 @@ Podcast apps and platforms expect episodes at a certain loudness, measured in LU
 | **−23 LUFS** (EBU R128 broadcast) | Radio and TV delivery. |
 | **Custom…** | Any target from −30 to −9 LUFS, for a delivery spec that asks for something else. |
 
-For a mono export, use −19 LUFS: the export dialog switches to it when you tick **Mono**. See [Exporting](export.md#formats).
+For a mono export, use −19 LUFS: the export dialog switches to it when you choose **Mono** under **Channels**. See [Exporting](export.md#formats).
 
 Together with the target you set a **true-peak ceiling**, by default −1 dBTP: the highest any peak may reach, including peaks between samples that appear after MP3 or Opus encoding.
 
