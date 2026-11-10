@@ -118,11 +118,162 @@ See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.
 
 ## Getting started
 
+WavePod is ready to use: download it, install it like any other app and
+start it. You don't need to build anything.
+
+> **WavePod is beta software.** Always make a backup recording of every show
+> with something else, for example on your mixer's SD card or a second
+> recorder.
+
+### 1. Download
+
+Get the file for your computer from the
+[latest release](https://github.com/michaelkleinhenz/wavepod/releases/latest)
+(under **Assets**):
+
+| Computer | File to download |
+| --- | --- |
+| Windows 10 or 11 (64-bit) | `WavePod-<version>-win-x64.exe` |
+| Mac with Apple silicon (M1 or newer) | `WavePod-<version>-mac-arm64.dmg` |
+| Ubuntu, Debian, Linux Mint, Pop!_OS | `WavePod-<version>-linux-amd64.deb` |
+| Other Linux (Fedora, Arch, …) | `WavePod-<version>-linux-x86_64.AppImage` |
+
+There is no build for Macs with an Intel processor yet.
+
+### 2. Install and start
+
+WavePod's installers are not yet signed with a developer certificate, so
+Windows and macOS warn you the first time. That is expected; the steps below
+get you past it once.
+
+**Windows**
+
+1. Double-click the downloaded `.exe`.
+2. If Windows shows "Windows protected your PC", click **More info**, then
+   **Run anyway**.
+3. Follow the installer. You can choose where WavePod goes.
+4. Start WavePod from the Start menu or the desktop shortcut.
+
+For a RØDECaster Pro II with all 16 channels, also install RØDE's ASIO
+driver (see [Using a RØDECaster Pro II](#using-a-rødecaster-pro-ii)).
+
+**macOS**
+
+1. Double-click the downloaded `.dmg` and drag **WavePod** onto
+   **Applications**.
+2. Open WavePod from Applications or Launchpad. macOS says it can't check
+   the app for malicious software; click **Done** (or **OK**).
+3. Open **System Settings › Privacy & Security**, scroll down to the message
+   about WavePod and click **Open Anyway**, then confirm with your password.
+   (On older macOS versions you can instead right-click WavePod in
+   Applications and choose **Open**.)
+4. When WavePod asks to use the microphone, click **Allow**. Without it,
+   recordings stay silent. You can change this later under **System Settings
+   › Privacy & Security › Microphone**.
+
+If macOS says WavePod "is damaged and can't be opened", the download was
+quarantined. Run this once in Terminal and open WavePod again:
+
 ```sh
+xattr -cr /Applications/WavePod.app
+```
+
+**Ubuntu, Debian and other Debian-based Linux**
+
+1. Double-click the `.deb` to install it with your software centre, or run
+   this in a terminal in your Downloads folder:
+   ```sh
+   sudo apt install ./WavePod-*-linux-amd64.deb
+   ```
+2. Start WavePod from the app grid / applications menu, or run `wavepod`.
+
+Prefer the `.deb` on Ubuntu: it installs WavePod under `/opt/WavePod`, adds
+it to the app grid, and installs the AppArmor profile Ubuntu 23.10+ needs to
+run it (the AppImage crashes there with `SIGTRAP`).
+
+**Other Linux (AppImage)**
+
+1. Install FUSE 2 if your system doesn't have it (Ubuntu:
+   `sudo apt install libfuse2t64`, Fedora: `sudo dnf install fuse-libs`).
+2. Make the file executable and start it:
+   ```sh
+   chmod +x WavePod-*-linux-x86_64.AppImage
+   ./WavePod-*-linux-x86_64.AppImage
+   ```
+   Most file managers can do the same: **Properties › Permissions › Allow
+   executing file as program**, then double-click it.
+
+The AppImage doesn't add itself to the app menu; see
+[GNOME launcher](#linux-gnome-launcher-for-the-appimage) if you want that.
+
+### 3. First start
+
+WavePod opens with a short beta notice, then on **Setup › Project**:
+
+1. Type a name under **Start a new episode** and create it.
+2. On **Setup › Audio**, pick your interface under **Record from** and your
+   headphones under **Listen on**. Speak into each mic and watch the meters.
+3. Click **Create speaker tracks**, switch to **Record & Edit** (`Ctrl+2`)
+   and press `R` to record.
+
+Press `F1` at any time for the built-in user guide; its
+[Getting started](docs/guide/getting-started.md) page walks you through the
+first episode. No interface at hand? You can still try editing with your own
+audio files: **File › Import Audio…** or drag them onto the timeline.
+
+On Linux, keep **Audio driver** on **System default** unless you know you
+need something else (see [Linux: which audio driver](#linux-which-audio-driver)).
+
+### Updating and uninstalling
+
+To update, download the new release and install it over the old one (on
+Linux: `sudo apt install ./WavePod-*.deb` again, or replace the AppImage).
+Your episodes and settings are kept: episodes live in `Documents/WavePod`.
+
+To remove WavePod, use **Settings › Apps** on Windows, drag it from
+Applications to the Bin on macOS, or run `sudo apt remove wavepod` on
+Debian/Ubuntu. Your episodes in `Documents/WavePod` stay where they are.
+
+### Using a RØDECaster Pro II
+
+1. Enable multitrack mode in the RØDECaster's USB audio settings
+   and connect it over USB.
+2. In WavePod's **Setup** view, on the **Audio** tab, pick the RØDECaster
+   under **Record from**.
+3. Further down the **Audio** tab the 16 channels appear with their names and
+   live meters. Click **Create speaker tracks**: each mic and remote source
+   gets its own armed track.
+4. Switch to **Record & Edit** and press `R`.
+5. When the recording is done, run **Edit › Prepare All Tracks for Editing**
+   (or the toolbar button) to unarm all tracks, so `R` can't start a new take
+   while you cut. Tick **Prepare for Editing When Recording Stops** in the
+   same menu to have this happen automatically.
+
+On Windows the multitrack channels are only exposed through RØDE's ASIO
+driver; pick **ASIO** as **Audio driver** (Setup › Audio › Advanced audio
+settings) if it is offered.
+
+### Linux: which audio driver
+
+On a desktop with PipeWire or PulseAudio running, the sound server keeps the
+sound cards to itself. "System default" then uses PulseAudio / PipeWire, which
+reaches every device with all its inputs (e.g. a RØDECaster Pro II in its
+multitrack profile). Over ALSA only the server's shared "Default ALSA Device"
+is left (stereo, no separate inputs), and Setup says so. Pick ALSA only when no
+sound server runs.
+
+## Build from source
+
+For developers and anyone who wants to run the current `main` branch.
+
+```sh
+git clone https://github.com/michaelkleinhenz/wavepod.git
+cd wavepod
 make install   # npm ci
 make start     # build and run
 make demo      # run with virtual devices only, no audio hardware needed
 make test      # unit + engine tests
+make dist      # build installers for this OS into release/
 make help      # all targets
 ```
 
@@ -141,16 +292,7 @@ Steinberg's VST3 SDK), and `make dist*` builds it automatically. Without it
 WavePod runs fine, just without the VST3 entry. On Linux the app needs `libasound2` and `libpulse0`
 (present on normal desktop installs).
 
-#### Linux: audio driver
-
-On a desktop with PipeWire or PulseAudio running, the sound server keeps the
-sound cards to itself. "System default" then uses PulseAudio / PipeWire, which
-reaches every device with all its inputs (e.g. a RØDECaster Pro II in its
-multitrack profile). Over ALSA only the server's shared "Default ALSA Device"
-is left (stereo, no separate inputs), and Setup says so. Pick ALSA only when no
-sound server runs.
-
-#### Linux: Chromium sandbox
+### Linux: Chromium sandbox
 
 Electron sandboxes its renderer processes. On Linux it does this with
 unprivileged user namespaces, or, where those are blocked, with the setuid
@@ -181,18 +323,11 @@ prints the options instead of crashing:
   ```
 - Development only, without the sandbox: `WAVEPOD_NO_SANDBOX=1 make start`.
 
-#### Linux: .deb or AppImage
-
-Releases include a `.deb` next to the AppImage. Prefer it on Ubuntu and
-Debian: it installs WavePod under `/opt/WavePod`, adds it to the app grid,
-and installs the AppArmor profile that lets Chromium's sandbox run on Ubuntu
-23.10+ (the AppImage fails there with the `SIGTRAP` described above). The
-AppImage also needs FUSE 2 (`sudo apt install libfuse2t64`).
-
-#### Linux: GNOME launcher
+### Linux: GNOME launcher for the AppImage
 
 The AppImage does not add itself to the app grid. To get WavePod (with its
-icon) into GNOME's Activities and dock:
+icon) into GNOME's Activities and dock, run this in a checkout of this
+repository:
 
 ```sh
 make desktop-install WAVEPOD_EXEC=$HOME/Applications/WavePod.AppImage
@@ -212,25 +347,6 @@ After editing it, `make icons` re-renders `build/icons/*.png`,
 to `site/img/icon.svg` (needs Playwright's Chromium and ImageMagick). A test
 checks the web copy matches. The icon has no lettering, so renaming the app
 only touches `productName`, `desktopName` and the `.desktop` file.
-
-### Using a RØDECaster Pro II
-
-1. Enable multitrack mode in the RØDECaster's USB audio settings
-   and connect it over USB.
-2. In WavePod's **Setup** view, on the **Audio** tab, pick the RØDECaster
-   under **Record from**.
-3. Further down the **Audio** tab the 16 channels appear with their names and
-   live meters. Click **Create speaker tracks**: each mic and remote source
-   gets its own armed track.
-4. Switch to **Record & Edit** and press `R`.
-5. When the recording is done, run **Edit › Prepare All Tracks for Editing**
-   (or the toolbar button) to unarm all tracks, so `R` can't start a new take
-   while you cut. Tick **Prepare for Editing When Recording Stops** in the
-   same menu to have this happen automatically.
-
-On Windows the multitrack channels are only exposed through RØDE's ASIO
-driver; pick **ASIO** as **Audio driver** (Setup › Audio › Advanced audio
-settings) if it is offered.
 
 ## Keyboard
 
