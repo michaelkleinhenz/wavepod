@@ -345,7 +345,8 @@ export interface WavePodApi {
   /** The episode's transcripts, by media file. */
   loadTranscripts(): Promise<Record<string, FileTranscript>>;
   /** Transcribes the files of these tracks (all speech tracks if none) that have no transcript yet (all with redo). */
-  transcribe(opts?: { trackIds?: string[]; redo?: boolean }): Promise<{ transcribed: number; stopped: boolean }>;
+  /** With `range` (timeline frames), only what that part of the timeline plays. */
+  transcribe(opts?: { trackIds?: string[]; redo?: boolean; range?: [number, number] }): Promise<{ transcribed: number; stopped: boolean }>;
   stopTranscribing(): Promise<void>;
   /** Removes the transcripts of these tracks (all if none); returns how many files had one. */
   deleteTranscripts(trackIds?: string[]): Promise<number>;

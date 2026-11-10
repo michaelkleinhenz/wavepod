@@ -943,7 +943,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   getTranscriptionInfo: () => transcription.info(),
   setTranscriptionSettings: (input: TranscriptionSettingsInput) => transcription.setSettings(input),
   loadTranscripts: () => transcription.load(),
-  transcribe: (opts?: { trackIds?: string[]; redo?: boolean }) => {
+  transcribe: (opts?: { trackIds?: string[]; redo?: boolean; range?: [number, number] }) => {
     flushSave();
     return transcription.transcribe(opts ?? {});
   },

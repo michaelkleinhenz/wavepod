@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { addTrack, createProject, rippleDelete } from '../src/core/project';
-import { bareWord, filesToTranscribe, isFiller, paragraphs, timelineWords, transcriptPath, transcriptText, transcriptVtt, wordAt, wordsFromScribe, wordsRange } from '../src/core/transcript';
+import { bareWord, filesToTranscribe, isFiller, isWholeTranscript, mergeTranscript, selectionToTranscribe, subtractSpans, unionSpans, paragraphs, timelineWords, transcriptPath, transcriptText, transcriptVtt, wordAt, wordsFromScribe, wordsRange } from '../src/core/transcript';
 import { keytermList, normalizeTranscriptionSettings, scribeForm, transcribeWithScribe } from '../src/core/elevenlabs';
 import { pcmToWav, wavToSpeechPcm } from '../src/core/speechAudio';
 import { writeWavFile, parseWavHeader } from '../src/core/wav';
@@ -98,6 +98,57 @@ describe('transcript words', () => {
     const { p } = episode();
     expect(filesToTranscribe(p, (f) => f === 'media/anna.wav')).toEqual([{ file: 'media/ben.wav', trackId: p.tracks[1].id }]);
     expect(transcriptPath('media/anna.wav')).toBe('transcripts/media_anna.wav.json');
+  });
+});
+
+describe('transcribing a timeline selection', () => {
+  const s = (a: number, b: number): [number, number] => [a * SR, b * SR];
+
+  it('joins and subtracts spans', () => {
+    expect(unionSpans([s(5, 6), s(0, 2), s(1, 3)])).toEqual([s(0, 3), s(5, 6)]);
+    expect(subtractSpans([s(0, 10)], [s(2, 3), s(5, 6)])).toEqual([s(0, 2), s(3, 5), s(6, 10)]);
+    expect(subtractSpans([s(2, 3)], [s(0, 10)])).toEqual([]);
+  });
+
+  it('asks only for the parts of the files the selection plays, with room around them', () => {
+    const { p } = episode();
+    // Ben's clip is cut: the part at 4-10 s on the timeline plays the file from 20 s on
+    p.tracks[1].clips = [clip('b1', 'media/ben.wav', 0, 0, 4 * SR), clip('b2', 'media/ben.wav', 4 * SR, 20 * SR, 6 * SR)];
+    const todo = selectionToTranscribe(p, s(3, 5), () => null);
+    expect(todo).toEqual([
+      { file: 'media/anna.wav', trackId: p.tracks[0].id, spans: [s(2, 6)] },
+      { file: 'media/ben.wav', trackId: p.tracks[1].id, spans: [s(2, 5), s(19, 22)] },
+    ]);
+    // only the tracks dragged across
+    expect(selectionToTranscribe(p, s(3, 5), () => null, [p.tracks[0].id]).map((t) => t.file)).toEqual(['media/anna.wav']);
+  });
+
+  it('skips what is transcribed already', () => {
+    const { p } = episode();
+    const whole = tr('media/anna.wav', []);
+    const part = { ...tr('media/ben.wav', []), spans: [s(0, 4)] };
+    const have = (f: string) => (f === 'media/anna.wav' ? whole : part);
+    expect(isWholeTranscript(whole)).toBe(true);
+    expect(isWholeTranscript(part)).toBe(false);
+    // Ben 1-3 s is covered: nothing to do
+    expect(selectionToTranscribe(p, s(1, 3), have)).toEqual([]);
+    // Ben 3-6 s: only 4-6 s (and its room) is new
+    expect(selectionToTranscribe(p, s(3, 6), have)).toEqual([{ file: 'media/ben.wav', trackId: p.tracks[1].id, spans: [s(3, 7)] }]);
+  });
+
+  it('adds the words of new parts to a partial transcript', () => {
+    const old = { ...tr('media/ben.wav', [['eins', 1, 1.5], ['zwei', 3.8, 4.4]]), spans: [s(0, 5)] };
+    // the new part starts at 4 s: "zwei" comes back cut as "ei" and is kept whole from before
+    const part = { ...tr('media/ben.wav', [['ei', 4, 4.4], ['drei', 6, 6.5]]), spans: [s(4.6, 8)] };
+    const merged = mergeTranscript(old, part);
+    expect(merged.words.map((w) => w.text)).toEqual(['eins', 'zwei', 'drei']);
+    expect(merged.spans).toEqual([s(0, 8)]);
+    // words heard again in a part replace the old ones there
+    const again = mergeTranscript(old, { ...tr('media/ben.wav', [['Eins!', 1, 1.5]]), spans: [s(0.5, 2)] });
+    expect(again.words.map((w) => w.text)).toEqual(['Eins!', 'zwei']);
+    // a whole-file transcript stays whole
+    expect(mergeTranscript(tr('media/ben.wav', [['eins', 1, 1.5]]), part).spans).toBeUndefined();
+    expect(mergeTranscript(null, part)).toBe(part);
   });
 });
 

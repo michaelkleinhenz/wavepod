@@ -128,6 +128,8 @@ export class ScriptPanel {
   private shown = false;
   private hidden = false;
   private lining = false;
+  /** A time range is selected on the timeline (Line up then works on it only). */
+  private hadSelection = false;
   /** Called when the panel opens (the app closes the other side panels). */
   onOpen: () => void = () => {};
 
@@ -214,6 +216,14 @@ export class ScriptPanel {
     this.render();
   }
 
+  /** The timeline selection changed: the Line up button says whether it works on the selection. */
+  selectionChanged(): void {
+    const has = !!timeSelection();
+    if (has === this.hadSelection) return;
+    this.hadSelection = has;
+    if (this.shown) this.renderToolbar();
+  }
+
   /** Transport update: highlight the line playing. */
   updatePosition(): void {
     if (!this.placed.length) return;
@@ -232,32 +242,48 @@ export class ScriptPanel {
 
   // ---------------------------------------------------------------- actions
 
-  /** The transcript's words (transcribing what's missing first), or null with a hint why not. */
-  private async transcriptWords(what: string): Promise<TimelineWord[] | null> {
+  /**
+   * The transcript's words (transcribing what's missing first), or null with a hint why not.
+   * With a selection, only the words in it, and only its part of the recording is transcribed.
+   */
+  private async transcriptWords(what: string, sel?: TimeSelection | null): Promise<TimelineWord[] | null> {
     const t = transcripts();
     await t.ensureLoaded();
-    if (!t.complete) await t.transcribe(false);
-    const words = t.words();
+    if (sel) {
+      if (!t.covers(sel.range, sel.trackIds)) await t.transcribe(false, sel.range, sel.trackIds);
+    } else if (!t.complete) await t.transcribe(false);
+    const all = t.words();
+    const words = sel ? all.filter((w) => w.start >= sel.range[0] && w.start < sel.range[1] && (!sel.trackIds || sel.trackIds.includes(w.trackId))) : all;
     if (words.length) return words;
-    toast(`${what} needs a transcript of the recording: Transcribe first (ElevenLabs key in Edit › Settings)`);
+    toast(
+      sel && all.length
+        ? `${what}: no words were heard in the selection`
+        : `${what} needs a transcript of the recording: Transcribe first (ElevenLabs key in Edit › Settings)`,
+    );
     return null;
   }
 
-  /** Finds the lines in the transcript (transcribing what's missing first). */
+  /** Finds the lines in the transcript (transcribing what's missing first); only in the time selection if there is one. */
   async lineUp(): Promise<void> {
     if (this.lining || !store.project.script) return;
+    const sel = timeSelection();
     this.lining = true;
     this.renderToolbar();
     try {
-      const words = await this.transcriptWords('Line up');
+      const words = await this.transcriptWords('Line up', sel);
       if (!words) return;
       const r = lineUpScript(store.project, words);
       store.edit((p) => applyLineUp(p, r));
       const multi = [...r.found.values()].filter((f) => (f.takes ?? 1) > 1).length;
+      const several = multi ? `, ${multi} with several takes` : '';
       toast(
         r.found.size
-          ? `Found ${r.found.size} of ${r.searched} lines in the recording${multi ? `, ${multi} with several takes` : ''}`
-          : 'None of the lines were found in the transcript. Are the characters on the right tracks?',
+          ? sel
+            ? `Found ${r.found.size} line${r.found.size === 1 ? '' : 's'} in the selection${several}`
+            : `Found ${r.found.size} of ${r.searched} lines in the recording${several}`
+          : sel
+            ? 'None of the lines were found in the selection. Are the characters on the right tracks?'
+            : 'None of the lines were found in the transcript. Are the characters on the right tracks?',
       );
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -663,6 +689,7 @@ export class ScriptPanel {
   // ---------------------------------------------------------------- rendering
 
   private renderToolbar(): void {
+    this.hadSelection = !!timeSelection();
     const script = store.project.script;
     const t = transcripts();
     const busy = this.lining || t.busy;
@@ -675,11 +702,13 @@ export class ScriptPanel {
             {
               class: 'small',
               disabled: busy,
-              title: 'Find every line in the transcript of the recording and tick it off (transcribes what is missing first)',
+              title: this.hadSelection
+                ? 'Find the lines in the selected part of the timeline and tick them off (transcribes only that part first)'
+                : 'Find every line in the transcript of the recording and tick it off (transcribes what is missing first). Select a part of the timeline to line up only that part.',
               onclick: () => void this.lineUp(),
             },
             busy ? h('span', { class: 'spinner' }) : null,
-            busy ? ' Lining up…' : 'Line up',
+            busy ? ' Lining up…' : this.hadSelection ? 'Line up selection' : 'Line up',
           )
         : null,
       script ? this.sceneSelect() : null,
@@ -966,6 +995,23 @@ export class ScriptPanel {
 }
 
 /** The folded headings remembered from last time. */
+/** A time range selected on the timeline: what Line up works on. */
+interface TimeSelection {
+  range: [number, number];
+  /** Tracks the range was dragged across; null = all. */
+  trackIds: string[] | null;
+}
+
+/** The timeline's time selection, or null if there is none (or it's empty). */
+function timeSelection(): TimeSelection | null {
+  const r = store.selection.range;
+  if (!r) return null;
+  const range: [number, number] = r[0] <= r[1] ? [r[0], r[1]] : [r[1], r[0]];
+  if (range[1] - range[0] < 1) return null;
+  const tracks = store.selection.rangeTracks;
+  return { range, trackIds: tracks?.length ? [...tracks] : null };
+}
+
 function readFolded(): string[] {
   try {
     const v = JSON.parse(load(FOLDED_KEY) ?? '[]');
