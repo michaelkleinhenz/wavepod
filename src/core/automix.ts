@@ -4,7 +4,9 @@
 // so a voice bleeding into a neighbour's mic disappears while two people talking at
 // once both stay up. A track only opens fully once it has stayed close to the loudest one for
 // a moment (or is clearly the loudest): a single word that bleeds in louder than usual must not
-// bring the other speaker's crosstalk and room sound through. Runs in playback and export, after each track's filters, gain and pan.
+// bring the other speaker's crosstalk and room sound through. Who speaks is judged on each track
+// before its filters (compressors and levelers would shrink the gap between a voice and its bleed);
+// the gains are applied after the filters, gain and pan. Runs in playback and export.
 import type { Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 
@@ -78,7 +80,7 @@ export class Automix {
   }
 
   /**
-   * Fills `gains[t][0..frames)` for each track's signal `inputs[t]` (planar stereo).
+   * Fills `gains[t][0..frames)` from each track's signal `inputs[t]` (planar stereo; the track before its filters).
    * `depths[t]` is how far (dB) track t may be turned down at most.
    */
   process(ids: string[], inputs: Float32Array[][], depths: number[], frames: number, gains: Float32Array[]): void {

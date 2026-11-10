@@ -68,7 +68,7 @@ Ducking turns a track down automatically while the other tracks are speaking, fo
 
 ## Automix (remove crosstalk)
 
-When several people share a room, every microphone also picks up the others. Tick **Automix (remove crosstalk)** in the FX panel of each speaker track: whoever is loudest stays at full level and the other automixed tracks are turned down by up to the chosen depth (−6 to −40 dB). Two people talking at once both stay up, and short pauses inside a sentence don't close a track. A track only opens fully once its own voice has been there for a moment, so a single loud word from the other speaker that bleeds into its microphone stays down instead of coming through as an echo. It runs in playback, the mix export and stem exports, after each track's filters.
+When several people share a room, every microphone also picks up the others. Tick **Automix (remove crosstalk)** in the FX panel of each speaker track: whoever is loudest stays at full level and the other automixed tracks are turned down by up to the chosen depth (−6 to −40 dB). Two people talking at once both stay up, and short pauses inside a sentence don't close a track. A track only opens fully once its own voice has been there for a moment, so a single loud word from the other speaker that bleeds into its microphone stays down instead of coming through as an echo. It runs in playback, the mix export and stem exports. It turns tracks down after their filters, but judges who is speaking from the recording before them, so a compressor or Dynamics on a track can't make the other speaker's bleed look like a voice.
 
 ## The master bus
 

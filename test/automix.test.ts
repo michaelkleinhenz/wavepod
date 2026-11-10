@@ -4,7 +4,7 @@ import { Automix } from '../src/core/automix';
 import { Mixer, ReaderCache } from '../src/core/mixer';
 import { addTrack, createProject, normalizeProject } from '../src/core/project';
 import { writeWavFile } from '../src/core/wav';
-import type { Clip, Project } from '../src/shared/types';
+import type { Clip, Fx, Project } from '../src/shared/types';
 import { tmpDir } from './helpers';
 
 const SR = 8000;
@@ -48,6 +48,34 @@ function render(p: Project, dir: string, stems?: number[]): Float32Array {
   }
   mixer.dispose();
   readers.closeAll();
+  return out;
+}
+
+const rng = (seed: number) => {
+  let s = seed >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32) * 2 - 1;
+};
+
+/** Speech-like noise in syllables and words from frame `from` on; `loud(word)` gives a word's extra level in dB. */
+function voice(sr: number, n: number, seed: number, from: number, loud: (word: number) => number = () => 0): Float32Array {
+  const r = rng(seed);
+  const out = new Float32Array(n);
+  let i = 0;
+  let lp = 0;
+  for (let word = 0; i < n; word++) {
+    const syllables = 2 + Math.floor((r() + 1) * 2);
+    const boost = 10 ** (loud(word) / 20);
+    for (let k = 0; k < syllables && i < n; k++) {
+      const len = Math.floor(sr * (0.12 + (r() + 1) * 0.07));
+      const amp = 0.25 * boost * 10 ** ((r() * 6) / 20);
+      for (let j = 0; j < len && i < n; j++, i++) {
+        lp += 0.3 * (r() - lp);
+        out[i] = i >= from ? amp * Math.sqrt(Math.sin((Math.PI * j) / len)) * lp * 3 : 0;
+      }
+      i += Math.floor(sr * (0.02 + (r() + 1) * 0.03));
+    }
+    i += Math.floor(sr * (0.1 + (r() + 1) * 0.25));
+  }
   return out;
 }
 
@@ -102,32 +130,8 @@ describe('automix', () => {
     // loud words): the old automix opened B fully for a word whenever the bleed came within 3 dB.
     const sr = 8000;
     const n = 30 * sr;
-    const rng = (seed: number) => {
-      let s = seed >>> 0;
-      return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32) * 2 - 1;
-    };
-    const voice = (seed: number, from: number) => {
-      const r = rng(seed);
-      const out = new Float32Array(n);
-      let i = 0;
-      let lp = 0;
-      while (i < n) {
-        const syllables = 2 + Math.floor((r() + 1) * 2);
-        for (let k = 0; k < syllables && i < n; k++) {
-          const len = Math.floor(sr * (0.12 + (r() + 1) * 0.07));
-          const amp = 0.25 * 10 ** ((r() * 6) / 20);
-          for (let j = 0; j < len && i < n; j++, i++) {
-            lp += 0.3 * (r() - lp);
-            out[i] = i >= from ? amp * Math.sqrt(Math.sin((Math.PI * j) / len)) * lp * 3 : 0;
-          }
-          i += Math.floor(sr * (0.02 + (r() + 1) * 0.03));
-        }
-        i += Math.floor(sr * (0.1 + (r() + 1) * 0.25));
-      }
-      return out;
-    };
-    const A = voice(1, 0);
-    const B = voice(7, 20 * sr);
+    const A = voice(sr, n, 1, 0);
+    const B = voice(sr, n, 7, 20 * sr);
     const vary = rng(99);
     const seg = sr / 4;
     const kA = Array.from({ length: n / seg + 1 }, () => 10 ** ((-9 + 4 * vary()) / 20));
@@ -164,5 +168,59 @@ describe('automix', () => {
     // both talking: both stay up
     expect(cut(ma, ga, 20.5 * sr, n)).toBeLessThan(1.5);
     expect(cut(mb, gb, 20.5 * sr, n)).toBeLessThan(1.5);
+  });
+
+  it('judges who speaks before the track filters, so compressors and levelers don\'t open the bleed', () => {
+    // A talks alone, every fourth word 10 dB louder; B's mic hears A 9 dB down. Both tracks run a
+    // compressor or a leveler, which holds A's loud words back but leaves the quiet bleed on B alone,
+    // so after the filters the bleed came within 3 dB of A for whole words.
+    const sr = 16000;
+    const n = 12 * sr;
+    const A = voice(sr, n, 3, 0, (w) => (w % 4 === 3 ? 10 : 0));
+    const bleed = 10 ** (-9 / 20);
+    const d = Math.round(0.003 * sr);
+    const ma = new Float32Array(A);
+    const mb = new Float32Array(n).map((_, i) => (i >= d ? bleed * A[i - d] : 0));
+    const fxs: Record<string, Fx> = {
+      compressor: { id: 'c', type: 'compressor', enabled: true, params: { threshold: -36, ratio: 6, attack: 5, release: 150, knee: 6, makeup: 0 } },
+      dynamics: { id: 'd', type: 'dynamics', enabled: true, params: { target: -20, noiseFloor: -60, noiseGate: 30 } },
+    };
+    for (const [name, fx] of Object.entries(fxs)) {
+      const dir = tmpDir();
+      writeWavFile(path.join(dir, 'a.wav'), [ma], sr, 32);
+      writeWavFile(path.join(dir, 'b.wav'), [mb], sr, 32);
+      const make = (on: boolean) => {
+        let p = createProject('A', sr);
+        p = addTrack(p, { name: 'A', automix: { enabled: on, depth: 24 }, fx: [{ ...fx, id: 'fa' }] });
+        p = addTrack(p, { name: 'B', automix: { enabled: on, depth: 24 }, fx: [{ ...fx, id: 'fb' }] });
+        p.tracks[0].clips.push(clip('a', 'a.wav', n));
+        p.tracks[1].clips.push(clip('b', 'b.wav', n));
+        return p;
+      };
+      const stem = (p: Project) => {
+        const readers = new ReaderCache(dir);
+        const mixer = new Mixer(p, readers);
+        const out = new Float32Array(n);
+        for (let pos = 0; pos < n; pos += 512) {
+          const f = Math.min(512, n - pos);
+          const blk = [new Float32Array(f), new Float32Array(f)];
+          mixer.renderStems([p.tracks[1]], pos, f, blk);
+          out.set(blk[0], pos);
+        }
+        mixer.dispose();
+        readers.closeAll();
+        return out;
+      };
+      const on = stem(make(true));
+      const off = stem(make(false));
+      // 30 ms windows of B where the bleed is clearly there but less than 6 dB is taken off
+      const w = Math.round(0.03 * sr);
+      let leaks = 0;
+      for (let i = sr; i + w <= n; i += w) {
+        const eOff = rmsDb(off, i, i + w);
+        if (eOff > -50 && eOff - rmsDb(on, i, i + w) < 6) leaks++;
+      }
+      expect(leaks, name).toBe(0);
+    }
   });
 });
