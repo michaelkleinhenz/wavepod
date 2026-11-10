@@ -19,6 +19,7 @@ import { confirmStop, showSoundcheck } from './recordDialogs';
 import { askName } from './nameDialog';
 import { cycleTake } from '../core/takes';
 import { WEAK_CONFIDENCE, alignedPosition, applyAlignment } from '../core/alignEdit';
+import { applyRenderedFuse, checkFuse, fuseSeamless, fuseTargets, isSeamlessFuse } from '../core/fuse';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
 let confirming = false;
@@ -800,6 +801,47 @@ async function alignTo(clipIds: string[], trackId: string): Promise<void> {
   } catch (e) {
     toast(errorMessage(e), 'error');
   } finally {
+    busy.remove();
+  }
+}
+
+/**
+ * Fuse (G): joins the selected neighbouring clips of one track into one clip, as one undo step
+ * (one selected clip: it and the next clip on its track).
+ * Clips that simply continue each other (as after a split) are joined as they are; anything else
+ * is rendered into a new file first.
+ */
+export async function fuseClips(clipIds?: Iterable<string>): Promise<void> {
+  if (store.transport.state === 'recording') return toast('Stop recording before fusing clips');
+  const ids = fuseTargets(store.project, clipIds ?? store.selection.clipIds);
+  const check = checkFuse(store.project, ids);
+  if (!check.ok) return toast(check.reason);
+  const n = check.clips.length;
+  const select = (id: string) => store.select({ clipIds: new Set([id]), range: null, rangeTracks: null, markerId: null });
+  if (isSeamlessFuse(check.clips)) {
+    const r = fuseSeamless(store.project, ids);
+    if (!r) return;
+    store.edit(() => r.project);
+    select(r.clipId);
+    return toast(`Fused ${n} clips`);
+  }
+  const before = JSON.stringify(check.clips);
+  const busy = h('div', { class: 'overlay' }, h('div', { class: 'dialog narrow' }, h('h2', null, `Fusing ${n} clips`), h('p', { class: 'muted align-busy' }, h('span', { class: 'spinner' }), 'Rendering the clips into one new audio file.')));
+  // short clips render in a blink: only show the busy box when it takes a moment
+  const timer = setTimeout(() => document.body.append(busy), 300);
+  try {
+    const { file } = await api().fuseClips(ids);
+    const now = checkFuse(store.project, ids);
+    if (!now.ok || JSON.stringify(now.clips) !== before) return toast('The clips changed while they were fused; nothing was changed. Try again.', 'error');
+    const r = applyRenderedFuse(store.project, ids, file);
+    if (!r) return;
+    store.edit(() => r.project);
+    select(r.clipId);
+    toast(`Fused ${n} clips into one`);
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  } finally {
+    clearTimeout(timer);
     busy.remove();
   }
 }

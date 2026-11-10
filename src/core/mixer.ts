@@ -88,6 +88,12 @@ export class Mixer {
   warmupSeconds = FX_WARMUP_SECONDS;
   /** Measure what each filter does (live playback only; export leaves it off). */
   metering = false;
+  /**
+   * Clip edges left without the automatic declick (clip ids), for rendering clips whose fade is
+   * taken out and applied later instead (Fuse keeps the outer fades editable).
+   */
+  noDeclickIn: ReadonlySet<string> = new Set();
+  noDeclickOut: ReadonlySet<string> = new Set();
   /** Peak each track contributed to the bus since the previous takeTrackPeaks() (metering only). */
   private trackPeaks = new Map<string, number>();
   private duckers = new Map<string, Ducker>();
@@ -488,6 +494,8 @@ export class Mixer {
     // declick every hard clip edge; a clip may play a few ms past its end to crossfade into the next one
     const declick = Math.round(DECLICK_SECONDS * this.project.sampleRate);
     const fades = trackFades(track, declick, (c) => this.readers.get(c.file)?.info.frames ?? 0);
+    for (const id of this.noDeclickIn) if (fades.has(id)) fades.get(id)!.declickIn = 0;
+    for (const id of this.noDeclickOut) if (fades.has(id)) Object.assign(fades.get(id)!, { declickOut: 0, tail: 0 });
     for (const clip of track.clips) {
       const reader = this.readers.get(clip.file);
       if (!reader) continue;

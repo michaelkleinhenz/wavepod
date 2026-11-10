@@ -40,6 +40,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
     [
       ['S', 'Split at the playhead'],
       ['F', 'Fade the selected clips'],
+      ['G', 'Fuse the selected clips into one (one clip: with the next one)'],
       ['P', 'Preview: play 2 s around the playhead, then go back (check a cut)'],
       ['L', 'Repeat: loop playback of the selection'],
       [`Shift+${mod}+T`, 'Transcript: click a word to jump, drag to select, Delete cuts, Enter or double-click changes the words (experimental)'],
@@ -61,7 +62,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       [`${mod}+drag clip`, 'Move it with everything after it on the track'],
       [`${mod}+Shift+drag clip`, 'Move it with everything after it on all tracks'],
       ['Double-click fade', 'Change the fade shape'],
-      ['Right-click clip', 'Clip menu: split, copy, duplicate, fades, gain, colour, note…'],
+      ['Right-click clip', 'Clip menu: split, fuse, copy, duplicate, fades, gain, colour, note…'],
     ],
   ],
   [

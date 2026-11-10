@@ -15,6 +15,23 @@ Every recording and every imported file becomes a **clip** on a track. Editing i
 - `S` (or **Split** in the toolbar) splits clips at the playhead: the selected clips, or every clip under the playhead when none is selected.
 - Right-click a clip › **Split here** splits it at the mouse.
 
+## Fusing clips
+
+Fusing is the opposite of splitting: it joins clips that sit next to each other on one track into a single clip, which you can then move, trim, fade, copy or give filters as one.
+
+- Select the clips and press `G` (**Edit › Fuse Clips**), or right-click one of them › **Fuse 2 clips**.
+- With a single clip selected, `G` (right-click › **Fuse with next clip**) fuses it with the next clip on its track.
+
+The clips must be on the same track with no other clip between them. Gaps between them become silence in the fused clip, and overlaps keep their crossfade. Fusing is one undo step.
+
+What happens to the audio:
+
+- Clips that simply continue each other, as after a split (same file, no jump, same clip gain, no fades or filters at the joint), are joined as they are. Nothing is rendered, and the volume line, fades and name stay as they were.
+- Anything else (clips from different files, a cut out of the middle, different clip gains, crossfades, volume lines, sound design such as reverse or speed) is rendered into one new file in the episode's `media` folder, named after the first clip with `-fused`. It sounds exactly like the clips did. The fade in of the first clip and the fade out of the last one stay editable on the fused clip, and so does the clip gain when all clips had the same one. Clip filters stay on the fused clip when every clip had the same ones; otherwise they are rendered in (an echo or reverb then stops at the end of the fused clip). The track's own filters, volume, pan and automation are not rendered in and keep working as before.
+- The fused clip takes the first name and colour among the clips, and all their notes. Transcribed words come along into the fused clip, so you don't need to transcribe it again; parts that were not transcribed yet stay to be transcribed.
+
+Your original recordings are not changed, and `Ctrl+Z` brings the separate clips back.
+
 ## Deleting and cutting
 
 | Action | Key | What happens |
@@ -71,7 +88,7 @@ Right-click a clip › **Clip gain…** sets its volume in dB; type a value such
 Right-click a clip for every clip command. It works on all selected clips if the clicked one is selected, otherwise on the clicked clip alone:
 
 - **Split here**, **Split at playhead**
-- **Cut**, **Copy**, **Paste at playhead**, **Duplicate**, **Delete**
+- **Cut**, **Copy**, **Paste at playhead**, **Fuse clips** (or **Fuse with next clip**), **Duplicate**, **Delete**
 - **Add fades**, **Remove fades**
 - **Show volume line**, **Reset volume line**
 - **Clip gain…**, **Reset clip gain**, **Normalise to −16 LUFS** (or the target picked in **Loudness analysis**), **Loudness analysis…**

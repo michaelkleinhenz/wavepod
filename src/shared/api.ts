@@ -111,6 +111,7 @@ export type MenuCommand =
   | 'mute-selection'
   | 'select-all'
   | 'normalize-clips'
+  | 'fuse-clips'
   | 'loudness-analysis'
   | 'prepare-for-editing'
   | 'punch-in'
@@ -338,6 +339,12 @@ export interface WavePodApi {
    * AlignOutcome.files); the caller applies the result with applyAlignment.
    */
   alignClips(clipIds: string[], refTrackId: string): Promise<AlignOutcome>;
+  /**
+   * Renders neighbouring clips of one track into a new file in the episode's media folder (with a
+   * transcript put together from theirs); the caller swaps the clips for it with applyRenderedFuse.
+   * Clips that simply continue each other are fused without this (fuseSeamless).
+   */
+  fuseClips(clipIds: string[]): Promise<{ file: string }>;
 
   // transcripts (ElevenLabs speech-to-text) and cleanup
   getTranscriptionInfo(): Promise<TranscriptionInfo>;
@@ -536,6 +543,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'revealFile',
   'openHelp',
   'alignClips',
+  'fuseClips',
   'getTranscriptionInfo',
   'setTranscriptionSettings',
   'loadTranscripts',
