@@ -147,7 +147,7 @@ export function openClipMenu(o: ClipMenuOptions): void {
       title: 'Varispeed: faster is higher, slower is lower, like tape',
       run: () => promptRate(ids, clipRate(clips[0]), o.pageX, o.pageY),
     },
-    { label: 'Loop', checked: looping, enabled: !recording, title: 'Repeat the clip: drag its right edge to make it longer', run: () => edit((p) => loopClips(p, ids, !looping)) },
+    { label: 'Loop', checked: looping, enabled: !recording, title: 'Repeat the clip: drag its right edge to make it longer (dragging past the end of the audio loops a clip anyway)', run: () => edit((p) => loopClips(p, ids, !looping)) },
     { label: 'Loop to next clip', enabled: !recording, title: 'Repeat until the next clip on the track (or the end of the episode)', run: () => edit((p) => loopClipsToNext(p, ids)) },
     {
       label: 'Loop over selection',

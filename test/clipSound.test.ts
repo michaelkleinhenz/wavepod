@@ -10,6 +10,7 @@ import {
   setClipLoop,
   setClipRate,
   setClipReverse,
+  trimClip,
   type ClipSource,
 } from '../src/core/clipSound';
 import { loopClipsOver, loopClipsToNext, reverseClips } from '../src/core/clipOps';
@@ -194,5 +195,49 @@ describe('sound design clip ops', () => {
     expect(p.tracks[0].clips[0].sound?.reverse).toBe(true);
     expect(p.tracks[1].clips[0].sound?.reverse).toBe(true);
     expect(p.tracks[0].clips[1].sound).toBeUndefined();
+  });
+});
+
+describe('dragging a clip edge past its audio', () => {
+  // the file is 600 frames long: the clip (offset 200, length 400) plays it to its end
+  const file = 600;
+
+  it('trims as usual while there is audio', () => {
+    expect(trimClip(clip(), 'right', -100, file)).toMatchObject({ start: 100, offset: 200, length: 300 });
+    expect(trimClip(clip({ length: 300 }), 'right', 100, file)).toMatchObject({ length: 400 });
+    expect(trimClip(clip(), 'right', 0, file).sound).toBeUndefined();
+  });
+
+  it('repeats the clip when the right edge goes past the end of the file', () => {
+    const c = trimClip(clip(), 'right', 1000, file);
+    expect(c).toMatchObject({ start: 100, offset: 200, length: 1400 });
+    expect(c.sound?.loop).toBe(true);
+    // every cycle replays the clip's 400 frames (file frames 200..599)
+    const out = idx(readClip(src, c, 0, 1400)[0]);
+    expect(out.slice(0, 3)).toEqual([200, 201, 202]);
+    expect(out.slice(400, 403)).toEqual([200, 201, 202]);
+    expect(out.slice(800, 803)).toEqual([200, 201, 202]);
+  });
+
+  it('loops all the audio up to the end of the file for a trimmed clip', () => {
+    const c = trimClip(clip({ length: 300 }), 'right', 500, file);
+    expect(c.length).toBe(800);
+    expect(c.sound).toMatchObject({ loop: true, start: 200, length: 400 });
+  });
+
+  it('repeats the clip when the left edge goes before the start of the file', () => {
+    const c = trimClip(clip({ offset: 0, length: 600 }), 'left', -100, file);
+    expect(c).toMatchObject({ start: 0, offset: -100, length: 700 });
+    expect(c.sound?.loop).toBe(true);
+    // the 100 frames before the old start are the end of the cycle
+    const out = idx(readClip(src, c, 0, 700)[0]);
+    expect(out.slice(0, 2)).toEqual([500, 501]);
+    expect(out.slice(150, 152)).toEqual([50, 51]);
+  });
+
+  it('keeps growing a clip that already loops, and grows freely when the file length is unknown', () => {
+    const looped = setClipLoop(clip(), true);
+    expect(trimClip(looped, 'right', 2000, file)).toMatchObject({ length: 2400, sound: looped.sound });
+    expect(trimClip(clip(), 'right', 1000).sound).toBeUndefined();
   });
 });
