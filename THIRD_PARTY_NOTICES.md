@@ -25,15 +25,42 @@ General Public License (see [LICENSES/LGPL-3.0.txt](LICENSES/LGPL-3.0.txt) and
 [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt)), not under the MIT License. Its
 source is the file named above.
 
-### @breezystack/lamejs (LGPL-3.0)
+### LAME (LGPL-2.0-or-later), via wasm-media-encoders (MIT)
 
-MP3 encoder, a JavaScript port of [LAME](https://lame.sourceforge.io/).
-<https://github.com/breezystack/lamejs>. Bundled into the export worker
-(`dist/main/exportWorker.js`). Licensed under the GNU Lesser General Public
-License v3.0 (see [LICENSES/LGPL-3.0.txt](LICENSES/LGPL-3.0.txt) and
-[LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt)). The complete source of WavePod,
-including the build script that bundles it, is in this repository, so it can be
-rebuilt with a modified version of the library.
+MP3 encoder: [LAME](https://lame.sourceforge.io/) 3.100 compiled to WebAssembly
+by [wasm-media-encoders](https://github.com/arseneyr/wasm-media-encoders). The
+`.wasm` file is bundled into the export worker (`dist/main/exportWorker.js`).
+LAME is licensed under the GNU Library General Public License, version 2 or (at
+your option) any later version; WavePod uses it under the LGPL v3.0 (see
+[LICENSES/LGPL-3.0.txt](LICENSES/LGPL-3.0.txt) and
+[LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt)). LAME's source is at
+<https://lame.sourceforge.io/>, the WebAssembly build at the link above. The
+complete source of WavePod, including the build script that bundles it, is in
+this repository, so it can be rebuilt with a modified encoder.
+
+wasm-media-encoders:
+
+    MIT License
+
+    Copyright (c) 2020-2024 arseneyr
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
 
 ### audify (MIT) and RtAudio (MIT-style)
 

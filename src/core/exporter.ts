@@ -1,7 +1,6 @@
 // Offline mixdown: loudness measurement, normalisation, WAV/MP3 with ID3 chapters, stems, chapter files.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Mp3Encoder } from '@breezystack/lamejs';
 import type { ExportOptions, ExportProgress, ExportResult, ExportWave, LiveLoudness, LoudnessStats, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from './chapters';
@@ -12,6 +11,7 @@ import { markersToChapters } from './project';
 import { WavWriter } from './wav';
 import { FlacWriter } from './flac';
 import { OpusWriter } from './opus';
+import { Mp3Encoder } from './mp3';
 import { TruePeakLimiter } from './truePeakLimiter';
 import { STEM_GROUPS, stemFilePath, stemIndex } from './stems';
 import { folderOf } from './folders';
@@ -126,16 +126,6 @@ function shaper(mono: boolean): (block: Float32Array[], n: number) => Float32Arr
   if (!mono) return (block) => block;
   const buf = new Float32Array(BLOCK);
   return (block, n) => [foldToMono(block, n, buf)];
-}
-
-function toInt16(src: Float32Array, n: number, gain: number, dst: Int16Array): Int16Array {
-  for (let i = 0; i < n; i++) {
-    let s = src[i] * gain;
-    if (s > 1) s = 1;
-    else if (s < -1) s = -1;
-    dst[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return dst;
 }
 
 export { safeName };
@@ -347,10 +337,8 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         durationSeconds,
       });
       fs.writeSync(mp3Fd, tag);
-      encoder = new Mp3Encoder(channels, project.sampleRate, opts.mp3Bitrate);
+      encoder = new Mp3Encoder(channels as 1 | 2, project.sampleRate, opts.mp3Bitrate);
     }
-    const l16 = new Int16Array(BLOCK);
-    const r16 = new Int16Array(BLOCK);
     const scaled = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     // waveform and loudness of the audio as written (after normalisation)
     const renderTap = new LiveTap(end - start, new LoudnessMeter(project.sampleRate, channels));
@@ -361,8 +349,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
       if (flac) flac.write(out, n);
       if (opus) opus.write(out, n);
       if (encoder && mp3Fd !== null) {
-        const left = toInt16(out[0], n, 1, l16).subarray(0, n);
-        const data = mono ? encoder.encodeBuffer(left) : encoder.encodeBuffer(left, toInt16(out[1], n, 1, r16).subarray(0, n));
+        const data = encoder.encode(out, n);
         if (data.length) fs.writeSync(mp3Fd, data);
       }
     };

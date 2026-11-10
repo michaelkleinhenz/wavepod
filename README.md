@@ -589,8 +589,9 @@ anything (`YES=1` skips the question).
 ## Third-party components
 
 - [audify](https://github.com/almoghamdani/audify) (RtAudio bindings, MIT)
-- [@breezystack/lamejs](https://github.com/breezystack/lamejs) (MP3 encoder,
-  LGPL-3.0), bundled into the export worker
+- [LAME](https://lame.sourceforge.io/) (MP3 encoder, LGPL) as WebAssembly from
+  [wasm-media-encoders](https://github.com/arseneyr/wasm-media-encoders) (MIT),
+  bundled into the export worker
 - [opusscript](https://github.com/abalabahaha/opusscript) (libopus 1.4 as
   WebAssembly, MIT; libopus itself is BSD-3-Clause) for the Opus export
 - [VST3 SDK](https://github.com/steinbergmedia/vst3sdk) (MIT), used by the

@@ -234,5 +234,5 @@ on real hardware: see "Still open".
   secrets are configured. On macOS, an unsigned build without the
   audio-input entitlement may record silence.
 - **Licences**: the app is MIT, but the Dynamics filter is a port of
-  Ultraschall's LGPL JSFX and the MP3 encoder (lamejs) is LGPL-3.0; see
+  Ultraschall's LGPL JSFX and the MP3 encoder (LAME) is LGPL; see
   `THIRD_PARTY_NOTICES.md`.
