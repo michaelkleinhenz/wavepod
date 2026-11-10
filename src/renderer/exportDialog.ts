@@ -55,14 +55,22 @@ class WaveProgress {
   private peaks = new Float32Array(0);
   private fraction = 0;
   private pending = false;
+  /** The step of the mix export running, for the big label over the waveform. */
+  private step: ExportProgress['step'] | null = null;
+  /** Progress of the step between the passes (fitting the limiter), which has no waveform. */
+  private stepFraction = 0;
 
   reset(): void {
     this.peaks = new Float32Array(0);
     this.fraction = 0;
+    this.step = null;
+    this.stepFraction = 0;
     this.schedule();
   }
 
   update(p: ExportProgress): void {
+    this.step = p.phase === 'Done' ? null : (p.step ?? null);
+    if (p.step === 'preparing') this.stepFraction = p.fraction;
     const w = p.wave;
     if (w) {
       if (this.peaks.length !== w.columns * 2) this.peaks = new Float32Array(w.columns * 2);
@@ -102,6 +110,8 @@ class WaveProgress {
     ctx.fillRect(0, mid, width, 1);
     const cols = this.peaks.length / 2;
     const done = Math.min(width, Math.round(this.fraction * width));
+    // the analysing pass and the step after it are drawn faded, under their label
+    ctx.globalAlpha = this.step === 'analysing' ? 0.45 : this.step === 'preparing' ? 0.2 : 1;
     if (cols > 0) {
       ctx.fillStyle = accent;
       for (let x = 0; x < done; x++) {
@@ -125,10 +135,43 @@ class WaveProgress {
       ctx.fillRect(0, 0, done, WAVE_HEIGHT);
       ctx.globalAlpha = 1;
     }
+    ctx.globalAlpha = 1;
     if (this.fraction > 0 && this.fraction < 1) {
       ctx.fillStyle = '#e3e6ec';
       ctx.fillRect(done, 0, 1, WAVE_HEIGHT);
     }
+    if (this.step === 'analysing') {
+      // pass 1 only measures: say so in big letters, so it isn't taken for the export itself
+      this.label(ctx, 'Analyzing', 'bold 30px system-ui, sans-serif', width / 2, 32);
+      this.label(ctx, 'Pass 1 of 2: measuring the loudness, nothing is written yet', '11px system-ui, sans-serif', width / 2, 56);
+    } else if (this.step === 'preparing') {
+      // between the passes: fitting the limiter takes a while and has no waveform, so a bar
+      this.label(ctx, 'Preparing the export', 'bold 20px system-ui, sans-serif', width / 2, 24);
+      const barW = Math.min(360, width * 0.6);
+      const x0 = (width - barW) / 2;
+      ctx.fillStyle = '#2e333e';
+      ctx.beginPath();
+      ctx.roundRect(x0, 40, barW, 8, 4);
+      ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.roundRect(x0, 40, Math.max(8, barW * Math.min(1, this.stepFraction)), 8, 4);
+      ctx.fill();
+      this.label(ctx, 'Fitting the limiter to the loudness target', '11px system-ui, sans-serif', width / 2, 62);
+    }
+  }
+
+  /** Centred text over the waveform, with a shadow so it reads on top of it. */
+  private label(ctx: CanvasRenderingContext2D, text: string, font: string, x: number, y: number): void {
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.85)';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#e3e6ec';
+    ctx.fillText(text, x, y);
+    ctx.restore();
   }
 }
 

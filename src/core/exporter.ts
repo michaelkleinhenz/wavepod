@@ -265,7 +265,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     // the mix is measured for normalisation and rendered for mix files; stems alone need neither
     const mixFiles = opts.formats.length > 0;
     if (mixFiles || opts.normalize) {
-      renderRange(mixer, start, end, null, (b, n) => measureTap.push(shape(b, n), n), (f) => progress({ phase: 'Measuring loudness', fraction: f, ...measureTap.take() }));
+      renderRange(mixer, start, end, null, (b, n) => measureTap.push(shape(b, n), n), (f) => progress({ phase: 'Measuring loudness', step: 'analysing', fraction: f, ...measureTap.take() }));
     }
     const loudness = meter.integrated();
     const peakDb = meter.peakDb();
@@ -282,7 +282,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         // again if the make-up gain itself got limited enough to miss
         for (let pass = 1; pass <= MAX_FIT_PASSES; pass++) {
           const reached = limitedLoudness(mixer, start, end, project.sampleRate, appliedGainDb, opts.peakCeiling, mono, (f) =>
-            progress({ phase: pass === 1 ? 'Fitting the limiter' : `Fitting the limiter (${pass})`, fraction: f }),
+            progress({ phase: pass === 1 ? 'Fitting the limiter' : `Fitting the limiter (${pass})`, step: 'preparing', fraction: f }),
           );
           const short = opts.targetLufs - reached;
           if (!Number.isFinite(short) || Math.abs(short) <= FIT_TOLERANCE_LU) break;
@@ -372,7 +372,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
           skip -= drop;
           emit(limited.slice(0, channels).map((ch) => ch.subarray(drop)), n - drop);
         },
-        (f) => progress({ phase: 'Rendering mix', fraction: f, ...renderTap.take() }),
+        (f) => progress({ phase: 'Rendering mix', step: 'writing', fraction: f, ...renderTap.take() }),
       );
       if (limiter) {
         const tail = [new Float32Array(limiter.latency), new Float32Array(limiter.latency)];
