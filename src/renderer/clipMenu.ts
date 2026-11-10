@@ -27,7 +27,8 @@ import { deleteClips, findClip, updateTrack } from '../core/project';
 import { selectionSpan } from '../core/navigation';
 import { parseNumberInput } from '../core/numberInput';
 import { clipRate, MAX_RATE, MIN_RATE, parseRateInput, rateToSemitones } from '../core/clipSound';
-import { alignSelectedClips, pasteClipboard, regionFromSelection } from './actions';
+import { alignSelectedClips, fuseClips, pasteClipboard, regionFromSelection } from './actions';
+import { checkFuse, fuseTargets } from '../core/fuse';
 import { CLIP_COLORS, showClipLabel } from './clipLabel';
 import { closeContextMenu, showContextMenu, type ContextMenuEntry } from './contextMenu';
 import { h, toast } from './dom';
@@ -77,6 +78,8 @@ export function openClipMenu(o: ClipMenuOptions): void {
   const looping = clips.every((c) => c.sound?.loop);
   const rates = new Set(clips.map(clipRate));
   const rateText = rates.size === 1 ? formatRate(clipRate(clips[0])) : 'mixed';
+  const fuseIds = fuseTargets(store.project, ids);
+  const fusable = checkFuse(store.project, fuseIds);
 
   const entries: ContextMenuEntry[] = [
     { kind: 'header', label: one ? (clips[0].name ?? clipName(clips[0].file)) : `${n} clips selected` },
@@ -103,6 +106,13 @@ export function openClipMenu(o: ClipMenuOptions): void {
       },
     },
     { label: 'Paste at playhead', accel: 'Ctrl+V', enabled: !!store.clipboard && !recording, run: () => pasteClipboard(false) },
+    {
+      label: one ? 'Fuse with next clip' : `Fuse ${n} clips`,
+      accel: 'G',
+      enabled: !recording && fusable.ok,
+      title: fusable.ok ? 'Join them into one clip' : one ? 'There is no next clip on this track' : fusable.reason,
+      run: () => void fuseClips(fuseIds),
+    },
     {
       label: 'Duplicate',
       enabled: !recording,

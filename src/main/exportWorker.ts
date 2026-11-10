@@ -6,13 +6,14 @@ import { exportProject } from '../core/exporter';
 import { analyseClips, analyseProject } from '../core/analysis';
 import { alignClips, stretchWav } from '../core/align';
 import { importWav } from '../core/importAudio';
+import { renderFused } from '../core/fuseRender';
 import { setVstHost } from '../core/fx/vst';
 import { VstHostProcess } from './vst/host';
 import { setImpulseDir } from '../core/fx/convolution';
 
 interface Job {
-  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav';
-  /** stretch / importWav: absolute source and destination WAV (and the stretch factor). */
+  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav' | 'fuse';
+  /** stretch / importWav: absolute source and destination WAV (and the stretch factor); fuse: the destination. */
   src?: string;
   dest?: string;
   stretch?: number;
@@ -54,6 +55,9 @@ try {
   } else if (job.kind === 'importWav') {
     const frames = importWav(job.src!, job.dest!, job.sampleRate!, (f) => parentPort!.postMessage({ type: 'progress', progress: f }));
     parentPort!.postMessage({ type: 'done', result: frames });
+  } else if (job.kind === 'fuse') {
+    const r = renderFused(job.project, job.dir, job.clipIds ?? [], job.dest!, (f) => parentPort!.postMessage({ type: 'progress', progress: f }));
+    parentPort!.postMessage({ type: 'done', result: r });
   } else if (job.kind === 'clips') {
     parentPort!.postMessage({ type: 'done', result: analyseClips(job.project, job.dir, job.clipIds ?? []) });
   } else {

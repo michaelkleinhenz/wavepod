@@ -24,6 +24,7 @@ import {
   prepareForEditing,
   seek,
   splitAtPlayhead,
+  fuseClips,
   stop,
   syncLoop,
   togglePlay,
@@ -477,6 +478,8 @@ async function main(): Promise<void> {
         return void (Date.now() - editKeyAt > 500 && selectAllClips());
       case 'mute-selection':
         return void (!typingInField() && Date.now() - editKeyAt > 500 && muteSelection());
+      case 'fuse-clips':
+        return void (!document.querySelector('.overlay') && fuseClips());
       case 'normalize-clips':
         return void (!document.querySelector('.overlay') && normalizeClips([...store.selection.clipIds]));
       case 'loudness-analysis':
@@ -603,6 +606,10 @@ async function main(): Promise<void> {
       case 'f':
       case 'F':
         timeline.fadeSelected();
+        break;
+      case 'g':
+      case 'G':
+        void fuseClips();
         break;
       case 'Delete':
       case 'Backspace':

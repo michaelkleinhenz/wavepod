@@ -60,6 +60,7 @@ import { normalizeTranscriptionSettings } from '../core/elevenlabs';
 import { timelineWords } from '../core/transcript';
 import { syncedFileName, stretchTranscript, type AlignOutcome, type AlignResult } from '../core/align';
 import { loadTranscript, saveTranscript } from './transcribe/store';
+import { checkFuse, fuseTranscript } from '../core/fuse';
 import { decodeKey, encodeKey } from './auphonic';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
@@ -540,6 +541,33 @@ async function alignClipsTo(clipIds: string[], refTrackId: string): Promise<Alig
   return { ...r, files };
 }
 
+/**
+ * Fuse: renders neighbouring clips into one new file in the media folder (in a worker) and gives it
+ * a transcript made from the clips' transcripts, so nothing has to be transcribed again.
+ */
+async function fuseClipsToFile(clipIds: string[]): Promise<{ file: string }> {
+  if (engine.transportState === 'recording') throw new Error('Stop recording before fusing clips.');
+  const project = current.project;
+  const dir = current.dir;
+  const check = checkFuse(project, clipIds);
+  if (!check.ok) throw new Error(check.reason);
+  const first = check.clips[0];
+  const base = (first.name ?? path.basename(first.file).replace(/\.[^.]+$/, '')).slice(0, 60);
+  const rel = reserveMediaFile(`${base}-fused`);
+  try {
+    await runWorker({ kind: 'fuse', project, dir, clipIds, dest: path.join(dir, rel) });
+  } catch (e) {
+    fs.rmSync(path.join(dir, rel), { force: true });
+    throw e;
+  }
+  const t = fuseTranscript(check.clips, check.start, check.end, rel, project.sampleRate, (f) => loadTranscript(dir, f));
+  if (t) {
+    saveTranscript(dir, t);
+    send(IPC.transcript, { file: rel, transcript: t });
+  }
+  return { file: rel };
+}
+
 type Handler = (...args: never[]) => unknown;
 
 const ABOUT_LINKS: Record<AboutLink, string> = {
@@ -939,6 +967,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   revealFile: (p: string) => shell.showItemInFolder(p),
   openHelp: (topic?: string) => openHelp(topic),
   alignClips: (clipIds: string[], refTrackId: string) => alignClipsTo(clipIds, refTrackId),
+  fuseClips: (clipIds: string[]) => fuseClipsToFile(clipIds),
 
   getTranscriptionInfo: () => transcription.info(),
   setTranscriptionSettings: (input: TranscriptionSettingsInput) => transcription.setSettings(input),
@@ -1095,7 +1124,7 @@ let appMenu: Menu | null = null;
 const menuItems = new Map<string, MenuItem>();
 
 /** Shortcuts shown next to menu items whose keys the window handles itself. */
-const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'punch-in': 'Shift+R', 'loop-record': 'Alt+Shift+R', 'next-take': 'T', 'previous-take': 'Shift+T' };
+const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'punch-in': 'Shift+R', 'loop-record': 'Alt+Shift+R', 'next-take': 'T', 'previous-take': 'Shift+T', 'fuse-clips': 'G' };
 
 function menuModel(): MenuModelTop[] {
   menuItems.clear();
@@ -1187,6 +1216,8 @@ function buildMenu(): void {
         { label: 'Paste and Move Later Material', accelerator: 'Shift+CmdOrCtrl+V', click: menuSend('paste-ripple') },
         { label: 'Mute Selection', accelerator: 'CmdOrCtrl+Y', click: menuSend('mute-selection') },
         { type: 'separator' },
+        // G is handled in the window (single keys must not fire while typing), see MENU_KEY_HINTS
+        { id: 'fuse-clips', label: 'Fuse Clips', click: menuSend('fuse-clips') },
         { label: 'Normalize Clip Loudness', accelerator: 'Alt+Shift+N', click: menuSend('normalize-clips') },
         { label: 'Loudness Analysis…', accelerator: 'Shift+CmdOrCtrl+L', click: menuSend('loudness-analysis') },
         { type: 'separator' },
