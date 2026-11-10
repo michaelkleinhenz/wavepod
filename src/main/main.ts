@@ -919,15 +919,17 @@ const handlers: Record<InvokeMethod, Handler> = {
     return new Uint8Array(fs.readFileSync(p));
   },
 
-  chooseExportBase: async (defaultName: string) => {
-    const res = await dialog.showSaveDialog(win!, {
-      title: 'Export episode',
-      defaultPath: path.join(exportDialogDir(current.dir, [safeGetPath('music'), app.getPath('home')]), defaultName),
-      buttonLabel: 'Export',
+  exportFolder: async () => exportDialogDir(current.dir, [safeGetPath('music'), app.getPath('home')]),
+  chooseExportFolder: async (start?: string) => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Export to folder',
+      defaultPath: start && fs.existsSync(start) ? start : exportDialogDir(current.dir, [safeGetPath('music'), app.getPath('home')]),
+      buttonLabel: 'Choose Folder',
+      properties: ['openDirectory', 'createDirectory'],
     });
-    if (res.canceled || !res.filePath) return null;
-    return res.filePath.replace(/\.(wav|mp3|flac|opus)$/i, '');
+    return res.canceled || !res.filePaths[0] ? null : res.filePaths[0];
   },
+  existingFiles: async (paths: string[]) => (Array.isArray(paths) ? paths.filter((p) => typeof p === 'string' && path.isAbsolute(p) && fs.existsSync(p)) : []),
   exportProject: (opts: ExportOptions) => {
     flushSave();
     return runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, (p) => send(IPC.exportProgress, p));

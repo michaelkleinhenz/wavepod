@@ -467,15 +467,45 @@ ul.chapter-warnings button { margin-left: 8px; }
 .lufs-custom { width: 72px; }
 .export-hint { font-size: 12px; margin: 6px 0 0; max-width: 320px; }
 ul.chapter-warnings button.link { margin-left: 6px; }
-.export-stems { margin-top: 8px; }
-.export-stems p { margin: 4px 0; font-size: 12px; }
-.stem-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .stem-tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 4px 16px; margin: 6px 0; }
 .stem-track { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .stem-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
 .stem-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stem-guess { font-size: 11px; }
 .stem-track select { flex: none; width: 110px; }
+/* export dialog: labelled rows in sections, like the export dialogs of other audio apps */
+.dialog.export-dialog { width: min(680px, 94vw); }
+.export-section { border-top: 1px solid var(--border); padding: 10px 0 4px; }
+.export-section > h3 { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+.form-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 14px; align-items: start; margin-bottom: 8px; }
+.form-label { color: var(--muted); font-size: 12px; text-align: right; padding-top: 6px; }
+.form-controls { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.form-controls > .check { margin: 3px 0; }
+.form-controls p { margin: 2px 0; font-size: 12px; }
+.form-controls .stem-tracks { align-self: stretch; }
+label.radio { display: flex; align-items: center; gap: 8px; min-height: 28px; flex-wrap: wrap; }
+label.radio.disabled { color: var(--muted); }
+.export-range-detail { font-size: 12px; font-variant-numeric: tabular-nums; }
+.export-region-select { max-width: 260px; }
+.export-name-row { display: flex; gap: 8px; align-self: stretch; }
+.export-name-row input { flex: 1; min-width: 0; }
+.export-files { align-self: stretch; font-size: 12px; padding-top: 5px; }
+.export-files ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.export-files li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.export-format { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.export-format .check { margin: 0; min-width: 110px; }
+.export-replace { border: 1px solid var(--warn); background: rgba(255, 167, 38, 0.1); border-radius: 8px; padding: 10px 12px; margin: 8px 0; font-size: 13px; }
+.export-replace .row.end { margin: 8px 0 0; }
+.export-bottom { position: sticky; bottom: -18px; margin: 6px 0 -18px; padding-bottom: 16px; background: var(--panel); z-index: 2; }
+.export-status { margin: 0; min-height: 0; }
+.export-status:empty, .export-status:has(> span:empty) { display: none; }
+.export-footer { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
+.export-footer .check { margin: 0; color: var(--muted); font-size: 12px; }
+.export-footer button.primary { min-width: 96px; }
+@media (max-width: 560px) {
+  .form-row { grid-template-columns: minmax(0, 1fr); }
+  .form-label { text-align: left; padding-top: 0; }
+}
 /* soundcheck and stop confirmation */
 .dialog.narrow { width: min(520px, 92vw); }
 ul.soundcheck { margin: 0 0 12px; padding-left: 18px; }

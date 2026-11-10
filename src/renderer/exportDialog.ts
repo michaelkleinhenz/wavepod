@@ -1,4 +1,5 @@
-// Export dialog: formats, loudness target, stems, chapter files, range, progress.
+// Export dialog, laid out like the export dialogs of other audio apps: what to export (whole
+// episode, selection, one region, every region), file name and folder, format, loudness, extras.
 // While the mix renders, the progress bar is its waveform and the loudness so far runs beside it.
 import type { ExportProgress, ExportResult, ExportSettings, LiveLoudness, LoudnessReport } from '../shared/types';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
@@ -8,14 +9,15 @@ import { seek } from './actions';
 import { DEFAULT_EXPORT_SETTINGS, MP3_BITRATES, OPUS_BITRATES, PEAK_CEILINGS, normalizeExportSettings, targetForMono } from '../core/exportSettings';
 import { exportChecks, imageSize, type ImageSize } from '../core/exportChecks';
 import { formatTimestamp } from '../shared/time';
-import { regionOutputBase } from '../core/regions';
+import { baseName, cleanFileName, defaultExportName, exportJobs, joinExportPath, plannedFiles, rangeAvailable, rangeSpan, type ExportJob, type ExportRange } from '../core/exportPlan';
 import { chapterWarningList } from './chaptersView';
 import { audibleTracks, updateTrack } from '../core/project';
 import { STEM_CHOICES, STEM_GROUPS, trackStem } from '../core/stems';
 import { folderOf } from '../core/folders';
-import type { StemGroup, Track } from '../shared/types';
+import type { Frames, Region, StemGroup, Track } from '../shared/types';
 
 const LAST_KEY = 'wavepod.exportSettings';
+const REVEAL_KEY = 'wavepod.exportReveal';
 
 /** How the last export on this computer was set up, for episodes that were never exported. */
 function lastSettings(): ExportSettings | undefined {
@@ -136,6 +138,35 @@ export function exportSummary(res: ExportResult): string {
   return `${res.loudness.toFixed(1)} LUFS → ${out.toFixed(1)} LUFS${limited}`;
 }
 
+/** "00:12:04 – 00:30:00 (17:56)": where a part of the episode lies. */
+function spanText(span: [Frames, Frames], sr: number): string {
+  const len = Math.max(0, span[1] - span[0]) / sr;
+  const dur = len >= 3600 ? formatTimestamp(len, false) : formatTimestamp(len, false).slice(3);
+  return `${formatTimestamp(span[0] / sr, false)} – ${formatTimestamp(span[1] / sr, false)} (${dur})`;
+}
+
+function readReveal(): boolean {
+  try {
+    return localStorage.getItem(REVEAL_KEY) !== 'no';
+  } catch {
+    return true;
+  }
+}
+
+function writeReveal(v: boolean): void {
+  try {
+    localStorage.setItem(REVEAL_KEY, v ? 'yes' : 'no');
+  } catch {
+    // not remembered; the box still works for this export
+  }
+}
+
+/** A labelled row of the form: the label on the left, the controls on the right. */
+const formRow = (label: string, ...controls: Array<Node | string | null | false>) =>
+  h('div', { class: 'form-row' }, h('div', { class: 'form-label' }, label), h('div', { class: 'form-controls' }, ...controls));
+
+const section = (title: string, ...rows: Array<Node | null | false>) => h('section', { class: 'export-section' }, h('h3', null, title), ...rows);
+
 export class ExportDialog {
   private overlay = h('div', { class: 'overlay' });
   private opts: ExportSettings = { ...DEFAULT_EXPORT_SETTINGS };
@@ -143,9 +174,19 @@ export class ExportDialog {
   private openedFor: string | null = null;
   /** Size of the episode cover (null: unreadable), for the checks; read once per file. */
   private cover: { path: string; size?: ImageSize | null } | null = null;
-  private useRange = false;
-  /** Export each region as its own file instead of the whole episode. */
-  private perRegion = false;
+  /** What to export: the whole episode, the selection, one region or every region. */
+  private range: ExportRange = { kind: 'all' };
+  /** The region last picked in the list, kept while another range is chosen. */
+  private lastRegion = '';
+  /** File name without extension; follows the episode (and region) title until typed in. */
+  private fileName = '';
+  private nameTyped = false;
+  private folder = '';
+  private reveal = readReveal();
+  /** Files the export would replace, waiting for "Replace" or "Cancel". */
+  private replacing: { files: string[]; jobs: ExportJob[] } | null = null;
+  /** Files of the last finished export, for "Show in Folder". */
+  private written: string[] = [];
   private regionLabel = '';
   private busy = false;
   private wave = new WaveProgress();
@@ -178,16 +219,49 @@ export class ExportDialog {
     this.overlay.addEventListener('mousedown', (e) => {
       if (e.target === this.overlay && !this.busy) this.close();
     });
+    this.overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.busy) {
+        e.stopPropagation();
+        if (this.replacing) {
+          this.replacing = null;
+          this.render();
+        } else this.close();
+      }
+    });
   }
 
-  open(): void {
+  /** Opens the dialog; with a region id, set to export just that region. */
+  open(regionId?: string): void {
     if (this.openedFor !== store.dir) {
       this.opts = initialExportSettings();
       this.openedFor = store.dir;
+      this.folder = '';
+      this.nameTyped = false;
+      this.range = { kind: 'all' };
+    }
+    if (regionId && store.project.regions?.some((r) => r.id === regionId)) {
+      this.range = { kind: 'region', regionId };
+      this.lastRegion = regionId;
+      this.nameTyped = false;
+    } else if (!rangeAvailable(this.range, store.project, store.selection.range)) {
+      this.range = { kind: 'all' };
     }
     this.mix = null;
     this.exported = false;
+    this.replacing = null;
+    this.written = [];
+    this.progressLabel.textContent = '';
     this.loadCover();
+    if (!this.folder) {
+      void api()
+        .exportFolder()
+        .then((dir) => {
+          if (this.folder) return;
+          this.folder = dir;
+          if (this.overlay.isConnected && !this.busy) this.render();
+        })
+        .catch(() => undefined);
+    }
     this.render();
     document.body.append(this.overlay);
   }
@@ -215,78 +289,240 @@ export class ExportDialog {
     keepScroll(this.overlay, () => this.build());
   }
 
+  /** The file name in the field: typed, or the default for the chosen range. */
+  private name(): string {
+    return this.nameTyped ? this.fileName : defaultExportName(store.project, this.range);
+  }
+
+  private setRange(range: ExportRange): void {
+    this.range = range;
+    if (range.kind === 'region') this.lastRegion = range.regionId;
+    this.replacing = null;
+    this.render();
+  }
+
+  private jobs(): ExportJob[] {
+    const name = cleanFileName(this.name());
+    if (!name || !this.folder) return [];
+    return exportJobs(this.range, store.project, store.selection.range, joinExportPath(this.folder, name));
+  }
+
   private build(): void {
     clear(this.overlay);
     const o = this.opts;
-    const range = store.selection.range;
-    const regions = store.project.regions ?? [];
-    const check = checkbox;
-    const fmt = (f: 'mp3' | 'wav' | 'flac' | 'opus', label: string) =>
-      check(label, o.formats.includes(f), (v) => {
-        o.formats = v ? [...new Set([...o.formats, f])] : o.formats.filter((x) => x !== f);
-        this.render();
-      });
-
-    const target = { lufs: o.targetLufs, ceiling: o.peakCeiling };
+    const jobs = this.jobs();
+    const files = jobs.flatMap((j) => plannedFiles(store.project, o, j));
+    const nothing = o.formats.length === 0 && !o.stems;
+    const canExport = !this.busy && !nothing && jobs.length > 0 && files.length > 0;
 
     const dialog = h(
       'div',
-      { class: 'dialog' },
+      { class: 'dialog export-dialog', role: 'dialog', 'aria-label': 'Export episode' },
       h('h2', null, 'Export episode'),
-      h('div', { class: 'grid' },
-        h('div', null, h('h3', null, 'Formats'), fmt('mp3', 'MP3 with ID3 chapters'), fmt('wav', 'WAV 24-bit'), fmt('flac', 'FLAC 24-bit (lossless, with chapters)'), fmt('opus', 'Opus (small files, with chapters)'),
-          h('label', { class: 'check', title: 'One channel instead of two: half the size at the same quality, or better quality at the same size. Right for shows that are only voices. Stems stay stereo.' },
-            h('input', {
-              type: 'checkbox',
-              checked: !!o.mono,
-              onchange: (e: Event) => {
-                const mono = (e.target as HTMLInputElement).checked;
-                if (mono) o.mono = true;
-                else delete o.mono;
-                // mono is measured as mono, which reads 3 LU lower: −19 is the mono podcast target
-                o.targetLufs = targetForMono(o.targetLufs, mono);
-                this.mix = null;
-                this.render();
-              },
-            }),
-            'Mono (half the size, for speech)'),
-          h('label', { class: 'field' }, h('span', null, 'MP3 bitrate'),
-            h('select', { disabled: !o.formats.includes('mp3'), onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
-              ...MP3_BITRATES.map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps${o.mono && b === 64 ? ' (like 128 in stereo)' : ''}`)))),
-          o.formats.includes('opus')
-            ? h('label', { class: 'field' }, h('span', null, 'Opus bitrate'),
-                h('select', { onchange: (e: Event) => (o.opusBitrate = Number((e.target as HTMLSelectElement).value)) },
-                  ...OPUS_BITRATES.map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 && !o.mono ? ' (like MP3 at 128)' : ''}`))))
-            : null,
-          check('Chapter files (PSC, JSON, mp4chaps, Audacity)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }),
-          check('Stems (separate files for editing or delivery)', o.stems, (v) => { o.stems = v; this.render(); }),
-          check(range ? `Only the selected range` : 'Only the selected range (none selected)', this.useRange && !!range && !this.perRegion, (v) => { this.useRange = v; this.render(); }, !range || this.perRegion),
-          check(regions.length ? `Each region as its own file (${regions.length})` : 'Each region as its own file (no regions)', this.perRegion && regions.length > 0, (v) => { this.perRegion = v; this.render(); }, !regions.length),
-        ),
-        h('div', null, h('h3', null, 'Loudness'),
-          check('Normalise loudness', o.normalize, (v) => { o.normalize = v; this.render(); }),
-          h('label', { class: 'field' }, h('span', null, 'Target'),
-            targetPicker(o.targetLufs, (lufs) => { o.targetLufs = lufs; this.render(); }, !o.normalize)),
-          h('label', { class: 'field' }, h('span', null, 'Peak ceiling'),
-            h('select', { disabled: !o.normalize, onchange: (e: Event) => { o.peakCeiling = Number((e.target as HTMLSelectElement).value); this.render(); } },
-              ...PEAK_CEILINGS.map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`)))),
-          o.mono ? h('p', { class: 'muted export-hint' }, 'A mono file is measured as mono, so it reads 3 LU lower than the same audio in stereo: −19 LUFS in mono sounds like −16 LUFS in stereo.') : null,
-          h('button', { class: 'small', disabled: this.busy, onclick: () => void this.analyse() }, this.mix ? 'Analyse again' : 'Analyse loudness'),
-        ),
-      ),
+      this.rangeSection(),
+      this.fileSection(files),
+      this.formatSection(),
+      this.loudnessSection(),
       this.stemSection(),
-      this.checks(range),
+      this.checks(),
       // only the mix matters for the export; per-track figures are in the Loudness dialog
-      this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, target, o.normalize)) : null,
+      this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, { lufs: o.targetLufs, ceiling: o.peakCeiling }, o.normalize)) : null,
       this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
-      h('div', { class: 'row' }, this.progressLabel),
-      h('div', { class: 'row end' },
-        h('button', { disabled: this.busy, onclick: () => this.close() }, 'Close'),
-        h('button', { class: 'primary', disabled: this.busy || (o.formats.length === 0 && !o.stems), onclick: () => void this.run() }, this.busy ? 'Exporting…' : 'Export…'),
+      // pinned to the bottom of the dialog, so the buttons, the progress and the replace question stay in view
+      h('div', { class: 'export-bottom' },
+        this.replacing ? this.replaceNotice(this.replacing.files) : null,
+        h('div', { class: 'row export-status' }, this.progressLabel),
+        h('div', { class: 'export-footer' },
+          h('label', { class: 'check', title: 'Open the folder with the new files in your file manager when the export is done' },
+            h('input', { type: 'checkbox', checked: this.reveal, onchange: (e: Event) => { this.reveal = (e.target as HTMLInputElement).checked; writeReveal(this.reveal); } }),
+            'Show files when done'),
+          h('div', { class: 'spacer' }),
+          this.written.length && !this.busy ? h('button', { onclick: () => void api().revealFile(this.written[0]) }, 'Show in Folder') : null,
+          h('button', { disabled: this.busy, onclick: () => this.close() }, this.written.length ? 'Close' : 'Cancel'),
+          h('button', {
+            class: 'primary',
+            disabled: !canExport || !!this.replacing,
+            title: nothing ? 'Tick a format or stems first' : !jobs.length ? 'Give the file a name and pick a folder' : '',
+            onclick: () => void this.start(),
+          }, this.busy ? 'Exporting…' : 'Export'),
+        ),
       ),
     );
     this.overlay.append(dialog);
     if (this.exported) this.wave.draw();
+  }
+
+  /** Whole episode, the selection, one region (picked from a list) or every region as its own file. */
+  private rangeSection(): HTMLElement {
+    const p = store.project;
+    const sr = store.sampleRate;
+    const sel = store.selection.range;
+    const regions = p.regions ?? [];
+    const kind = this.range.kind;
+    const chosenRegion = this.range.kind === 'region' ? this.range.regionId : regions.find((r) => r.id === this.lastRegion)?.id ?? regions[0]?.id;
+    const radio = (k: ExportRange['kind'], label: string, detail: string, enabled: boolean, pick: () => ExportRange, extra?: HTMLElement | null) =>
+      h('label', { class: `radio export-range${enabled ? '' : ' disabled'}` },
+        h('input', { type: 'radio', name: 'export-range', checked: kind === k, disabled: !enabled || this.busy, onchange: () => this.setRange(pick()) }),
+        h('span', null, label),
+        extra ?? null,
+        h('span', { class: 'muted export-range-detail' }, detail),
+      );
+    const regionSelect = regions.length
+      ? (h('select', {
+          class: 'export-region-select',
+          disabled: this.busy,
+          onchange: (e: Event) => this.setRange({ kind: 'region', regionId: (e.target as HTMLSelectElement).value }),
+        }, ...regions.map((r: Region, i) => h('option', { value: r.id, selected: r.id === chosenRegion }, `${String(i + 1).padStart(2, '0')} ${r.title || 'Region'}`))) as HTMLSelectElement)
+      : null;
+    const regionSpan = regions.find((r) => r.id === chosenRegion);
+    return section('Range',
+      formRow('Export',
+        radio('all', 'Whole episode', spanText(rangeSpan({ kind: 'all' }, p, null), sr), true, () => ({ kind: 'all' })),
+        radio('selection', 'Selected range', sel && sel[1] > sel[0] ? spanText(sel, sr) : 'nothing selected', !!sel && sel[1] > sel[0], () => ({ kind: 'selection' })),
+        radio('region', 'Region', regionSpan ? spanText([regionSpan.start, regionSpan.end], sr) : 'no regions yet', regions.length > 0, () => ({ kind: 'region', regionId: chosenRegion! }), regionSelect),
+        radio('regions', 'Each region as its own file', regions.length ? `${regions.length} ${regions.length === 1 ? 'region' : 'regions'}, each normalised on its own` : 'no regions yet', regions.length > 0, () => ({ kind: 'regions' })),
+      ),
+    );
+  }
+
+  /** File name, folder (with Browse…) and the files that will be written. */
+  private fileSection(files: string[]): HTMLElement {
+    const nameInput = h('input', {
+      class: 'export-name',
+      value: this.name(),
+      spellcheck: false,
+      disabled: this.busy,
+      placeholder: 'File name',
+      oninput: (e: Event) => {
+        this.fileName = (e.target as HTMLInputElement).value;
+        this.nameTyped = true;
+        this.replacing = null;
+        this.refreshFiles();
+      },
+      onchange: () => this.render(),
+    }) as HTMLInputElement;
+    const folderInput = h('input', {
+      class: 'export-folder',
+      value: this.folder,
+      title: this.folder,
+      spellcheck: false,
+      disabled: this.busy,
+      placeholder: 'Folder',
+      onchange: (e: Event) => {
+        this.folder = (e.target as HTMLInputElement).value.trim();
+        this.replacing = null;
+        this.render();
+      },
+    });
+    const many = this.range.kind === 'regions';
+    return section('File',
+      formRow('File name', h('div', { class: 'export-name-row' }, nameInput,
+        h('button', {
+          class: 'small',
+          title: 'Use the episode (and region) title again',
+          disabled: this.busy || !this.nameTyped,
+          onclick: () => { this.nameTyped = false; this.render(); },
+        }, 'Reset')),
+        many ? h('div', { class: 'field-help' }, 'Each region adds its number and title: “Name - 01 Intro”.') : null),
+      formRow('Folder', h('div', { class: 'export-name-row' }, folderInput,
+        h('button', { class: 'small', disabled: this.busy, onclick: () => void this.browse() }, 'Browse…'))),
+      formRow('Writes', this.fileList(files)),
+    );
+  }
+
+  private fileListEl: HTMLElement | null = null;
+
+  private fileList(files: string[]): HTMLElement {
+    const shown = 8;
+    const el = h('div', { class: 'export-files' },
+      files.length
+        ? h('ul', null, ...files.slice(0, shown).map((f) => h('li', { title: f }, baseName(f))), files.length > shown ? h('li', { class: 'muted' }, `and ${files.length - shown} more`) : null)
+        : h('span', { class: 'muted' }, this.opts.formats.length || this.opts.stems ? 'Give the file a name and pick a folder.' : 'Nothing: tick a format below.'),
+    );
+    this.fileListEl = el;
+    return el;
+  }
+
+  /** Updates the file list while typing a name, without rebuilding the field being typed in. */
+  private refreshFiles(): void {
+    const old = this.fileListEl;
+    if (!old) return;
+    const files = this.jobs().flatMap((j) => plannedFiles(store.project, this.opts, j));
+    old.replaceWith(this.fileList(files));
+  }
+
+  private async browse(): Promise<void> {
+    const dir = await api().chooseExportFolder(this.folder || undefined);
+    if (!dir) return;
+    this.folder = dir;
+    this.replacing = null;
+    this.render();
+  }
+
+  /** Formats with their quality next to them, channels, and the extra files. */
+  private formatSection(): HTMLElement {
+    const o = this.opts;
+    const fmt = (f: 'mp3' | 'wav' | 'flac' | 'opus', label: string, hint: string, extra?: HTMLElement | null) =>
+      h('div', { class: 'export-format' },
+        h('label', { class: 'check', title: hint },
+          h('input', {
+            type: 'checkbox',
+            checked: o.formats.includes(f),
+            disabled: this.busy,
+            onchange: (e: Event) => {
+              const v = (e.target as HTMLInputElement).checked;
+              o.formats = v ? [...new Set([...o.formats, f])] : o.formats.filter((x) => x !== f);
+              this.render();
+            },
+          }),
+          label),
+        o.formats.includes(f) ? extra ?? null : null,
+      );
+    const mp3Bitrate = h('select', { title: 'MP3 bitrate', onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
+      ...MP3_BITRATES.map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps${o.mono && b === 64 ? ' (like 128 in stereo)' : ''}`)));
+    const opusBitrate = h('select', { title: 'Opus bitrate', onchange: (e: Event) => (o.opusBitrate = Number((e.target as HTMLSelectElement).value)) },
+      ...OPUS_BITRATES.map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 && !o.mono ? ' (like MP3 at 128)' : ''}`)));
+    const channels = h('select', {
+      disabled: this.busy,
+      title: 'Mono: one channel instead of two, half the size at the same quality. Right for shows that are only voices. Stems stay stereo.',
+      onchange: (e: Event) => {
+        const mono = (e.target as HTMLSelectElement).value === 'mono';
+        if (mono) o.mono = true;
+        else delete o.mono;
+        // mono is measured as mono, which reads 3 LU lower: −19 is the mono podcast target
+        o.targetLufs = targetForMono(o.targetLufs, mono);
+        this.mix = null;
+        this.render();
+      },
+    },
+    h('option', { value: 'stereo', selected: !o.mono }, 'Stereo'),
+    h('option', { value: 'mono', selected: !!o.mono }, 'Mono (half the size, for speech)'));
+    return section('Format',
+      formRow('Formats',
+        fmt('mp3', 'MP3', 'The usual podcast format, with ID3 chapters, tags and cover', mp3Bitrate),
+        fmt('flac', 'FLAC 24-bit', 'Lossless, about half the size of WAV, with chapters, tags and cover'),
+        fmt('opus', 'Opus', 'Very small files at good quality, with chapters, tags and cover', opusBitrate),
+        fmt('wav', 'WAV 24-bit', 'Uncompressed, for archiving or further processing'),
+      ),
+      formRow('Channels', channels),
+      formRow('Also write',
+        checkbox('Chapter files (PSC, JSON, mp4chaps, Audacity labels)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }, this.busy),
+        checkbox('Stems (separate files for editing or delivery)', o.stems, (v) => { o.stems = v; this.render(); }, this.busy),
+      ),
+    );
+  }
+
+  private loudnessSection(): HTMLElement {
+    const o = this.opts;
+    return section('Loudness',
+      formRow('Normalise', checkbox('Bring the mix to a loudness target', o.normalize, (v) => { o.normalize = v; this.render(); }, this.busy)),
+      formRow('Target', targetPicker(o.targetLufs, (lufs) => { o.targetLufs = lufs; this.render(); }, !o.normalize || this.busy)),
+      formRow('Peak ceiling',
+        h('select', { disabled: !o.normalize || this.busy, onchange: (e: Event) => { o.peakCeiling = Number((e.target as HTMLSelectElement).value); this.render(); } },
+          ...PEAK_CEILINGS.map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`)))),
+      o.mono ? formRow('', h('p', { class: 'muted export-hint' }, 'A mono file is measured as mono, so it reads 3 LU lower than the same audio in stereo: −19 LUFS in mono sounds like −16 LUFS in stereo.')) : null,
+      formRow('', h('button', { class: 'small', disabled: this.busy, title: 'Measure the whole mix now, and check it for its level and for silence', onclick: () => void this.analyse() }, this.mix ? 'Analyse Again' : 'Analyse Loudness')),
+    );
   }
 
   /** Stem options; for dialogue / music / effects, the stem each track goes to (saved with the episode). */
@@ -295,42 +531,41 @@ export class ExportDialog {
     if (!o.stems) return null;
     const dme = o.stemMode === 'dme';
     const select = <T extends string>(value: T, options: ReadonlyArray<{ id: T; label: string }>, onChange: (v: T) => void) =>
-      h('select', { onchange: (e: Event) => onChange((e.target as HTMLSelectElement).value as T) },
+      h('select', { disabled: this.busy, onchange: (e: Event) => onChange((e.target as HTMLSelectElement).value as T) },
         ...options.map((x) => h('option', { value: x.id, selected: x.id === value }, x.label)));
-    const head = h('div', { class: 'stem-options' },
-      h('label', { class: 'field' }, h('span', null, 'Split'),
-        select(o.stemMode ?? 'tracks', [{ id: 'tracks', label: 'One file per track' }, { id: 'dme', label: 'Dialogue, music and effects' }], (v) => { o.stemMode = v; this.render(); })),
-      h('label', { class: 'field' }, h('span', null, 'Stem format'),
-        select(o.stemFormat ?? 'wav', [{ id: 'wav', label: 'WAV 24-bit' }, { id: 'flac', label: 'FLAC 24-bit' }], (v) => (o.stemFormat = v))),
-    );
-    if (!dme) return h('div', { class: 'export-stems' }, h('h3', null, 'Stems'), head, h('p', { class: 'muted' }, 'Every track with clips on its own, at the same gain as the mix.'));
+    const head = [
+      formRow('Split', select(o.stemMode ?? 'tracks', [{ id: 'tracks', label: 'One file per track' }, { id: 'dme', label: 'Dialogue, music and effects' }], (v) => { o.stemMode = v; this.render(); })),
+      formRow('Stem format', select(o.stemFormat ?? 'wav', [{ id: 'wav', label: 'WAV 24-bit' }, { id: 'flac', label: 'FLAC 24-bit' }], (v) => { o.stemFormat = v; this.render(); })),
+    ];
+    if (!dme) return section('Stems', ...head, formRow('', h('p', { class: 'muted' }, 'Every track with clips on its own, at the same gain as the mix.')));
     const tracks = audibleTracks(store.project).filter((t) => t.clips.length > 0);
     const counts = new Map<StemGroup, number>();
     const stemOf = (t: Track) => trackStem(t, folderOf(store.project, t)?.name);
     for (const t of tracks) counts.set(stemOf(t), (counts.get(stemOf(t)) ?? 0) + 1);
     const empty = STEM_GROUPS.filter((g) => !counts.get(g.id)).map((g) => g.label.toLowerCase());
     const masterFx = (store.project.masterFx ?? []).some((f) => f.enabled);
-    return h('div', { class: 'export-stems' },
-      h('h3', null, 'Stems'),
-      head,
-      h('p', { class: 'muted' },
-        'One file each for dialogue, music and effects, at the same gain as the mix and with ducking and automix as you hear them, so together they add up to the mix. Muted tracks stay out. Your choices are saved with the episode.'),
-      h('div', { class: 'stem-tracks' },
-        ...tracks.map((t) =>
-          h('div', { class: 'stem-track' },
-            h('span', { class: 'stem-swatch', style: `background:${t.color}` }),
-            h('span', { class: 'stem-name', title: t.name }, t.name),
-            t.stem ? null : h('span', { class: 'muted stem-guess', title: 'Guessed from the track and folder names and settings; pick one to keep it' }, 'guessed'),
-            select(stemOf(t), STEM_CHOICES, (v) => {
-              store.edit((p) => updateTrack(p, t.id, { stem: v }));
-              this.render();
-            }),
+    return section('Stems',
+      ...head,
+      formRow('Tracks',
+        h('p', { class: 'muted' },
+          'One file each for dialogue, music and effects, at the same gain as the mix and with ducking and automix as you hear them, so together they add up to the mix. Muted tracks stay out. Your choices are saved with the episode.'),
+        h('div', { class: 'stem-tracks' },
+          ...tracks.map((t) =>
+            h('div', { class: 'stem-track' },
+              h('span', { class: 'stem-swatch', style: `background:${t.color}` }),
+              h('span', { class: 'stem-name', title: t.name }, t.name),
+              t.stem ? null : h('span', { class: 'muted stem-guess', title: 'Guessed from the track and folder names and settings; pick one to keep it' }, 'guessed'),
+              select(stemOf(t), STEM_CHOICES, (v) => {
+                store.edit((p) => updateTrack(p, t.id, { stem: v }));
+                this.render();
+              }),
+            ),
           ),
         ),
+        checkbox('Also a music & effects mix (M&E, for versions in other languages)', !!o.stemMe, (v) => { o.stemMe = v; this.render(); }, this.busy),
+        empty.length ? h('p', { class: 'muted' }, `No tracks for ${empty.join(' and ')}: ${empty.length > 1 ? 'those files stay' : 'that file stays'} silent.`) : null,
+        masterFx ? h('p', { class: 'muted' }, 'The master filters are not applied to stems, so they add up to the mix before the master filters.') : null,
       ),
-      checkbox('Also a music & effects mix (M&E, for versions in other languages)', !!o.stemMe, (v) => (o.stemMe = v)),
-      empty.length ? h('p', { class: 'muted' }, `No tracks for ${empty.join(' and ')}: ${empty.length > 1 ? 'those files stay' : 'that file stays'} silent.`) : null,
-      masterFx ? h('p', { class: 'muted' }, 'The master filters are not applied to stems, so they add up to the mix before the master filters.') : null,
     );
   }
 
@@ -338,8 +573,8 @@ export class ExportDialog {
    * What is worth fixing first: chapter problems (Ultraschall warns about these too), the episode
    * details and cover, and once the mix was analysed, its loudness and stretches of dead air.
    */
-  private checks(range: [number, number] | null): HTMLElement | null {
-    const chapters = this.opts.formats.includes('mp3') || this.opts.chapterFiles ? this.chapterNotes(range) : null;
+  private checks(): HTMLElement | null {
+    const chapters = this.opts.formats.includes('mp3') || this.opts.chapterFiles ? this.chapterNotes() : null;
     const cover = this.cover?.path === store.project.metadata.artwork ? this.cover?.size : undefined;
     const found = exportChecks(store.project.metadata, this.opts, cover, this.mix?.stats);
     const sr = store.sampleRate;
@@ -370,20 +605,31 @@ export class ExportDialog {
     );
   }
 
-  /** Chapter problems: per region, each file gets its own chapter list, so each is checked on its own. */
-  private chapterNotes(range: [number, number] | null): HTMLElement | null {
-    const r = this.useRange && range && !this.perRegion ? range : null;
-    // per region, each file gets its own chapter list, so each is checked on its own
-    const list = this.perRegion
-      ? (() => {
-          const parts = (store.project.regions ?? []).flatMap((g) => {
-            const l = chapterWarningList(g.start, g.end, () => this.render());
-            return l ? [h('div', null, h('strong', null, g.title || 'Region'), l)] : [];
-          });
-          return parts.length ? h('div', null, ...parts) : null;
-        })()
-      : chapterWarningList(r ? r[0] : 0, r ? r[1] : Infinity, () => this.render());
-    return list;
+  /** Chapter problems of each file: per region, each file gets its own chapter list, so each is checked on its own. */
+  private chapterNotes(): HTMLElement | null {
+    const jobs = exportJobs(this.range, store.project, store.selection.range, '');
+    if (jobs.length > 1) {
+      const parts = jobs.flatMap((j) => {
+        const l = chapterWarningList(j.start ?? 0, j.end ?? Infinity, () => this.render());
+        return l ? [h('div', null, h('strong', null, j.region || 'Region'), l)] : [];
+      });
+      return parts.length ? h('div', null, ...parts) : null;
+    }
+    const j = jobs[0];
+    return chapterWarningList(j?.start ?? 0, j?.end ?? Infinity, () => this.render());
+  }
+
+  /** "These files already exist": Replace goes ahead, Cancel goes back to the settings. */
+  private replaceNotice(files: string[]): HTMLElement {
+    const one = files.length === 1;
+    return h('div', { class: 'export-replace', role: 'alert', title: files.map(baseName).join('\n') },
+      h('strong', null, one ? `“${baseName(files[0])}” already exists.` : `${files.length} of these files already exist in the folder.`),
+      h('span', null, ` Replace ${one ? 'it' : 'them'}?`),
+      h('div', { class: 'row end' },
+        h('button', { onclick: () => { this.replacing = null; this.render(); } }, 'Cancel'),
+        h('button', { class: 'primary danger', onclick: () => { const r = this.replacing; this.replacing = null; if (r) void this.run(r.jobs); } }, 'Replace'),
+      ),
+    );
   }
 
   private progress(p: ExportProgress): void {
@@ -422,44 +668,57 @@ export class ExportDialog {
     }
   }
 
-  private async run(): Promise<void> {
-    const name = (store.project.metadata.title || store.project.name).replace(/[\\/:*?"<>|]+/g, '_');
-    const base = await api().chooseExportBase(name);
-    if (!base) return;
+  /** Export clicked: asks first if files of the same name are there. */
+  private async start(): Promise<void> {
+    const jobs = this.jobs();
+    if (!jobs.length) return;
+    const files = jobs.flatMap((j) => plannedFiles(store.project, this.opts, j));
+    let existing: string[] = [];
+    try {
+      existing = await api().existingFiles(files);
+    } catch {
+      // can't tell: go ahead, as a save dialog that couldn't check would
+    }
+    if (existing.length) {
+      this.replacing = { files: existing, jobs };
+      this.render();
+      return;
+    }
+    await this.run(jobs);
+  }
+
+  private async run(jobs: ExportJob[]): Promise<void> {
     // the episode (and a template saved from it) exports the same way next time
     const settings = structuredClone(this.opts);
     store.patch((p) => ({ ...p, exportSettings: settings }));
     rememberSettings(settings);
-    const range = this.useRange ? store.selection.range : null;
-    const regions = this.perRegion ? (store.project.regions ?? []) : [];
     this.busy = true;
     this.exported = true;
+    this.written = [];
     this.phase = '';
     for (const v of Object.values(this.liveValues)) v.textContent = '—';
     for (const t of Object.values(this.liveTiles)) t.className = 'lu-tile';
     this.wave.reset();
     this.render();
     try {
-      if (regions.length) {
+      const files: string[] = [];
+      let last: ExportResult | null = null;
+      for (const [i, job] of jobs.entries()) {
+        this.regionLabel = jobs.length > 1 ? `Region ${i + 1}/${jobs.length} “${job.region ?? ''}”: ` : '';
+        this.wave.reset();
         // one export per region, each normalised on its own
-        const files: string[] = [];
-        for (const [i, r] of regions.entries()) {
-          this.regionLabel = `Region ${i + 1}/${regions.length} “${r.title}”: `;
-          this.wave.reset();
-          const res = await api().exportProject({ ...this.opts, outputBase: regionOutputBase(base, i, r.title), start: r.start, end: r.end });
-          files.push(...res.files);
-        }
-        this.regionLabel = '';
-        this.progressLabel.textContent = `Done: ${regions.length} regions, ${files.length} files`;
-        toast('Export finished');
-        if (files[0]) void api().revealFile(files[0]);
-      } else {
-        const res = await api().exportProject({ ...this.opts, outputBase: base, ...(range ? { start: range[0], end: range[1] } : {}) });
-        this.progressLabel.textContent = `Done: ${res.files.length} files · ${exportSummary(res)}`;
-        toast('Export finished');
-        if (res.files[0]) void api().revealFile(res.files[0]);
+        last = await api().exportProject({ ...this.opts, outputBase: job.outputBase, ...(job.start !== undefined ? { start: job.start, end: job.end } : {}) });
+        files.push(...last.files);
       }
+      this.regionLabel = '';
+      this.written = files;
+      this.progressLabel.textContent = jobs.length > 1
+        ? `Done: ${jobs.length} regions, ${files.length} files`
+        : `Done: ${files.length} ${files.length === 1 ? 'file' : 'files'}${last ? ` · ${exportSummary(last)}` : ''}`;
+      toast('Export finished');
+      if (this.reveal && files[0]) void api().revealFile(files[0]);
     } catch (e) {
+      this.regionLabel = '';
       toast(`Export failed: ${errorMessage(e)}`, 'error');
     } finally {
       this.busy = false;

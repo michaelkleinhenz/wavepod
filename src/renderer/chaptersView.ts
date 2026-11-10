@@ -11,6 +11,7 @@ import { api, store } from './store';
 /** Top-level podcast directory categories (Apple Podcasts / Podcasting 2.0 list). */
 const PODCAST_CATEGORIES = ['Arts', 'Business', 'Comedy', 'Education', 'Fiction', 'Government', 'Health & Fitness', 'History', 'Kids & Family', 'Leisure', 'Music', 'News', 'Religion & Spirituality', 'Science', 'Society & Culture', 'Sports', 'Technology', 'True Crime', 'TV & Film'];
 import { removeRegion, updateRegion } from '../core/regions';
+import { exportRegion } from './regionMenu';
 import { thumbnail } from './images';
 
 /** Asks for an image and copies it into the project; null if cancelled or failed (failure is shown). */
@@ -289,13 +290,14 @@ export class ChaptersView {
                     'td',
                     { class: 'actions' },
                     h('button', { class: 'small', title: 'Select on the timeline', onclick: () => { store.select({ range: [r.start, r.end], rangeTracks: null, clipIds: new Set(), markerId: null }); seek(r.start); store.setView('edit'); } }, '▶'),
+                    h('button', { class: 'small', title: 'Export just this region as its own file', disabled: store.transport.state === 'recording', onclick: () => exportRegion(r.id) }, 'Export…'),
                     h('button', { class: 'small danger', title: 'Delete region', onclick: () => store.edit((p) => removeRegion(p, r.id)) }, '×'),
                   ),
                 ),
               ),
             ),
           )
-        : h('p', { class: 'muted' }, 'Select a time range and click “Region from selection” in the timeline toolbar to mark a part of the session (for example two episodes recorded in one go). The export can write each region as its own file.'),
+        : h('p', { class: 'muted' }, 'Select a time range and click “Region from selection” in the timeline toolbar to mark a part of the session (for example two episodes recorded in one go). The export can write one region or each region as its own file.'),
     );
 
     this.el.append(h('div', { class: 'columns' }, h('div', null, chapterCard, editCard, regionCard), h('div', null, metaCard)));

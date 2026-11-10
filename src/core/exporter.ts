@@ -15,6 +15,7 @@ import { OpusWriter } from './opus';
 import { TruePeakLimiter } from './truePeakLimiter';
 import { STEM_GROUPS, stemFilePath, stemIndex } from './stems';
 import { folderOf } from './folders';
+import { safeName } from './exportPlan';
 
 const BLOCK = 4096;
 /** Width of the export waveform in columns, whatever the length of the export. */
@@ -137,9 +138,7 @@ function toInt16(src: Float32Array, n: number, gain: number, dst: Int16Array): I
   return dst;
 }
 
-export function safeName(s: string): string {
-  return s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'track';
-}
+export { safeName };
 
 /** Reads a JPEG or PNG from the project folder; null if it is missing or another format. */
 export function loadPicture(projectDir: string, rel: string | undefined): Id3Picture | null {

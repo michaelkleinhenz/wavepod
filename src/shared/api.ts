@@ -317,7 +317,12 @@ export interface WavePodApi {
   readFavouriteSound(path: string): Promise<Uint8Array>;
 
   // export
-  chooseExportBase(defaultName: string): Promise<string | null>;
+  /** The folder an export goes to by default: the episode's export/ folder (created), else the episode folder, Music or home. */
+  exportFolder(): Promise<string>;
+  /** Lets the user pick the export folder, starting in `start`; null if cancelled. */
+  chooseExportFolder(start?: string): Promise<string | null>;
+  /** Which of these files already exist (to ask before an export replaces them). */
+  existingFiles(paths: string[]): Promise<string[]>;
   exportProject(opts: ExportOptions): Promise<ExportResult>;
   /** Loudness of the mix and (unless `mixOnly`) of every track with clips. */
   /** `mono`: the mix folded to mono, as a mono export is measured. */
@@ -521,7 +526,9 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'addFavouriteSounds',
   'chooseFavouriteSounds',
   'readFavouriteSound',
-  'chooseExportBase',
+  'exportFolder',
+  'chooseExportFolder',
+  'existingFiles',
   'exportProject',
   'measureLoudness',
   'measureClips',

@@ -14,7 +14,7 @@ export interface HelpContext {
 
 /** Dialog titles (their start) and the page that explains them. */
 export const DIALOG_TOPICS: Array<[RegExp, string]> = [
-  [/^export episode/i, 'export'],
+  [/^export\b/i, 'export'],
   [/^send to auphonic/i, 'export/send-to-auphonic'],
   [/^loudness analysis/i, 'loudness/loudness-analysis'],
   [/^clean up/i, 'transcript/clean-up-pauses-hesitations-and-retakes'],

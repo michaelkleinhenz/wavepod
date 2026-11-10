@@ -16,6 +16,11 @@ function selectRange(r: Region): void {
   store.select({ range: [r.start, r.end], rangeTracks: null, clipIds: new Set(), markerId: null, muteRegion: null });
 }
 
+/** Opens the export dialog set to export just this region. */
+export function exportRegion(id: string): void {
+  window.dispatchEvent(new CustomEvent('wavepod:export-region', { detail: id }));
+}
+
 export function openRegionMenu(o: RegionMenuOptions): void {
   const r = o.region;
   const recording = store.transport.state === 'recording';
@@ -25,6 +30,7 @@ export function openRegionMenu(o: RegionMenuOptions): void {
       { label: 'Rename…', enabled: !recording, run: () => promptRegionName(r.id, o.pageX, o.pageY) },
       { label: 'Select range', run: () => selectRange(r) },
       { label: 'Zoom to region', run: () => o.zoomTo([r.start, r.end]) },
+      { label: 'Export Region…', enabled: !recording, title: 'Export just this region as its own file', run: () => exportRegion(r.id) },
       { label: 'Show in Chapters view', title: 'Change start and end in the Regions list', run: () => store.setView('chapters') },
       { kind: 'separator' },
       { label: 'Delete region', enabled: !recording, title: 'Removes only the region, not the audio', run: () => store.edit((p) => removeRegion(p, r.id)) },
