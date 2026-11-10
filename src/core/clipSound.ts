@@ -320,46 +320,6 @@ export function minClipOffset(c: Clip): number {
   return s.base - s.start / (s.rate ?? 1);
 }
 
-/**
- * Where a clip's audio runs out on the right, as a virtual frame (compare with offset + length).
- * Infinity for a loop, which never runs out.
- */
-export function maxClipEnd(c: Clip, fileFrames: number): number {
-  const s = c.sound;
-  if (!s) return fileFrames;
-  if (s.loop) return Infinity;
-  const rate = s.rate ?? 1;
-  // forward the file ends at its last frame; backwards it ends at frame 0
-  return s.reverse ? s.base + (s.start + s.length) / rate : s.base + (fileFrames - s.start) / rate;
-}
-
-/** Shortest clip an edge drag leaves. */
-export const MIN_TRIM_LENGTH = 64;
-
-/**
- * Drags a clip edge by `delta` frames. Dragged past where its audio runs out (the end of the file
- * on the right, its start on the left), the clip turns into a loop: the audio it has up to there
- * becomes one cycle that repeats to fill the new length (ambiences). `fileFrames` is the length of
- * its file; unknown, the right edge grows as before.
- */
-export function trimClip(orig: Clip, side: 'left' | 'right', delta: number, fileFrames?: number): Clip {
-  if (side === 'right') {
-    const length = Math.max(MIN_TRIM_LENGTH, orig.length + delta);
-    const audioLength = fileFrames === undefined ? Infinity : Math.floor(maxClipEnd(orig, fileFrames) - orig.offset);
-    if (length <= audioLength || audioLength < MIN_CYCLE) return { ...orig, length };
-    return loopClipTo({ ...orig, length: audioLength }, orig.start + length);
-  }
-  // left edge: never before the timeline start, and the clip keeps a minimum length
-  const d = Math.max(-orig.start, Math.min(orig.length - MIN_TRIM_LENGTH, delta));
-  const audioD = Math.ceil(minClipOffset(orig) - orig.offset);
-  const moved = (c: Clip): Clip => ({ ...c, start: orig.start + d, offset: orig.offset + d, length: orig.length - d });
-  if (d >= audioD) return moved(orig);
-  // past the start of its audio: loop the clip from there to its end
-  const cycle: Clip = { ...orig, start: orig.start + audioD, offset: orig.offset + audioD, length: orig.length - audioD };
-  const looped = setClipLoop(cycle, true);
-  return looped.sound?.loop ? moved(looped) : cycle;
-}
-
 /** Short tag for the clip label, e.g. "◀ 1.50× ⟳". */
 export function soundTag(c: Clip): string {
   const s = c.sound;
