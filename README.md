@@ -1,6 +1,6 @@
 # WavePod
 
-A simple multitrack DAW for podcasting, built with Electron. It covers what
+A world class DAW and editing suite for podcasts and audio plays, built with Electron. It also covers what
 [Ultraschall](https://ultraschall.fm/) is loved for, without needing Reaper:
 
 - **Multichannel USB interfaces** such as the RØDECaster Pro II (all 16
