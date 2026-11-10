@@ -55,7 +55,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       ['Delete', 'Delete selection (Shift: and close the gap)'],
       [`${mod}+A`, 'Select all clips'],
       ['Shift+drag', 'Select every clip in the rectangle'],
-      ['Shift+click clip', 'Add it to the selection or take it out'],
+      ['Shift+click clip', 'Select every clip from the last clicked one to it (rectangle across tracks)'],
       [`${mod}+Z / ${mod}+Shift+Z`, 'Undo / redo'],
       ['Alt+Shift+N', 'Normalise clip loudness'],
       ['Alt (while dragging)', 'Drag without snapping'],

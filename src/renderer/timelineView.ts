@@ -140,6 +140,8 @@ export class TimelineView {
   pxPerSec = 40;
   private width = 800;
   private drag: Drag | null = null;
+  /** The clip last clicked without Shift: Shift+click selects the rectangle from it to the clicked clip. */
+  private clipAnchor: string | null = null;
   /** The view when the current drag started, so its movement counts in what the view scrolled since. */
   private dragOrigin: { drag: Drag; viewStart: number; scrollTop: number } | null = null;
   /** Edge autoscroll running during a drag: the last mouse event and the animation frame. */
@@ -385,6 +387,27 @@ export class TimelineView {
   /** The row a track is drawn on, -1 while its folder is collapsed. */
   private rowOfTrack(trackId: string): number {
     return this.layout().rowOf.get(trackId) ?? -1;
+  }
+
+  /**
+   * The clips in the rectangle spanned by two clips: every track row from one to the other, and the
+   * time from the earlier start to the later end. Null when either clip is gone or they are the same.
+   */
+  private clipRectangle(anchorId: string | null, clipId: string): Set<string> | null {
+    if (!anchorId || anchorId === clipId) return null;
+    let a: { clip: Clip; row: number } | null = null;
+    let b: { clip: Clip; row: number } | null = null;
+    for (const t of store.project.tracks) {
+      for (const c of t.clips) {
+        if (c.id === anchorId) a = { clip: c, row: this.rowOfTrack(t.id) };
+        if (c.id === clipId) b = { clip: c, row: this.rowOfTrack(t.id) };
+      }
+    }
+    if (!a || !b || a.row < 0 || b.row < 0) return null;
+    const lo = Math.min(a.clip.start, b.clip.start);
+    const hi = Math.max(a.clip.start + a.clip.length, b.clip.start + b.clip.length);
+    // clips overlapping the span (merely touching an edge does not count)
+    return new Set(this.tracksInRows(a.row, b.row).flatMap((t) => t.clips.filter((c) => c.start < hi && c.start + c.length > lo).map((c) => c.id)));
   }
 
   /** The tracks rows a..b cover; a collapsed folder's row covers all its tracks. */
@@ -2875,6 +2898,7 @@ export class TimelineView {
         const ripple = rippleSet(store.project, ids, e.shiftKey ? 'all' : 'track');
         this.drag = { kind: 'clip', clipId: hit.clip.id, ids: ripple.clipIds, startX: e.clientX, startY: e.clientY, delta: 0, dTrack: 0, minDTrack: 0, maxDTrack: 0, moved: false, ripple, clickFrame: this.snappedFrame(x, e) };
       } else if (hit) {
+        if (!e.shiftKey) this.clipAnchor = hit.clip.id;
         const sel = new Set(e.shiftKey ? store.selection.clipIds : []);
         if (e.shiftKey && sel.has(hit.clip.id)) sel.delete(hit.clip.id);
         else sel.add(hit.clip.id);
@@ -3057,11 +3081,19 @@ export class TimelineView {
         if (d.moved) {
           store.select({ clipIds: d.ids, range: null, rangeTracks: null, markerId: null, muteRegion: null });
         } else if (d.clipId) {
-          // Shift+click on a clip adds it to the selection or takes it out
-          const sel = new Set(store.selection.clipIds);
-          if (sel.has(d.clipId)) sel.delete(d.clipId);
-          else sel.add(d.clipId);
-          store.select({ clipIds: sel, range: null, rangeTracks: null, markerId: null });
+          const span = this.clipRectangle(this.clipAnchor, d.clipId);
+          if (span) {
+            // Shift+click on another clip selects every clip in the rectangle from the anchor clip
+            // (the last one clicked without Shift) to this one, across all tracks in between
+            store.select({ clipIds: span, range: null, rangeTracks: null, markerId: null, muteRegion: null });
+          } else {
+            // no anchor clip: Shift+click adds the clip to the selection or takes it out
+            const sel = new Set(store.selection.clipIds);
+            if (sel.has(d.clipId)) sel.delete(d.clipId);
+            else sel.add(d.clipId);
+            store.select({ clipIds: sel, range: null, rangeTracks: null, markerId: null });
+            this.clipAnchor = sel.has(d.clipId) ? d.clipId : null;
+          }
         } else {
           // Shift+click on empty space: move the playhead, keep the clips selected
           store.select({ range: null, rangeTracks: null });
