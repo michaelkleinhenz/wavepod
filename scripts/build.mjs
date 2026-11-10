@@ -20,6 +20,8 @@ const configs = [
     format: 'cjs',
     // opusscript loads its .wasm next to its own files, so it stays in node_modules
     external: ['electron', 'audify', 'opusscript'],
+    // the MP3 encoder's WebAssembly goes into the export worker as bytes
+    loader: { '.wasm': 'binary' },
   },
   {
     ...common,
