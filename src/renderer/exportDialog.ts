@@ -1,5 +1,7 @@
-// Export dialog, laid out like the export dialogs of other audio apps: what to export (whole
-// episode, selection, one region, every region), file name and folder, format, loudness, extras.
+// Export dialog, laid out like the export dialogs of other audio apps, in two columns: what to
+// export (whole episode, selection, one region, every region) and the file name and folder on
+// the left (stems and the checks below them), format and loudness on the right, with the
+// loudness of the mix once analysed. The progress and the buttons span both columns.
 // While the mix renders, the progress bar is its waveform and the loudness so far runs beside it.
 import type { ExportProgress, ExportResult, ExportSettings, LiveLoudness, LoudnessReport } from '../shared/types';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
@@ -319,14 +321,22 @@ export class ExportDialog {
       'div',
       { class: 'dialog export-dialog', role: 'dialog', 'aria-label': 'Export episode' },
       h('h2', null, 'Export episode'),
-      this.rangeSection(),
-      this.fileSection(files),
-      this.formatSection(),
-      this.loudnessSection(),
-      this.stemSection(),
-      this.checks(),
-      // only the mix matters for the export; per-track figures are in the Loudness dialog
-      this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, { lufs: o.targetLufs, ceiling: o.peakCeiling }, o.normalize)) : null,
+      // two columns, so the settings fit on screen without scrolling: what and where on the left,
+      // how on the right
+      h('div', { class: 'export-columns' },
+        h('div', { class: 'export-column' },
+          this.rangeSection(),
+          this.fileSection(files),
+          this.stemSection(),
+          this.checks(),
+        ),
+        h('div', { class: 'export-column' },
+          this.formatSection(),
+          this.loudnessSection(),
+          // only the mix matters for the export; per-track figures are in the Loudness dialog
+          this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, { lufs: o.targetLufs, ceiling: o.peakCeiling }, o.normalize)) : null,
+        ),
+      ),
       this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
       // pinned to the bottom of the dialog, so the buttons, the progress and the replace question stay in view
       h('div', { class: 'export-bottom' },
@@ -518,10 +528,11 @@ export class ExportDialog {
       formRow('Normalise', checkbox('Bring the mix to a loudness target', o.normalize, (v) => { o.normalize = v; this.render(); }, this.busy)),
       formRow('Target', targetPicker(o.targetLufs, (lufs) => { o.targetLufs = lufs; this.render(); }, !o.normalize || this.busy)),
       formRow('Peak ceiling',
-        h('select', { disabled: !o.normalize || this.busy, onchange: (e: Event) => { o.peakCeiling = Number((e.target as HTMLSelectElement).value); this.render(); } },
-          ...PEAK_CEILINGS.map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`)))),
+        h('div', { class: 'export-name-row' },
+          h('select', { disabled: !o.normalize || this.busy, onchange: (e: Event) => { o.peakCeiling = Number((e.target as HTMLSelectElement).value); this.render(); } },
+            ...PEAK_CEILINGS.map((p) => h('option', { value: String(p), selected: p === o.peakCeiling }, `${p} dBTP`))),
+          h('button', { class: 'small', disabled: this.busy, title: 'Measure the whole mix now, and check it for its level and for silence', onclick: () => void this.analyse() }, this.mix ? 'Analyse Again' : 'Analyse Loudness'))),
       o.mono ? formRow('', h('p', { class: 'muted export-hint' }, 'A mono file is measured as mono, so it reads 3 LU lower than the same audio in stereo: −19 LUFS in mono sounds like −16 LUFS in stereo.')) : null,
-      formRow('', h('button', { class: 'small', disabled: this.busy, title: 'Measure the whole mix now, and check it for its level and for silence', onclick: () => void this.analyse() }, this.mix ? 'Analyse Again' : 'Analyse Loudness')),
     );
   }
 
