@@ -935,5 +935,5 @@ button.link:hover:not(:disabled) { background: none; border: none; }
   text-transform: uppercase;
   color: #0b1220;
   background: #5eead4;
+  margin-right: auto;
 }
-.track-header.remote .input-select:disabled { opacity: 1; color: #5eead4; cursor: default; appearance: none; }

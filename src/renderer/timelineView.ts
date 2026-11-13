@@ -531,7 +531,6 @@ export class TimelineView {
               value: t.name,
               onchange: (e: Event) => store.edit((p) => updateTrack(p, t.id, { name: (e.target as HTMLInputElement).value })),
             }),
-            t.remote ? h('span', { class: 'remote-tag', title: 'Remote guest: joins over the internet (View › Remote Guests)' }, 'Remote') : null,
             t.kind === 'soundboard' ? h('span', { class: 'toggle placeholder' }) : toggle('armed', '●', 'Arm for recording'),
             t.kind === 'soundboard'
               ? h('span', { class: 'toggle placeholder' })
@@ -573,11 +572,7 @@ export class TimelineView {
             t.kind === 'soundboard'
               ? h('span', { class: 'muted th-hint' }, 'Jingles played while recording')
               : t.remote
-                ? h(
-                    'select',
-                    { class: 'input-select', disabled: true, title: 'A remote guest: the audio comes over the internet (View › Remote Guests), not from an input' },
-                    h('option', null, 'Remote guest'),
-                  )
+                ? h('span', { class: 'remote-tag', title: 'Remote guest: the audio comes over the internet (View › Remote Guests), not from an input' }, 'Remote')
                 : h(
                     'select',
                     {
