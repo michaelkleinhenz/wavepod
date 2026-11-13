@@ -585,7 +585,9 @@ export class TimelineView {
               ? h('span', { class: 'muted th-hint' }, 'Jingles played while recording')
               : t.remote
                 ? h('span', { class: 'remote-tag', title: 'Remote guest: the audio comes over the internet (View › Remote Guests), not from an input' }, 'Remote')
-                : h(
+                : t.cameraId
+                  ? h('span', { class: 'remote-tag', title: "Camera sound: taken from the camera's video file (View › Video), not from an input" }, 'Camera')
+                  : h(
                     'select',
                     {
                       class: 'input-select',
