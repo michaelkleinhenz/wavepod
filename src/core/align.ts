@@ -244,7 +244,22 @@ export function alignClips(project: Project, dir: string, clipIds: string[], ref
   if (!moving.length || !ref) throw new Error('Pick the clips to move and a track to align them to.');
   if (moving.some((m) => m.t.id === ref.id)) throw new Error('The reference must be a different track.');
   if (!ref.clips.length) throw new Error(`${ref.name} has no audio to align to.`);
-  const clips = moving.map((m) => m.c);
+  return alignClipSets(project, dir, moving.map((m) => m.c), ref.clips, ref.name);
+}
+
+/**
+ * Like alignClips, against particular clips instead of a whole track: a remote guest's uploaded
+ * recording onto the call audio of the same take, which sits on the same track (as another take).
+ * `refClips` need not be on the timeline.
+ */
+export function alignToClips(project: Project, dir: string, clipIds: string[], refClips: Clip[]): AlignResult {
+  const clips = project.tracks.flatMap((t) => t.clips.filter((c) => clipIds.includes(c.id)));
+  if (!clips.length || !refClips.length) throw new Error('Nothing to align.');
+  return alignClipSets(project, dir, clips, refClips, 'the call audio');
+}
+
+function alignClipSets(project: Project, dir: string, clips: Clip[], refClips: Clip[], refName: string): AlignResult {
+  const ref = { name: refName, clips: refClips };
   const sr = project.sampleRate;
   const factor = Math.max(1, Math.round(sr / ANALYSIS_RATE));
   const rate = sr / factor;

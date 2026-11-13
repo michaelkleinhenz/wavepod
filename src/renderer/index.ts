@@ -66,6 +66,7 @@ import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
 import { SettingsDialog } from './settingsDialog';
+import { GuestsPanel } from './remote/guestsPanel';
 import { TranscriptPanel } from './transcriptPanel';
 import { SoundLibraryPanel } from './soundLibraryPanel';
 import { ScriptPanel, importScriptFile } from './scriptPanel';
@@ -105,6 +106,7 @@ async function main(): Promise<void> {
   const templates = new TemplateDialog();
   const auphonic = new AuphonicDialog();
   const settingsDialog = new SettingsDialog();
+  const guestsPanel = new GuestsPanel(() => void settingsDialog.open('remote'));
   new RecordingAlertModal();
   const transcriptPanel = new TranscriptPanel();
   const cleanupDialog = new CleanupDialog();
@@ -442,9 +444,9 @@ async function main(): Promise<void> {
     store.saveState = s;
     store.notify('save');
   });
-  api().onProjectEdited(({ project, rev, summary }) => {
+  api().onProjectEdited(({ project, rev, summary, source }) => {
     store.applyExternal(project, rev);
-    toast(`AI agent: ${summary}`);
+    toast(source === 'remote' ? summary : `AI agent: ${summary}`);
   });
   remoteHooks.playSound = (i) => void soundboard.trigger(i);
   api().onRemote(runRemote);
@@ -501,6 +503,7 @@ async function main(): Promise<void> {
       case 'speed-normal': return setSpeed(1, true);
       case 'auphonic': return void auphonic.open();
       case 'settings': return void settingsDialog.open();
+      case 'remote-guests': return guestsPanel.toggle();
       case 'transcript': return openTranscript();
       case 'sound-library': return openLibrary();
       case 'script': return openScript();

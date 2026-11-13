@@ -41,6 +41,14 @@ const configs = [
     loader: { '.svg': 'dataurl' },
   },
   {
+    // remote guests: the AudioWorklet module (loaded by URL), for the window and the guest page
+    ...common,
+    entryPoints: { 'remote-worklet': 'src/shared/remoteWorklet.ts' },
+    outdir: 'dist/renderer',
+    platform: 'browser',
+    format: 'esm',
+  },
+  {
     // the help window: the user guide in docs/guide/, bundled as text
     ...common,
     entryPoints: { help: 'src/help/help.ts' },

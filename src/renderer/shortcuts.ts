@@ -47,6 +47,7 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       [`Shift+${mod}+B`, 'Sound library: type to search, ↑/↓ listen, Enter inserts at the playhead'],
       [`Shift+${mod}+J`, 'Script: ↑/↓ pick a line, Enter ticks it off at the playhead and goes to the next, Shift+Enter jumps to its take'],
       [`Shift+${mod}+K`, 'Clean up pauses, hesitations and retakes'],
+      [`Shift+${mod}+G`, 'Remote guests: invite guests, let them in, see their connection and uploads'],
       [`${mod}+,`, 'Settings (ElevenLabs API key for transcripts)'],
       [`${mod}+X`, 'Ripple cut (closes the gap)'],
       [`${mod}+C / ${mod}+V`, 'Copy / paste at the playhead'],

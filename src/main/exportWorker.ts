@@ -1,10 +1,10 @@
 // Runs exports and loudness analysis off the main thread.
 import { parentPort, workerData } from 'node:worker_threads';
-import type { CleanupOptions, ExportOptions, Project, TimelineWord } from '../shared/types';
+import type { Clip, CleanupOptions, ExportOptions, Project, TimelineWord } from '../shared/types';
 import { scanCleanup } from '../core/cleanupScan';
 import { exportProject } from '../core/exporter';
 import { analyseClips, analyseProject } from '../core/analysis';
-import { alignClips, stretchWav } from '../core/align';
+import { alignClips, alignToClips, stretchWav } from '../core/align';
 import { importWav } from '../core/importAudio';
 import { renderFused } from '../core/fuseRender';
 import { setVstHost } from '../core/fx/vst';
@@ -20,6 +20,8 @@ interface Job {
   words?: TimelineWord[];
   cleanup?: CleanupOptions;
   refTrackId?: string;
+  /** align: match against these clips instead of a track. */
+  refClips?: Clip[];
   project: Project;
   dir: string;
   opts?: ExportOptions;
@@ -48,7 +50,8 @@ try {
   } else if (job.kind === 'cleanup') {
     parentPort!.postMessage({ type: 'done', result: scanCleanup(job.project, job.dir, job.words ?? [], job.cleanup!) });
   } else if (job.kind === 'align') {
-    parentPort!.postMessage({ type: 'done', result: alignClips(job.project, job.dir, job.clipIds ?? [], job.refTrackId!) });
+    const result = job.refClips ? alignToClips(job.project, job.dir, job.clipIds ?? [], job.refClips) : alignClips(job.project, job.dir, job.clipIds ?? [], job.refTrackId!);
+    parentPort!.postMessage({ type: 'done', result });
   } else if (job.kind === 'stretch') {
     stretchWav(job.src!, job.dest!, job.stretch!, (f) => parentPort!.postMessage({ type: 'progress', progress: f }));
     parentPort!.postMessage({ type: 'done', result: null });

@@ -62,6 +62,8 @@ import { syncedFileName, stretchTranscript, type AlignOutcome, type AlignResult 
 import { loadTranscript, saveTranscript } from './transcribe/store';
 import { checkFuse, fuseTranscript } from '../core/fuse';
 import { decodeKey, encodeKey } from './auphonic';
+import { RemoteHost, normalizeRemoteSettings, remoteInfo, updateRemoteSettings, type StoredRemote } from './remote/host';
+import type { Clip, RemoteSettingsInput } from '../shared/types';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
 import { LIBRARY_EXTENSIONS, addFavourites, normalizeFavourites, type FavouriteSound, type FavouriteSoundInfo, type SoundLibraryInfo } from '../core/soundLibrary';
@@ -104,6 +106,8 @@ interface Settings {
   favouriteSounds: FavouriteSound[];
   /** Folder the chapter image picker opens in: where the last chapter image came from ('' = none yet). */
   chapterImageFolder: string;
+  /** Remote guests: LiveKit server and keys (secret stored like the other API keys). */
+  remote: StoredRemote;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -140,9 +144,10 @@ function loadSettings(): Settings {
       soundLibraryFolder: typeof raw.soundLibraryFolder === 'string' ? raw.soundLibraryFolder : '',
       favouriteSounds: normalizeFavourites(raw.favouriteSounds),
       chapterImageFolder: typeof raw.chapterImageFolder === 'string' ? raw.chapterImageFolder : '',
+      remote: normalizeRemoteSettings(raw.remote),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, takeBeep: true, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '' };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, takeBeep: true, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '', remote: normalizeRemoteSettings(null) };
   }
 }
 
@@ -216,6 +221,7 @@ function addFavouriteFiles(paths: string[]): { list: FavouriteSoundInfo[]; added
 let engine: AudioEngine;
 let win: BrowserWindow | null = null;
 let current: OpenedProject;
+let remoteHost: RemoteHost;
 let saveTimer: NodeJS.Timeout | null = null;
 let mcp: McpController;
 let osc: OscServer;
@@ -293,6 +299,7 @@ function openProjectDir(dir: string): OpenedProject {
     }
   }
   current = { project, dir, rev: ++projectRev };
+  remoteHost?.projectChanged();
   setSaveState({ state: 'saved' });
   // the project as opened is what a backup would hold; nothing to back up until it changes
   lastBackup = JSON.stringify(project);
@@ -516,10 +523,10 @@ function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise
  * writes stretched copies of the moving files (next to them in the project) and carries their
  * transcripts over, so nothing has to be transcribed again.
  */
-async function alignClipsTo(clipIds: string[], refTrackId: string): Promise<AlignOutcome> {
-  const project = current.project;
+async function alignClipsTo(clipIds: string[], refTrackId: string | Clip[], project = current.project): Promise<AlignOutcome> {
   const dir = current.dir;
-  const r = await runWorker<AlignResult>({ kind: 'align', project, dir, clipIds, refTrackId });
+  const ref = typeof refTrackId === 'string' ? { refTrackId } : { refClips: refTrackId };
+  const r = await runWorker<AlignResult>({ kind: 'align', project, dir, clipIds, ...ref });
   const files: Record<string, string> = {};
   if (r.drift !== 0) {
     const abs = (f: string) => (path.isAbsolute(f) ? f : path.join(dir, f));
@@ -614,6 +621,21 @@ const handlers: Record<InvokeMethod, Handler> = {
     return dev ? findProfile(dev.name, dev.inputChannels, dev.outputChannels) : null;
   },
 
+  getRemoteSettings: () => remoteInfo(settings.remote),
+  setRemoteSettings: (input: RemoteSettingsInput) => {
+    settings.remote = updateRemoteSettings(settings.remote, input);
+    saveSettings();
+    return remoteInfo(settings.remote);
+  },
+  testRemote: () => remoteHost.test(),
+  remoteStart: () => remoteHost.start(),
+  remoteStop: () => remoteHost.stop(),
+  remoteInvite: (name: string) => remoteHost.invite(name),
+  remoteLink: (trackId: string) => remoteHost.link(trackId),
+  remoteAdmit: (identity: string) => remoteHost.admit(identity),
+  remoteHoldBack: (identity: string) => remoteHost.holdBack(identity),
+  remoteRemove: (identity: string) => remoteHost.remove(identity),
+  remoteTakes: () => remoteHost.takes(),
   getAuphonicSettings: () => auphonicInfo(settings.auphonic),
   setAuphonicSettings: (input: AuphonicSettingsInput) => {
     settings.auphonic = updateAuphonic(settings.auphonic, input);
@@ -1275,6 +1297,7 @@ function buildMenu(): void {
         { label: 'Transcript', accelerator: 'Shift+CmdOrCtrl+T', click: menuSend('transcript') },
         { label: 'Sound Library', accelerator: 'Shift+CmdOrCtrl+B', click: menuSend('sound-library') },
         { label: 'Script', accelerator: 'Shift+CmdOrCtrl+J', click: menuSend('script') },
+        { label: 'Remote Guests', accelerator: 'Shift+CmdOrCtrl+G', click: menuSend('remote-guests') },
         { label: 'Script in New Window', click: menuSend('script-window') },
         { type: 'separator' },
         // The keys > and < are handled in the window (they sit on different keys per layout); the
@@ -1491,6 +1514,18 @@ app.whenReady().then(() => {
   setImpulseDir(impulseRoot());
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
+  remoteHost = new RemoteHost({
+    engine,
+    settings: () => settings.remote,
+    project: () => current.project,
+    dir: () => current.dir,
+    apply: (project, summary) => {
+      setCurrentProject(project);
+      send(IPC.projectEdited, { project, rev: bumpProjectRev(), summary, source: 'remote' });
+    },
+    align: (clipIds, refClips, project) => alignClipsTo(clipIds, refClips, project),
+    window: () => win?.webContents ?? null,
+  });
   engine.setMarkerPing(settings.markerPing);
   engine.setTakeBeep(settings.takeBeep);
   // Recordings are written by a worker thread, so a slow or full disk never stalls the audio.

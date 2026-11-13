@@ -6,3 +6,5 @@ release/
 coverage/
 native/vsthost/build/
 native/vsthost/bin/
+site/join/v1/*.js
+site/join/v1/*.js.map

@@ -125,7 +125,7 @@ export async function punchIn(): Promise<void> {
   const start = r ? Math.max(0, Math.round(Math.min(r[0], r[1]))) : 0;
   const end = r ? Math.round(Math.max(r[0], r[1])) : 0;
   if (!(end > start)) return toast('Punch in: select the line to re-record first (drag over it in the ruler or an empty spot)');
-  if (!store.project.tracks.some((t) => t.armed && t.inputChannels.length)) return toast('Punch in: arm the track to re-record first', 'error');
+  if (!store.project.tracks.some((t) => t.armed && (t.inputChannels.length || t.remote))) return toast('Punch in: arm the track to re-record first', 'error');
   try {
     if (!(await soundcheck())) return;
     if (store.transport.state === 'playing') await api().stop();

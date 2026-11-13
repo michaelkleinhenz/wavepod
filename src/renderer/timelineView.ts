@@ -948,8 +948,10 @@ export class TimelineView {
       if (!meter) continue;
       // armed: live input of its channels; unarmed: only what the track itself plays back
       const raw = store.transport;
-      const v = t.armed ? Math.max(0, ...t.inputChannels.map((c) => peaks[c] ?? 0)) : (store.trackMeterHold.get(t.id) ?? 0);
-      const p = t.armed ? Math.max(0, ...t.inputChannels.map((c) => raw.inputPeaks[c] ?? 0)) : (raw.trackPeaks?.[t.id] ?? 0);
+      // a remote guest's call audio comes in on a channel after the device's own
+      const ins = t.remote ? (raw.remoteChannels?.[t.id] === undefined ? [] : [raw.remoteChannels[t.id]]) : t.inputChannels;
+      const v = t.armed ? Math.max(0, ...ins.map((c) => peaks[c] ?? 0)) : (store.trackMeterHold.get(t.id) ?? 0);
+      const p = t.armed ? Math.max(0, ...ins.map((c) => raw.inputPeaks[c] ?? 0)) : (raw.trackPeaks?.[t.id] ?? 0);
       meter.update(v, p);
     }
     // a folder shows the loudest of its tracks
@@ -1335,7 +1337,7 @@ export class TimelineView {
       this.drawMuteRegions(ctx, t, y);
       const lane = shownLane(t);
       if (lane) this.drawAutomation(ctx, t, i, lane);
-      if (recording && t.armed && t.inputChannels.length) {
+      if (recording && t.armed && (t.inputChannels.length || t.remote)) {
         // loop recording: after the first pass the current pass is drawn from the loop start
         const loop = store.transport.recordLoop;
         const pass = loop ? loopPass(store.transport.recordedFrames, store.recordStart, loop) : 1;

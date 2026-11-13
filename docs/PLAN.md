@@ -35,11 +35,11 @@ press record.
 - A full routing matrix and per-track output routing.
 - Live streaming.
 
-Two former non-goals are now planned, each with its own plan document
+Two former non-goals are now taken up, each with its own plan document
 outside the repository: **remote guests** (a LiveKit call with the user's own
-key plus WavePod's own raw recorder on the guest side, start planned for
-2026-11-13) and **multi-camera video** (video follows the audio edit, director
-track, live camera switching; plan only).
+key plus WavePod's own raw recorder on the guest side; built) and
+**multi-camera video** (video follows the audio edit, director track, live
+camera switching; plan only).
 
 ## Architecture
 
@@ -188,8 +188,9 @@ brackets):
   (#31), MCP server for AI agents (#13), app icon and desktop entry (#57).
 
 ### Still open
-- **Remote recording** (LiveKit call + own guest recorder), phases 1–4 per
-  the implementation plan, start planned 2026-11-13.
+- **Remote recording**: built (View › Remote Guests, guest page in
+  `site/join/v1/`); still to try with real guests over LiveKit Cloud and on
+  Safari, Firefox and phones.
 - **Multi-camera video**: plan written, nothing built.
 - **Release blockers**: code signing for Windows; signing, notarisation and
   a hardened runtime with the audio-input entitlement for macOS (otherwise

@@ -12,6 +12,8 @@ Recording starts at the playhead. The timeline scrolls along so the red recordin
 
 While a recording runs, the status bar shows how much recording time the disk has left.
 
+Guests who aren't in the room join from their browser and get a track of their own; see [Remote guests](remote-guests.md).
+
 > **Tip:** Stopping a recording asks for confirmation, so a stray key doesn't end the show. Switch this off with **Edit › Confirm Before Stopping a Recording**.
 
 ## Punch-in: re-record one line

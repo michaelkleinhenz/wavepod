@@ -36,6 +36,7 @@ export const SETTINGS_TABS: Record<string, string> = {
   general: 'settings/general',
   controllers: 'controllers',
   'ai agents': 'ai-agents',
+  'remote guests': 'remote-guests/livekit-server',
 };
 
 /** The help page (`topic` or `topic/anchor`) for what is on screen. */

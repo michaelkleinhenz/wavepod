@@ -27,6 +27,10 @@ See [MIDI and remote control](controllers.md).
 
 **Allow AI agents to control WavePod** switches the local MCP server on. See [AI agents (MCP)](ai-agents.md).
 
+### Remote guests
+
+The LiveKit server that carries the call with remote guests, the guest page and whether video is allowed. See [Remote guests](remote-guests.md#livekit-server).
+
 ## Menu settings
 
 These options are checkboxes in the menus and are remembered:
@@ -50,6 +54,7 @@ The playback speed, Repeat, the open Setup and Settings tab, which filter cards 
 Besides switching views and the playback options, the **View** menu has:
 
 - **Reload**: reloads the window (your episode and any recording are not affected).
+- **Remote Guests** (`Shift+Ctrl+G`): the panel for guests who join from their browser. See [Remote guests](remote-guests.md).
 - **Toggle Developer Tools**: for troubleshooting.
 - **Toggle Full Screen**.
 
