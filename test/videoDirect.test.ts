@@ -95,7 +95,7 @@ describe('camera remote control', () => {
 describe('MCP video tools', () => {
   function host() {
     let p = project();
-    p.tracks.push({ ...p.tracks[0], id: 'camtrack', name: 'wide (camera)', cameraId: 'wide', clips: [] });
+    p.tracks.push({ ...p.tracks[0], id: 'camtrack', name: 'wide', cameraId: 'wide', clips: [] });
     const h: WavePodHost = {
       project: () => p,
       dir: () => '/tmp/x',
@@ -118,7 +118,7 @@ describe('MCP video tools', () => {
     const x = host();
     const server = createWavePodServer(x.h, '1');
     const list = await call(server, 'list_cameras');
-    expect(list.data.cameras[0]).toMatchObject({ number: 1, name: 'wide', soundTrack: 'wide (camera)', shows: ['Host', 'Guest'] });
+    expect(list.data.cameras[0]).toMatchObject({ number: 1, name: 'wide', soundTrack: 'wide', shows: ['Host', 'Guest'] });
     const set = await call(server, 'set_director_cuts', { switches: [{ seconds: 0, camera: 1 }, { seconds: 5, camera: 'guestCam', dissolveSeconds: 0.5 }] });
     expect(set.isError).toBe(false);
     expect(x.p.director!.cuts).toEqual([{ at: 0, camera: 'wide' }, { at: 5000, camera: 'guestCam', dissolve: 500 }]);

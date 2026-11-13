@@ -10,7 +10,7 @@ Use **File › Import Camera Video…**, drop video files on the timeline, or cl
 
 For each camera WavePod:
 
-- takes out the camera's sound and puts it on a track of its own, named after the camera with "(camera)". The track is muted: it is the camera's reference sound, not part of the mix.
+- takes out the camera's sound and puts it on a track of its own, named after the camera and tagged CAMERA. The track is muted: it is the camera's reference sound, not part of the mix.
 - adds the camera to the cameras panel with a number (1 to 9) and a colour.
 
 The video file itself stays where it is (inside the episode folder it is stored with a relative path). Don't move or rename it afterwards.

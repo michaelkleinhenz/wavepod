@@ -114,7 +114,7 @@ export function addCamera(
     sync: [ownSync(o.audioFile, o.probe.audioStart)],
   };
   const trackId = uid('trk');
-  let q = addTrack(p, { id: trackId, name: `${o.name} (camera)`, color, mute: true, cameraId: id, stem: 'none' });
+  let q = addTrack(p, { id: trackId, name: o.name, color, mute: true, cameraId: id, stem: 'none' });
   // the camera's sound starts where its video starts (the timeline start, until it is aligned)
   q = {
     ...q,
@@ -187,7 +187,7 @@ export function renameCamera(cameraId: string, name: string): void {
   if (!n) return;
   store.edit((p) => {
     const q = updateCamera(p, cameraId, { name: n });
-    return { ...q, tracks: q.tracks.map((t) => (t.cameraId === cameraId ? { ...t, name: `${n} (camera)` } : t)) };
+    return { ...q, tracks: q.tracks.map((t) => (t.cameraId === cameraId ? { ...t, name: n } : t)) };
   });
 }
 
