@@ -143,6 +143,26 @@ Some of these Lucide icons (clipboard, zoom-in, zoom-out) are derived from
     OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
     USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+### LiveKit client SDK (Apache-2.0) and its dependencies
+
+The remote guests feature (the app's call window and the guest page in
+`site/join/v1/`) bundles [livekit-client](https://github.com/livekit/client-sdk-js),
+Copyright LiveKit, Inc., licensed under the Apache License 2.0
+(<https://www.apache.org/licenses/LICENSE-2.0>), together with:
+
+| Package | License |
+| --- | --- |
+| @livekit/protocol, @livekit/mutex | Apache-2.0, Copyright LiveKit, Inc. |
+| @bufbuild/protobuf | Apache-2.0 and BSD-3-Clause, Copyright Buf Technologies, Inc. and Google Inc. |
+| webrtc-adapter | BSD-3-Clause, Copyright The WebRTC project authors |
+| jose | MIT, Copyright Filip Skokan |
+| events, loglevel, sdp-transform, sdp, machina, typed-emitter | MIT, Copyright their authors |
+| tslib | 0BSD, Copyright Microsoft Corporation |
+
+The full license texts ship with each package in `node_modules`. No LiveKit
+server code is part of WavePod; the call runs through a LiveKit server the user
+sets up (LiveKit Cloud or their own).
+
 ### Electron (MIT)
 
 The app runs on [Electron](https://www.electronjs.org/), which ships its own
@@ -152,7 +172,7 @@ license files (`LICENSE` and `LICENSES.chromium.html`) next to the app.
 
 VST is a registered trademark of Steinberg Media Technologies GmbH.
 RØDECaster is a trademark of RØDE Microphones. Auphonic, Ultraschall, REAPER,
-Podlove, Zoom PodTrak, Focusrite, Bitfocus Companion, Stream Deck, Claude and
+Podlove, LiveKit, Zoom PodTrak, Focusrite, Bitfocus Companion, Stream Deck, Claude and
 other product names are trademarks of their respective owners. They are used
 only to describe compatibility; WavePod is not affiliated with or endorsed by
 any of them.

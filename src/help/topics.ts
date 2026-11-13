@@ -8,6 +8,7 @@ import recording from '../../docs/guide/recording.md';
 import timeline from '../../docs/guide/timeline.md';
 import editing from '../../docs/guide/editing.md';
 import tracksMixing from '../../docs/guide/tracks-mixing.md';
+import remoteGuests from '../../docs/guide/remote-guests.md';
 import filters from '../../docs/guide/filters.md';
 import audioDrama from '../../docs/guide/audio-drama.md';
 import transcript from '../../docs/guide/transcript.md';
@@ -48,6 +49,7 @@ export const TOPICS: Topic[] = [
   { id: 'timeline', group: 'Recording and editing', markdown: timeline },
   { id: 'editing', group: 'Recording and editing', markdown: editing },
   { id: 'tracks-mixing', group: 'Recording and editing', markdown: tracksMixing },
+  { id: 'remote-guests', group: 'Recording and editing', markdown: remoteGuests },
   { id: 'filters', group: 'Sound', markdown: filters },
   { id: 'audio-drama', group: 'Sound', markdown: audioDrama },
   { id: 'transcript', group: 'Sound', markdown: transcript },

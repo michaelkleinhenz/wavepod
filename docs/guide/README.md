@@ -16,6 +16,7 @@ plain Markdown.
 - [Navigating the timeline](timeline.md)
 - [Editing clips](editing.md)
 - [Tracks and mixing](tracks-mixing.md)
+- [Remote guests](remote-guests.md)
 
 **Sound**
 

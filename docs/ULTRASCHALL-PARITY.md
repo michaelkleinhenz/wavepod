@@ -59,7 +59,7 @@ about it; the priority is explained in section 3.
 | Soundboard ducking / ducking track (jingles duck under speech) | ✅ Any track (Soundboard, music bed) can duck under the other tracks: its FX panel has "Duck under the other tracks" and a depth (−6…−24 dB). Playback and export; jingles played live while recording are not ducked (the interface can do that) | Done |
 | Remote control via MIDI and OSC (cough buttons, markers, soundboard, transport); iOS / Wiimote / Stream Deck via Bitfocus Companion | ✅ MIDI learn (transport, markers, cough buttons 1–6 held, soundboard 1–9) and an OSC server (UDP, off by default, localhost unless allowed) with fixed `/wavepod/…` addresses | Done |
 | FLAC recording | WAV only | Not planned for recording (WAV is what makes recording crash-safe); FLAC in export and "compact project", see P2 |
-| StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | ✅ Small version: a second output (Setup, on the same or another device) carrying everything, the soundboard only, the episode without live jingles, or a **mix-minus** (N‑1) feed without the guest's own input; a **Pre-show** button in the header (also MIDI/OSC) where only the soundboard is heard | Done. Per-track routing is not planned. Remote guests over the network are planned as WavePod's own feature (section 4) |
+| StudioLink remote guests, Skype/Mumble N‑1, HUB sound driver, routing matrix with pre-show/live/post-show presets | ✅ Small version: a second output (Setup, on the same or another device) carrying everything, the soundboard only, the episode without live jingles, or a **mix-minus** (N‑1) feed without the guest's own input; a **Pre-show** button in the header (also MIDI/OSC) where only the soundboard is heard | Done. Per-track routing is not planned. Remote guests over the network: WavePod's own **Remote Guests** (View menu): invite link, waiting room, LiveKit call, each guest's raw microphone recorded in their browser, uploaded during the take and lined up on their track as a take |
 | StudioLink OnAir live streaming | Missing | Not planned |
 
 ### Editing / production
@@ -108,7 +108,7 @@ without a matching benefit:
   state to reset), see the table above.
 - StudioLink, StudioLink OnAir streaming and the HUB sound driver. N‑1 is
   covered by the mix-minus output; network guests get WavePod's own remote
-  recording instead (planned, section 4).
+  recording instead (View › Remote Guests).
 - Wiimote support, Reaper action editor, embedding `.rpp` projects.
 - Cross-project keyword database of the storyboard.
 
@@ -227,11 +227,11 @@ recording (a request that came up during testing).
 ## 4. Still open
 
 - **Customisable keymap** (P3).
-- **Remote guests over the network** (Ultraschall: StudioLink). Planned as a
-  LiveKit call with the user's own key plus WavePod's own raw recorder on the
-  guest's side and a progressive upload, so each guest ends up as a clean
-  local-quality track. Implementation in four phases, start planned for
-  2026-11-13.
+- **Remote guests over the network** (Ultraschall: StudioLink): built (call,
+  waiting room, raw recording in the guest's browser, upload during the take,
+  lining up, optional video for eye contact). Still to check with real guests
+  over LiveKit Cloud on other networks and browsers (Safari, Firefox, phones);
+  tested end to end against a local LiveKit server only.
 - **Real-world checks** that every recording feature still needs before it
   counts as done: a real RØDECaster Pro II on all three OSes (channel map,
   ASIO on Windows), real MIDI controllers, VST3 on real Windows/macOS

@@ -97,6 +97,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     ...(t.voice && typeof t.voice.id === 'string' && t.voice.id ? { voice: { id: t.voice.id, name: String(t.voice.name ?? ''), ...(t.voice.cloned ? { cloned: true } : {}) } } : {}),
     ...(t.stem === 'dialogue' || t.stem === 'music' || t.stem === 'effects' || t.stem === 'none' ? { stem: t.stem } : {}),
     ...(typeof t.folderId === 'string' && t.folderId ? { folderId: t.folderId } : {}),
+    ...(t.remote && typeof t.remote.guestId === 'string' && /^[\w-]{1,64}$/.test(t.remote.guestId) ? { remote: { guestId: t.remote.guestId } } : {}),
     clips: (t.clips ?? []).map(normalizeClip),
     ...takesOf(t),
   }));
@@ -113,6 +114,10 @@ export function normalizeProject(raw: Partial<Project>): Project {
   const script = normalizeScript(raw.script);
   if (script) p.script = script;
   else delete p.script;
+  // a remote guest's audio comes over the network, never from a device input
+  for (const t of p.tracks) if (t.remote) t.inputChannels = [];
+  if (typeof raw.remoteRoom === 'string' && /^[\w-]{1,64}$/.test(raw.remoteRoom)) p.remoteRoom = raw.remoteRoom;
+  else delete p.remoteRoom;
   const exportSettings = normalizeExportSettings(raw.exportSettings);
   if (exportSettings) p.exportSettings = exportSettings;
   else delete p.exportSettings;

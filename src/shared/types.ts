@@ -100,6 +100,8 @@ export interface Track {
   voice?: TrackVoice;
   /** Stem the track goes to in a dialogue / music / effects export; guessed from the track when unset. */
   stem?: StemGroup;
+  /** A remote guest's track: the call audio arrives over the network, the raw recording is uploaded. */
+  remote?: { guestId: string };
   /** The track folder (group) this track belongs to; its members sit next to each other in the track list. */
   folderId?: string;
   /** Takes recorded over the same lines (loop recording, retakes), oldest first. */
@@ -297,6 +299,8 @@ export interface Project {
   script?: Script;
   /** How the episode was last exported (formats, bitrate, mono, loudness target). */
   exportSettings?: ExportSettings;
+  /** LiveKit room of this episode's remote guests, so invite links stay valid when it is reopened. */
+  remoteRoom?: string;
 }
 
 // ---------------------------------------------------------------- scripts (audio drama)
@@ -589,6 +593,8 @@ export interface TransportUpdate {
   preview?: { pos: Frames; length: Frames };
   /** While recording: jingles of this take that have finished (they become clips when recording stops). */
   recordedJingles?: Array<{ slotId: string; start: Frames; length: Frames }>;
+  /** Remote tracks and the input channel they use (after the device's own), as in `inputPeaks`. */
+  remoteChannels?: Record<string, number>;
   /** While playing: what each active filter did since the previous update, by filter id. */
   fxMeters?: Record<string, FxMeter>;
   /** While playing: peak (linear) each track played since the previous update, by track id. Meters unarmed tracks. */
@@ -920,4 +926,50 @@ export interface McpStatus extends McpSettings {
   error: string | null;
   /** Names of the tools offered. */
   tools: string[];
+}
+
+// ------------------------------------------------------------------ remote guests
+
+/** Settings › Remote guests, as the window sees them (the secret never leaves the main process). */
+export interface RemoteInfo {
+  /** LiveKit server, e.g. wss://my-project.livekit.cloud or a self-hosted wss://… URL. */
+  url: string;
+  apiKey: string;
+  hasSecret: boolean;
+  /** Web page guests open (the invite link points here). */
+  guestPageUrl: string;
+  /** Let participants switch on their cameras to see each other (never recorded). */
+  video: boolean;
+  /** The values come from LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET, not from the settings. */
+  fromEnvironment: boolean;
+}
+
+export interface RemoteSettingsInput {
+  url?: string;
+  apiKey?: string;
+  /** New secret; '' clears it, undefined keeps it. */
+  apiSecret?: string;
+  guestPageUrl?: string;
+  video?: boolean;
+}
+
+/** What the window needs to join the episode's room as the host. */
+export interface RemoteSessionInfo {
+  url: string;
+  token: string;
+  room: string;
+  video: boolean;
+}
+
+/** A guest's uploaded recording of one take, for the guest list. */
+export interface RemoteTakeInfo {
+  guestId: string;
+  trackId: string;
+  takeId: string;
+  state: 'recording' | 'uploading' | 'complete' | 'placed';
+  /** Chunks (seconds) on disk, and in all once known. */
+  received: number;
+  chunks: number | null;
+  missing: number;
+  note?: string;
 }

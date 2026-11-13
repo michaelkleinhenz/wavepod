@@ -45,6 +45,7 @@ import { markersCrossed, passStartIn, pingTone, takeBeepTone } from '../../core/
 import { punchPlan, punchTakeClip, type PunchPlan } from '../../core/punch';
 import { SimulatedBackend } from './simulatedBackend';
 import { MixMinusBuffer, mixMinusSources, type MixMinusSource } from '../../core/mixMinus';
+import { RemoteInputBuffer, remoteInputSizes } from '../../core/remoteInput';
 
 export const VIRTUAL_API = 'virtual';
 const METER_HZ = 30;
@@ -205,6 +206,21 @@ export class AudioEngine extends EventEmitter {
   /** The guest feed (mix-minus) on the second output: which inputs go in, and the live audio on its way. */
   private mixMinus: { sources: MixMinusSource[]; buf: MixMinusBuffer } | null = null;
   private mmBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  /**
+   * Remote guests (call audio from the window). Each remote track gets an input channel after the
+   * device's own (slot order = track order), so meters, takes and the problem monitor treat it like
+   * any other input. The slots stay fixed while recording.
+   */
+  private remoteSlots: string[] = [];
+  private remoteBufs = new Map<string, RemoteInputBuffer>();
+  private extBuf = new Float32Array(0);
+  private remoteScratch = new Float32Array(0);
+  /** Remote guests heard on the main output (the host's headphones). */
+  private remoteMonitor: { sources: MixMinusSource[]; buf: MixMinusBuffer } | null = null;
+  private rmBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  /** While a remote session runs: the feed the guests hear (local mics, jingles, playback; no remote guests). */
+  private remoteFeed: { sources: MixMinusSource[]; buf: MixMinusBuffer } | null = null;
+  private rfBuf: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private sounds = new Map<string, Sound>();
   private jingleTakes: Array<RecordedTake & { slotId: string }> = [];
   private voices: Voice[] = [];
@@ -504,7 +520,7 @@ export class AudioEngine extends EventEmitter {
 
   /** Writes silence into the take while the input is gone. */
   private recordSilence(frames: number): void {
-    const nch = this.input?.channels ?? this.inputDevice?.inputChannels ?? 1;
+    const nch = (this.input?.channels ?? this.inputDevice?.inputChannels ?? 1) + this.remoteSlots.length;
     const chunk = Math.max(1, this.config.bufferSize);
     if (this.silence.length !== chunk * nch) this.silence = new Float32Array(chunk * nch);
     for (let left = frames; left > 0; ) {
@@ -552,6 +568,78 @@ export class AudioEngine extends EventEmitter {
     this.scrubber?.invalidate();
     this.armedTrackIds = new Set(project.tracks.filter((t) => t.armed).map((t) => t.id));
     this.updateMixMinus();
+    if (this.state !== 'recording') this.updateRemoteSlots();
+    else this.updateRemoteFeed();
+  }
+
+  // ------------------------------------------------------------ remote guests
+
+  /** Starts or stops rendering the feed for remote guests (`remoteFeed` events, mono blocks). */
+  setRemoteSession(on: boolean): void {
+    if (on === !!this.remoteFeed) return;
+    if (!on) {
+      this.remoteFeed = null;
+      return;
+    }
+    this.remoteFeed = { sources: [], buf: this.newLiveBuffer() };
+    this.updateRemoteFeed();
+  }
+
+  get remoteSessionActive(): boolean {
+    return !!this.remoteFeed;
+  }
+
+  /** Call audio of the guest on `trackId`, at the project rate, as it arrives. */
+  remoteAudio(trackId: string, samples: Float32Array): void {
+    this.remoteBufs.get(trackId)?.write(samples);
+  }
+
+  /** How the guest's call audio is flowing into the engine (null for an unknown track). */
+  remoteStats(trackId: string): { buffered: number; underruns: number; dropped: number } | null {
+    return this.remoteBufs.get(trackId)?.stats() ?? null;
+  }
+
+  /** The input channel of each remote track: after the device's own, in track order. */
+  remoteChannels(): Record<string, number> {
+    const dev = this.input?.channels ?? this.inputDevice?.inputChannels ?? 0;
+    return Object.fromEntries(this.remoteSlots.map((id, i) => [id, dev + i]));
+  }
+
+  private newLiveBuffer(): MixMinusBuffer {
+    const c = this.config;
+    return new MixMinusBuffer(Math.max(4 * c.bufferSize, 1024), Math.max(2 * c.bufferSize, 512));
+  }
+
+  private updateRemoteSlots(): void {
+    const ids = this.project.tracks.filter((t) => t.remote).map((t) => t.id);
+    const { target, max } = remoteInputSizes(this.project.sampleRate, this.config.bufferSize);
+    for (const id of ids) {
+      const b = this.remoteBufs.get(id);
+      if (!b || b.target !== target || b.max !== max) this.remoteBufs.set(id, new RemoteInputBuffer(target, max));
+    }
+    for (const id of [...this.remoteBufs.keys()]) if (!ids.includes(id)) this.remoteBufs.delete(id);
+    this.remoteSlots = ids;
+    const dev = this.input?.channels ?? this.inputDevice?.inputChannels ?? 0;
+    this.inputPeaks.length = dev + ids.length;
+    this.inputPeaks.fill(0);
+    this.updateRemoteFeed();
+  }
+
+  /** Which inputs the remote guests and the host hear; follows the tracks (mute, pan). */
+  private updateRemoteFeed(): void {
+    const dev = this.input?.channels ?? this.inputDevice?.inputChannels ?? 0;
+    if (this.remoteFeed) this.remoteFeed.sources = mixMinusSources(this.project.tracks, dev, []);
+    const mon: MixMinusSource[] = [];
+    this.remoteSlots.forEach((id, i) => {
+      const t = this.project.tracks.find((x) => x.id === id);
+      if (!t || t.mute) return;
+      const g = dbToGain(t.gain);
+      const pan = Math.max(-1, Math.min(1, t.pan));
+      mon.push({ channel: dev + i, left: g * Math.min(1, 1 - pan), right: g * Math.min(1, 1 + pan) });
+    });
+    if (!mon.length) this.remoteMonitor = null;
+    else if (this.remoteMonitor) this.remoteMonitor.sources = mon;
+    else this.remoteMonitor = { sources: mon, buf: this.newLiveBuffer() };
   }
 
   /** Sets up (or drops) the guest feed after the device setup or the tracks changed. */
@@ -720,15 +808,18 @@ export class AudioEngine extends EventEmitter {
     if (hasAudio && sr !== this.project.sampleRate) {
       throw new Error(`The project runs at ${this.project.sampleRate} Hz but the device is set to ${sr} Hz.`);
     }
-    const armed = this.project.tracks.filter((t) => t.armed && t.inputChannels.length > 0);
+    this.updateRemoteSlots();
+    const remoteCh = this.remoteChannels();
+    const channelsOf = (t: Track) => (t.remote ? (remoteCh[t.id] === undefined ? [] : [remoteCh[t.id]]) : t.inputChannels);
+    const armed = this.project.tracks.filter((t) => t.armed && channelsOf(t).length > 0);
     if (armed.length === 0) throw new Error('Arm at least one track that has an input assigned.');
-    const bad = armed.find((t) => t.inputChannels.some((c) => c >= this.input!.channels));
+    const bad = armed.find((t) => !t.remote && t.inputChannels.some((c) => c >= this.input!.channels));
     if (bad) throw new Error(`Track "${bad.name}" uses an input channel the device doesn't have.`);
 
     const mediaDir = path.join(this.projectDir, 'media');
     fs.mkdirSync(mediaDir, { recursive: true });
     const bitDepth = this.project.bitDepth;
-    const bytesPerSecond = armed.reduce((n, t) => n + t.inputChannels.length, 0) * sr * (bitDepth / 8);
+    const bytesPerSecond = armed.reduce((n, t) => n + channelsOf(t).length, 0) * sr * (bitDepth / 8);
     const free = this.freeSpace(mediaDir);
     if (free !== null && free < bytesPerSecond * MIN_DISK_SECONDS) {
       throw new Error(`The disk is full: there is not even room for a minute of recording (${Math.round(free / 1e6)} MB free).`);
@@ -743,15 +834,15 @@ export class AudioEngine extends EventEmitter {
       }
       return {
         trackId: t.id,
-        channels: [...t.inputChannels],
+        channels: [...channelsOf(t)],
         peaks: new MipmapBuilder(),
         file: rel.split(path.sep).join('/'),
-        scratch: t.inputChannels.map(() => new Float32Array(0)),
+        scratch: channelsOf(t).map(() => new Float32Array(0)),
         sentBuckets: 0,
       };
     });
     const specs: TakeFileSpec[] = recorders.map((r) => ({ path: path.join(this.projectDir, r.file), channels: r.channels }));
-    const opts: TakeFilesOptions = { sampleRate: sr, bitDepth, deviceChannels: this.input.channels };
+    const opts: TakeFilesOptions = { sampleRate: sr, bitDepth, deviceChannels: this.input.channels + this.remoteSlots.length };
     // The journal comes first: if anything goes down from here on, the next start finds the files.
     this.journal = {
       version: 1,
@@ -785,7 +876,8 @@ export class AudioEngine extends EventEmitter {
       sampleRate: sr,
       bufferSize: this.input.frameSize,
       bytesPerSecond,
-      tracks: armed.map((t) => ({ trackId: t.id, name: t.name, channels: [...t.inputChannels] })),
+      // a guest's call audio drops and jitters with the network: not something the monitor should alarm about
+      tracks: armed.filter((t) => !t.remote).map((t) => ({ trackId: t.id, name: t.name, channels: [...t.inputChannels] })),
     });
     this.journalSaved = { rev: 0, at: performance.now() };
     this.freeBytes = { value: free, at: performance.now() };
@@ -844,6 +936,7 @@ export class AudioEngine extends EventEmitter {
       this.playPos = punch ? punch.from : report.loop ? report.loop[0] : this.recordStart + this.recordedFrames;
     }
     this.state = 'stopped';
+    this.updateRemoteSlots();
     this.emitTransport();
     if (takes.length) this.emit('recordingFinished', takes, report);
     else if (wasRecording && this.projectDir && !report?.writeError) clearJournal(this.projectDir);
@@ -1016,11 +1109,39 @@ export class AudioEngine extends EventEmitter {
   private onInput(interleaved: Float32Array): void {
     this.lastInputMs = performance.now();
     if (this.inputLost) this.inputRecovered();
-    const nch = this.input?.channels ?? 1;
-    const frames = Math.floor(interleaved.length / nch);
-    interleavedPeaks(interleaved, nch, this.inputPeaks);
-    this.mixMinus?.buf.write(interleaved, nch, this.mixMinus.sources);
-    this.recordBuffer(interleaved, frames, nch, true);
+    const dev = this.input?.channels ?? 1;
+    const frames = Math.floor(interleaved.length / dev);
+    const { data, nch } = this.withRemote(interleaved, frames, dev);
+    interleavedPeaks(data, nch, this.inputPeaks);
+    this.mixMinus?.buf.write(data, nch, this.mixMinus.sources);
+    this.remoteFeed?.buf.write(data, nch, this.remoteFeed.sources);
+    this.remoteMonitor?.buf.write(data, nch, this.remoteMonitor.sources);
+    this.recordBuffer(data, frames, nch, true);
+  }
+
+  /** The device's input buffer with one more channel per remote guest after its own. */
+  private withRemote(interleaved: Float32Array, frames: number, dev: number): { data: Float32Array; nch: number } {
+    const r = this.remoteSlots.length;
+    if (!r) return { data: interleaved, nch: dev };
+    const nch = dev + r;
+    if (this.extBuf.length !== frames * nch) this.extBuf = new Float32Array(frames * nch);
+    if (this.remoteScratch.length < frames) this.remoteScratch = new Float32Array(frames);
+    const ext = this.extBuf;
+    for (let i = 0; i < frames; i++) {
+      for (let c = 0; c < dev; c++) ext[i * nch + c] = interleaved[i * dev + c];
+    }
+    this.remoteSlots.forEach((id, k) => {
+      const tmp = this.remoteScratch;
+      const b = this.remoteBufs.get(id);
+      if (b) b.readInto(tmp, frames);
+      else tmp.fill(0, 0, frames);
+      for (let i = 0; i < frames; i++) ext[i * nch + dev + k] = tmp[i];
+    });
+    if (this.inputPeaks.length !== nch) {
+      this.inputPeaks.length = nch;
+      for (let c = 0; c < nch; c++) this.inputPeaks[c] ??= 0;
+    }
+    return { data: ext, nch };
   }
 
   /** Adds one buffer to the take; `live` is false for silence written while the input is gone. */
@@ -1061,6 +1182,20 @@ export class AudioEngine extends EventEmitter {
     this.recordedFrames += frames;
   }
 
+  /** The remote guests' feed for this block, in mono: local mics, jingles and playback (no take beep). */
+  private renderRemoteFeed(frames: number, L: Float32Array, R: Float32Array, SL: Float32Array, SR: Float32Array): void {
+    const f = this.remoteFeed!;
+    if (this.rfBuf[0].length < frames) this.rfBuf = [new Float32Array(frames), new Float32Array(frames)];
+    const [fl, fr] = this.rfBuf;
+    fl.fill(0, 0, frames);
+    fr.fill(0, 0, frames);
+    f.buf.readInto(frames, fl, fr);
+    const tl = this.preShow ? 0 : 1;
+    const mono = new Float32Array(frames);
+    for (let i = 0; i < frames; i++) mono[i] = 0.5 * (L[i] * tl + SL[i] + fl[i] + R[i] * tl + SR[i] + fr[i]);
+    this.emit('remoteFeed', mono);
+  }
+
   /** Renders the next output buffer (interleaved, all device output channels). */
   private onOutput(frames: number, nch: number): Float32Array {
     if (this.mixBuf[0].length < frames) this.mixBuf = [new Float32Array(frames), new Float32Array(frames)];
@@ -1099,9 +1234,19 @@ export class AudioEngine extends EventEmitter {
       mm[1].fill(0, 0, frames);
       this.mixMinus.buf.readInto(frames, mm[0], mm[1]);
     }
+    // remote guests: the host hears them on the main pair; they hear the feed, which leaves them out
+    let rm: Float32Array[] | null = null;
+    if (this.remoteMonitor) {
+      if (this.rmBuf[0].length < frames) this.rmBuf = [new Float32Array(frames), new Float32Array(frames)];
+      rm = this.rmBuf;
+      rm[0].fill(0, 0, frames);
+      rm[1].fill(0, 0, frames);
+      this.remoteMonitor.buf.readInto(frames, rm[0], rm[1]);
+    }
+    if (this.remoteFeed) this.renderRemoteFeed(frames, L, R, SL, SR);
     for (let i = 0; i < frames; i++) {
-      const l = L[i] * tlMain + SL[i] + (pv ? pv[0][i] : 0);
-      const r = R[i] * tlMain + SR[i] + (pv ? pv[1][i] : 0);
+      const l = L[i] * tlMain + SL[i] + (pv ? pv[0][i] : 0) + (rm ? rm[0][i] : 0);
+      const r = R[i] * tlMain + SR[i] + (pv ? pv[1][i] : 0) + (rm ? rm[1][i] : 0);
       if (Math.abs(l) > this.outputPeaks[0]) this.outputPeaks[0] = Math.abs(l);
       if (Math.abs(r) > this.outputPeaks[1]) this.outputPeaks[1] = Math.abs(r);
       const bp = beep ? beep[i] : 0;
@@ -1372,6 +1517,7 @@ export class AudioEngine extends EventEmitter {
       outputPeaks: [...this.outputPeaks],
       recordedFrames: this.recordedFrames,
     };
+    if (this.remoteSlots.length) update.remoteChannels = this.remoteChannels();
     if (this.state === 'recording' && this.punch) update.punch = [this.punch.in, this.punch.out];
     if (this.state === 'recording') {
       update.recordingPeaks = this.takeLivePeaks();

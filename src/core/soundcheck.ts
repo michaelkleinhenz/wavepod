@@ -38,7 +38,7 @@ const BUILTIN_MIC = /built-?in|internal|macbook|integrated|webcam|camera/i;
 
 /** Bytes per minute when recording the armed tracks (WAV, project bit depth). */
 export function recordingBytesPerMinute(project: Project, sampleRate: number): number {
-  const channels = project.tracks.filter((t) => t.armed).reduce((n, t) => n + t.inputChannels.length, 0);
+  const channels = project.tracks.filter((t) => t.armed).reduce((n, t) => n + (t.remote ? 1 : t.inputChannels.length), 0);
   return channels * sampleRate * (project.bitDepth / 8) * 60;
 }
 
@@ -53,7 +53,7 @@ function clock(seconds: number): string {
 export function runSoundcheck(ctx: SoundcheckContext): SoundcheckIssue[] {
   const { project } = ctx;
   const out: SoundcheckIssue[] = [];
-  const armed = project.tracks.filter((t) => t.armed && t.inputChannels.length > 0);
+  const armed = project.tracks.filter((t) => t.armed && (t.inputChannels.length > 0 || t.remote));
 
   if (!ctx.inputOpen) out.push({ id: 'no-input', level: 'error', message: 'No input device is open. Pick your interface on the Audio tab in Setup.' });
   if (!armed.length) out.push({ id: 'no-armed', level: 'error', message: 'No track is armed. Arm the tracks you want to record (the R button on each track).' });

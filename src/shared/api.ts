@@ -21,6 +21,10 @@ import type {
   OscStatus,
   AuphonicInfo,
   AuphonicSettingsInput,
+  RemoteInfo,
+  RemoteSessionInfo,
+  RemoteSettingsInput,
+  RemoteTakeInfo,
   RemoteCommand,
   Project,
   RecordedTake,
@@ -139,7 +143,8 @@ export type MenuCommand =
   | 'cleanup'
   | 'loop-record'
   | 'next-take'
-  | 'previous-take';
+  | 'previous-take'
+  | 'remote-guests';
 
 /** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
 export interface MenuModelItem {
@@ -173,6 +178,25 @@ export interface WavePodApi {
   getMcpStatus(): Promise<McpStatus>;
   /** Stores the settings and starts, restarts or stops the server. */
   setMcpSettings(settings: McpSettings): Promise<McpStatus>;
+
+  // Remote guests (LiveKit)
+  getRemoteSettings(): Promise<RemoteInfo>;
+  setRemoteSettings(input: RemoteSettingsInput): Promise<RemoteInfo>;
+  /** Checks the LiveKit URL, key and secret; returns how many rooms are open. */
+  testRemote(): Promise<number>;
+  /** Starts the episode's remote session: the window gets a port for audio and a host token. */
+  remoteStart(): Promise<RemoteSessionInfo>;
+  remoteStop(): Promise<void>;
+  /** Adds a remote guest track and returns its invite link. */
+  remoteInvite(name: string): Promise<{ trackId: string; link: string }>;
+  /** A fresh invite link for a remote track. */
+  remoteLink(trackId: string): Promise<string>;
+  /** Lets a waiting guest in. */
+  remoteAdmit(identity: string): Promise<void>;
+  /** Puts a guest back in the waiting room. */
+  remoteHoldBack(identity: string): Promise<void>;
+  remoteRemove(identity: string): Promise<void>;
+  remoteTakes(): Promise<RemoteTakeInfo[]>;
 
   // Auphonic hand-off
   getAuphonicSettings(): Promise<AuphonicInfo>;
@@ -410,7 +434,8 @@ export interface WavePodApi {
   /** OSC remote-control commands. */
   onRemote(cb: (cmd: RemoteCommand) => void): () => void;
   /** An AI agent changed the project over MCP; it is already applied in the main process. */
-  onProjectEdited(cb: (e: { project: Project; rev: number; summary: string }) => void): () => void;
+  /** The main process changed the project (an AI agent's edit, or a remote guest's recording arriving): one undo step. */
+  onProjectEdited(cb: (e: { project: Project; rev: number; summary: string; source?: 'agent' | 'remote' }) => void): () => void;
   onSaveState(cb: (s: SaveState) => void): () => void;
   onTranscribeProgress(cb: (p: TranscribeProgress) => void): () => void;
   /** A file's transcript was made (or removed: null). */
@@ -457,6 +482,17 @@ export type InvokeMethod = Exclude<
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
+  'getRemoteSettings',
+  'setRemoteSettings',
+  'testRemote',
+  'remoteStart',
+  'remoteStop',
+  'remoteInvite',
+  'remoteLink',
+  'remoteAdmit',
+  'remoteHoldBack',
+  'remoteRemove',
+  'remoteTakes',
   'getStatus',
   'listDevices',
   'applyConfig',

@@ -6,16 +6,18 @@ import { append, clear, errorMessage, h, toast } from './dom';
 import { isMcpOn, renderMcpCard } from './mcpCard';
 import { midi } from './midi';
 import { renderMidiCard } from './midiCard';
+import { renderRemoteCard } from './remote/settingsCard';
 import { isOscOn, renderOscCard } from './oscCard';
 import { api, savePunchRoll, store, type PunchRoll } from './store';
 import { DEFAULT_POST_ROLL_SECONDS, DEFAULT_PRE_ROLL_SECONDS, MAX_POST_ROLL_SECONDS, MAX_PRE_ROLL_SECONDS, clampRoll } from '../core/punch';
 import { transcripts } from './transcripts';
 import { CROSSTALK_CHOICES, CROSSTALK_DEFAULT_DB, MIN_LEVEL_CHOICES } from '../core/wordLevels';
 
-export type SettingsTab = 'general' | 'controllers' | 'agents';
+export type SettingsTab = 'general' | 'controllers' | 'remote' | 'agents';
 const TABS: Array<{ id: SettingsTab; label: string; blurb: string }> = [
   { id: 'general', label: 'General', blurb: 'Recording alerts, punch-in pre-roll, the sound effects folder and how transcripts are made.' },
   { id: 'controllers', label: 'Controllers', blurb: 'Start recording, drop markers and fire jingles from a MIDI controller or Stream Deck.' },
+  { id: 'remote', label: 'Remote guests', blurb: 'Record guests over the internet: a live call through LiveKit, and their own full-quality recording sent to this computer.' },
   { id: 'agents', label: 'AI agents', blurb: 'Let AI apps on this computer help with filters and loudness.' },
 ];
 const TAB_KEY = 'wavepod.settingsTab';
@@ -142,6 +144,7 @@ export class SettingsDialog {
     const on: Record<SettingsTab, boolean> = {
       general: false,
       controllers: midi.settings.enabled || isOscOn(),
+      remote: false,
       agents: isMcpOn(),
     };
     return h(
@@ -170,6 +173,7 @@ export class SettingsDialog {
     const page = h('div', { class: 'settings-page', role: 'tabpanel' }, h('p', { class: 'setup-blurb muted' }, TABS.find((t) => t.id === this.tab)!.blurb));
     if (this.tab === 'general') append(page, this.renderGeneral());
     else if (this.tab === 'controllers') append(page, [renderMidiCard(), renderOscCard()]);
+    else if (this.tab === 'remote') page.append(renderRemoteCard());
     else page.append(renderMcpCard());
     this.dialog = h(
       'div',

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { INVOKE_METHODS, IPC, type WavePodApi } from '../shared/api';
+import { REMOTE_PORT_CHANNEL, REMOTE_PORT_MESSAGE } from '../shared/remoteBridge';
 
 function subscribe<T>(channel: string) {
   return (cb: (payload: T) => void) => {
@@ -37,3 +38,9 @@ for (const method of INVOKE_METHODS) {
 }
 
 contextBridge.exposeInMainWorld('wavepod', api as unknown as WavePodApi);
+
+// Remote guests: the main process sends a MessagePort for audio and uploads; ports can't cross the
+// context bridge, so it goes to the page as a window message.
+ipcRenderer.on(REMOTE_PORT_CHANNEL, (e) => {
+  window.postMessage(REMOTE_PORT_MESSAGE, '*', e.ports);
+});
