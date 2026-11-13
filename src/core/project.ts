@@ -12,6 +12,7 @@ import { audibleTracks, groupFolderTracks, normalizeFolders } from './folders';
 import { normalizeExportSettings } from './exportSettings';
 import { normalizeScript } from './script';
 import { insertIntoTakes, normalizeTakes, rippleTakes } from './takes';
+import { mapDirector, normalizeVideo, removeCamera, rippleDeleteCuts, shiftCuts } from './video';
 
 function normalizeFxList(list: unknown): Fx[] {
   return Array.isArray(list) ? list.map((f) => normalizeFx(f as Partial<Fx>)).filter((f): f is Fx => !!f) : [];
@@ -97,6 +98,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     ...(t.voice && typeof t.voice.id === 'string' && t.voice.id ? { voice: { id: t.voice.id, name: String(t.voice.name ?? ''), ...(t.voice.cloned ? { cloned: true } : {}) } } : {}),
     ...(t.stem === 'dialogue' || t.stem === 'music' || t.stem === 'effects' || t.stem === 'none' ? { stem: t.stem } : {}),
     ...(typeof t.folderId === 'string' && t.folderId ? { folderId: t.folderId } : {}),
+    ...(typeof t.cameraId === 'string' && t.cameraId ? { cameraId: t.cameraId } : {}),
     ...(t.remote && typeof t.remote.guestId === 'string' && /^[\w-]{1,64}$/.test(t.remote.guestId) ? { remote: { guestId: t.remote.guestId } } : {}),
     clips: (t.clips ?? []).map(normalizeClip),
     ...takesOf(t),
@@ -118,6 +120,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
   for (const t of p.tracks) if (t.remote) t.inputChannels = [];
   if (typeof raw.remoteRoom === 'string' && /^[\w-]{1,64}$/.test(raw.remoteRoom)) p.remoteRoom = raw.remoteRoom;
   else delete p.remoteRoom;
+  normalizeVideo(p);
   const exportSettings = normalizeExportSettings(raw.exportSettings);
   if (exportSettings) p.exportSettings = exportSettings;
   else delete p.exportSettings;
@@ -164,6 +167,9 @@ export function updateTrack(project: Project, trackId: string, patch: Partial<Tr
 }
 
 export function removeTrack(project: Project, trackId: string): Project {
+  // a camera's sound track goes with its camera (the picture follows that track)
+  const cameraId = project.tracks.find((t) => t.id === trackId)?.cameraId;
+  if (cameraId && project.cameras?.some((c) => c.id === cameraId)) return clone(removeCamera(project, cameraId));
   const p = clone(project);
   p.tracks = p.tracks.filter((t) => t.id !== trackId);
   return p;
@@ -278,6 +284,7 @@ export function rippleDelete(project: Project, start: number, end: number): Proj
     mapTrackAutomation(t, (pts) => shiftAutomation(pts, end, -len));
     rippleTakes(t, start, end);
   }
+  mapDirector(p, (cuts) => rippleDeleteCuts(cuts, start, end));
   if (p.regions?.length) p.regions = rippleDeleteRegions(p.regions, start, end);
   p.markers = p.markers
     .filter((m) => m.position < start || m.position >= end)
@@ -296,6 +303,7 @@ export function insertSilence(project: Project, position: number, length: number
     insertIntoTakes(t, position, length);
   }
   for (const m of p.markers) if (m.position >= position) m.position += length;
+  mapDirector(p, (cuts) => shiftCuts(cuts, position, length));
   if (p.regions?.length) p.regions = insertIntoRegionList(p.regions, position, length);
   return p;
 }

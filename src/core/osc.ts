@@ -26,6 +26,7 @@ export const OSC_ADDRESSES: Array<{ address: string; what: string }> = [
   { address: '/wavepod/sound/1…9', what: 'Play soundboard slot' },
   { address: '/wavepod/sounds/stop', what: 'Stop all sounds' },
   { address: '/wavepod/preshow', what: 'Pre-show on / off (only the soundboard is heard)' },
+  { address: '/wavepod/camera/1…9', what: 'Video: switch to camera 1…9 at the playhead' },
 ];
 
 const FIXED: Record<string, MidiAction> = {
@@ -149,6 +150,8 @@ export function oscCommand(msg: OscMessage): RemoteCommand | null {
   if (cough) return { action: `cough-${Number(cough[1])}` as MidiAction, pressed: on };
   const sound = /^\/wavepod\/sound\/([1-9])$/.exec(address);
   if (sound) return on ? { action: `sound-${Number(sound[1])}` as MidiAction, pressed: true } : null;
+  const camera = /^\/wavepod\/camera\/([1-9])$/.exec(address);
+  if (camera) return on ? { action: `camera-${Number(camera[1])}` as MidiAction, pressed: true } : null;
   return null;
 }
 

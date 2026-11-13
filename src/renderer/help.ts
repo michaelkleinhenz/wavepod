@@ -16,7 +16,9 @@ function currentContext(): HelpContext {
         ? 'library'
         : document.querySelector('.script-panel')
           ? 'script'
-          : null;
+          : document.querySelector('.video-panel')
+            ? 'video'
+            : null;
   return { dialog, tab, view: store.view, panel, recording: store.transport?.state === 'recording' };
 }
 

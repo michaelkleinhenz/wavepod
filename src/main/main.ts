@@ -66,6 +66,7 @@ import { RemoteHost, normalizeRemoteSettings, remoteInfo, updateRemoteSettings, 
 import type { Clip, RemoteSettingsInput } from '../shared/types';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
+import { VIDEO_EXTENSIONS, VideoWriter, fileSize, readRange, removeVideoTemp, resolveMediaPath, storedVideoPath, videoTempBase } from './video';
 import { LIBRARY_EXTENSIONS, addFavourites, normalizeFavourites, type FavouriteSound, type FavouriteSoundInfo, type SoundLibraryInfo } from '../core/soundLibrary';
 
 // Carry settings over from the SoundPod era before anything reads userData.
@@ -172,7 +173,7 @@ function projectsRoot(): string {
 }
 
 /** app.getPath throws for some names on systems without that folder configured. */
-function safeGetPath(name: 'music' | 'documents'): string {
+function safeGetPath(name: 'music' | 'documents' | 'videos'): string {
   try {
     return app.getPath(name);
   } catch {
@@ -607,6 +608,9 @@ function reserveMediaFile(name: string): string {
 const importsInProgress = new Map<string, { rel: string; dir: string; writer: WavWriter }>();
 let importSeq = 0;
 
+/** Exported videos the window is writing. */
+const videoWriter = new VideoWriter();
+
 const handlers: Record<InvokeMethod, Handler> = {
   getStatus: () => engine.status(),
   listDevices: () => engine.listDevices(),
@@ -834,6 +838,31 @@ const handlers: Record<InvokeMethod, Handler> = {
     });
     return res.canceled ? [] : res.filePaths;
   },
+  pickVideoFiles: async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Choose camera videos',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Video', extensions: VIDEO_EXTENSIONS }],
+    });
+    return res.canceled ? [] : res.filePaths;
+  },
+  storedVideoPath: (p: string) => storedVideoPath(current.dir, p),
+  fileSize: (p: string) => fileSize(resolveMediaPath(current.dir, p)),
+  readFileRange: (p: string, start: number, end: number) => readRange(resolveMediaPath(current.dir, p), start, end),
+  chooseVideoExportPath: async (defaultName: string) => {
+    const res = await dialog.showSaveDialog(win!, {
+      title: 'Export video',
+      defaultPath: path.join(exportDialogDir(current.dir, [safeGetPath('videos'), app.getPath('home')]), defaultName),
+      filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    return /\.mp4$/i.test(res.filePath) ? res.filePath : `${res.filePath}.mp4`;
+  },
+  videoOutOpen: (p: string) => videoWriter.open(p),
+  videoOutWrite: (id: string, position: number, data: Uint8Array) => videoWriter.write(id, position, data),
+  videoOutClose: (id: string, abort?: boolean) => videoWriter.close(id, abort),
+  videoTempBase: () => videoTempBase(),
+  removeVideoTemp: (base: string) => removeVideoTemp(base),
   // Relative paths (e.g. soundboard jingles copied from a template) are inside the project folder.
   readFile: (p: string) => new Uint8Array(fs.readFileSync(path.resolve(current.dir, p))),
   importAudio: (name: string, channels: Float32Array[], sampleRate: number) => {
@@ -1146,7 +1175,7 @@ let appMenu: Menu | null = null;
 const menuItems = new Map<string, MenuItem>();
 
 /** Shortcuts shown next to menu items whose keys the window handles itself. */
-const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'punch-in': 'Shift+R', 'loop-record': 'Alt+Shift+R', 'next-take': 'T', 'previous-take': 'Shift+T', 'fuse-clips': 'G' };
+const MENU_KEY_HINTS: Record<string, string> = { 'speed-up': '>', 'speed-down': '<', 'punch-in': 'Shift+R', 'loop-record': 'Alt+Shift+R', 'next-take': 'T', 'previous-take': 'Shift+T', 'fuse-clips': 'G', 'watch-through': 'W' };
 
 function menuModel(): MenuModelTop[] {
   menuItems.clear();
@@ -1217,8 +1246,10 @@ function buildMenu(): void {
         { label: 'Import Audio…', accelerator: 'CmdOrCtrl+I', click: menuSend('import-audio') },
         { label: 'Import Chapters…', click: menuSend('import-chapters') },
         { label: 'Import Script…', click: menuSend('import-script') },
+        { label: 'Import Camera Video…', click: menuSend('import-video') },
         { type: 'separator' },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: menuSend('export') },
+        { label: 'Export Video…', accelerator: 'Shift+CmdOrCtrl+E', click: menuSend('export-video') },
         { label: 'Send to Auphonic…', click: menuSend('auphonic') },
         { label: 'Show Project Folder', click: menuSend('show-project-folder') },
         { label: 'Restore Backup…', click: menuSend('restore-backup') },
@@ -1297,6 +1328,9 @@ function buildMenu(): void {
         { label: 'Transcript', accelerator: 'Shift+CmdOrCtrl+T', click: menuSend('transcript') },
         { label: 'Sound Library', accelerator: 'Shift+CmdOrCtrl+B', click: menuSend('sound-library') },
         { label: 'Script', accelerator: 'Shift+CmdOrCtrl+J', click: menuSend('script') },
+        { label: 'Video', accelerator: 'Shift+CmdOrCtrl+U', click: menuSend('video') },
+        // W is handled in the window (single keys must not fire while typing), see MENU_KEY_HINTS
+        { id: 'watch-through', label: 'Watch Through and Switch Cameras', click: menuSend('watch-through') },
         { label: 'Remote Guests', accelerator: 'Shift+CmdOrCtrl+G', click: menuSend('remote-guests') },
         { label: 'Script in New Window', click: menuSend('script-window') },
         { type: 'separator' },
@@ -1638,6 +1672,7 @@ app.on('before-quit', (e) => {
     engine.dispose();
   }
   recordWorker?.dispose();
+  videoWriter.closeAll();
   if (zencastrTmp) fs.rmSync(zencastrTmp, { recursive: true, force: true });
 });
 

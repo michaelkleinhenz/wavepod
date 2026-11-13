@@ -163,6 +163,14 @@ The full license texts ship with each package in `node_modules`. No LiveKit
 server code is part of WavePod; the call runs through a LiveKit server the user
 sets up (LiveKit Cloud or their own).
 
+### Mediabunny (MPL-2.0)
+
+Video podcasts (camera import, preview and **Export Video…**) use
+[Mediabunny](https://github.com/Vanilagy/mediabunny) 1.x, Copyright Vanilagy,
+licensed under the Mozilla Public License 2.0 (full text in
+`LICENSES/MPL-2.0.txt`). WavePod uses it unmodified; its source code is
+available at <https://github.com/Vanilagy/mediabunny>.
+
 ### Electron (MIT)
 
 The app runs on [Electron](https://www.electronjs.org/), which ships its own

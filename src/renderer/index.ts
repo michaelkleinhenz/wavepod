@@ -74,6 +74,12 @@ import { CleanupDialog } from './cleanupDialog';
 import { transcripts } from './transcripts';
 import { RecordingAlertModal } from './recordingAlert';
 import { shortcutLetter } from './shortcutKey';
+import { VideoPanel, showCameraMenu, switchAtPlayhead } from './video/videoPanel';
+import { WatchThrough } from './video/watchThrough';
+import { importVideos } from './video/cameras';
+import { openVideoExport } from './video/videoExport';
+import { openAutoDirect } from './video/autoDirectDialog';
+import { videoPlayer } from './video/player';
 
 function formatDuration(seconds: number): string {
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
@@ -113,14 +119,32 @@ async function main(): Promise<void> {
   transcriptPanel.onCleanup = () => cleanupDialog.open();
   const libraryPanel = new SoundLibraryPanel();
   const scriptPanel = new ScriptPanel();
-  // the library, the script and the transcript share the right side: one at a time
+  const videoPanel = new VideoPanel();
+  const watchThrough = new WatchThrough();
+  videoPanel.onWatchThrough = () => watchThrough.open();
+  videoPanel.onAutoDirect = () => openAutoDirect();
+  videoPanel.onExport = () => openVideoExport();
+  // the library, the script, the transcript and the cameras share the right side: one at a time
   libraryPanel.onOpen = () => {
     if (transcriptPanel.isOpen) transcriptPanel.close();
     if (scriptPanel.isOpen) scriptPanel.close();
+    if (videoPanel.isOpen) videoPanel.close();
   };
   scriptPanel.onOpen = () => {
     if (transcriptPanel.isOpen) transcriptPanel.close();
     if (libraryPanel.isOpen) libraryPanel.close();
+    if (videoPanel.isOpen) videoPanel.close();
+  };
+  videoPanel.onOpen = () => {
+    if (transcriptPanel.isOpen) transcriptPanel.close();
+    if (libraryPanel.isOpen) libraryPanel.close();
+    if (scriptPanel.isOpen) scriptPanel.close();
+  };
+  const openVideo = () => {
+    if (store.view !== 'edit') {
+      if (!videoPanel.isOpen) videoPanel.toggle();
+      store.setView('edit');
+    } else videoPanel.toggle();
   };
   const openScript = () => {
     if (store.view !== 'edit') {
@@ -143,6 +167,7 @@ async function main(): Promise<void> {
   const openTranscript = () => {
     if (!transcriptPanel.isOpen && libraryPanel.isOpen) libraryPanel.close();
     if (!transcriptPanel.isOpen && scriptPanel.isOpen) scriptPanel.close();
+    if (!transcriptPanel.isOpen && videoPanel.isOpen) videoPanel.close();
     if (store.view !== 'edit') {
       if (!transcriptPanel.isOpen) transcriptPanel.toggle();
       store.setView('edit');
@@ -154,6 +179,8 @@ async function main(): Promise<void> {
   timeline.onOpenClipFx = (clipId) => fxPanel.toggle(clipTarget(clipId));
   timeline.isClipFxOpen = (clipId) => fxPanel.target === clipTarget(clipId);
   timeline.onOpenLoudness = () => loudnessDialog.open();
+  timeline.onOpenVideo = () => openVideo();
+  timeline.onCameraMenu = (id, x, y) => showCameraMenu(id, x, y);
 
   // ---------------------------------------------------------------- header
   const tabs: Record<View, HTMLButtonElement> = {
@@ -303,6 +330,8 @@ async function main(): Promise<void> {
     transcriptPanel.setHidden(store.view !== 'edit');
     libraryPanel.setHidden(store.view !== 'edit');
     scriptPanel.setHidden(store.view !== 'edit');
+    videoPanel.setHidden(store.view !== 'edit');
+    if (store.view !== 'edit' && watchThrough.isOpen) watchThrough.close();
   };
 
   const renderStatus = () => {
@@ -358,6 +387,7 @@ async function main(): Promise<void> {
     if (kinds.has('project') || kinds.has('selection')) transcriptPanel.refresh();
     if (kinds.has('project')) libraryPanel.refresh();
     if (kinds.has('project')) scriptPanel.refresh();
+    if (kinds.has('project')) videoPanel.refresh();
     if (kinds.has('selection')) scriptPanel.selectionChanged();
     if (kinds.has('project')) {
       void transcripts().ensureLoaded();
@@ -449,6 +479,13 @@ async function main(): Promise<void> {
     toast(source === 'remote' ? summary : `AI agent: ${summary}`);
   });
   remoteHooks.playSound = (i) => void soundboard.trigger(i);
+  // a camera button: in the watch-through view it is a key press there (recorded into the pass)
+  remoteHooks.camera = (i) => {
+    const cam = store.project.cameras?.[i];
+    if (!cam) return;
+    if (watchThrough.isOpen) watchThrough.take(cam.id);
+    else switchAtPlayhead(cam.id, videoPlayer.position());
+  };
   api().onRemote(runRemote);
 
   api().onMenu((cmd) => {
@@ -461,6 +498,10 @@ async function main(): Promise<void> {
       case 'save-template': return void templates.openSave();
       case 'show-templates-folder': return void api().showTemplatesFolder();
       case 'import-audio': return void importAudioFiles();
+      case 'import-video': return void importVideos().then(() => store.project.cameras?.length && !videoPanel.isOpen && openVideo());
+      case 'export-video': return void (!document.querySelector('.overlay') && openVideoExport());
+      case 'video': return openVideo();
+      case 'watch-through': return void (!document.querySelector('.overlay') && watchThrough.toggle());
       case 'import-chapters': return void importChapterFile();
       case 'import-zencastr': return void importZencastrSession();
       case 'export': return exportDialog.open();
@@ -554,6 +595,14 @@ async function main(): Promise<void> {
       showShortcuts();
       return;
     }
+    // Alt+1…9: switch to camera n at the playhead (also while playing)
+    const camKey = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    if (camKey && e.altKey && !e.shiftKey && store.project.cameras?.length) {
+      e.preventDefault();
+      const cam = store.project.cameras[Number(camKey[1]) - 1];
+      if (cam && !e.repeat) switchAtPlayhead(cam.id, videoPlayer.position());
+      return;
+    }
     const cough = /^Digit([1-9])$/.exec(e.code);
     if (cough && e.shiftKey) {
       e.preventDefault();
@@ -583,6 +632,11 @@ async function main(): Promise<void> {
       case 'l':
       case 'L':
         toggleRepeat();
+        break;
+      case 'w':
+      case 'W':
+        if (store.project.cameras?.length) watchThrough.toggle();
+        else toast('Watch through needs cameras: File › Import Camera Video…');
         break;
       case 'm':
       case 'M':

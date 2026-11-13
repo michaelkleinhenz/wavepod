@@ -2,6 +2,7 @@
 // Ctrl+Shift-drag: on all tracks, with markers and mute regions).
 import type { Frames, Project } from '../shared/types';
 import { mapTrackAutomation, shiftAutomation } from './automation';
+import { mapDirector, shiftCuts } from './video';
 
 export type RippleScope = 'track' | 'all';
 
@@ -60,6 +61,7 @@ export function rippleMove(project: Project, set: RippleSet, delta: Frames): Pro
   }
   for (const m of p.markers) if (set.markerIds.has(m.id)) m.position += d;
   if (set.all) {
+    mapDirector(p, (cuts) => shiftCuts(cuts, set.pivot, d));
     // all tracks: regions from the pivot on move along
     for (const r of p.regions ?? []) {
       if (r.start < set.pivot) continue;

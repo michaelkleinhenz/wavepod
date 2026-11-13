@@ -19,6 +19,7 @@ import { clear, h, toast } from './dom';
 import { iconButton, setTip } from './icons';
 import { LIBRARY_DRAG_TYPE, insertLibrarySound } from './soundLibraryPanel';
 import { regionFromSelection, alignSelectedClips, alignTrack, coughDown, coughUp, dropMarker, importAudioFiles, importDroppedFiles, muteSelection, prepareForEditing, rippleCut, scrub, seek, splitAtPlayhead } from './actions';
+import { DirectorLane } from './video/directorLane';
 import { addMuteRegion, removeMuteRegion, updateMuteRegion } from '../core/muteRegions';
 import { ENV_MAX_DB, addPoint, ampToDb, envAmp, envelopeAmpAt, envelopeDbAt, setClipEnvelope, toSource } from '../core/envelope';
 import { snap, snapTargets } from '../core/snap';
@@ -174,6 +175,12 @@ export class TimelineView {
   isClipFxOpen: (clipId: string) => boolean = () => false;
   /** Opens the loudness analysis. */
   onOpenLoudness: () => void = () => {};
+  /** Opens the cameras panel (View › Video). */
+  onOpenVideo: () => void = () => {};
+  /** A camera's settings menu (from its sound track's header). */
+  onCameraMenu: (cameraId: string, x: number, y: number) => void = () => {};
+  /** Camera switches of a video podcast, above the tracks. */
+  private director: DirectorLane;
 
   constructor(private footer: HTMLElement) {
     const rulerRow = h(
@@ -184,7 +191,12 @@ export class TimelineView {
     );
     const body = h('div', { class: 'tracks-body' }, this.headers, this.canvas);
     this.scroll.append(body);
-    this.el.append(this.toolbar, rulerRow, this.scroll, h('div', { class: 'hscroll-row' }, h('div', { class: 'overview-label muted', style: { width: `${HEADER_W}px` } }, 'Overview'), this.overview), this.footer);
+    this.director = new DirectorLane(
+      { xOf: (f) => this.xOf(f), frameOf: (x) => this.frameOf(x), width: () => this.width, seek: (f) => seek(f) },
+      HEADER_W,
+      () => this.onOpenVideo(),
+    );
+    this.el.append(this.toolbar, rulerRow, this.director.el, this.scroll, h('div', { class: 'hscroll-row' }, h('div', { class: 'overview-label muted', style: { width: `${HEADER_W}px` } }, 'Overview'), this.overview), this.footer);
     this.buildToolbar();
     this.bindEvents();
     new ResizeObserver(() => this.resize()).observe(this.scroll);
@@ -835,6 +847,9 @@ export class TimelineView {
     const canAlign = t.clips.length > 0 && store.project.tracks.some((o) => o.id !== t.id && o.kind !== 'soundboard' && o.clips.length > 0);
     showContextMenu(
       [
+        ...(t.cameraId
+          ? [{ label: 'Camera…', title: 'This is a camera’s sound: its picture follows the clips on this track', run: () => this.onCameraMenu(t.cameraId!, x, y) }, { kind: 'separator' as const }]
+          : []),
         {
           label: 'Align to other track…',
           enabled: canAlign && store.transport.state !== 'recording',
@@ -982,6 +997,7 @@ export class TimelineView {
       c.style.width = `${w}px`;
       c.style.height = `${height}px`;
     }
+    this.director.resize(w);
     this.draw();
   }
 
@@ -1025,6 +1041,7 @@ export class TimelineView {
   draw(): void {
     if (!store.project) return;
     this.drawRuler();
+    this.director.draw();
     this.drawTracks();
     this.drawOverview();
   }

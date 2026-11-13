@@ -96,6 +96,10 @@ export interface ImportedAudio {
 }
 
 export type MenuCommand =
+  | 'import-video'
+  | 'export-video'
+  | 'video'
+  | 'watch-through'
   | 'new-project'
   | 'open-project'
   | 'save'
@@ -289,6 +293,26 @@ export interface WavePodApi {
 
   // files
   pickAudioFiles(): Promise<string[]>;
+
+  // video (multi-camera)
+  /** Lets the user choose video files; absolute paths. */
+  pickVideoFiles(): Promise<string[]>;
+  /** How a video is stored in the episode (relative inside the episode folder, else absolute). */
+  storedVideoPath(path: string): Promise<string>;
+  /** Size in bytes of a file (relative paths are in the episode folder). */
+  fileSize(path: string): Promise<number>;
+  /** Bytes [start, end) of a file (relative paths are in the episode folder). */
+  readFileRange(path: string, start: number, end: number): Promise<Uint8Array>;
+  /** Save dialog for the exported video; null when cancelled. */
+  chooseVideoExportPath(defaultName: string): Promise<string | null>;
+  /** Opens the exported video for writing (into a .part file); returns its id. */
+  videoOutOpen(path: string): Promise<string>;
+  videoOutWrite(id: string, position: number, data: Uint8Array): Promise<void>;
+  /** Finishes (renames the .part file) or, with abort, deletes it; returns the path written. */
+  videoOutClose(id: string, abort?: boolean): Promise<string | null>;
+  /** A temporary output base (without extension) for the mix of a video export. */
+  videoTempBase(): Promise<string>;
+  removeVideoTemp(base: string): Promise<void>;
   readFile(path: string): Promise<Uint8Array>;
   /** Writes decoded audio as a WAV into the project's media folder. */
   importAudio(name: string, channels: Float32Array[], sampleRate: number): Promise<ImportedAudio>;
@@ -546,6 +570,16 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'getMenu',
   'menuClick',
   'pickAudioFiles',
+  'pickVideoFiles',
+  'storedVideoPath',
+  'fileSize',
+  'readFileRange',
+  'chooseVideoExportPath',
+  'videoOutOpen',
+  'videoOutWrite',
+  'videoOutClose',
+  'videoTempBase',
+  'removeVideoTemp',
   'readFile',
   'importAudio',
   'importAudioFile',
