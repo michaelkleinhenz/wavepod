@@ -791,8 +791,19 @@ export interface ExportOptions {
   chapterFiles: boolean;
   /** Mix files in mono (stems stay stereo). Loudness is then measured on the mono file, as players do. */
   mono?: boolean;
+  /** Also an MP4 video of the cameras (video podcasts), with this mix as its sound. Rendered in the app window. */
+  video?: VideoExportSettings;
   start?: Frames;
   end?: Frames;
+}
+
+/** The video file of an export: size by its shorter side, frame rate, quality and codec. */
+export interface VideoExportSettings {
+  /** 720, 1080, 1440 or 2160: the height of a landscape video (the width of a portrait one). */
+  size: number;
+  fps: number;
+  quality: 'medium' | 'high' | 'very-high';
+  codec: 'avc' | 'av1';
 }
 
 /** The export dialog's choices, kept with the episode and its template so each show exports the same way. */

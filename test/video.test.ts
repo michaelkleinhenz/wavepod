@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_EXPORT_SETTINGS, DEFAULT_VIDEO_EXPORT, normalizeExportSettings } from '../src/core/exportSettings';
+import { plannedFiles } from '../src/core/exportPlan';
 import { addTrack, createProject, insertSilence, normalizeProject, rippleDelete } from '../src/core/project';
 import { rippleMove, rippleSet } from '../src/core/rippleMove';
 import {
@@ -191,5 +193,21 @@ describe('cameras', () => {
     // portrait output from a landscape camera
     expect(sourceRect({ width: 1920, height: 1080 }, 1080, 1920).sw).toBeCloseTo(607.5);
     expect(videoSettings(project())).toEqual({ width: 1920, height: 1080, fps: 25 });
+  });
+});
+
+describe('video in the export', () => {
+  it('plans an MP4 next to the audio files only for episodes with cameras', () => {
+    const settings = { ...DEFAULT_EXPORT_SETTINGS, chapterFiles: false, video: { ...DEFAULT_VIDEO_EXPORT } };
+    const job = { outputBase: '/out/Ep' };
+    expect(plannedFiles(createProject('x'), settings, job)).toEqual(['/out/Ep.mp3']);
+    const p = { ...createProject('x'), cameras: [{ id: 'c', name: 'A', color: '#fff', file: 'a.mp4', width: 1920, height: 1080, fps: 30, duration: 10, sync: [] }] };
+    expect(plannedFiles(p, settings, job)).toEqual(['/out/Ep.mp3', '/out/Ep.mp4']);
+  });
+
+  it('keeps the video settings with the export settings and drops bad values', () => {
+    const s = normalizeExportSettings({ ...DEFAULT_EXPORT_SETTINGS, video: { size: 999, fps: 25, quality: 'very-high', codec: 'av1' } });
+    expect(s?.video).toEqual({ size: 1080, fps: 25, quality: 'very-high', codec: 'av1' });
+    expect(normalizeExportSettings({ ...DEFAULT_EXPORT_SETTINGS })?.video).toBeUndefined();
   });
 });

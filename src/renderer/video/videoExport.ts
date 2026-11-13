@@ -1,133 +1,22 @@
-// File › Export Video…: renders the program (the director's switches, framing and dissolves) and
-// the mastered mix into an MP4. The sound is the same mix as the audio export (loudness target,
-// true-peak limiter, mono); the picture is decoded from the camera files and encoded with WebCodecs.
+// The video file of an export (Export… with "MP4 video" ticked): renders the program (the
+// director's switches, framing and dissolves) with the mastered mix as its sound into an MP4. The
+// sound is the same mix as the audio files of the export (loudness target, true-peak limiter,
+// mono); the picture is decoded from the camera files and encoded with WebCodecs.
 import { AudioSample, AudioSampleSource, CanvasSource, Mp4OutputFormat, Output, QUALITY_HIGH, QUALITY_MEDIUM, QUALITY_VERY_HIGH, StreamTarget, canEncodeAudio, canEncodeVideo, type Quality } from 'mediabunny';
-import type { ExportOptions, Project, VideoSettings } from '../../shared/types';
-import { DEFAULT_EXPORT_SETTINGS } from '../../core/exportSettings';
-import { clipsEnd } from '../../core/project';
+import type { ExportOptions, ExportSettings, Frames, Project, VideoExportSettings, VideoSettings } from '../../shared/types';
 import { programAt, videoSettings } from '../../core/video';
 import { formatTimestamp } from '../../shared/time';
-import { errorMessage, h, toast } from '../dom';
-import { api, store } from '../store';
+import { api } from '../store';
 import { FrameReader } from './media';
 import { drawProgram, type Picture } from './player';
 
-export interface VideoExportChoice {
-  size: VideoSettings;
-  quality: 'medium' | 'high' | 'very-high';
-  codec: 'avc' | 'av1';
-  range: 'all' | 'selection';
-}
+const QUALITY: Record<VideoExportSettings['quality'], Quality> = { medium: QUALITY_MEDIUM, high: QUALITY_HIGH, 'very-high': QUALITY_VERY_HIGH };
 
-const SIZES: Array<{ label: string; height: number }> = [
-  { label: '720p', height: 720 },
-  { label: '1080p', height: 1080 },
-  { label: '1440p', height: 1440 },
-  { label: '4K', height: 2160 },
-];
-const RATES = [24, 25, 30, 50, 60];
-
-const QUALITY: Record<VideoExportChoice['quality'], Quality> = { medium: QUALITY_MEDIUM, high: QUALITY_HIGH, 'very-high': QUALITY_VERY_HIGH };
-
-/** Width for a height at the episode's aspect ratio (even, as encoders want). */
-function widthFor(v: VideoSettings, height: number): number {
-  return Math.round((height * v.width) / v.height / 2) * 2;
-}
-
-export function openVideoExport(): void {
-  const p = store.project;
-  if (!p.cameras?.length) return toast('Import a camera video first (File › Import Camera Video…)');
-  if (store.transport.state === 'recording') return toast('Stop recording first');
-  const v = videoSettings(p);
-  const choice: VideoExportChoice = { size: { ...v }, quality: 'high', codec: 'avc', range: 'all' };
-  const sel = store.selection.range;
-  const hasSel = !!sel && sel[1] > sel[0];
-  const portrait = v.height > v.width;
-  const sizeSel = h(
-    'select',
-    {
-      onchange: (e: Event) => {
-        const height = Number((e.target as HTMLSelectElement).value);
-        choice.size = portrait ? { width: height, height: Math.round((height * v.height) / v.width / 2) * 2, fps: choice.size.fps } : { width: widthFor(v, height), height, fps: choice.size.fps };
-      },
-    },
-    ...SIZES.map((s) => h('option', { value: String(s.height), selected: (portrait ? v.width : v.height) === s.height }, s.label)),
-  );
-  if (![...sizeSel.options].some((o) => o.selected)) sizeSel.append(h('option', { value: String(portrait ? v.width : v.height), selected: true }, `${v.width}×${v.height}`));
-  const fpsSel = h(
-    'select',
-    { onchange: (e: Event) => (choice.size.fps = Number((e.target as HTMLSelectElement).value)) },
-    ...[...new Set([...RATES, Math.round(v.fps)])].sort((a, b) => a - b).map((r) => h('option', { value: String(r), selected: Math.round(v.fps) === r }, `${r} fps`)),
-  );
-  const qualitySel = h(
-    'select',
-    { onchange: (e: Event) => (choice.quality = (e.target as HTMLSelectElement).value as VideoExportChoice['quality']) },
-    h('option', { value: 'medium' }, 'Smaller file'),
-    h('option', { value: 'high', selected: true }, 'High (YouTube)'),
-    h('option', { value: 'very-high' }, 'Very high (for further editing)'),
-  );
-  const codecSel = h(
-    'select',
-    { onchange: (e: Event) => (choice.codec = (e.target as HTMLSelectElement).value as VideoExportChoice['codec']) },
-    h('option', { value: 'avc', selected: true }, 'H.264 (plays everywhere)'),
-    h('option', { value: 'av1' }, 'AV1 (smaller, royalty-free, slower)'),
-  );
-  const rangeSel = h(
-    'select',
-    { onchange: (e: Event) => (choice.range = (e.target as HTMLSelectElement).value as VideoExportChoice['range']) },
-    h('option', { value: 'all', selected: true }, 'Whole episode'),
-    h('option', { value: 'selection', disabled: !hasSel }, hasSel ? `Selection (${formatTimestamp((sel![1] - sel![0]) / store.sampleRate, false)})` : 'Selection (select a range first)'),
-  );
-  const close = () => {
-    window.removeEventListener('keydown', onKey, true);
-    overlay.remove();
-  };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      close();
-    }
-  };
-  window.addEventListener('keydown', onKey, true);
-  const row = (label: string, el: HTMLElement) => h('label', { class: 'video-export-row' }, h('span', null, label), el);
-  const audio = p.exportSettings ?? DEFAULT_EXPORT_SETTINGS;
-  const overlay = h(
-    'div',
-    { class: 'overlay' },
-    h(
-      'div',
-      { class: 'dialog narrow' },
-      h('h2', null, 'Export video'),
-      h('p', { class: 'muted' }, `${p.cameras.length} camera${p.cameras.length === 1 ? '' : 's'}, switched as in the director lane. MP4 file.`),
-      row('Size', sizeSel),
-      row('Frame rate', fpsSel),
-      row('Quality', qualitySel),
-      row('Video format', codecSel),
-      row('Range', rangeSel),
-      h(
-        'p',
-        { class: 'muted' },
-        `Sound: the mix as in the audio export${audio.normalize ? `, loudness ${audio.targetLufs} LUFS, peaks below ${audio.peakCeiling} dBTP` : ''}${audio.mono ? ', mono' : ''} (change it in Export…).`,
-      ),
-      h(
-        'div',
-        { class: 'row end' },
-        h('button', { onclick: close }, 'Cancel'),
-        h(
-          'button',
-          {
-            class: 'primary',
-            onclick: () => {
-              close();
-              void runVideoExport(choice);
-            },
-          },
-          'Export…',
-        ),
-      ),
-    ),
-  );
-  document.body.append(overlay);
+/** Width and height of the exported video: the size is its shorter side, in the shape of the first camera (even, as encoders want). */
+export function videoFrameSize(project: Project, size: number): VideoSettings {
+  const v = videoSettings(project);
+  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  return v.height > v.width ? { width: size, height: even((size * v.height) / v.width), fps: v.fps } : { width: even((size * v.width) / v.height), height: size, fps: v.fps };
 }
 
 /** A parsed PCM WAV (the mix the audio exporter wrote). */
@@ -190,72 +79,61 @@ async function readWavFrames(path: string, w: WavData, from: number, to: number)
   return out;
 }
 
-class Cancelled extends Error {}
+export class VideoCancelled extends Error {}
 
-async function runVideoExport(choice: VideoExportChoice): Promise<void> {
-  const project: Project = store.project;
+export interface VideoJob {
+  project: Project;
+  /** The audio settings of the export: the video's sound is the same mix. */
+  settings: ExportSettings;
+  video: VideoExportSettings;
+  start: Frames;
+  end: Frames;
+  /** The .mp4 to write. */
+  path: string;
+  /** A 24-bit WAV of this mix the export already wrote, else a temporary one is rendered. */
+  mixWav?: string;
+  onProgress(fraction: number, text: string, picture: OffscreenCanvas | null): void;
+  cancelled(): boolean;
+}
+
+/** Renders one MP4; returns the file written and the sound codec used (AAC, or Opus without an AAC encoder). */
+export async function renderVideo(job: VideoJob): Promise<{ file: string; audioCodec: 'aac' | 'opus' }> {
+  const { project, start, end } = job;
   const sr = project.sampleRate;
-  const sel = store.selection.range;
-  const start = choice.range === 'selection' && sel && sel[1] > sel[0] ? Math.round(sel[0]) : 0;
-  const end = choice.range === 'selection' && sel && sel[1] > sel[0] ? Math.round(sel[1]) : clipsEnd(project);
-  if (end <= start) return toast('There is nothing to export yet');
-  const { width, height, fps } = choice.size;
-  const name = (project.metadata.title || project.name || 'episode').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'episode';
-  const path = await api().chooseVideoExportPath(`${name}.mp4`);
-  if (!path) return;
-
-  let cancelled = false;
-  const preview = h('canvas', { class: 'video-export-preview' });
-  preview.width = 480;
-  preview.height = Math.round((480 * height) / width);
-  const status = h('div', { class: 'muted' }, 'Mixing the sound…');
-  const fill = h('div', { class: 'video-import-fill' });
-  const busy = h(
-    'div',
-    { class: 'overlay' },
-    h(
-      'div',
-      { class: 'dialog narrow' },
-      h('h2', null, 'Exporting video'),
-      preview,
-      h('div', { class: 'video-import-bar' }, fill),
-      status,
-      h('div', { class: 'row end' }, h('button', { onclick: () => (cancelled = true) }, 'Cancel')),
-    ),
-  );
-  document.body.append(busy);
+  if (end <= start) throw new Error('There is nothing to export yet');
+  const { width, height } = videoFrameSize(project, job.video.size);
+  const fps = job.video.fps;
   const check = () => {
-    if (cancelled) throw new Cancelled('cancelled');
+    if (job.cancelled()) throw new VideoCancelled('cancelled');
   };
 
   let tempBase: string | null = null;
   let outId: string | null = null;
   let output: Output | null = null;
   const readers = new Map<string, FrameReader>();
-  const unsub = api().onExportProgress((pr) => {
-    fill.style.width = `${Math.round(pr.fraction * 20)}%`;
-    status.textContent = `Mixing the sound: ${pr.phase}`;
-  });
   const t0 = performance.now();
   try {
-    // 1. the sound: the same mix as the audio export, as a temporary WAV
-    tempBase = await api().videoTempBase();
-    const audio = project.exportSettings ?? DEFAULT_EXPORT_SETTINGS;
-    const opts: ExportOptions = { ...audio, outputBase: tempBase, formats: ['wav'], stems: false, chapterFiles: false, start, end };
-    const res = await api().exportProject(opts);
-    unsub();
+    // 1. the sound: the export's mix as a WAV
+    let wavPath = job.mixWav;
+    if (!wavPath) {
+      job.onProgress(0, 'Video: mixing the sound', null);
+      tempBase = await api().videoTempBase();
+      const { video: _video, ...audio } = job.settings;
+      const opts: ExportOptions = { ...audio, outputBase: tempBase, formats: ['wav'], stems: false, chapterFiles: false, start, end };
+      const res = await api().exportProject(opts);
+      wavPath = res.files.find((f) => f.endsWith('.wav'));
+      if (!wavPath) throw new Error('The mix could not be rendered');
+    }
     check();
-    const wavPath = res.files.find((f) => f.endsWith('.wav'));
-    if (!wavPath) throw new Error('The mix could not be rendered');
     const wav = await readWavHeader(wavPath);
 
     // 2. the encoders and the file
-    const videoCodec = choice.codec;
-    if (!(await canEncodeVideo(videoCodec, { width, height, bitrate: QUALITY[choice.quality] }))) {
+    const videoCodec = job.video.codec;
+    if (!(await canEncodeVideo(videoCodec, { width, height, bitrate: QUALITY[job.video.quality] }))) {
       throw new Error(`This computer can't encode ${videoCodec === 'avc' ? 'H.264' : 'AV1'} video at ${width}×${height}. Try ${videoCodec === 'avc' ? 'AV1' : 'H.264'} or a smaller size.`);
     }
     const audioCodec = (await canEncodeAudio('aac', { numberOfChannels: wav.channels, sampleRate: wav.sampleRate, bitrate: 192_000 })) ? 'aac' : 'opus';
-    outId = await api().videoOutOpen(path);
+    outId = await api().videoOutOpen(job.path);
     const id = outId;
     const writable = new WritableStream<{ type: 'write'; data: Uint8Array; position: number }>({
       write: (chunk) => api().videoOutWrite(id, chunk.position, chunk.data),
@@ -263,7 +141,7 @@ async function runVideoExport(choice: VideoExportChoice): Promise<void> {
     output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: new StreamTarget(writable, { chunked: true, chunkSize: 8 * 1024 * 1024 }) });
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d')!;
-    const videoSource = new CanvasSource(canvas, { codec: videoCodec, bitrate: QUALITY[choice.quality], keyFrameInterval: 2 });
+    const videoSource = new CanvasSource(canvas, { codec: videoCodec, bitrate: QUALITY[job.video.quality], keyFrameInterval: 2 });
     const audioSource = new AudioSampleSource({ codec: audioCodec, bitrate: audioCodec === 'aac' ? 192_000 : 128_000 });
     output.addVideoTrack(videoSource, { frameRate: fps });
     output.addAudioTrack(audioSource);
@@ -291,7 +169,6 @@ async function runVideoExport(choice: VideoExportChoice): Promise<void> {
         audioDone += n;
       }
     };
-    const pctx = preview.getContext('2d')!;
     for (let i = 0; i < frames; i++) {
       check();
       const t = start + Math.round((i / fps) * sr);
@@ -313,33 +190,25 @@ async function runVideoExport(choice: VideoExportChoice): Promise<void> {
       await videoSource.add(i / fps, 1 / fps);
       await pushAudioUntil((i + 1) / fps + 1);
       if (i % 10 === 0) {
-        pctx.drawImage(canvas, 0, 0, preview.width, preview.height);
-        const done = (i + 1) / frames;
-        fill.style.width = `${20 + Math.round(done * 80)}%`;
         const elapsed = (performance.now() - t0) / 1000;
-        const speed = ((i + 1) / fps) / elapsed;
-        status.textContent = `Picture ${formatTimestamp(i / fps, false)} of ${formatTimestamp(frames / fps, false)} · ${speed.toFixed(1)}× real time`;
+        const speed = (i + 1) / fps / elapsed;
+        job.onProgress((i + 1) / frames, `Video: picture ${formatTimestamp(i / fps, false)} of ${formatTimestamp(frames / fps, false)} · ${speed.toFixed(1)}× real time`, canvas);
       }
     }
     await pushAudioUntil(Infinity);
     videoSource.close();
     audioSource.close();
-    status.textContent = 'Finishing the file…';
+    job.onProgress(1, 'Video: finishing the file', canvas);
     await output.finalize();
     const written = await api().videoOutClose(outId);
     outId = null;
-    const minutes = ((performance.now() - t0) / 60000).toFixed(1);
-    toast(`Exported ${written ?? path} in ${minutes} min${audioCodec === 'opus' ? ' (sound as Opus: this computer has no AAC encoder)' : ''}`);
-    if (written) void api().revealFile(written);
+    return { file: written ?? job.path, audioCodec };
   } catch (e) {
     if (output && output.state !== 'finalized') await output.cancel().catch(() => undefined);
-    if (!(e instanceof Cancelled)) toast(`Video export failed: ${errorMessage(e)}`, 'error');
-    else toast('Video export cancelled');
+    throw e;
   } finally {
-    unsub();
     if (outId) await api().videoOutClose(outId, true).catch(() => undefined);
     if (tempBase) await api().removeVideoTemp(tempBase).catch(() => undefined);
     for (const r of readers.values()) r.dispose();
-    busy.remove();
   }
 }

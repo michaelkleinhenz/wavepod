@@ -1,5 +1,5 @@
 // Export settings that stay with an episode and its template, and the loudness targets to pick from.
-import type { ExportSettings } from '../shared/types';
+import type { ExportSettings, VideoExportSettings } from '../shared/types';
 
 /** For a new episode with nothing remembered: one MP3 with chapters, normalised for podcast apps. */
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
@@ -69,5 +69,23 @@ export function normalizeExportSettings(raw: unknown): ExportSettings | undefine
     ...(r.stemMe ? { stemMe: true } : {}),
     chapterFiles: typeof r.chapterFiles === 'boolean' ? r.chapterFiles : d.chapterFiles,
     ...(r.mono ? { mono: true } : {}),
+    ...(normalizeVideoExport(r.video) ? { video: normalizeVideoExport(r.video)! } : {}),
+  };
+}
+
+export const VIDEO_SIZES = [720, 1080, 1440, 2160] as const;
+export const VIDEO_RATES = [24, 25, 30, 50, 60] as const;
+export const DEFAULT_VIDEO_EXPORT: VideoExportSettings = { size: 1080, fps: 30, quality: 'high', codec: 'avc' };
+
+/** The video part of saved export settings, or undefined when it is off or unreadable. */
+export function normalizeVideoExport(raw: unknown): VideoExportSettings | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Partial<VideoExportSettings>;
+  const d = DEFAULT_VIDEO_EXPORT;
+  return {
+    size: VIDEO_SIZES.includes(r.size as (typeof VIDEO_SIZES)[number]) ? r.size! : d.size,
+    fps: typeof r.fps === 'number' && r.fps >= 1 && r.fps <= 120 ? r.fps : d.fps,
+    quality: r.quality === 'medium' || r.quality === 'very-high' ? r.quality : 'high',
+    codec: r.codec === 'av1' ? 'av1' : 'avc',
   };
 }

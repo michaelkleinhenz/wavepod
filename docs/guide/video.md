@@ -1,6 +1,6 @@
 # Video podcasts
 
-WavePod can turn the camera recordings of a conversation into a video podcast. You import each camera's video, line it up with the microphone recordings, edit the audio as usual, and choose which camera is seen when. **File › Export Video…** then writes an MP4 with the same mix as your audio episode.
+WavePod can turn the camera recordings of a conversation into a video podcast. You import each camera's video, line it up with the microphone recordings, edit the audio as usual, and choose which camera is seen when. The export dialog then writes an MP4 next to your audio files, with the same mix.
 
 Cameras don't need their own editing. Each camera's picture follows its sound, so every cut you make in the audio (a ripple cut, a word deleted in the transcript, a pause taken out by Clean up, a comped take) cuts the video too.
 
@@ -83,14 +83,15 @@ Right-click a camera › **Framing…** zooms into its picture and moves the cro
 
 ## Export the video
 
-**File › Export Video…** (`Shift+Ctrl+E`, or **Export video…** in the panel) writes an MP4:
+The video is part of the normal export. In **File › Export…** (`Ctrl+E`), tick **Video › MP4 video**; **File › Export Video…** (`Shift+Ctrl+E`) and **Export video…** in the cameras panel open the same dialog with it ticked. Next to the box:
 
 - **Size**: 720p, 1080p, 1440p or 4K, in the shape of the first camera.
 - **Frame rate**: 24 to 60 frames per second.
 - **Quality**: smaller file, high (right for YouTube) or very high (for further editing).
 - **Video format**: H.264 plays everywhere. AV1 makes smaller files and is royalty-free, but takes longer.
-- **Range**: the whole episode or the selected time range.
 
-The sound is the same mix as your audio export, with its loudness target, peak limit and mono setting from the **Export…** dialog. It is AAC where the computer has an AAC encoder (macOS, Windows) and Opus otherwise (Linux); YouTube and current players take both. The export window shows the picture as it is written and how fast it runs; **Cancel** leaves no half-written file.
+The video gets the file name of the export with `.mp4`, so one export writes, for example, `Episode 12.mp3` for your podcast host and `Episode 12.mp4` for your video host. It follows the export's range: the whole episode, the selection, one region, or each region as its own video. You can also untick every audio format and export only the video.
+
+The sound is the same mix as the audio files, with the loudness target, peak limit and mono setting of the dialog. It is AAC where the computer has an AAC encoder (macOS, Windows) and Opus otherwise (Linux); YouTube and current players take both. The video is rendered after the audio files; the dialog shows the picture as it is written and how fast it runs. **Cancel Video** leaves no half-written file.
 
 The episode title, author, podcast name and description go into the file's tags. Chapters are not written into the video file yet.

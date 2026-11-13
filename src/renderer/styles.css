@@ -988,3 +988,7 @@ body.video-open .fx-panel { right: 420px; }
 .wt-key { position: absolute; left: 6px; top: 4px; font-size: 18px; font-weight: 700; color: var(--cam-color, #fff); text-shadow: 0 1px 3px #000; }
 .wt-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 6px; font-size: 12px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); text-align: left; }
 .wt-help { text-align: center; font-size: 12px; }
+/* the video row of the export dialog */
+.export-video-options { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.export-video-options select { flex: 1 1 140px; min-width: 0; }
+.video-export-preview.export-video-preview { width: 240px; max-width: 50%; margin: 0 auto 4px; }

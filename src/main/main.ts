@@ -173,7 +173,7 @@ function projectsRoot(): string {
 }
 
 /** app.getPath throws for some names on systems without that folder configured. */
-function safeGetPath(name: 'music' | 'documents' | 'videos'): string {
+function safeGetPath(name: 'music' | 'documents'): string {
   try {
     return app.getPath(name);
   } catch {
@@ -849,15 +849,6 @@ const handlers: Record<InvokeMethod, Handler> = {
   storedVideoPath: (p: string) => storedVideoPath(current.dir, p),
   fileSize: (p: string) => fileSize(resolveMediaPath(current.dir, p)),
   readFileRange: (p: string, start: number, end: number) => readRange(resolveMediaPath(current.dir, p), start, end),
-  chooseVideoExportPath: async (defaultName: string) => {
-    const res = await dialog.showSaveDialog(win!, {
-      title: 'Export video',
-      defaultPath: path.join(exportDialogDir(current.dir, [safeGetPath('videos'), app.getPath('home')]), defaultName),
-      filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
-    });
-    if (res.canceled || !res.filePath) return null;
-    return /\.mp4$/i.test(res.filePath) ? res.filePath : `${res.filePath}.mp4`;
-  },
   videoOutOpen: (p: string) => videoWriter.open(p),
   videoOutWrite: (id: string, position: number, data: Uint8Array) => videoWriter.write(id, position, data),
   videoOutClose: (id: string, abort?: boolean) => videoWriter.close(id, abort),

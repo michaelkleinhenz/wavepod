@@ -304,7 +304,6 @@ export interface WavePodApi {
   /** Bytes [start, end) of a file (relative paths are in the episode folder). */
   readFileRange(path: string, start: number, end: number): Promise<Uint8Array>;
   /** Save dialog for the exported video; null when cancelled. */
-  chooseVideoExportPath(defaultName: string): Promise<string | null>;
   /** Opens the exported video for writing (into a .part file); returns its id. */
   videoOutOpen(path: string): Promise<string>;
   videoOutWrite(id: string, position: number, data: Uint8Array): Promise<void>;
@@ -574,7 +573,6 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'storedVideoPath',
   'fileSize',
   'readFileRange',
-  'chooseVideoExportPath',
   'videoOutOpen',
   'videoOutWrite',
   'videoOutClose',

@@ -77,7 +77,6 @@ import { shortcutLetter } from './shortcutKey';
 import { VideoPanel, showCameraMenu, switchAtPlayhead } from './video/videoPanel';
 import { WatchThrough } from './video/watchThrough';
 import { importVideos } from './video/cameras';
-import { openVideoExport } from './video/videoExport';
 import { openAutoDirect } from './video/autoDirectDialog';
 import { videoPlayer } from './video/player';
 
@@ -123,7 +122,7 @@ async function main(): Promise<void> {
   const watchThrough = new WatchThrough();
   videoPanel.onWatchThrough = () => watchThrough.open();
   videoPanel.onAutoDirect = () => openAutoDirect();
-  videoPanel.onExport = () => openVideoExport();
+  videoPanel.onExport = () => exportDialog.open(undefined, true);
   // the library, the script, the transcript and the cameras share the right side: one at a time
   libraryPanel.onOpen = () => {
     if (transcriptPanel.isOpen) transcriptPanel.close();
@@ -499,7 +498,7 @@ async function main(): Promise<void> {
       case 'show-templates-folder': return void api().showTemplatesFolder();
       case 'import-audio': return void importAudioFiles();
       case 'import-video': return void importVideos().then(() => store.project.cameras?.length && !videoPanel.isOpen && openVideo());
-      case 'export-video': return void (!document.querySelector('.overlay') && openVideoExport());
+      case 'export-video': return void (!document.querySelector('.overlay') && exportDialog.open(undefined, true));
       case 'video': return openVideo();
       case 'watch-through': return void (!document.querySelector('.overlay') && watchThrough.toggle());
       case 'import-chapters': return void importChapterFile();

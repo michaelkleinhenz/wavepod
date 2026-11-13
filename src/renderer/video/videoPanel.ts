@@ -127,7 +127,7 @@ export class VideoPanel {
             h('li', null, 'Sync the cameras to a microphone recording (Sync cameras, below).'),
             h('li', null, 'Edit the audio as usual: every cut applies to the video too.'),
             h('li', null, 'Watch it through and switch cameras with 1–9, or let Auto-direct do a first pass.'),
-            h('li', null, 'File › Export Video…'),
+            h('li', null, 'Export… with MP4 video ticked writes the video next to the audio files.'),
           ),
           h('button', { class: 'primary', onclick: () => void importVideos() }, 'Import camera video…'),
         ),
@@ -143,7 +143,7 @@ export class VideoPanel {
         { class: 'video-actions' },
         h('button', { class: 'primary', title: 'Play the episode in a large view and switch cameras with 1–9 as you watch (W)', onclick: () => this.onWatchThrough() }, 'Watch through (W)'),
         h('button', { title: 'Cut to whoever is speaking: a first pass to refine', onclick: () => this.onAutoDirect() }, 'Auto-direct…'),
-        h('button', { title: 'File › Export Video…', onclick: () => this.onExport() }, 'Export video…'),
+        h('button', { title: 'Opens Export… with MP4 video ticked', onclick: () => this.onExport() }, 'Export video…'),
       ),
       this.tiles,
       h(

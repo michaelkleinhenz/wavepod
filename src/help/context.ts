@@ -14,7 +14,6 @@ export interface HelpContext {
 
 /** Dialog titles (their start) and the page that explains them. */
 export const DIALOG_TOPICS: Array<[RegExp, string]> = [
-  [/^export(ing)? video/i, 'video/export-the-video'],
   [/^(auto-direct|who is in the picture)/i, 'video/auto-direct'],
   [/^framing/i, 'video/framing'],
   [/^(importing|syncing cameras)/i, 'video/import-the-cameras'],

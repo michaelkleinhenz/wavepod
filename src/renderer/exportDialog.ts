@@ -8,7 +8,7 @@ import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { loudnessTiles, targetPicker } from './loudnessDialog';
 import { api, store } from './store';
 import { seek } from './actions';
-import { DEFAULT_EXPORT_SETTINGS, MP3_BITRATES, OPUS_BITRATES, PEAK_CEILINGS, normalizeExportSettings, targetForMono } from '../core/exportSettings';
+import { DEFAULT_EXPORT_SETTINGS, DEFAULT_VIDEO_EXPORT, MP3_BITRATES, VIDEO_RATES, VIDEO_SIZES, OPUS_BITRATES, PEAK_CEILINGS, normalizeExportSettings, targetForMono } from '../core/exportSettings';
 import { exportChecks, imageSize, type ImageSize } from '../core/exportChecks';
 import { formatTimestamp } from '../shared/time';
 import { baseName, cleanFileName, defaultExportName, exportJobs, joinExportPath, plannedFiles, rangeAvailable, rangeSpan, type ExportJob, type ExportRange } from '../core/exportPlan';
@@ -16,7 +16,10 @@ import { chapterWarningList } from './chaptersView';
 import { audibleTracks, updateTrack } from '../core/project';
 import { STEM_CHOICES, STEM_GROUPS, trackStem } from '../core/stems';
 import { folderOf } from '../core/folders';
-import type { Frames, Region, StemGroup, Track } from '../shared/types';
+import type { Frames, Region, StemGroup, Track, VideoExportSettings } from '../shared/types';
+import { clipsEnd } from '../core/project';
+import { videoSettings } from '../core/video';
+import { VideoCancelled, renderVideo, videoFrameSize } from './video/videoExport';
 
 const LAST_KEY = 'wavepod.exportSettings';
 const REVEAL_KEY = 'wavepod.exportReveal';
@@ -249,6 +252,10 @@ export class ExportDialog {
   private exported = false;
   private phase = '';
   private mix: LoudnessReport | null = null;
+  /** The video of the export is being rendered (it can be cancelled), and its last picture. */
+  private videoRunning = false;
+  private videoCancel = false;
+  private videoPreview = h('canvas', { class: 'video-export-preview export-video-preview' }) as HTMLCanvasElement;
 
   constructor() {
     const tile = (key: keyof LiveLoudness, label: string, hint: string) =>
@@ -276,7 +283,7 @@ export class ExportDialog {
   }
 
   /** Opens the dialog; with a region id, set to export just that region. */
-  open(regionId?: string): void {
+  open(regionId?: string, withVideo = false): void {
     if (this.openedFor !== store.dir) {
       this.opts = initialExportSettings();
       this.openedFor = store.dir;
@@ -291,6 +298,7 @@ export class ExportDialog {
     } else if (!rangeAvailable(this.range, store.project, store.selection.range)) {
       this.range = { kind: 'all' };
     }
+    if (withVideo && store.project.cameras?.length && !this.opts.video) this.opts.video = this.defaultVideo();
     this.mix = null;
     this.exported = false;
     this.replacing = null;
@@ -357,7 +365,7 @@ export class ExportDialog {
     const o = this.opts;
     const jobs = this.jobs();
     const files = jobs.flatMap((j) => plannedFiles(store.project, o, j));
-    const nothing = o.formats.length === 0 && !o.stems;
+    const nothing = o.formats.length === 0 && !o.stems && !this.videoOn();
     const canExport = !this.busy && !nothing && jobs.length > 0 && files.length > 0;
 
     const dialog = h(
@@ -380,7 +388,7 @@ export class ExportDialog {
           this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, { lufs: o.targetLufs, ceiling: o.peakCeiling }, o.normalize)) : null,
         ),
       ),
-      this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.liveEl) : null,
+      this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.videoRunning ? this.videoPreview : this.liveEl) : null,
       // pinned to the bottom of the dialog, so the buttons, the progress and the replace question stay in view
       h('div', { class: 'export-bottom' },
         this.replacing ? this.replaceNotice(this.replacing.files) : null,
@@ -391,7 +399,9 @@ export class ExportDialog {
             'Show files when done'),
           h('div', { class: 'spacer' }),
           this.written.length && !this.busy ? h('button', { onclick: () => void api().revealFile(this.written[0]) }, 'Show in Folder') : null,
-          h('button', { disabled: this.busy, onclick: () => this.close() }, this.written.length ? 'Close' : 'Cancel'),
+          this.videoRunning
+            ? h('button', { disabled: this.videoCancel, title: 'Stop the video; the files written so far stay', onclick: () => { this.videoCancel = true; this.render(); } }, 'Cancel Video')
+            : h('button', { disabled: this.busy, onclick: () => this.close() }, this.written.length ? 'Close' : 'Cancel'),
           h('button', {
             class: 'primary',
             disabled: !canExport || !!this.replacing,
@@ -490,7 +500,7 @@ export class ExportDialog {
     const el = h('div', { class: 'export-files' },
       files.length
         ? h('ul', null, ...files.slice(0, shown).map((f) => h('li', { title: f }, baseName(f))), files.length > shown ? h('li', { class: 'muted' }, `and ${files.length - shown} more`) : null)
-        : h('span', { class: 'muted' }, this.opts.formats.length || this.opts.stems ? 'Give the file a name and pick a folder.' : 'Nothing: tick a format below.'),
+        : h('span', { class: 'muted' }, this.opts.formats.length || this.opts.stems || this.videoOn() ? 'Give the file a name and pick a folder.' : 'Nothing: tick a format below.'),
     );
     this.fileListEl = el;
     return el;
@@ -558,10 +568,57 @@ export class ExportDialog {
         fmt('wav', 'WAV 24-bit', 'Uncompressed, for archiving or further processing'),
       ),
       formRow('Channels', channels),
+      store.project.cameras?.length ? this.videoRow() : null,
       formRow('Also write',
         checkbox('Chapter files (PSC, JSON, mp4chaps, Audacity labels)', o.chapterFiles, (v) => { o.chapterFiles = v; this.render(); }, this.busy),
         checkbox('Stems (separate files for editing or delivery)', o.stems, (v) => { o.stems = v; this.render(); }, this.busy),
       ),
+    );
+  }
+
+  /** Video export is on (and there are cameras to export). */
+  private videoOn(): boolean {
+    return !!this.opts.video && !!store.project.cameras?.length;
+  }
+
+  /** Full HD (or the cameras' own size when smaller) at the cameras' frame rate. */
+  private defaultVideo(): VideoExportSettings {
+    const v = videoSettings(store.project);
+    const short = Math.min(v.width, v.height);
+    const size = [...VIDEO_SIZES].reverse().find((s) => s <= Math.max(720, Math.min(1080, short))) ?? 1080;
+    const fps = VIDEO_RATES.reduce((a, b) => (Math.abs(b - v.fps) < Math.abs(a - v.fps) ? b : a), 30 as number);
+    return { ...DEFAULT_VIDEO_EXPORT, size, fps };
+  }
+
+  /** MP4 video of the cameras, next to the audio files: one file for a video hoster, the others for the podcast hoster. */
+  private videoRow(): HTMLElement {
+    const o = this.opts;
+    const v = o.video;
+    const set = (patch: Partial<VideoExportSettings>) => {
+      o.video = { ...(o.video ?? this.defaultVideo()), ...patch };
+      this.render();
+    };
+    const select = <T extends string | number>(title: string, value: T, options: ReadonlyArray<[T, string]>, onChange: (v: T) => void) =>
+      h('select', { title, disabled: this.busy, onchange: (e: Event) => { const raw = (e.target as HTMLSelectElement).value; onChange((typeof value === 'number' ? Number(raw) : raw) as T); } },
+        ...options.map(([val, label]) => h('option', { value: String(val), selected: val === value }, label)));
+    const sizeLabel = (s: number) => {
+      const f = videoFrameSize(store.project, s);
+      return `${s === 2160 ? '4K' : `${s}p`} (${f.width}×${f.height})`;
+    };
+    const cams = store.project.cameras!.length;
+    return formRow('Video',
+      h('div', { class: 'export-format' },
+        h('label', { class: 'check', title: 'An MP4 of the cameras, switched as in the director lane, with this mix as its sound: for YouTube or another video hoster, next to the audio files for your podcast hoster' },
+          h('input', { type: 'checkbox', checked: !!v, disabled: this.busy, onchange: (e: Event) => { o.video = (e.target as HTMLInputElement).checked ? this.defaultVideo() : undefined; if (!o.video) delete o.video; this.render(); } }),
+          `MP4 video (${cams} camera${cams === 1 ? '' : 's'})`),
+      ),
+      v ? h('div', { class: 'export-video-options' },
+        select('Size of the video, in the shape of the first camera', v.size, VIDEO_SIZES.map((s) => [s, sizeLabel(s)] as [number, string]), (size) => set({ size })),
+        select('Frame rate', v.fps, [...new Set([...VIDEO_RATES, v.fps])].sort((a, b) => a - b).map((r) => [r, `${r} fps`] as [number, string]), (fps) => set({ fps })),
+        select('Picture quality', v.quality, [['medium', 'Smaller file'], ['high', 'High (YouTube)'], ['very-high', 'Very high (for further editing)']], (quality) => set({ quality })),
+        select('Video format', v.codec, [['avc', 'H.264 (plays everywhere)'], ['av1', 'AV1 (smaller, slower)']], (codec) => set({ codec })),
+      ) : null,
+      v ? h('div', { class: 'field-help' }, 'Same sound as the audio files. Rendering the picture takes a while; the audio files are written first.') : null,
     );
   }
 
@@ -741,6 +798,48 @@ export class ExportDialog {
     await this.run(jobs);
   }
 
+  /** The MP4 of one export job; null when it was cancelled. */
+  private async exportVideo(job: ExportJob, video: VideoExportSettings, mixWav: string | undefined): Promise<string | null> {
+    const p = store.project;
+    this.videoRunning = true;
+    this.wave.reset();
+    this.render();
+    const pctx = this.videoPreview.getContext('2d')!;
+    try {
+      const res = await renderVideo({
+        project: p,
+        settings: this.opts,
+        video,
+        start: job.start ?? 0,
+        end: job.end ?? clipsEnd(p),
+        path: `${job.outputBase}.mp4`,
+        mixWav,
+        cancelled: () => this.videoCancel,
+        onProgress: (fraction, text, picture) => {
+          this.wave.update({ phase: text, fraction } as ExportProgress);
+          this.progressLabel.textContent = `${this.regionLabel}${text}`;
+          if (picture) {
+            if (this.videoPreview.width !== 480) {
+              this.videoPreview.width = 480;
+              this.videoPreview.height = Math.round((480 * picture.height) / picture.width);
+            }
+            pctx.drawImage(picture, 0, 0, this.videoPreview.width, this.videoPreview.height);
+          }
+        },
+      });
+      if (res.audioCodec === 'opus') toast('The video\'s sound is Opus: this computer has no AAC encoder');
+      return res.file;
+    } catch (e) {
+      if (e instanceof VideoCancelled) {
+        toast('Video export cancelled; the audio files are written');
+        return null;
+      }
+      throw e;
+    } finally {
+      this.videoRunning = false;
+    }
+  }
+
   private async run(jobs: ExportJob[]): Promise<void> {
     // the episode (and a template saved from it) exports the same way next time
     const settings = structuredClone(this.opts);
@@ -757,12 +856,24 @@ export class ExportDialog {
     try {
       const files: string[] = [];
       let last: ExportResult | null = null;
+      const video = this.videoOn() ? this.opts.video! : null;
+      const { video: _video, ...audio } = this.opts;
+      const audioFiles = audio.formats.length > 0 || audio.stems || audio.chapterFiles;
+      this.videoCancel = false;
       for (const [i, job] of jobs.entries()) {
         this.regionLabel = jobs.length > 1 ? `Region ${i + 1}/${jobs.length} “${job.region ?? ''}”: ` : '';
         this.wave.reset();
         // one export per region, each normalised on its own
-        last = await api().exportProject({ ...this.opts, outputBase: job.outputBase, ...(job.start !== undefined ? { start: job.start, end: job.end } : {}) });
-        files.push(...last.files);
+        let jobFiles: string[] = [];
+        if (audioFiles) {
+          last = await api().exportProject({ ...audio, outputBase: job.outputBase, ...(job.start !== undefined ? { start: job.start, end: job.end } : {}) });
+          jobFiles = last.files;
+          files.push(...last.files);
+        }
+        if (video && !this.videoCancel) {
+          const file = await this.exportVideo(job, video, jobFiles.find((f) => f === `${job.outputBase}.wav`));
+          if (file) files.push(file);
+        }
       }
       this.regionLabel = '';
       this.written = files;

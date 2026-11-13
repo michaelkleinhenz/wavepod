@@ -49,6 +49,7 @@ More options:
 - **Channels**: **Stereo**, or **Mono (half the size, for speech)**, which writes the mix files with one channel instead of two. For a show that is only voices, mono sounds the same and the file is half the size, or you can use the bytes for better quality (64 kbps mono is like 128 kbps stereo). Choosing mono moves a −16 LUFS target to −19 LUFS, the mono podcast target: a mono file is measured as mono, so it reads 3 LU lower than the same audio in stereo, and −19 LUFS in mono plays as loud as −16 LUFS in stereo. Stems stay stereo.
 - **Also write › Chapter files (PSC, JSON, mp4chaps, Audacity labels)**: writes the chapters as Podlove Simple Chapters (XML), Podcasting 2.0 JSON, mp4chaps text and Audacity labels, for your podcast host or website.
 - **Also write › Stems**: see [Stems](#stems).
+- **Video › MP4 video** (only in episodes with [cameras](video.md)): also writes an MP4 of the cameras, switched as in the director lane, with the same mix as its sound. Pick the size, frame rate, quality and video format next to it. One export then gives you the audio files for your podcast host and the video for YouTube or another video host. See [Export the video](video.md#export-the-video).
 
 Click **Export**. While it runs, the dialog shows the progress; when it is done, it shows the files in your file manager if **Show files when done** is ticked (the box is remembered), and **Show in Folder** opens the folder later. `Esc` or **Cancel** closes the dialog without exporting.
 
@@ -70,6 +71,8 @@ The progress bar is the waveform of the mix as it is rendered. Next to it, live 
 - **Short-term**: loudness of the last 3 seconds,
 - **Integrated so far**: the programme loudness from the start up to here,
 - **True peak so far**: the highest peak up to here.
+
+With **MP4 video** ticked, the video is rendered after the audio files, and the dialog shows its picture as it is written. **Cancel Video** stops it; the audio files are already written and no half-written video is left behind.
 
 When it is finished, the dialog shows how many files were written and the final loudness figures.
 
