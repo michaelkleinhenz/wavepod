@@ -19,7 +19,16 @@ import { addTrack } from '../../core/project';
 import { applyAlignment, type AlignResult } from '../../core/alignEdit';
 import { decodeKey, encodeKey } from '../auphonic';
 
-export const DEFAULT_GUEST_PAGE = 'https://michaelkleinhenz.github.io/wavepod/join/v1/';
+export const DEFAULT_GUEST_PAGE = 'https://wavepod.de/join/v1/';
+/** Where the page was before wavepod.de: a setting that still says so follows the default. */
+const OLD_GUEST_PAGES = ['https://michaelkleinhenz.github.io/wavepod/join/v1/'];
+
+/** '' for the project's own page (so it follows the default), else the address as typed. */
+function ownPage(url: string): string {
+  const u = url.trim();
+  const same = (a: string) => a.replace(/\/+$/, '') === u.replace(/\/+$/, '');
+  return same(DEFAULT_GUEST_PAGE) || OLD_GUEST_PAGES.some(same) ? '' : u;
+}
 /** Below this the alignment is not trusted and the take keeps its estimated place. */
 const MIN_ALIGN_CONFIDENCE = 0.4;
 const PING_MS = 2000;
@@ -43,7 +52,7 @@ export function normalizeRemoteSettings(raw: unknown): StoredRemote {
     url: str(r.url),
     apiKey: str(r.apiKey),
     secret: str(r.secret),
-    guestPageUrl: str(r.guestPageUrl),
+    guestPageUrl: ownPage(str(r.guestPageUrl)),
     video: r.video === true,
   };
 }
@@ -57,7 +66,7 @@ export function updateRemoteSettings(s: StoredRemote, input: RemoteSettingsInput
     url,
     apiKey: input.apiKey === undefined ? s.apiKey : input.apiKey.trim(),
     secret: input.apiSecret === undefined ? s.secret : encodeKey(input.apiSecret.trim()),
-    guestPageUrl: page,
+    guestPageUrl: ownPage(page),
     video: input.video ?? s.video,
   };
 }

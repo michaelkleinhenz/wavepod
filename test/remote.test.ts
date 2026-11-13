@@ -374,3 +374,14 @@ describe('camera choice', () => {
     expect(cameraChoices([dev('videoinput', '')])).toEqual([]);
   });
 });
+
+describe('guest page address', () => {
+  it('invites to wavepod.de and moves old saved defaults along', async () => {
+    const { DEFAULT_GUEST_PAGE, normalizeRemoteSettings, updateRemoteSettings } = await import('../src/main/remote/host');
+    expect(DEFAULT_GUEST_PAGE).toBe('https://wavepod.de/join/v1/');
+    expect(normalizeRemoteSettings({ guestPageUrl: 'https://michaelkleinhenz.github.io/wavepod/join/v1/' }).guestPageUrl).toBe('');
+    const s = normalizeRemoteSettings({});
+    expect(updateRemoteSettings(s, { guestPageUrl: 'https://wavepod.de/join/v1' }).guestPageUrl).toBe('');
+    expect(updateRemoteSettings(s, { guestPageUrl: 'https://example.org/join/' }).guestPageUrl).toBe('https://example.org/join/');
+  });
+});
