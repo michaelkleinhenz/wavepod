@@ -9,7 +9,7 @@ import type { RemoteTakeInfo, Track } from '../../shared/types';
 import { guestIdentity } from '../../shared/remoteProtocol';
 
 export class GuestsPanel {
-  private el = h('div', { class: 'remote-panel', role: 'dialog', 'aria-label': 'Remote guests' });
+  private el = h('div', { class: 'remote-panel', role: 'dialog', 'aria-label': 'Remote Guests' });
   private nameDraft = '';
   private configured: boolean | null = null;
   private onSettings: () => void;
@@ -59,6 +59,8 @@ export class GuestsPanel {
     // the panel redraws as guests talk; keep the cursor in the name field
     const typing = document.activeElement instanceof HTMLInputElement && this.el.contains(document.activeElement) ? document.activeElement.selectionStart : null;
     this.draw();
+    // a video taken out of the page (panel closed) stays paused when it comes back: start it again
+    for (const v of this.el.querySelectorAll('video')) if (v.paused) void v.play().catch(() => {});
     if (typing !== null) {
       const input = this.el.querySelector<HTMLInputElement>('.remote-invite input');
       input?.focus();
@@ -72,7 +74,7 @@ export class GuestsPanel {
     const head = h(
       'div',
       { class: 'remote-head' },
-      h('h3', null, 'Remote guests'),
+      h('h3', null, 'Remote Guests'),
       s.connected ? h('span', { class: 'remote-badge live' }, 'Session open') : null,
       h('button', { class: 'icon-close', title: 'Close (the session keeps running)', onclick: () => this.close() }, '×'),
     );

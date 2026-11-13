@@ -97,10 +97,14 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, 
   return el;
 }
 
+/** Video elements by camera track, kept across redraws. */
+const videoEls = new Map<string, HTMLVideoElement>();
+
 function render(): void {
   // redrawing would close a list the guest has open: wait until they pick or leave it
   if (document.activeElement instanceof HTMLSelectElement && app.contains(document.activeElement)) return;
   app.replaceChildren(...view().filter((n): n is Node => !!n));
+  for (const v of app.querySelectorAll('video')) if (v.paused) void v.play().catch(() => {});
 }
 
 function view(): Array<Node | null> {
@@ -154,14 +158,28 @@ function liveView(episode: Node | null): Array<Node | null> {
   const backlog = queue.length + inFlight;
   const saved = recordingBadge ? (backlog > 2 ? `Sending your recording… ${backlog} s behind` : 'Your recording is being sent as you talk') : pendingTakes() ? 'Finishing your recording…' : 'All audio saved';
   const videos = h('div', { class: 'videos' });
+  const showing = new Set<string>();
   for (const p of [room?.localParticipant, ...people]) {
     const pub = p?.getTrackPublication(Track.Source.Camera);
     const t = pub?.track;
     if (t && !pub?.isMuted) {
-      const el = t.attach() as HTMLVideoElement;
-      el.muted = true;
+      // the same element every time: a new one starts black until its first frame (the flicker)
+      const key = t.mediaStreamTrack.id;
+      let el = videoEls.get(key);
+      if (!el) {
+        el = t.attach() as HTMLVideoElement;
+        el.muted = true;
+        el.playsInline = true;
+        videoEls.set(key, el);
+      }
+      showing.add(key);
       videos.append(el);
     }
+  }
+  for (const [key, el] of videoEls) {
+    if (showing.has(key)) continue;
+    el.srcObject = null;
+    videoEls.delete(key);
   }
   return [
     h('div', { class: 'top' }, h('h1', null, link?.episode || 'Recording'), recordingBadge ? h('span', { class: 'rec' }, recordingBadge) : h('span', { class: 'idle' }, 'Not recording')),
