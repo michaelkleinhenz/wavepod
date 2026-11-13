@@ -64,5 +64,6 @@ Every change an agent makes is one undo step (`Ctrl+Z`), shows up in the FX pane
 | `align_track` | Line a track up with another one by its content (separate recorders, double-enders), with clock drift corrected |
 | `list_takes`, `use_take` | Takes of a track; play a whole take or splice part of one into the comp |
 | `create_folder`, `move_tracks_to_folder`, `update_folder`, `remove_folder` | Track folders |
+| `list_cameras`, `get_director`, `set_director_cuts` | [Video podcasts](video.md): the cameras, which one is seen when, and new camera switches (for example to whoever speaks in the transcript) |
 
 Agents never open VST3 plug-in windows; they set the same parameters you see as sliders.

@@ -3,8 +3,8 @@ import type { MidiAction, RemoteCommand } from '../shared/types';
 import { coughDown, coughTrackForKey, coughUp, dropMarker, prepareForEditing, punchIn, stop, togglePlay, toggleRecord } from './actions';
 import { api, store } from './store';
 
-/** Set at startup: plays soundboard slot `index` (0-based). */
-export const remoteHooks: { playSound: (index: number) => void } = { playSound: () => {} };
+/** Set at startup: plays soundboard slot `index` (0-based); switches to camera `index` (0-based). */
+export const remoteHooks: { playSound: (index: number) => void; camera: (index: number) => void } = { playSound: () => {}, camera: () => {} };
 
 let queue: Promise<void> = Promise.resolve();
 /** Cough buttons held by remote control, by slot, so a release unmutes the track the press muted. */
@@ -31,6 +31,8 @@ export function runRemote(cmd: RemoteCommand): void {
   if (!pressed) return;
   const sound = /^sound-(\d)$/.exec(action);
   if (sound) return remoteHooks.playSound(Number(sound[1]) - 1);
+  const camera = /^camera-(\d)$/.exec(action);
+  if (camera) return remoteHooks.camera(Number(camera[1]) - 1);
   runAction(action);
 }
 

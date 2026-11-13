@@ -1,6 +1,6 @@
 // The tools WavePod offers to AI agents over MCP: reading the project and editing filter stacks.
 // Every edit goes through the app (one undo step each), so it shows up in the FX panel at once.
-import type { FileTranscript, Fx, FxType, LoudnessReport, LoudnessStats, Project, TransportState, VstParamInfo, VstPluginInfo, VstPluginRef } from '../../shared/types';
+import type { FileTranscript, Fx, FxType, LoudnessReport, LoudnessStats, Project, DirectorCut, TransportState, VstParamInfo, VstPluginInfo, VstPluginRef } from '../../shared/types';
 import { FX_DEFINITIONS, createFx, fxDefinition, normalizeFx, type FxParamSpec } from '../fx/definitions';
 import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect } from '../fx/voiceEffects';
 import { MASTER, VOICE_CHAIN, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, updateFx, type FxTarget } from '../fx/stack';
@@ -8,7 +8,8 @@ import { findPresetEntry, presetEdited } from '../fx/presets';
 import type { FxPresetLibrary } from '../fx/presetLibrary';
 import type { ImpulseFile } from '../../shared/api';
 import { createVstFx, visibleVstParams, vstFailures } from '../fx/vst';
-import { projectLength, updateTrack } from '../project';
+import { clipsEnd, projectLength, updateTrack } from '../project';
+import { applyPass, cameraSyncAfterStretch, cameraTrack, normalizeCuts, shots } from '../video';
 import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
 import { STEM_CHOICES, trackStem } from '../stems';
 import { setTrackAutomation, showTrackAutomation } from '../automation';
@@ -62,7 +63,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals. Recordings from separate recorders (one per speaker) are put in sync with align_track. Lines recorded several times are kept as takes: list_takes shows them, use_take plays a whole take or splices part of one into the comp.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals. Recordings from separate recorders (one per speaker) are put in sync with align_track. Lines recorded several times are kept as takes: list_takes shows them, use_take plays a whole take or splices part of one into the comp. Video podcasts have cameras (list_cameras) whose pictures follow the audio edits; set_director_cuts chooses which camera is seen when (get_director shows the current switches), e.g. a close-up of whoever speaks in the transcript and the wide shot when several talk at once.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -563,7 +564,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         if (r.confidence <= 0) throw new ToolError(`No clear match between ${moving.name} and ${ref.name}; they don't seem to hear the same conversation.`);
         const now = host.project();
         const first = Math.min(...track.clips.map((c) => c.start));
-        host.apply(applyAlignment(now, ids, r, r.files), `Aligned ${moving.name} to ${ref.name}`);
+        host.apply(cameraSyncAfterStretch(applyAlignment(now, ids, r, r.files), r.files, 1 + r.drift), `Aligned ${moving.name} to ${ref.name}`);
         return {
           track: moving.name,
           to: ref.name,
@@ -774,6 +775,104 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             .sort((a, b) => a.position - b.position)
             .map((m) => ({ id: m.id, kind: m.kind, title: m.title, ...(m.url ? { url: m.url } : {}), seconds: round(m.position / p.sampleRate, 3), timestamp: formatTimestamp(m.position / p.sampleRate) })),
         };
+      },
+    },
+    {
+      name: 'list_cameras',
+      description:
+        'The cameras of a video podcast: number (the key that switches to it), name, size, frame rate, the track holding its sound (its picture follows the clips there) and the speaker tracks it shows. ' +
+        'Empty when the episode has no video (File › Import Camera Video… in WavePod).',
+      inputSchema: obj({}),
+      annotations: { title: 'List cameras', ...READ },
+      run: () => {
+        const p = host.project();
+        const names = new Map(p.tracks.map((t) => [t.id, t.name]));
+        return {
+          cameras: (p.cameras ?? []).map((c, i) => ({
+            number: i + 1,
+            id: c.id,
+            name: c.name,
+            width: c.width,
+            height: c.height,
+            fps: c.fps,
+            soundTrack: cameraTrack(p, c.id)?.name ?? null,
+            shows: (c.speakers ?? []).map((id) => names.get(id)).filter(Boolean),
+          })),
+        };
+      },
+    },
+    {
+      name: 'get_director',
+      description: 'Which camera the video shows when: the director switches (seconds, camera number and name, dissolve length), as shots with their start and end.',
+      inputSchema: obj({}),
+      annotations: { title: 'Get director switches', ...READ },
+      run: () => {
+        const p = host.project();
+        const sr = p.sampleRate;
+        const cams = p.cameras ?? [];
+        if (!cams.length) return { cameras: 0, note: 'The episode has no cameras.' };
+        return {
+          shots: shots(p, clipsEnd(p)).map((s) => {
+            const n = cams.findIndex((c) => c.id === s.camera);
+            const cut = p.director!.cuts[s.index];
+            return {
+              startSeconds: round(s.start / sr, 3),
+              endSeconds: round(s.end / sr, 3),
+              camera: n + 1,
+              name: cams[n]?.name,
+              ...(cut.dissolve ? { dissolveSeconds: round(cut.dissolve / sr, 2) } : {}),
+            };
+          }),
+        };
+      },
+    },
+    {
+      name: 'set_director_cuts',
+      description:
+        'Sets camera switches for the video: each switch shows a camera from its time on (until the next switch). With fromSeconds/toSeconds only that stretch is replaced and what showed after it carries on; without, all switches are replaced. ' +
+        'Use the transcript (get_transcript) to cut to whoever speaks. Cameras by number (list_cameras) or name.',
+      inputSchema: obj(
+        {
+          switches: {
+            type: 'array',
+            items: obj(
+              {
+                seconds: { type: 'number', minimum: 0 },
+                camera: { type: ['number', 'string'], description: 'Camera number (1…) or name.' },
+                dissolveSeconds: { type: 'number', minimum: 0, maximum: 5 },
+              },
+              ['seconds', 'camera'],
+            ),
+          },
+          fromSeconds: { type: 'number', minimum: 0 },
+          toSeconds: { type: 'number', minimum: 0 },
+        },
+        ['switches'],
+      ),
+      annotations: { title: 'Set director switches', ...EDIT },
+      run: (args) => {
+        let project = host.project();
+        const cams = project.cameras ?? [];
+        if (!cams.length) throw new ToolError('The episode has no cameras. The user imports them in WavePod: File › Import Camera Video….');
+        const sr = project.sampleRate;
+        const list = Array.isArray(args.switches) ? (args.switches as Array<Record<string, unknown>>) : [];
+        const cuts: DirectorCut[] = list.map((sw, i) => {
+          const sec = Number(sw.seconds);
+          const ref = sw.camera;
+          const cam = typeof ref === 'number' ? cams[ref - 1] : cams.find((c) => c.id === ref || c.name.toLowerCase() === String(ref).toLowerCase()) ?? cams[Number(ref) - 1];
+          if (!(sec >= 0) || !cam) throw new ToolError(`Switch ${i + 1} needs "seconds" and a camera (1…${cams.length} or a name).`);
+          const d = Number(sw.dissolveSeconds);
+          return { at: Math.round(sec * sr), camera: cam.id, ...(d > 0 ? { dissolve: Math.round(d * sr) } : {}) };
+        });
+        const hasRange = args.fromSeconds !== undefined || args.toSeconds !== undefined;
+        if (hasRange) {
+          const a = Math.round(Number(args.fromSeconds ?? 0) * sr);
+          const b = args.toSeconds === undefined ? clipsEnd(project) : Math.round(Number(args.toSeconds) * sr);
+          if (!(b > a)) throw new ToolError('toSeconds must be after fromSeconds.');
+          project = applyPass(project, a, b, cuts);
+        } else project = { ...project, director: { cuts: normalizeCuts(cuts) } };
+        host.apply(project, `Camera switches (${cuts.length})`);
+        return { switches: host.project().director?.cuts.length ?? 0 };
       },
     },
     {

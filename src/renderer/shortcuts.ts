@@ -67,6 +67,16 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
     ],
   ],
   [
+    'Video',
+    [
+      [`Shift+${mod}+U`, 'Cameras panel: program monitor and every camera'],
+      ['W', 'Watch through: play in a large view and switch cameras as you watch'],
+      ['1…9 (watch through)', 'Switch to camera 1…9 (hold D for a dissolve)'],
+      ['Alt+1…9', 'Switch to camera 1…9 at the playhead (also while playing)'],
+      [`Shift+${mod}+E`, 'Export video'],
+    ],
+  ],
+  [
     'Episode',
     [
       [`${mod}+N`, 'New episode'],

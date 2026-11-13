@@ -102,6 +102,8 @@ export interface Track {
   stem?: StemGroup;
   /** A remote guest's track: the call audio arrives over the network, the raw recording is uploaded. */
   remote?: { guestId: string };
+  /** A camera's own sound (Project.cameras): its clips decide which part of the camera's picture is seen. */
+  cameraId?: string;
   /** The track folder (group) this track belongs to; its members sit next to each other in the track list. */
   folderId?: string;
   /** Takes recorded over the same lines (loop recording, retakes), oldest first. */
@@ -301,6 +303,66 @@ export interface Project {
   exportSettings?: ExportSettings;
   /** LiveKit room of this episode's remote guests, so invite links stay valid when it is reopened. */
   remoteRoom?: string;
+  /** Video cameras of a video podcast; each has a sound track (Track.cameraId) its picture follows. */
+  cameras?: Camera[];
+  /** Which camera is seen when, for the video export. */
+  director?: Director;
+  /** Size and frame rate of the exported video. */
+  video?: VideoSettings;
+}
+
+// ---------------------------------------------------------------- video (multi-camera)
+
+/**
+ * A camera of a video podcast. It has no clips of its own: its sound is a track (Track.cameraId),
+ * and the picture at any moment is the part of the video that belongs to the sound playing on that
+ * track there. So every audio edit (ripple cut, text cut, cleanup, takes) applies to the video too.
+ */
+export interface Camera {
+  id: string;
+  name: string;
+  color: string;
+  /** The video file: relative to the episode folder, or an absolute path for a file left where it was. */
+  file: string;
+  width: number;
+  height: number;
+  /** Nominal frame rate (variable frame rate files keep their own frame times). */
+  fps: number;
+  /** Seconds. */
+  duration: number;
+  /** Video codec as the file names it (avc, hevc, vp9, av1, …). */
+  codec?: string;
+  /** How audio files map to times in the video, one entry per file the sound track's clips play. */
+  sync: CameraSync[];
+  /** Picture framing in the program: zoom 1 shows the whole picture; x/y (−1..1) move the crop. */
+  framing?: { zoom: number; x: number; y: number };
+  /** Tracks of the people this camera shows (for Auto-direct). */
+  speakers?: string[];
+}
+
+/** Maps frames of one audio file to the camera's video: seconds = offset + frame / sampleRate · rate. */
+export interface CameraSync {
+  file: string;
+  offset: number;
+  rate: number;
+}
+
+/** A switch in the director track: from `at` on, `camera` is seen (until the next switch). */
+export interface DirectorCut {
+  at: Frames;
+  camera: string;
+  /** Cross-dissolve from the previous camera, starting at `at`. */
+  dissolve?: Frames;
+}
+
+export interface Director {
+  cuts: DirectorCut[];
+}
+
+export interface VideoSettings {
+  width: number;
+  height: number;
+  fps: number;
 }
 
 // ---------------------------------------------------------------- scripts (audio drama)
@@ -729,8 +791,19 @@ export interface ExportOptions {
   chapterFiles: boolean;
   /** Mix files in mono (stems stay stereo). Loudness is then measured on the mono file, as players do. */
   mono?: boolean;
+  /** Also an MP4 video of the cameras (video podcasts), with this mix as its sound. Rendered in the app window. */
+  video?: VideoExportSettings;
   start?: Frames;
   end?: Frames;
+}
+
+/** The video file of an export: size by its shorter side, frame rate, quality and codec. */
+export interface VideoExportSettings {
+  /** 720, 1080, 1440 or 2160: the height of a landscape video (the width of a portrait one). */
+  size: number;
+  fps: number;
+  quality: 'medium' | 'high' | 'very-high';
+  codec: 'avc' | 'av1';
 }
 
 /** The export dialog's choices, kept with the episode and its template so each show exports the same way. */
@@ -838,7 +911,9 @@ export type MidiAction =
   /** Cough button of speaker track n: mutes while held. */
   | `cough-${CoughSlot}`
   /** Soundboard slot n. */
-  | `sound-${SoundSlot}`;
+  | `sound-${SoundSlot}`
+  /** Video: switch to camera n at the playhead. */
+  | `camera-${SoundSlot}`;
 
 export type CoughSlot = 1 | 2 | 3 | 4 | 5 | 6;
 export type SoundSlot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;

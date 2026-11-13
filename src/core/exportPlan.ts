@@ -130,6 +130,7 @@ export function plannedFiles(project: Project, settings: ExportSettings, job: Ex
         .forEach((t, i) => out.push(`${base}-${String(i + 1).padStart(2, '0')}-${safeName(t.name)}.${ext}`));
     }
   }
+  if (settings.video && project.cameras?.length) out.push(`${base}.mp4`);
   if (settings.chapterFiles) {
     const start = job.start ?? 0;
     const end = job.end ?? projectLength(project);

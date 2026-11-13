@@ -12,6 +12,7 @@ import remoteGuests from '../../docs/guide/remote-guests.md';
 import filters from '../../docs/guide/filters.md';
 import audioDrama from '../../docs/guide/audio-drama.md';
 import transcript from '../../docs/guide/transcript.md';
+import video from '../../docs/guide/video.md';
 import chapters from '../../docs/guide/chapters.md';
 import loudness from '../../docs/guide/loudness.md';
 import exportPage from '../../docs/guide/export.md';
@@ -53,6 +54,7 @@ export const TOPICS: Topic[] = [
   { id: 'filters', group: 'Sound', markdown: filters },
   { id: 'audio-drama', group: 'Sound', markdown: audioDrama },
   { id: 'transcript', group: 'Sound', markdown: transcript },
+  { id: 'video', group: 'Publishing', markdown: video },
   { id: 'chapters', group: 'Publishing', markdown: chapters },
   { id: 'loudness', group: 'Publishing', markdown: loudness },
   { id: 'export', group: 'Publishing', markdown: exportPage },

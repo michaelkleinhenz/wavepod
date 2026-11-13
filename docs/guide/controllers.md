@@ -20,6 +20,7 @@ Any class-compliant USB MIDI controller works: a pad controller, a keyboard, a f
 | Cough button, speaker 1–6 (hold) | Mutes that speaker while held. |
 | Soundboard 1–9, Stop all sounds | Plays jingles. |
 | Pre-show on / off | Only the soundboard is heard. |
+| Video: switch to camera 1–9 | Switches the [video](video.md) to that camera at the playhead. In the watch-through view it counts as pressing the number key, so a pad controller can direct. |
 
 Notes fire when pressed, controllers when they go above 0 (once per press, so a fader doesn't repeat), program changes always. The last message received is shown, which helps to find out what a button sends.
 
@@ -49,6 +50,7 @@ Open **Connection details and addresses** to change the **UDP port**, to tick **
 | `/wavepod/cough/1` … `/wavepod/cough/6` | Cough button: argument 1 mutes the speaker, 0 releases |
 | `/wavepod/sound/1` … `/wavepod/sound/9`, `/wavepod/sounds/stop` | Play a soundboard slot, stop all sounds |
 | `/wavepod/preshow` | Pre-show on / off (only the soundboard is heard) |
+| `/wavepod/camera/1` … `/wavepod/camera/9` | Video: switch to that camera at the playhead (in the watch-through view: like pressing the number) |
 
 A button that sends 1 on press and 0 on release fires once; a message without arguments counts as a press.
 

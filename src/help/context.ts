@@ -8,12 +8,15 @@ export interface HelpContext {
   tab?: string | null;
   view: 'setup' | 'edit' | 'chapters';
   /** The side panel open in Record & Edit. */
-  panel?: 'fx' | 'transcript' | 'library' | 'script' | null;
+  panel?: 'fx' | 'transcript' | 'library' | 'script' | 'video' | null;
   recording?: boolean;
 }
 
 /** Dialog titles (their start) and the page that explains them. */
 export const DIALOG_TOPICS: Array<[RegExp, string]> = [
+  [/^(auto-direct|who is in the picture)/i, 'video/auto-direct'],
+  [/^framing/i, 'video/framing'],
+  [/^(importing|syncing cameras)/i, 'video/import-the-cameras'],
   [/^export\b/i, 'export'],
   [/^send to auphonic/i, 'export/send-to-auphonic'],
   [/^loudness analysis/i, 'loudness/loudness-analysis'],
@@ -52,5 +55,6 @@ export function helpTopicFor(ctx: HelpContext): string {
   if (ctx.panel === 'transcript') return 'transcript';
   if (ctx.panel === 'library') return 'audio-drama/sound-library';
   if (ctx.panel === 'script') return 'audio-drama/script';
+  if (ctx.panel === 'video') return 'video';
   return ctx.recording ? 'recording' : 'timeline';
 }

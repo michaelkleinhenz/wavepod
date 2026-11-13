@@ -19,6 +19,8 @@ import { confirmStop, showSoundcheck } from './recordDialogs';
 import { askName } from './nameDialog';
 import { cycleTake } from '../core/takes';
 import { WEAK_CONFIDENCE, alignedPosition, applyAlignment } from '../core/alignEdit';
+import { cameraSyncAfterStretch } from '../core/video';
+import { VIDEO_FILE, importVideos } from './video/cameras';
 import { applyRenderedFuse, checkFuse, fuseSeamless, fuseTargets, isSeamlessFuse } from '../core/fuse';
 
 /** A stop confirmation is on screen (a second Stop press shouldn't open another). */
@@ -761,7 +763,7 @@ export async function alignTrack(trackId: string): Promise<void> {
  * conversation, or a guest's own recording and the call) and moves them there as one undo step.
  * Clock drift between the recorders is corrected with stretched copies of the files.
  */
-async function alignTo(clipIds: string[], trackId: string): Promise<void> {
+export async function alignTo(clipIds: string[], trackId: string): Promise<void> {
   if (store.transport.state === 'recording') return toast('Stop recording before aligning');
   const track = store.project.tracks.find((t) => t.id === trackId)!;
   const refs = store.project.tracks.filter((t) => t.id !== trackId && t.kind !== 'soundboard' && t.clips.length > 0);
@@ -791,7 +793,8 @@ async function alignTo(clipIds: string[], trackId: string): Promise<void> {
     }
     const sr = store.sampleRate;
     const first = Math.min(...store.project.tracks.flatMap((t) => t.clips).filter((c) => clipIds.includes(c.id)).map((c) => c.start));
-    store.edit((p) => applyAlignment(p, clipIds, r, r.files));
+    // cameras whose sound was stretched against clock drift follow the stretched copy
+    store.edit((p) => cameraSyncAfterStretch(applyAlignment(p, clipIds, r, r.files), r.files, 1 + r.drift));
     const shift = alignedPosition(r, first) - first;
     const moved = Math.abs(shift) < sr ? `${Math.round((shift / sr) * 1000)} ms` : formatShift(shift / sr);
     const driftMs = Math.abs(r.drift) * r.overlapSeconds * 1000;
@@ -855,7 +858,7 @@ function formatShift(sec: number): string {
   return `${sign}${m}:${(a - m * 60).toFixed(2).padStart(5, '0')} min`;
 }
 
-function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, title: string, hint: string): Promise<string | null> {
+export function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, title: string, hint: string): Promise<string | null> {
   return new Promise((resolve) => {
     const overlay = h('div', { class: 'overlay' });
     const done = (v: string | null) => {
@@ -892,6 +895,14 @@ function pickTrack(tracks: Array<{ id: string; name: string; color: string }>, t
 /** `folderId`: new tracks go into this track folder (files dropped on a folder row). */
 export async function importDroppedFiles(files: File[], at: number, trackId: string | null, folderId?: string): Promise<void> {
   if (store.transport.state === 'recording') return toast('Stop recording before importing');
+  // camera videos become cameras (their sound on a track of its own)
+  const videos = files.filter((f) => VIDEO_FILE.test(f.name));
+  if (videos.length) {
+    const paths = videos.map((f) => api().pathForFile(f)).filter(Boolean);
+    if (paths.length) await importVideos(paths);
+    files = files.filter((f) => !VIDEO_FILE.test(f.name));
+    if (!files.length) return;
+  }
   const sr = store.sampleRate;
   const imported: { name: string; file: string; length: number }[] = [];
   for (const file of files) {
