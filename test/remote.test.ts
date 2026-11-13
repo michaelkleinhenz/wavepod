@@ -355,3 +355,16 @@ describe('AudioEngine remote inputs', () => {
     expect(engine.remoteStats(guest)!.buffered).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe('camera choice', () => {
+  it('lists cameras by name, numbers unnamed ones, and waits for permission', async () => {
+    const { cameraChoices } = await import('../src/shared/cameras');
+    const dev = (kind: string, deviceId: string, label = '') => ({ kind: kind as MediaDeviceKind, deviceId, label });
+    expect(cameraChoices([dev('audioinput', 'a', 'Mic'), dev('videoinput', 'c1', 'FaceTime HD'), dev('videoinput', 'c2')])).toEqual([
+      { id: 'c1', label: 'FaceTime HD' },
+      { id: 'c2', label: 'Camera 2' },
+    ]);
+    // before the page may use a camera, browsers show one nameless entry
+    expect(cameraChoices([dev('videoinput', '')])).toEqual([]);
+  });
+});

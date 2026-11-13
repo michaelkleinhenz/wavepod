@@ -6,6 +6,7 @@ import { HOST_IDENTITY, TOPIC_CHUNK, TOPIC_CONTROL, decodeMessage, encodeMessage
 import { REMOTE_PORT_MESSAGE, type ToMain, type ToWindow } from '../../shared/remoteBridge';
 import type { RemoteTakeInfo } from '../../shared/types';
 import { api, store } from '../store';
+import { listCameras, saveCamera, savedCamera, type CameraChoice } from '../../shared/cameras';
 
 export type GuestStatus = 'waiting' | 'live';
 
@@ -45,11 +46,30 @@ class RemoteSession {
   video = false;
   cameraOn = false;
   localVideo: HTMLVideoElement | null = null;
+  /** Cameras to choose from, and the one the host picked ('' = the system's default). */
+  cameras: CameraChoice[] = [];
+  cameraId = '';
 
   constructor() {
     window.addEventListener('message', (e) => {
       if (e.data === REMOTE_PORT_MESSAGE && e.ports[0]) this.attachPort(e.ports[0]);
     });
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => void this.refreshCameras());
+  }
+
+  /** Reads the camera list again (names appear once a camera was used). */
+  async refreshCameras(): Promise<void> {
+    this.cameras = await listCameras();
+    if (!this.cameras.some((c) => c.id === this.cameraId)) this.cameraId = savedCamera(this.cameras);
+    this.changed();
+  }
+
+  /** Picks the camera; switches over at once if it is on. */
+  async selectCamera(id: string): Promise<void> {
+    this.cameraId = id;
+    saveCamera(id);
+    if (this.room && this.cameraOn && id) await this.room.switchActiveDevice('videoinput', id);
+    this.changed();
   }
 
   get connected(): boolean {
@@ -249,8 +269,18 @@ class RemoteSession {
   /** The host's own camera, so guests can see the host (video is never recorded). */
   async setCamera(on: boolean): Promise<void> {
     if (!this.room) return;
-    const pub = await this.room.localParticipant.setCameraEnabled(on, { resolution: VideoPresets.h360.resolution }, { simulcast: true, videoSimulcastLayers: [VideoPresets.h180] });
+    const pub = await this.room.localParticipant.setCameraEnabled(
+      on,
+      { resolution: VideoPresets.h360.resolution, ...(this.cameraId ? { deviceId: { exact: this.cameraId } } : {}) },
+      { simulcast: true, videoSimulcastLayers: [VideoPresets.h180] },
+    );
     this.cameraOn = on;
+    // the names (and any camera the default picked) are known now
+    if (on) {
+      const id = pub?.videoTrack?.mediaStreamTrack.getSettings().deviceId;
+      await this.refreshCameras();
+      if (id && !this.cameraId) this.cameraId = id;
+    }
     const track = pub?.videoTrack;
     this.localVideo = on && track ? (track.attach() as HTMLVideoElement) : null;
     this.changed();

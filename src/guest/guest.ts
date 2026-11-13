@@ -25,6 +25,7 @@ import {
   type HostMessage,
 } from '../shared/remoteProtocol';
 import { ChunkStore, openChunkStore } from './store';
+import { listCameras, saveCamera, savedCamera, type CameraChoice } from '../shared/cameras';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const app = $('#app');
@@ -53,6 +54,8 @@ let micPub: LocalTrackPublication | null = null;
 let muted = false;
 let videoAllowed = false;
 let cameraOn = false;
+let cameras: CameraChoice[] = [];
+let cameraId = '';
 let ctx: AudioContext | null = null;
 let meterLevel = 0;
 let recorderNode: AudioWorkletNode | null = null;
@@ -95,6 +98,8 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, 
 }
 
 function render(): void {
+  // redrawing would close a list the guest has open: wait until they pick or leave it
+  if (document.activeElement instanceof HTMLSelectElement && app.contains(document.activeElement)) return;
   app.replaceChildren(...view().filter((n): n is Node => !!n));
 }
 
@@ -122,11 +127,7 @@ function view(): Array<Node | null> {
           'label',
           { class: 'field' },
           'Microphone',
-          h(
-            'select',
-            { onchange: (e: Event) => void pickDevice((e.target as HTMLSelectElement).value) },
-            ...devices.map((d, i) => h('option', { value: d.deviceId, selected: d.deviceId === deviceId }, d.label || `Microphone ${i + 1}`)),
-          ),
+          micSelect(),
         ),
         h('div', { class: 'meter' }, h('div', { class: 'meter-fill', id: 'meter' })),
         h('p', { class: 'note' }, 'Speak normally: the bar should move well into the middle without hitting the end. Headphones on? Then join.'),
@@ -168,6 +169,7 @@ function liveView(episode: Node | null): Array<Node | null> {
     list,
     h('div', { class: 'meter' }, h('div', { class: 'meter-fill', id: 'meter' })),
     h('p', { class: `saved${storeState !== 'ok' ? ' warn' : ''}` }, storeState === 'none' ? 'This browser can’t keep a copy: keep this tab open until the host has everything.' : storeState === 'full' ? 'The browser’s storage is full: keep this tab open until your recording is sent.' : saved),
+    devices.length > 1 || (videoAllowed && cameras.length > 1) ? h('div', { class: 'devices' }, devices.length > 1 ? micSelect() : null, cameraSelect()) : null,
     h(
       'div',
       { class: 'buttons' },
@@ -178,6 +180,48 @@ function liveView(episode: Node | null): Array<Node | null> {
     message ? h('p', { class: 'note' }, message) : null,
     episode && !link?.episode ? episode : null,
   ];
+}
+
+/** The camera list (only when video is on and there is a choice). */
+function cameraSelect(): HTMLSelectElement | null {
+  return videoAllowed && cameras.length > 1
+    ? h(
+        'select',
+        {
+          class: 'camera',
+          'aria-label': 'Camera',
+          onchange: (e: Event) => {
+            const sel = e.target as HTMLSelectElement;
+            sel.blur();
+            void pickCamera(sel.value);
+          },
+          onblur: () => render(),
+        },
+        ...(cameraId ? [] : [h('option', { value: '', selected: true }, 'Default camera')]),
+        ...cameras.map((c) => h('option', { value: c.id, selected: c.id === cameraId }, c.label)),
+      )
+    : null;
+}
+
+/** The microphone list: before joining, and during the call (the recording carries on). */
+function micSelect(): HTMLSelectElement {
+  return h(
+    'select',
+    {
+      class: 'mic',
+      'aria-label': 'Microphone',
+      onchange: (e: Event) => {
+        const sel = e.target as HTMLSelectElement;
+        sel.blur();
+        void pickDevice(sel.value).catch((err) => {
+          message = `Microphone: ${(err as Error).message}`;
+          render();
+        });
+      },
+      onblur: () => render(),
+    },
+    ...devices.map((d, i) => h('option', { value: d.deviceId, selected: d.deviceId === deviceId }, d.label || `Microphone ${i + 1}`)),
+  );
 }
 
 function pendingTakes(): boolean {
@@ -230,6 +274,7 @@ async function pickDevice(id: string): Promise<void> {
   deviceId = id;
   await openMic(id);
   if (micPub && stream) await micPub.audioTrack?.replaceTrack(stream.getAudioTracks()[0]);
+  render();
 }
 
 /** The audio context the meter and the recorder run in, at the episode's rate once it is known. */
@@ -365,6 +410,7 @@ async function onHost(m: HostMessage): Promise<void> {
   switch (m.type) {
     case 'hello':
       videoAllowed = m.video;
+      if (videoAllowed) void refreshCameras().then(render);
       if (m.sampleRate !== hostRate) {
         hostRate = m.sampleRate;
         // the recording runs at the episode's rate, so nothing is resampled
@@ -400,6 +446,7 @@ async function onHost(m: HostMessage): Promise<void> {
       return;
     case 'video':
       videoAllowed = m.on;
+      if (videoAllowed) await refreshCameras();
       render();
       return;
   }
@@ -531,10 +578,35 @@ async function toggleMute(): Promise<void> {
 async function toggleCamera(): Promise<void> {
   if (!room) return;
   cameraOn = !cameraOn;
-  await room.localParticipant.setCameraEnabled(cameraOn, { resolution: VideoPresets.h360.resolution }, { simulcast: true, videoSimulcastLayers: [VideoPresets.h180] }).catch((e) => {
-    cameraOn = false;
-    message = `Camera: ${(e as Error).message}`;
-  });
+  const pub = await room.localParticipant
+    .setCameraEnabled(
+      cameraOn,
+      { resolution: VideoPresets.h360.resolution, ...(cameraId ? { deviceId: { exact: cameraId } } : {}) },
+      { simulcast: true, videoSimulcastLayers: [VideoPresets.h180] },
+    )
+    .catch((e) => {
+      cameraOn = false;
+      message = `Camera: ${(e as Error).message}`;
+      return undefined;
+    });
+  if (cameraOn) {
+    // the cameras have names now, and the default one is known
+    const id = pub?.videoTrack?.mediaStreamTrack.getSettings().deviceId;
+    await refreshCameras();
+    if (id && !cameraId) cameraId = id;
+  }
+  render();
+}
+
+async function refreshCameras(): Promise<void> {
+  cameras = await listCameras();
+  if (!cameras.some((c) => c.id === cameraId)) cameraId = savedCamera(cameras);
+}
+
+async function pickCamera(id: string): Promise<void> {
+  cameraId = id;
+  saveCamera(id);
+  if (room && cameraOn && id) await room.switchActiveDevice('videoinput', id).catch((e) => (message = `Camera: ${(e as Error).message}`));
   render();
 }
 
@@ -595,6 +667,15 @@ setInterval(() => {
   send({ v: PROTOCOL_VERSION, type: 'status', behindChunks: queue.length + inFlight, storage: storeState });
   if (screen === 'live') render();
 }, 2000);
+
+// a microphone or camera plugged in or out
+navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+  void (async () => {
+    if (stream) devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+    if (videoAllowed) await refreshCameras();
+    render();
+  })();
+});
 
 window.addEventListener('beforeunload', (e) => {
   if (take || queue.length || inFlight) {

@@ -920,3 +920,7 @@ button.link:hover:not(:disabled) { background: none; border: none; }
 .remote-invite input { flex: 1; }
 .remote-video { width: 100%; border-radius: 6px; background: #000; aspect-ratio: 16 / 9; object-fit: cover; }
 .remote-video.self { width: 40%; margin-top: 6px; }
+.remote-panel .remote-camera {
+  max-width: 180px;
+  margin-right: auto;
+}
