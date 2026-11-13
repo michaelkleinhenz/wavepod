@@ -15,6 +15,7 @@ export interface VideoGrant {
   room?: string;
   roomJoin?: boolean;
   roomList?: boolean;
+  roomCreate?: boolean;
   roomAdmin?: boolean;
   canPublish?: boolean;
   canSubscribe?: boolean;
@@ -94,8 +95,8 @@ export class RoomService {
     private fetchFn: Fetch = fetch as unknown as Fetch,
   ) {}
 
-  private async call<T>(method: string, room: string | undefined, body: Record<string, unknown>): Promise<T> {
-    const grant: VideoGrant = room ? { room, roomAdmin: true } : { roomList: true };
+  private async call<T>(method: string, room: string | undefined, body: Record<string, unknown>, grantFor?: VideoGrant): Promise<T> {
+    const grant: VideoGrant = grantFor ?? (room ? { room, roomAdmin: true } : { roomList: true });
     const token = signToken(this.creds, 'wavepod-admin', grant, { ttlSeconds: 600 });
     let res;
     try {
@@ -148,5 +149,11 @@ export class RoomService {
 
   remove(room: string, identity: string): Promise<unknown> {
     return this.call('RemoveParticipant', room, { room, identity });
+  }
+
+  /** Closes the room: everyone in it is disconnected (guests see that the session ended). */
+  deleteRoom(room: string): Promise<unknown> {
+    // closing a room takes the room-create right, not room admin
+    return this.call('DeleteRoom', room, { room }, { roomCreate: true });
   }
 }

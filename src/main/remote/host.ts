@@ -161,7 +161,16 @@ export class RemoteHost {
     return { url: creds.url, token: hostToken(creds, project.remoteRoom!), room: project.remoteRoom!, video: this.deps.settings().video };
   }
 
-  stop(): void {
+  /** Ends the session; with `closeRoom`, guests still in the room are sent away too. */
+  async stop(closeRoom = false): Promise<void> {
+    const room = this.deps.project().remoteRoom;
+    if (closeRoom && room && this.port) {
+      try {
+        await new RoomService(this.creds()).deleteRoom(room);
+      } catch (e) {
+        console.error(`[remote] could not close the room: ${(e as Error).message}`);
+      }
+    }
     if (this.pingTimer) clearInterval(this.pingTimer);
     this.pingTimer = null;
     this.port?.close();
@@ -173,7 +182,7 @@ export class RemoteHost {
   /** The episode changed (opened another one): drop the session and the inbox of the old one. */
   projectChanged(): void {
     if (this.inboxDir && this.inboxDir !== this.deps.dir()) {
-      this.stop();
+      void this.stop();
       void this.inbox?.close();
       this.inbox = null;
       this.inboxDir = '';

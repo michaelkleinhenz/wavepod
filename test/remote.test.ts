@@ -115,6 +115,12 @@ describe('LiveKit room service', () => {
     expect((calls[1].body.permission as { canPublishSources: string[] }).canPublishSources).toEqual(['MICROPHONE', 'CAMERA']);
   });
 
+  it('closes the room when the session ends', async () => {
+    await fake().deleteRoom('r');
+    expect(calls[0].url).toBe('https://show.livekit.cloud/twirp/livekit.RoomService/DeleteRoom');
+    expect(calls[0].body).toEqual({ room: 'r' });
+  });
+
   it('holds a guest back but keeps their upload going', async () => {
     await fake().holdBack('r', 'guest-g1');
     expect(calls[0].body.permission).toEqual({ canSubscribe: false, canPublish: false, canPublishData: true });

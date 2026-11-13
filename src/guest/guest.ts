@@ -8,7 +8,7 @@
 //    storage in one-second chunks, and sent to the host's WavePod while the take runs. A chunk is
 //    only deleted once the host has the whole take, so a closed tab or a dropped connection loses
 //    nothing: opening the link again sends the rest.
-import { Room, RoomEvent, Track, VideoPresets, type LocalTrackPublication, type Participant, type RemoteTrack } from 'livekit-client';
+import { DisconnectReason, Room, RoomEvent, Track, VideoPresets, type LocalTrackPublication, type Participant, type RemoteTrack } from 'livekit-client';
 import {
   CHUNK_SECONDS,
   HOST_IDENTITY,
@@ -369,12 +369,19 @@ async function join(): Promise<void> {
       send({ v: PROTOCOL_VERSION, type: 'hello', name, userAgent: navigator.userAgent });
       render();
     })
-    .on(RoomEvent.Disconnected, () => {
+    .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
       if (room !== r) return;
       room = null;
       micPub = null;
       screen = 'ended';
-      message = pendingTakes() ? 'The connection ended before all of your recording was sent. Open the invite link again to send the rest.' : 'The session has ended.';
+      cameraOn = false;
+      const byHost = reason === DisconnectReason.ROOM_DELETED || reason === DisconnectReason.PARTICIPANT_REMOVED;
+      const ended = reason === DisconnectReason.PARTICIPANT_REMOVED ? 'The host removed you from the session.' : 'The host ended the session.';
+      message = pendingTakes()
+        ? `${byHost ? ended + ' ' : 'The connection ended. '}Part of your recording hasn’t been sent yet: open the invite link again when the host is back to send the rest.`
+        : byHost
+          ? ended
+          : 'The session has ended.';
       render();
     });
   try {
