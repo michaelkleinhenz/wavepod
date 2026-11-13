@@ -40,6 +40,7 @@ export class GuestsPanel {
     } catch {
       this.configured = false;
     }
+    void remoteSession.refreshCameras();
     this.render();
   }
 
@@ -53,6 +54,8 @@ export class GuestsPanel {
 
   private render(): void {
     if (!this.isOpen) return;
+    // redrawing would close the camera list under the mouse: wait until it lets go
+    if (document.activeElement instanceof HTMLSelectElement && this.el.contains(document.activeElement)) return;
     // the panel redraws as guests talk; keep the cursor in the name field
     const typing = document.activeElement instanceof HTMLInputElement && this.el.contains(document.activeElement) ? document.activeElement.selectionStart : null;
     this.draw();
@@ -109,7 +112,29 @@ export class GuestsPanel {
     this.el.append(h('div', { class: 'row remote-invite' }, input, h('button', { onclick: () => void this.invite() }, 'Invite')));
     if (s.connected) {
       const foot = h('div', { class: 'row end remote-foot' });
-      if (s.video) foot.append(h('button', { onclick: () => void s.setCamera(!s.cameraOn).catch((e) => toast(errorMessage(e), 'error')) }, s.cameraOn ? 'Camera off' : 'Camera on'));
+      if (s.video) {
+        if (s.cameras.length > 1) {
+          foot.append(
+            h(
+              'select',
+              {
+                class: 'remote-camera',
+                title: 'Camera',
+                'aria-label': 'Camera',
+                onchange: (e: Event) => {
+                  const sel = e.target as HTMLSelectElement;
+                  sel.blur();
+                  void s.selectCamera(sel.value).catch((err) => toast(errorMessage(err), 'error'));
+                },
+                onblur: () => this.render(),
+              },
+              ...(s.cameraId ? [] : [h('option', { value: '', selected: true }, 'Default camera')]),
+              ...s.cameras.map((c) => h('option', { value: c.id, selected: c.id === s.cameraId }, c.label)),
+            ),
+          );
+        }
+        foot.append(h('button', { onclick: () => void s.setCamera(!s.cameraOn).catch((e) => toast(errorMessage(e), 'error')) }, s.cameraOn ? 'Camera off' : 'Camera on'));
+      }
       foot.append(h('button', { onclick: () => void s.stop() }, 'End Session'));
       if (s.localVideo) {
         s.localVideo.classList.add('remote-video', 'self');

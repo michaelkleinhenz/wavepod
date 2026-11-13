@@ -629,7 +629,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   testRemote: () => remoteHost.test(),
   remoteStart: () => remoteHost.start(),
-  remoteStop: () => remoteHost.stop(),
+  remoteStop: () => remoteHost.stop(true),
   remoteInvite: (name: string) => remoteHost.invite(name),
   remoteLink: (trackId: string) => remoteHost.link(trackId),
   remoteAdmit: (identity: string) => remoteHost.admit(identity),

@@ -920,3 +920,20 @@ button.link:hover:not(:disabled) { background: none; border: none; }
 .remote-invite input { flex: 1; }
 .remote-video { width: 100%; border-radius: 6px; background: #000; aspect-ratio: 16 / 9; object-fit: cover; }
 .remote-video.self { width: 40%; margin-top: 6px; }
+.remote-panel .remote-camera {
+  max-width: 180px;
+  margin-right: auto;
+}
+/* a remote guest's track: the audio comes over the internet, not from an input */
+.track-header .remote-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0b1220;
+  background: #5eead4;
+  margin-right: auto;
+}

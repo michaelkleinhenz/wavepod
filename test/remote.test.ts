@@ -115,6 +115,12 @@ describe('LiveKit room service', () => {
     expect((calls[1].body.permission as { canPublishSources: string[] }).canPublishSources).toEqual(['MICROPHONE', 'CAMERA']);
   });
 
+  it('closes the room when the session ends', async () => {
+    await fake().deleteRoom('r');
+    expect(calls[0].url).toBe('https://show.livekit.cloud/twirp/livekit.RoomService/DeleteRoom');
+    expect(calls[0].body).toEqual({ room: 'r' });
+  });
+
   it('holds a guest back but keeps their upload going', async () => {
     await fake().holdBack('r', 'guest-g1');
     expect(calls[0].body.permission).toEqual({ canSubscribe: false, canPublish: false, canPublishData: true });
@@ -353,5 +359,18 @@ describe('AudioEngine remote inputs', () => {
     expect(last.length).toBeGreaterThan(0);
     expect(last[last.length - 1]).toBeCloseTo(0.1, 3);
     expect(engine.remoteStats(guest)!.buffered).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('camera choice', () => {
+  it('lists cameras by name, numbers unnamed ones, and waits for permission', async () => {
+    const { cameraChoices } = await import('../src/shared/cameras');
+    const dev = (kind: string, deviceId: string, label = '') => ({ kind: kind as MediaDeviceKind, deviceId, label });
+    expect(cameraChoices([dev('audioinput', 'a', 'Mic'), dev('videoinput', 'c1', 'FaceTime HD'), dev('videoinput', 'c2')])).toEqual([
+      { id: 'c1', label: 'FaceTime HD' },
+      { id: 'c2', label: 'Camera 2' },
+    ]);
+    // before the page may use a camera, browsers show one nameless entry
+    expect(cameraChoices([dev('videoinput', '')])).toEqual([]);
   });
 });
