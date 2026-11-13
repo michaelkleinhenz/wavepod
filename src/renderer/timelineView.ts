@@ -514,7 +514,7 @@ export class TimelineView {
         h(
           'div',
           {
-            class: `track-header${row.folder ? ' in-folder' : ''}`,
+            class: `track-header${row.folder ? ' in-folder' : ''}${t.remote ? ' remote' : ''}`,
             style: `height: ${TRACK_H}px; --track-color: ${t.color}${row.folder ? `; --folder-color: ${row.folder.color}` : ''}`,
             oncontextmenu: (e: MouseEvent) => {
               // text fields keep their own copy/paste menu
@@ -531,6 +531,7 @@ export class TimelineView {
               value: t.name,
               onchange: (e: Event) => store.edit((p) => updateTrack(p, t.id, { name: (e.target as HTMLInputElement).value })),
             }),
+            t.remote ? h('span', { class: 'remote-tag', title: 'Remote guest: joins over the internet (View › Remote Guests)' }, 'Remote') : null,
             t.kind === 'soundboard' ? h('span', { class: 'toggle placeholder' }) : toggle('armed', '●', 'Arm for recording'),
             t.kind === 'soundboard'
               ? h('span', { class: 'toggle placeholder' })
@@ -571,18 +572,24 @@ export class TimelineView {
             { class: 'th-row' },
             t.kind === 'soundboard'
               ? h('span', { class: 'muted th-hint' }, 'Jingles played while recording')
-              : h(
-                  'select',
-                  {
-                    class: 'input-select',
-                    title: 'Input channel(s) this track records from',
-                    onchange: (e: Event) => {
-                      const v = (e.target as HTMLSelectElement).value;
-                      store.patch((p) => updateTrack(p, t.id, { inputChannels: v ? v.split(',').map(Number) : [] }));
+              : t.remote
+                ? h(
+                    'select',
+                    { class: 'input-select', disabled: true, title: 'A remote guest: the audio comes over the internet (View › Remote Guests), not from an input' },
+                    h('option', null, 'Remote guest'),
+                  )
+                : h(
+                    'select',
+                    {
+                      class: 'input-select',
+                      title: 'Input channel(s) this track records from',
+                      onchange: (e: Event) => {
+                        const v = (e.target as HTMLSelectElement).value;
+                        store.patch((p) => updateTrack(p, t.id, { inputChannels: v ? v.split(',').map(Number) : [] }));
+                      },
                     },
-                  },
-                  ...inputOptions.map((o) => h('option', { value: o.value, selected: o.value === cur }, o.label)),
-                ),
+                    ...inputOptions.map((o) => h('option', { value: o.value, selected: o.value === cur }, o.label)),
+                  ),
             ...this.panControls(t),
             this.automationButton(t),
           ),

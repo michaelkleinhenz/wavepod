@@ -924,3 +924,16 @@ button.link:hover:not(:disabled) { background: none; border: none; }
   max-width: 180px;
   margin-right: auto;
 }
+/* a remote guest's track: the audio comes over the internet, not from an input */
+.track-header .remote-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0b1220;
+  background: #5eead4;
+}
+.track-header.remote .input-select:disabled { opacity: 1; color: #5eead4; cursor: default; appearance: none; }
