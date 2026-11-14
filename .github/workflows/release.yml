@@ -105,7 +105,7 @@ jobs:
 
             Pick the file for your computer under **Assets**; the [install guide](https://github.com/michaelkleinhenz/wavepod#getting-started) has the steps.
 
-            **Windows:** the installer isn't code-signed (certificates cost money every year, and WavePod is a free project). If Windows says *"Windows protected your PC"*, click **More info › Run anyway**. If it says *"Smart App Control blocked an app"*, there is no per-app exception: turn Smart App Control off under **Windows Security › App & browser control › Smart App Control settings**, then run the installer again. [Details](https://github.com/michaelkleinhenz/wavepod#windows-smart-app-control-blocks-wavepod)
+            **Windows:** the easiest way is the [Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB): signed by Microsoft, no warnings, updates itself (new versions appear there a few days after this release). The installer below isn't code-signed (certificates cost money every year, and WavePod is a free project). If Windows says *"Windows protected your PC"*, click **More info › Run anyway**. If it says *"Smart App Control blocked an app"*, there is no per-app exception: turn Smart App Control off under **Windows Security › App & browser control › Smart App Control settings**, then run the installer again. [Details](https://github.com/michaelkleinhenz/wavepod#windows-smart-app-control-blocks-wavepod)
 
             **macOS:** open WavePod once, then click **Open Anyway** under **System Settings › Privacy & Security**.
           draft: false
