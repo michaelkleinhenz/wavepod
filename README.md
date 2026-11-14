@@ -362,7 +362,8 @@ launcher.
 
 `build/icon.svg` is the one source for the app, installer and web page icon.
 After editing it, `make icons` re-renders `build/icons/*.png`,
-`build/icon.png`, `build/icon.ico`, the favicons in `site/` and copies the SVG
+`build/icon.png`, `build/icon.ico`, the Microsoft Store tiles in `build/appx/`,
+the favicons in `site/` and copies the SVG
 to `site/img/icon.svg` (needs Playwright's Chromium and ImageMagick). A test
 checks the web copy matches. The icon has no lettering, so renaming the app
 only touches `productName`, `desktopName` and the `.desktop` file.
@@ -662,7 +663,9 @@ best on the same audio interface.
 Pushing a tag like `v0.1.0` runs `.github/workflows/release.yml`, which
 builds a Linux AppImage and .deb, a Windows NSIS installer and a macOS DMG and
 attaches them to a GitHub release. Builds are unsigned until signing
-certificates are configured as repository secrets.
+certificates are configured as repository secrets. Once set up, it also sends
+a Windows package to the [Microsoft Store](#microsoft-store), which Microsoft
+signs.
 
 The app version comes from the tag: the workflow sets `package.json`'s
 `version` to the tag without its `v` before packaging, so tagging `v0.7.0`
@@ -680,6 +683,77 @@ the tag together, which starts the release workflow. It refuses to run on
 another branch, with uncommitted changes, when `main` differs from
 `origin/main`, or when the tag already exists, and asks before changing
 anything (`YES=1` skips the question).
+
+### Microsoft Store
+
+Windows Smart App Control blocks unsigned apps, and a code-signing
+certificate costs money every year. Packages in the Microsoft Store are
+signed by Microsoft instead, for free, so the Store version runs with Smart
+App Control on and without the "Windows protected your PC" screen.
+
+`make dist-store` (or `npm run dist:store`) builds an MSIX package on
+Windows from the same app as the installer. Its tiles are in `build/appx/`,
+rendered from `build/icon.svg` by `make icons`. The release workflow builds it
+on every release tag once the Store values below are set, and submits it to
+Partner Center, where Microsoft checks it (usually within a few days) and
+publishes it. The MSIX is not attached to the GitHub release: it is unsigned
+until Microsoft signs it and wouldn't install from there. Pre-release tags
+(`v1.2.0-beta.1`) never go to the Store. If a submission is still being
+certified when the next release comes, the Store step fails; submit that
+package by hand in Partner Center or wait and re-run the job.
+
+One-time setup:
+
+1. Open a developer account at
+   [storedeveloper.microsoft.com](https://storedeveloper.microsoft.com)
+   as an **individual** (free; you verify your identity with an ID).
+2. In [Partner Center](https://partner.microsoft.com/dashboard/apps-and-games/overview)
+   choose **New product › MSIX or PWA app** and reserve the name `WavePod`.
+3. Under **Product management › Product identity** of the new app, copy
+   these into the repository's **Settings › Secrets and variables › Actions ›
+   Variables**:
+
+   | Variable | Partner Center value |
+   | --- | --- |
+   | `MSSTORE_IDENTITY_NAME` | Package/Identity/Name |
+   | `MSSTORE_PUBLISHER` | Package/Identity/Publisher (`CN=…`) |
+   | `MSSTORE_PUBLISHER_NAME` | Package/Properties/PublisherDisplayName |
+
+4. Push the next release tag. The Windows job of the release workflow now
+   also uploads a `store-msix` artifact; download it from the workflow run.
+   (On a Windows PC, `make dist-store` with the three variables set as
+   environment variables builds the same package.)
+5. Make the first submission by hand, because the Store API can only update
+   an app that already has one: in Partner Center fill in **Pricing and
+   availability** (free), **Properties** (category Music, privacy policy URL),
+   the **Age ratings** questionnaire, **Packages** (upload the `.msix`) and
+   the **Store listing** (description, screenshots). The package declares
+   the restricted `runFullTrust` capability, which every desktop app needs;
+   explain it under **Submission options**, for example: *WavePod is a
+   desktop multitrack recorder. It needs full trust to use audio interfaces
+   and to run its VST3 plug-in host.* Then submit.
+6. Give the release workflow access to Partner Center: under **Account
+   settings › User management › Microsoft Entra applications**, create a
+   Microsoft Entra application (Partner Center creates a free Entra tenant
+   if you have none), give it the **Manager** role, and add a key. Then set
+   these repository **secrets**:
+
+   | Secret | Where |
+   | --- | --- |
+   | `MSSTORE_TENANT_ID` | the application's Tenant ID |
+   | `MSSTORE_CLIENT_ID` | the application's Client ID |
+   | `MSSTORE_CLIENT_SECRET` | the key (shown only once; it expires, note the date) |
+   | `MSSTORE_SELLER_ID` | **Account settings › Legal info**, Seller ID |
+
+7. Once the first submission is live, set the repository variable
+   `MSSTORE_PRODUCT_ID` to the app's Store ID (12 characters, starting with
+   `9`, under **Product identity**). From then on every release tag submits
+   the new version to the Store by itself; the listing text and screenshots
+   stay as they are in Partner Center.
+
+When the key expires, the **Submit to the Microsoft Store** job fails at
+"Sign in to Partner Center": add a new key in Partner Center and replace
+`MSSTORE_CLIENT_SECRET`.
 
 ## Third-party components
 

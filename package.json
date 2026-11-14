@@ -17,6 +17,7 @@
     "dist": "npm run build && electron-builder --publish never",
     "dist:linux": "npm run build && electron-builder --linux AppImage deb --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --publish never",
+    "dist:store": "npm run build && electron-builder --win appx --publish never",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "postinstall": "patch-package && node scripts/build-audify.mjs"
   },
@@ -91,6 +92,21 @@
         "nsis"
       ],
       "icon": "build/icon.ico"
+    },
+    "appx": {
+      "artifactName": "${productName}-${version}-store-${arch}.msix",
+      "displayName": "WavePod",
+      "backgroundColor": "transparent",
+      "languages": [
+        "en-US"
+      ],
+      "capabilities": [
+        "runFullTrust",
+        "microphone",
+        "webcam"
+      ],
+      "minVersion": "10.0.17763.0",
+      "maxVersionTested": "10.0.26100.0"
     },
     "nsis": {
       "oneClick": false,
