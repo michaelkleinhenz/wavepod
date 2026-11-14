@@ -111,11 +111,17 @@ Get the file for your computer from the
 
 There is no build for Macs with an Intel processor yet.
 
+> **Windows 11 users:** if **Smart App Control** is switched on, Windows blocks
+> WavePod without offering "Run anyway". See
+> [Windows: Smart App Control blocks WavePod](#windows-smart-app-control-blocks-wavepod)
+> before you install.
+
 ### 2. Install and start
 
-WavePod's installers are not yet signed with a developer certificate, so
+WavePod's installers are not signed with a code-signing certificate, so
 Windows and macOS warn you the first time. That is expected; the steps below
-get you past it once.
+get you past it once. (Why aren't they signed? See
+[Why WavePod isn't code-signed](#why-wavepod-isnt-code-signed).)
 
 **Windows**
 
@@ -125,8 +131,9 @@ get you past it once.
 3. Follow the installer. You can choose where WavePod goes.
 4. Start WavePod from the Start menu or the desktop shortcut.
 
-For a RØDECaster Pro II with all 16 channels, also install RØDE's ASIO
-driver (see [Using a RØDECaster Pro II](#using-a-rødecaster-pro-ii)).
+If Windows instead says **"Smart App Control blocked an app that may be
+unsafe"** and there is no **Run anyway** button, see
+[Windows: Smart App Control blocks WavePod](#windows-smart-app-control-blocks-wavepod).
 
 **macOS**
 
@@ -204,6 +211,47 @@ Your episodes and settings are kept: episodes live in `Documents/WavePod`.
 To remove WavePod, use **Settings › Apps** on Windows, drag it from
 Applications to the Bin on macOS, or run `sudo apt remove wavepod` on
 Debian/Ubuntu. Your episodes in `Documents/WavePod` stay where they are.
+
+### Windows: Smart App Control blocks WavePod
+
+Smart App Control is a protection in Windows 11 that only lets apps run that
+are code-signed or that Microsoft already knows. Because WavePod isn't
+signed, Smart App Control blocks it, and unlike the "Windows protected your
+PC" screen, it has **no way to allow a single app**. The only way to run
+WavePod is to switch Smart App Control off:
+
+1. Open **Windows Security** (search for it in the Start menu).
+2. Go to **App & browser control › Smart App Control settings**.
+3. Choose **Off**.
+4. Start the WavePod installer again. If "Windows protected your PC" appears,
+   click **More info › Run anyway**.
+
+Your other protection, including Microsoft Defender Antivirus and SmartScreen,
+stays on. Only turn Smart App Control off if you trust the download: get
+WavePod only from the
+[official releases page](https://github.com/michaelkleinhenz/wavepod/releases).
+
+Can you turn it back on later? On an up-to-date Windows 11 you can switch it
+on again on the same page. On older Windows 11 versions, turning it off was
+permanent until Windows was reset or reinstalled. Keep in mind that while it is on, WavePod (and every
+update of it) is blocked again.
+
+Not sure whether Smart App Control is on? The same page shows **On**,
+**Evaluation** or **Off**. Most PCs that were upgraded from Windows 10 have
+it off already, and then you only see the "Windows protected your PC" screen.
+
+### Why WavePod isn't code-signed
+
+Signing an app so that Windows and macOS trust it right away costs money every
+year: a Windows code-signing certificate costs a few hundred euros a year,
+and Apple's Developer Program costs 99 USD a year. WavePod is a free,
+open-source project without income, so it can't pay for that. The builds are
+made by GitHub Actions straight from the public source code in this
+repository, so you can always check what you install, or
+[build it yourself](#build-from-source).
+
+For a RØDECaster Pro II with all 16 channels, also install RØDE's ASIO
+driver (see [Using a RØDECaster Pro II](#using-a-rødecaster-pro-ii)).
 
 ### Using a RØDECaster Pro II
 

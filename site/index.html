@@ -675,10 +675,32 @@
           <strong>macOS</strong><span>DMG · Apple silicon</span><em class="yours">Your system</em>
         </a>
       </div>
+      <div class="win-note reveal" id="windows-smart-app-control">
+        <h3>Installing on Windows</h3>
+        <p>
+          If Windows says <em>“Windows protected your PC”</em>, click
+          <b>More info</b>, then <b>Run anyway</b>.
+        </p>
+        <p>
+          If it says <em>“Smart App Control blocked an app that may be unsafe”</em>
+          instead, there is no way to allow just WavePod. Open
+          <b>Windows Security › App &amp; browser control › Smart App Control settings</b>,
+          choose <b>Off</b> and start the installer again. Defender Antivirus and
+          SmartScreen stay on. On an up-to-date Windows 11 you can turn it back on
+          later, but it then blocks WavePod again.
+        </p>
+        <p class="why">
+          Why the warning? Code-signing certificates cost money every year, and
+          WavePod is a free, Open Source project without income, so its builds
+          aren't signed. They are built by GitHub straight from the
+          <a href="https://github.com/michaelkleinhenz/wavepod">public source code</a>.
+          <a href="https://github.com/michaelkleinhenz/wavepod#windows-smart-app-control-blocks-wavepod">More details</a>
+        </p>
+      </div>
       <p class="note reveal">
-        The builds are not code-signed yet. On macOS, right-click the app and
-        choose <em>Open</em> the first time; on Windows, choose
-        <em>More info › Run anyway</em> if SmartScreen asks. On Ubuntu and
+        The builds are not code-signed (that costs money every year). On macOS,
+        right-click the app and choose <em>Open</em> the first time, or use
+        <em>System Settings › Privacy &amp; Security › Open Anyway</em>. On Ubuntu and
         Debian, install the .deb (<code>sudo apt install ./WavePod-*.deb</code>);
         an AppImage for other distributions is on the releases page.
         Older versions and release notes are on the

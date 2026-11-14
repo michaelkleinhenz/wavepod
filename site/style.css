@@ -363,6 +363,13 @@ h2 .dim { color: var(--dim); }
 .platform.mine { border-color: rgb(var(--glow) / .55); box-shadow: 0 0 0 1px rgb(var(--glow) / .25), 0 20px 60px -24px rgb(var(--glow) / .7); }
 .platform.mine .yours { display: block; }
 .note { color: var(--dim); font-size: .92rem; max-width: 66ch; margin: 36px auto 0; }
+.win-note { max-width: 900px; margin: 32px auto 0; padding: 22px 26px; text-align: left; border-radius: 16px; border: 1px solid rgb(79 195 247 / .35); background: rgb(79 195 247 / .06); }
+.win-note h3 { margin: 0 0 10px; font: 700 1.1rem "Space Grotesk", sans-serif; }
+.win-note p { color: var(--muted); margin: 0 0 10px; font-size: .95rem; }
+.win-note p:last-child { margin-bottom: 0; }
+.win-note b { color: var(--text); font-weight: 600; }
+.win-note .why { color: var(--dim); font-size: .9rem; }
+.win-note a { color: var(--cyan); }
 
 /* ------------------------------------------------------------ footer */
 footer { border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; padding-top: 36px; padding-bottom: 48px; }
