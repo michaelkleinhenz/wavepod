@@ -62,6 +62,15 @@ Only VST3 effects are supported (not VST2, AU or CLAP plug-ins, and no instrumen
 
 Check the ElevenLabs API key in **Edit › Settings… › General**, that your account has credits, and that you are online. See [Transcript and text editing](transcript.md).
 
+## Windows: WavePod is blocked
+
+WavePod isn't code-signed, because a code-signing certificate costs money every year and WavePod is a free, open-source project without income. Windows therefore warns about it in one of two ways:
+
+- **"Windows protected your PC"** (SmartScreen): click **More info**, then **Run anyway**. You only need to do this once per download.
+- **"Smart App Control blocked an app that may be unsafe"**: Smart App Control in Windows 11 only runs signed or already-known apps and has no way to allow a single app. To run WavePod, open **Windows Security › App & browser control › Smart App Control settings** and choose **Off**, then start WavePod again. Defender Antivirus and SmartScreen stay on. On an up-to-date Windows 11 you can switch Smart App Control back on later on the same page (on older versions, turning it off is permanent until Windows is reset), but while it is on, WavePod and its updates are blocked again.
+
+Only do this for a WavePod download from the [official releases page](https://github.com/michaelkleinhenz/wavepod/releases).
+
 ## Linux: WavePod doesn't start
 
 On Ubuntu, Debian and other systems that use `.deb` packages, install the **.deb** rather than the AppImage: `sudo apt install ./WavePod-<version>-linux-amd64.deb`. It puts WavePod in the app grid and installs the AppArmor profile that Ubuntu 23.10 and later need for the app's sandbox. Without that profile, the AppImage closes right away with a message about the "SUID sandbox helper" when started from a terminal.
