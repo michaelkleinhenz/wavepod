@@ -1190,4 +1190,161 @@
       });
     });
   })();
+  // ---------------------------------------------------------- remote guests demo
+  (() => {
+    const win = $('#gv-remote');
+    if (!win) return;
+    const q = (k) => $(`[data-gv="${k}"]`, win);
+    const guest = $('.gv-guest', win), call = $('.gv-call', win), raw = $('.gv-raw', win);
+    // one speech-like waveform, drawn as a filled path; the call's copy is coarser
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const N = 160, amp = [];
+    let word = 0;
+    for (let i = 0; i < N; i++) {
+      if (word === 0) word = rnd() < 0.2 ? -(2 + Math.floor(rnd() * 5)) : 4 + Math.floor(rnd() * 10);
+      amp.push(word < 0 ? 0.03 : 0.25 + rnd() * 0.75);
+      word += word < 0 ? 1 : -1;
+    }
+    const wave = (el, coarse) => {
+      const pts = amp.map((a) => (coarse ? (Math.round(a * 3) / 3) * 0.8 : a));
+      const top = pts.map((a, i) => `${(i / (N - 1)) * 100},${10 - a * 9.5}`).join(' L');
+      const bot = pts.map((_, i) => `${((N - 1 - i) / (N - 1)) * 100},${10 + pts[N - 1 - i] * 9.5}`).join(' L');
+      el.insertAdjacentHTML('beforeend', `<svg viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M${top} L${bot} Z"/></svg>`);
+    };
+    wave(call, true);
+    wave(raw, false);
+    const set = (k, t) => { q(k).textContent = t; };
+    const prog = (el, p) => el.style.setProperty('--gv-p', `${p}%`);
+    const show = (stage) => {
+      const live = stage !== 'wait';
+      guest.classList.toggle('live', live);
+      q('letin').classList.toggle('gone', live);
+      set('state', live ? 'Live' : 'waiting');
+      set('rtt', live ? '24 ms round trip · connection excellent' : 'in the waiting room');
+      const pill = q('session');
+      pill.classList.toggle('gv-live', stage === 'rec');
+      pill.textContent = stage === 'rec' ? 'Recording' : 'Session open';
+    };
+    if (reduce) {
+      show('done'); prog(call, 100); prog(raw, 100); set('up', '✓ lined up');
+      set('status', 'Her raw recording is on her track, lined up with the call.');
+      return;
+    }
+    let run = 0, inView = false;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const loop = async () => {
+      const me = ++run;
+      const alive = () => me === run && inView;
+      while (alive()) {
+        show('wait'); prog(call, 0); prog(raw, 0); set('up', '');
+        set('status', 'Send the link. No app, no account.');
+        q('copied').classList.add('on'); await sleep(1500); q('copied').classList.remove('on');
+        await sleep(900); if (!alive()) return;
+        q('letin').classList.add('press'); await sleep(180); q('letin').classList.remove('press');
+        show('live'); set('status', 'Mara is in. You hear each other over the call.');
+        await sleep(1800); if (!alive()) return;
+        show('rec'); set('status', 'Recording. Her browser keeps the untouched microphone.');
+        const T = 6000, t0 = performance.now();
+        let dropped = false;
+        while (alive()) {
+          const f = Math.min(1, (performance.now() - t0) / T);
+          prog(call, f * 100);
+          const up = Math.max(0, f * 100 - 14);
+          prog(raw, up); set('up', `uploading ${Math.round(up)}%`);
+          if (!dropped && f > 0.55) {
+            dropped = true;
+            call.classList.add('drop');
+            set('status', 'The line drops for a moment. Her recording doesn’t.');
+            setTimeout(() => call.classList.remove('drop'), 1000);
+          }
+          if (f >= 1) break;
+          await sleep(60);
+        }
+        if (!alive()) return;
+        show('done'); set('status', 'Stopped. The rest of her recording comes in…');
+        for (let up = 86; up <= 100 && alive(); up += 2) { prog(raw, up); set('up', `uploading ${up}%`); await sleep(70); }
+        if (!alive()) return;
+        set('up', '✓ lined up'); set('status', 'On her track as a take, lined up with the call.');
+        await sleep(4200);
+      }
+    };
+    visible(win, (v) => { inView = v; if (v) void loop(); else run++; });
+  })();
+
+  // ---------------------------------------------------------- multi-camera demo
+  (() => {
+    const win = $('#gv-video');
+    if (!win) return;
+    const CAMS = [
+      { name: '1 · Host', img: 'img/cam-host.jpg', c: '#5c8dff' },
+      { name: '2 · Guest', img: 'img/cam-guest.jpg', c: '#ffb74d' },
+      { name: '3 · Wide', img: 'img/cam-wide.jpg', c: '#ba68c8' },
+    ];
+    const LEN = 14;
+    const BASE = [[0, 2], [1.2, 0], [3.6, 1], [6.2, 0], [7.4, 2], [8.8, 1], [11.6, 0]];
+    let cuts = BASE.map((c) => c.slice());
+    const program = $('[data-gv="program"]', win), tag = $('[data-gv="tag"]', win);
+    const lane = $('[data-gv="lane"]', win), ph = $('[data-gv="ph"]', win);
+    const tiles = $$('.gv-tiles button', win);
+    tiles.forEach((b, i) => b.style.setProperty('--gv-c', CAMS[i].c));
+    let shown = -1;
+    const camAt = (t) => { let c = cuts[0][1]; for (const [at, cam] of cuts) if (at <= t) c = cam; return c; };
+    const drawLane = () => {
+      $$('.gv-seg', lane).forEach((e) => e.remove());
+      cuts.forEach(([at, cam], i) => {
+        const end = i + 1 < cuts.length ? cuts[i + 1][0] : LEN;
+        const seg = document.createElement('span');
+        seg.className = 'gv-seg';
+        seg.style.width = `${((end - at) / LEN) * 100}%`;
+        seg.style.setProperty('--gv-c', CAMS[cam].c);
+        seg.textContent = CAMS[cam].name.replace(' · ', ' ');
+        lane.insertBefore(seg, ph);
+      });
+    };
+    const showCam = (cam) => {
+      if (cam === shown) return;
+      shown = cam;
+      program.src = CAMS[cam].img;
+      program.classList.remove('cut'); void program.offsetWidth; program.classList.add('cut');
+      tag.textContent = CAMS[cam].name;
+      tag.style.setProperty('--gv-c', CAMS[cam].c);
+      tiles.forEach((b, i) => b.classList.toggle('on', i === cam));
+    };
+    let t = 0, last = 0, inView = false, raf = 0;
+    // like Watch through: a switch replaces the old switches of the next moment
+    const take = (cam) => {
+      cuts = cuts.filter(([at]) => at < t - 0.05 || at > t + 1.6);
+      cuts.push([t, cam]);
+      cuts.sort((a, b) => a[0] - b[0]);
+      drawLane(); showCam(cam);
+    };
+    tiles.forEach((b, i) => b.addEventListener('click', () => take(i)));
+    let hover = false;
+    win.addEventListener('pointerenter', () => { hover = true; });
+    win.addEventListener('pointerleave', () => { hover = false; });
+    // keys 1-3 only while the demo is pointed at or focused (the studio demo uses them too)
+    addEventListener('keydown', (e) => {
+      if (!(hover || win.contains(document.activeElement))) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= 3) { e.preventDefault(); e.stopImmediatePropagation(); take(n - 1); }
+    }, true);
+    const frame = (now) => {
+      if (!inView) return;
+      t += Math.min(0.1, (now - last) / 1000);
+      last = now;
+      if (t >= LEN) { t = 0; cuts = BASE.map((c) => c.slice()); drawLane(); }
+      ph.style.left = `${(t / LEN) * 100}%`;
+      showCam(camAt(t));
+      raf = requestAnimationFrame(frame);
+    };
+    drawLane(); showCam(camAt(0));
+    if (reduce) { t = LEN * 0.3; ph.style.left = '30%'; showCam(camAt(t)); return; }
+    visible(win, (v) => {
+      inView = v;
+      cancelAnimationFrame(raf);
+      if (v) { last = performance.now(); raf = requestAnimationFrame(frame); }
+    });
+  })();
 })();
