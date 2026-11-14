@@ -1,6 +1,6 @@
 # WavePod – Ultraschall feature parity plan
 
-Status (2026-11-10, v0.9.0): every item of the roadmap below is done. What
+Status (2026-11-14, v0.11.0): every item of the roadmap below is done. What
 is still open is listed in section 4; features WavePod has that Ultraschall
 doesn't are in section 5.
 
@@ -256,5 +256,13 @@ Features WavePod has that Ultraschall 5 doesn't offer out of the box:
 - Crash-safe recording with journal recovery and loud alerts when an input is
   lost.
 - Track folders, clip reverse / varispeed / loop, FX presets and copy/paste.
+- Remote guests over the network without a separate tool: an invite link, a
+  call over the user's own LiveKit server, and each guest's raw microphone
+  recorded in their browser and lined up on their track.
+- Multi-camera video podcasts: cameras follow the audio edit, a director lane
+  picks the camera, watch-through with live switching, auto-direct and MP4
+  export; cameras recorded with CamPod start with the recording and import in
+  one step.
+- Fusing clips, and loops made by dragging a clip edge past its audio.
 - Export checks (missing details, cover size, dead air), Zencastr import, an
   in-app user guide, and an MCP server for AI agents.

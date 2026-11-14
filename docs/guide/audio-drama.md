@@ -63,6 +63,8 @@ Ticked lines remember their place in the recording itself, so they stay found af
 
 **Line up** finds the lines in the recording by itself. It uses the [transcript](transcript.md) (and transcribes what is missing first, which needs the ElevenLabs key) and looks for each line on its character's track, allowing for misheard and missing words. Every line it finds is ticked off with its take.
 
+Lines don't have to be said word for word. Hesitations (*umm*, *uh*, *äh*) and laughing before or inside a line are left out, so a short line like *Tickets, uh, please* is still found and its take starts at the first word. Contractions match their long form (*we'll* and *we will*, *gonna* and *going to*), words with another ending count as the same (*walked* and *walking*), and long words may be slightly misspelt in the transcript.
+
 - When a line was recorded several times, the row says how many takes the transcript holds (for example *3 takes*). The best take is used; of equally good ones, the last, which is usually the one that was kept. To split them apart, see [Cutting around every take](#cutting-around-every-take).
 - Very short lines (*Yes.*) are only looked for between the lines around them, so they aren't matched just anywhere.
 - Lines ticked by hand keep their place, and Line up never unticks a line.
@@ -194,6 +196,7 @@ Right-click a clip › **Sound design**:
 - **Loop** turns the clip into a loop: drag its right edge to repeat it as often as you like. Dashed lines show where each repeat starts.
 - **Loop to next clip** fills the gap up to the next clip on the track (or to the end of the episode).
 - **Loop over selection** fills a time range you selected before right-clicking.
+- Dragging a clip's edge past the end of its audio loops it too, without the menu.
 - **Play as recorded** undoes all of it.
 
 Loop seams get a short crossfade. Fades, the volume line, splits and trims work on these clips as usual.

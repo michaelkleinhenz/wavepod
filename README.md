@@ -31,6 +31,11 @@ app you install and start, with no Reaper underneath.
   record. Keep every take and comp the best parts. Punch in, use voice
   effects and convolution reverb, and pull from a sound effects library.
   Export dialogue, music and effects stems.
+- **Remote guests and video.** Send a guest an invite link: you talk over a
+  live call while their browser records their microphone untouched, and that
+  recording lands on their track, lined up. Import several cameras (or let
+  CamPod record them) and get a video podcast whose picture follows every
+  audio edit, with a director lane and MP4 export.
 
 <table>
   <tr>
@@ -56,7 +61,7 @@ app you install and start, with no Reaper underneath.
 - One export: MP3, FLAC, Opus or WAV with chapters, chapter images and cover
   art embedded, plus Podlove, Podcasting 2.0 and mp4chaps chapter files.
   Split a recording into regions and export each one as its own file.
-- A mix-minus feed for remote guests, sync for tracks from separate
+- A mix-minus feed for guests in the studio, sync for tracks from separate
   recorders, templates for your show, and MIDI, OSC and Stream Deck control.
 - Optional MCP server, so AI agents like Claude can build filter chains and
   read your episode.
@@ -73,6 +78,8 @@ in), with a contents list and full-text search. Online it is the
 - [Filters and effects](https://github.com/michaelkleinhenz/wavepod/wiki/Filters-and-effects),
   [Audio drama](https://github.com/michaelkleinhenz/wavepod/wiki/Audio-drama) and
   [Transcript and text editing](https://github.com/michaelkleinhenz/wavepod/wiki/Transcript-and-text-editing)
+- [Remote guests](https://github.com/michaelkleinhenz/wavepod/wiki/Remote-guests) and
+  [Video podcasts](https://github.com/michaelkleinhenz/wavepod/wiki/Video-podcasts)
 - [Chapters and markers](https://github.com/michaelkleinhenz/wavepod/wiki/Chapters-and-markers),
   [Loudness](https://github.com/michaelkleinhenz/wavepod/wiki/Loudness) and [Exporting](https://github.com/michaelkleinhenz/wavepod/wiki/Exporting)
 - [Keyboard shortcuts](https://github.com/michaelkleinhenz/wavepod/wiki/Keyboard-shortcuts) and
@@ -461,6 +468,46 @@ recording on the Soundboard track, all starting at 0 as in the session. When
 someone left and rejoined, their parts go one after the other on their track,
 placed by the time in the file names. Transcripts, video and post-production
 mixes are left out.
+
+## Remote guests
+
+**View → Remote Guests** (Shift+Ctrl+G) records guests who aren't in the
+room. The live call runs over [LiveKit](https://livekit.io) with your own
+project (LiveKit Cloud's free plan or your own `livekit-server`; URL, key and
+secret go into **Edit → Settings… → Remote guests**). Press **Open Session**,
+type a guest's name and **Invite**: WavePod adds an armed track marked
+*Remote* and copies an invite link to the guest page on wavepod.de. The guest
+opens it in Chrome, Edge, Firefox or Safari, picks a microphone and waits
+until you **Let In**. Nothing to install, no account.
+
+While you record, each guest's browser records their microphone untouched and
+uploads it during the take. When you stop, it goes on their track as a take,
+lined up with the call, so the episode gets full microphone quality instead
+of call quality. A guest who reloads the page mid-take keeps recording into a
+second part, placed where it belongs. Video is optional, only for eye
+contact, and never recorded; host and guests can pick their camera and switch
+microphones during the call.
+
+## Video podcasts
+
+**File → Import Camera Video…** (or a drop on the timeline) adds camera files
+(MP4, MOV, MKV, WebM with H.264, VP9 or AV1). Each camera gets a muted sound
+track tagged *Camera*, and **Sync cameras…** lines every camera up with a
+microphone recording over the whole length, clock drift included. From then
+on the picture follows its sound: every cut, deleted word, cleaned-up pause or
+comped take cuts the video too.
+
+The **director lane** says which camera is seen when. Fill it by hand, by
+watching through and pressing 1–9 to switch cameras live, or with
+**Auto-direct**, which cuts to whoever speaks (with a wide shot for crosstalk
+and long stretches). The Export dialog writes an MP4 (H.264 or AV1) next to
+the audio files, with the same mix.
+
+[CamPod](https://github.com/michaelkleinhenz/campod), a multi-camera recorder
+for a Linux box with USB cameras, plugs in under **Edit → Settings… →
+Cameras**: Record in WavePod starts its cameras under the episode's name, and
+**File → Import from CamPod…** downloads a recording's camera files into the
+episode, places them at the take and syncs them.
 
 ## AI agents (MCP)
 

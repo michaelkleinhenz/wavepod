@@ -37,9 +37,9 @@ press record.
 
 Two former non-goals are now taken up, each with its own plan document
 outside the repository: **remote guests** (a LiveKit call with the user's own
-key plus WavePod's own raw recorder on the guest side; built) and
+key plus WavePod's own raw recorder on the guest side) and
 **multi-camera video** (video follows the audio edit, director track, live
-camera switching; plan only).
+camera switching). Both are built; see "Beyond the plan".
 
 ## Architecture
 
@@ -128,7 +128,7 @@ UI concern only.
   played through the output device.
 - Loudness: EBU R128 integrated loudness and sample peak per track and
   master; export normalises to a target (default −16 LUFS stereo).
-- Export: mixdown to WAV and MP3 (lame, pure JS) with ID3v2 metadata and
+- Export: mixdown to WAV and MP3 (LAME as WebAssembly) with ID3v2 metadata and
   ID3 `CHAP`/`CTOC` chapter frames; optional per-track stems; chapter files
   written alongside.
 
@@ -170,28 +170,46 @@ brackets):
   group mute/solo/volume (#82), dialogue/music/effects stems and M&E export
   (#80), clip reverse/varispeed/loop (#81), FX presets incl. VST3 programs and
   copy/paste of filters (#33, #45), declicked clip edges (#88).
-- **Remote guests in the room**: mix-minus feed on the second output, also on
-  another device (#98, #121).
+- **Remote guests**: mix-minus feed on the second output, also on another
+  device (#98, #121); guests over the network with View › Remote Guests:
+  invite link to the guest page on wavepod.de, waiting room, LiveKit call
+  with the user's own key, each guest's raw microphone recorded in their
+  browser, uploaded during the take and lined up on their track; camera and
+  microphone pickers, video for eye contact only (#140, #141, #142).
+- **Video podcasts**: multi-camera import, cameras synced to their sound
+  track, video follows every audio edit, director lane, watch-through with
+  live camera switching (1–9), auto-direct from who speaks, MP4 export in the
+  Export dialog (#143); CamPod cameras start and stop with the recording,
+  File › Import from CamPod (#144).
 - **Editing comfort**: clip menu, rubber-band selection, draggable playhead
   and tape-style scrubbing, editable clip and region names, drag a clip below
   the last track for a new track, align separately recorded tracks over the
-  full length with clock-drift correction (#35, #39, #42, #103, #110, #120,
-  #123).
+  full length with clock-drift correction, fuse neighbouring clips (`G`),
+  Shift+click selects a rectangle of clips, dragging an edge past the audio
+  loops the clip (#35, #39, #42, #103, #110, #120, #123, #132, #136).
+- **Automix and script**: bleed words no longer open the other track, speech
+  detected before the track filters (#134, #135); script Line up on the
+  selection only and for lines said a bit differently (#130, #138).
 - **Export**: reworked export dialog (range, file, format, loudness; one
   region or each region; replace prompt), settings remembered per episode and
   template, mono, −14/−16/−19/−23/custom LUFS with a true-peak limiter, export
-  checks (#71, #108, #124).
+  checks, two-column layout, progress while analysing; MP3 encoded with real
+  LAME (WebAssembly) instead of lamejs (#71, #108, #124, #131, #133, #139).
 - **Episodes**: named new episodes, Save / Save As over autosave (#60),
   Zencastr ZIP import (#55).
 - **Help and app**: in-app user guide (`docs/guide/`, F1 context help) (#86),
   About dialog (#83), beta notice (#96), in-app menu bar on Linux/Windows
-  (#31), MCP server for AI agents (#13), app icon and desktop entry (#57).
+  (#31), MCP server for AI agents (#13), app icon and desktop entry (#57),
+  user guide published as the GitHub wiki (#129).
 
 ### Still open
 - **Remote recording**: built (View › Remote Guests, guest page in
   `site/join/v1/`); still to try with real guests over LiveKit Cloud and on
-  Safari, Firefox and phones.
-- **Multi-camera video**: plan written, nothing built.
+  Safari, Firefox and phones; MCP tools for guests.
+- **Video**: built; still open are proxies for smooth preview of large files,
+  the brief preview stall at cuts, dissolves in the watch-through preview,
+  chapters in the MP4, and the H.264/AAC patent question for a paid release.
+  CamPod cameras must record H.264 (WavePod can't decode MJPEG).
 - **Release blockers**: code signing for Windows; signing, notarisation and
   a hardened runtime with the audio-input entitlement for macOS (otherwise
   recordings are silent); a macOS Intel build; the name's closeness to NCH
@@ -212,7 +230,7 @@ Phases 1–8 and everything under "Beyond the plan" are implemented and covered
 by the repository's tests (WAV I/O, mixer, loudness against the EBU reference
 level, chapter formats, ID3 chapters, project editing, the engine recording
 16 virtual channels, export and many more) and by driving the packaged app
-with virtual devices. The current release is v0.9.0 (beta). Not yet verified
+with virtual devices. The current release is v0.11.0 (beta). Not yet verified
 on real hardware: see "Still open".
 
 ## Known risks

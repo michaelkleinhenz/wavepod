@@ -40,6 +40,8 @@
     <nav>
       <a href="#text-editing">Text editing</a>
       <a href="#features">Features</a>
+      <a href="#guests-video" data-only="podcast">Guests &amp; video</a>
+      <a href="#guests-video" data-only="drama">Remote actors</a>
       <a href="#tour">Tour</a>
       <a href="#open-source">Open Source</a>
       <span class="mode-mini" role="radiogroup" aria-label="Show WavePod for">
@@ -370,9 +372,9 @@
             <span class="clip a"></span><span class="clip b"></span><span class="blade"></span>
           </div>
           <h3>Editing for podcasters</h3>
-          <p>Split, trim, fade, ripple cut across all tracks, crossfades, volume lines,
-          cough buttons, tape-style scrubbing, and cutting by deleting words in the
-          transcript.</p>
+          <p>Split, fuse, trim, fade, ripple cut across all tracks, crossfades, volume
+          lines, cough buttons, tape-style scrubbing, and cutting by deleting words in
+          the transcript.</p>
         </article>
 
         <article class="card reveal">
@@ -402,7 +404,7 @@
           <div class="viz viz-chips" aria-hidden="true">
             <span>MP3 + ID3 chapters</span><span>WAV</span><span>Opus</span><span>FLAC</span>
             <span>Stems</span><span>Podlove PSC</span><span>Podcasting 2.0 JSON</span>
-            <span>mp4chaps</span><span>Audacity labels</span>
+            <span>mp4chaps</span><span>Audacity labels</span><span>MP4 video</span>
           </div>
           <h3>Chapters in, show notes out</h3>
           <p>Set chapter markers while recording with <kbd>M</kbd>, add titles, links
@@ -501,6 +503,78 @@
       <p class="note reveal">Transcription and speech synthesis use your own
       <a href="https://elevenlabs.io/">ElevenLabs</a> account. Audio only leaves your
       computer when you start one of them; everything else in WavePod works offline.</p>
+    </section>
+
+    <!-- ============================================================ GUESTS & VIDEO -->
+    <section id="guests-video" class="gv">
+      <p class="eyebrow center reveal" data-only="podcast">Remote guests &amp; video</p>
+      <p class="eyebrow center reveal" data-only="drama">Remote actors</p>
+      <h2 class="reveal" data-only="podcast">Guests from anywhere.<br><span class="dim">Cameras that follow the cut.</span></h2>
+      <h2 class="reveal" data-only="drama">Your cast, anywhere.<br><span class="dim">Studio sound from their room.</span></h2>
+
+      <div class="gv-grid">
+        <article class="gv-card reveal">
+          <div class="gv-win" id="gv-remote" aria-hidden="true">
+            <div class="gv-bar"><span class="dots"><i></i><i></i><i></i></span><span class="gv-title">Remote guests</span><span class="gv-pill" data-gv="session">Session open</span></div>
+            <div class="gv-invite"><span class="gv-link">wavepod.de/join/v1/#<b>k7Q…</b></span><span class="gv-copied" data-gv="copied">Link copied</span></div>
+            <div class="gv-guest">
+              <img src="img/cam-guest.jpg" alt="" width="64" height="36">
+              <span class="gv-who"><b data-gv="name">Mara</b> <em data-gv="state">waiting</em><small data-gv="rtt">in the waiting room</small></span>
+              <span class="gv-btn" data-gv="letin">Let In</span>
+            </div>
+            <div class="gv-lane gv-call"><span>Call audio, as heard live</span></div>
+            <div class="gv-lane gv-raw"><span>Mara's microphone, recorded in her browser</span><b data-gv="up"></b></div>
+            <p class="gv-status" data-gv="status">Send the link. No app, no account.</p>
+          </div>
+          <h3 data-only="podcast">A guest on the other side of the world, at full microphone quality</h3>
+          <h3 data-only="drama">Record actors in their own homes</h3>
+          <p data-only="podcast">Type a name, send the invite link, let them in. You talk over a live call while
+          the guest's browser records their microphone untouched and uploads it during the take. When you
+          stop, it lands on their track, lined up with the call, so a dropout on the line never reaches the
+          episode. Video is there for eye contact and is never recorded.</p>
+          <p data-only="drama">Send each actor a link: they hear the scene and you over a live call, while their
+          browser records their microphone untouched and uploads it during the take. Every line lands on their
+          track as a take, lined up, ready for comping and Line up.</p>
+          <ul class="gv-chips"><li>Chrome, Edge, Firefox, Safari</li><li>Nothing to install</li><li>Camera and mic pickers</li><li>Survives a reload mid-take</li></ul>
+          <p class="gv-fine">The call runs over your own <a href="https://livekit.io/">LiveKit</a> project (the free
+          cloud plan is enough, or host it yourself). WavePod runs no server of its own.</p>
+        </article>
+
+        <article class="gv-card reveal" data-only="podcast">
+          <div class="gv-win gv-cams" id="gv-video" tabindex="0" aria-label="Demo: press 1, 2 or 3, or click a camera, to cut to it">
+            <div class="gv-bar"><span class="dots"><i></i><i></i><i></i></span><span class="gv-title">Watch through</span><span class="gv-pill gv-live" data-gv="dir">Directing</span></div>
+            <div class="gv-program">
+              <img src="img/cam-wide.jpg" alt="" width="640" height="360" data-gv="program">
+              <span class="gv-tag" data-gv="tag">3 · Wide</span>
+            </div>
+            <div class="gv-tiles">
+              <button type="button" data-cam="0"><img src="img/cam-host.jpg" alt="" width="640" height="360"><span>1 Host</span></button>
+              <button type="button" data-cam="1"><img src="img/cam-guest.jpg" alt="" width="640" height="360"><span>2 Guest</span></button>
+              <button type="button" data-cam="2"><img src="img/cam-wide.jpg" alt="" width="640" height="360"><span>3 Wide</span></button>
+            </div>
+            <div class="gv-director" data-gv="lane"><i class="gv-ph" data-gv="ph"></i></div>
+          </div>
+          <h3>Video podcasts, edited by editing the audio</h3>
+          <p>Import every camera and WavePod syncs it to the microphones by its sound. From then on each
+          picture follows its sound track, so every cut, deleted word and cleaned-up pause cuts the video
+          too. Pick the camera on a director lane, by hand, live with <kbd>1</kbd>–<kbd>9</kbd> while you
+          watch through, or let <em>Auto-direct</em> cut to whoever speaks. The MP4 comes out of the same
+          export as your audio.</p>
+          <p class="gv-fine">Recording with <a href="https://github.com/michaelkleinhenz/campod">CamPod</a>? Its cameras
+          start when you press Record, and <em>File › Import from CamPod</em> brings them in, synced.</p>
+        </article>
+      </div>
+
+      <div class="te-shots gv-shots" data-only="podcast">
+        <figure class="te-shot reveal">
+          <a href="img/video.png"><img src="img/video.png" width="1440" height="900" loading="lazy" alt="WavePod timeline of a video podcast: a director lane with Host cam, Guest cam and Wide shots above the Host and Guest tracks, the camera sound tracks tagged Camera, and the Cameras panel showing the guest's close-up"></a>
+          <figcaption><b>The director lane</b> above the tracks, the program in the Cameras panel.</figcaption>
+        </figure>
+        <figure class="te-shot reveal">
+          <a href="img/video-watch.png"><img src="img/video-watch.png" width="1440" height="900" loading="lazy" alt="Watch-through view: the guest's close-up in large, with the three cameras below to switch with keys 1 to 3"></a>
+          <figcaption><b>Watch through</b> and switch cameras live, like a vision mixer.</figcaption>
+        </figure>
+      </div>
     </section>
 
     <!-- ============================================================ TOUR -->
