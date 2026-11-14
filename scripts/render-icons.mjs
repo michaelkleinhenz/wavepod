@@ -18,12 +18,32 @@ try {
   process.exit(1);
 }
 
-async function render(page, size, file) {
-  await page.setViewportSize({ width: size, height: size });
+// `width` x `height` canvas with the icon centred at `size` pixels (wide tiles get a smaller icon).
+async function render(page, size, file, width = size, height = size) {
+  await page.setViewportSize({ width, height });
   const src = `data:image/svg+xml;base64,${svg.toString('base64')}`;
-  await page.setContent(`<body style="margin:0"><img src="${src}" width="${size}" height="${size}" style="display:block"></body>`);
+  await page.setContent(`<body style="margin:0;width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center"><img src="${src}" width="${size}" height="${size}" style="display:block"></body>`);
   await page.screenshot({ path: file, omitBackground: true });
 }
+
+// Microsoft Store (MSIX) tiles and logos, read by electron-builder's appx target from build/appx/.
+// Base names are the 100% scale; .scale-200 for high-DPI screens; the .targetsize-* (and unplated)
+// Square44x44Logo variants are what the taskbar, Start list and Alt+Tab show.
+// [file, icon size, canvas width, canvas height]
+const APPX = [
+  ['StoreLogo.png', 50],
+  ['StoreLogo.scale-200.png', 100],
+  ['Square44x44Logo.png', 44],
+  ['Square44x44Logo.scale-200.png', 88],
+  ['Square150x150Logo.png', 120, 150, 150],
+  ['Square150x150Logo.scale-200.png', 240, 300, 300],
+  ['Wide310x150Logo.png', 120, 310, 150],
+  ['Wide310x150Logo.scale-200.png', 240, 620, 300],
+  ...[16, 24, 32, 48, 256].flatMap((s) => [
+    [`Square44x44Logo.targetsize-${s}.png`, s],
+    [`Square44x44Logo.targetsize-${s}_altform-unplated.png`, s],
+  ]),
+];
 
 function ico(out, pngs) {
   for (const tool of [['magick'], ['convert']]) {
@@ -40,6 +60,8 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ deviceScaleFactor: 1 });
 for (const size of SIZES) await render(page, size, `build/icons/${size}x${size}.png`);
 await render(page, 180, 'site/img/apple-touch-icon.png');
+mkdirSync('build/appx', { recursive: true });
+for (const [file, size, w, h] of APPX) await render(page, size, `build/appx/${file}`, w, h);
 await browser.close();
 
 copyFileSync('build/icons/1024x1024.png', 'build/icon.png');

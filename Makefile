@@ -1,7 +1,7 @@
 # WavePod build entry points. Run `make help` for a list.
 NPM ?= npm
 
-.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-mac icons desktop-install desktop-uninstall release wiki clean distclean
+.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-store dist-mac icons desktop-install desktop-uninstall release wiki clean distclean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -54,6 +54,18 @@ dist-linux: build vsthost ## Package a Linux AppImage and a .deb (the .deb bring
 
 dist-win: build vsthost ## Package a Windows NSIS installer
 	npx electron-builder --win nsis --publish never
+
+# The Store package's identity comes from Partner Center (Product management › Product identity).
+# Unset, you get a local test package that the Store would refuse. The Store signs the package.
+MSSTORE_IDENTITY_NAME ?=
+MSSTORE_PUBLISHER ?=
+MSSTORE_PUBLISHER_NAME ?=
+STORE_IDENTITY = $(if $(MSSTORE_IDENTITY_NAME),"-c.appx.identityName=$(MSSTORE_IDENTITY_NAME)") \
+	$(if $(MSSTORE_PUBLISHER),"-c.appx.publisher=$(MSSTORE_PUBLISHER)") \
+	$(if $(MSSTORE_PUBLISHER_NAME),"-c.appx.publisherDisplayName=$(MSSTORE_PUBLISHER_NAME)")
+
+dist-store: build vsthost ## Package an MSIX for the Microsoft Store (Windows only; MSSTORE_* identity from Partner Center)
+	npx electron-builder --win appx --publish never $(STORE_IDENTITY)
 
 dist-mac: build vsthost ## Package a macOS DMG
 	npx electron-builder --mac dmg --publish never
