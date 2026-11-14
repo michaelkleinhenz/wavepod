@@ -14,7 +14,7 @@ export const CAMPOD_DEFAULT_PORT = 8080;
 export interface StoredCamPod {
   /** http://host:port ('' = not set up). */
   url: string;
-  /** Access token ("enc:<base64>" where the OS can encrypt, like the other keys; '' = none). */
+  /** CamPod API key ("enc:<base64>" where the OS can encrypt, like the other keys; '' = none). */
   token: string;
   /** Start and stop the cameras with WavePod's recording. */
   followRecording: boolean;
@@ -257,7 +257,7 @@ export class CamPodClient {
     } catch {
       // not JSON
     }
-    if (res.status === 401) throw new Error('CamPod did not accept the access token. Copy auth_token from /etc/campod/config.yaml into Settings › Cameras.');
+    if (res.status === 401) throw new Error('CamPod did not accept the API key. Create one on the CamPod computer (campod apikey create wavepod) and paste it into Settings › Cameras.');
     if (!res.ok) {
       const msg = (data as { error?: string } | null)?.error;
       if ((res.status === 404 || res.status === 405) && !msg) throw new Error(`CamPod at ${this.base} doesn’t know this request. Update CamPod to a version that works with WavePod.`);
@@ -293,8 +293,14 @@ export class CamPodClient {
     return (await this.call<WireSummary[]>('GET', '/api/sessions')) ?? [];
   }
 
+  /** A finished recording's session.json. CamPod answers {name, session, files}; a running one is refused (409). */
   async session(name: string): Promise<WireSession> {
-    return this.call<WireSession>('GET', `/api/sessions/${encodeURIComponent(name)}`);
+    const r = await this.call<{ name: string; session?: WireSession | null } & Partial<WireSession>>('GET', `/api/sessions/${encodeURIComponent(name)}`);
+    if (r && 'session' in r) {
+      if (!r.session) throw new Error(`CamPod has no description (session.json) for ${name}.`);
+      return { ...r.session, name: r.name ?? name };
+    }
+    return r as WireSession;
   }
 
   async setVideoCodec(cameraId: string, codec: 'h264' | 'copy'): Promise<void> {
@@ -307,7 +313,7 @@ export class CamPodClient {
       headers: { ...this.headers(), ...(from > 0 ? { Range: `bytes=${from}-` } : {}) },
       signal,
     });
-    if (res.status === 401) throw new Error('CamPod did not accept the access token.');
+    if (res.status === 401) throw new Error('CamPod did not accept the API key.');
     if (res.status === 404) throw new Error(`CamPod can’t send ${file}. Update CamPod to a version that works with WavePod.`);
     if (!res.ok) throw new Error(`CamPod: HTTP ${res.status} for ${file}`);
     return res;

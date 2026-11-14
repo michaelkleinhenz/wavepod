@@ -138,10 +138,15 @@ async function fakeCamPod(): Promise<Fake> {
       return json(200, {});
     }
     if (req.method === 'GET' && url === '/api/sessions/2026-11-14_1900_ep') {
+      if (recording) return json(409, { error: 'recording is still running' });
       return json(200, {
         name: '2026-11-14_1900_ep',
-        stoppedAt: '2026-11-14T20:00:00Z',
-        cameras: [{ id: 'a', name: 'Host', files: Object.keys(fake.files), choice: { fourcc: 'H264' }, codec: 'copy', hasAudio: true }],
+        session: {
+          name: '2026-11-14_1900_ep',
+          stoppedAt: '2026-11-14T20:00:00Z',
+          cameras: [{ id: 'a', name: 'Host', files: Object.keys(fake.files), choice: { fourcc: 'H264' }, codec: 'copy', hasAudio: true }],
+        },
+        files: Object.keys(fake.files).map((f) => ({ name: f, size: fake.files[f].length })),
       });
     }
     const m = /^\/api\/sessions\/2026-11-14_1900_ep\/files\/(.+)$/.exec(url);
@@ -168,11 +173,13 @@ describe('talking to CamPod', () => {
 
   it('sends the token and passes on CamPod’s errors', async () => {
     fake.token = 'tok';
-    await expect(new CamPodClient(fake.url, 'wrong').stop()).rejects.toThrow(/access token/);
+    await expect(new CamPodClient(fake.url, 'wrong').stop()).rejects.toThrow(/API key/);
     const c = new CamPodClient(fake.url, 'tok');
     await expect(c.stop()).rejects.toThrow('CamPod: keine Aufnahme aktiv');
     const r = await c.start('Episode 12');
     expect(r).toEqual({ name: '2026-11-14_1900_ep', startedAt: '2026-11-14T19:00:00Z', failed: ['Guest: Gerät belegt'] });
+    await expect(c.session('2026-11-14_1900_ep')).rejects.toThrow('CamPod: recording is still running');
+    await c.stop();
     // an older CamPod without the download endpoint
     await expect(c.session('2026-01-01_0000')).rejects.toThrow(/Update CamPod/);
     await expect(new CamPodClient('http://127.0.0.1:1').status()).rejects.toThrow(/Can’t reach CamPod/);

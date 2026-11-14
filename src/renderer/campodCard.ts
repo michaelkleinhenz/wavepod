@@ -1,4 +1,4 @@
-// Settings › Cameras: the CamPod camera recorder (address, access token, start with the recording)
+// Settings › Cameras: the CamPod camera recorder (address, API key, start with the recording)
 // and its cameras, with what WavePod can import from each.
 import type { CamPodInfo, CamPodStatus } from '../shared/types';
 import { errorMessage, h, toast } from './dom';
@@ -67,7 +67,7 @@ function cameraList(status: CamPodStatus, refresh: (s: CamPodStatus) => void): H
 
 function build(i: CamPodInfo): HTMLElement {
   const url = h('input', { type: 'text', value: i.url, placeholder: 'campod.local or 192.168.1.20', spellcheck: false });
-  const token = h('input', { type: 'password', value: '', placeholder: i.hasToken ? 'Saved (type to replace)' : 'Only if CamPod has one (auth_token)' });
+  const token = h('input', { type: 'password', value: '', placeholder: i.hasToken ? 'Saved (type to replace)' : 'Only if CamPod asks for one' });
   const follow = h('input', { type: 'checkbox', checked: i.followRecording });
   const status = h('span', { class: 'muted remote-test' });
   const cams = h('div', { class: 'campod-status' });
@@ -76,7 +76,7 @@ function build(i: CamPodInfo): HTMLElement {
       info = await api().setCamPodSettings({ url: url.value, followRecording: follow.checked, ...(token.value ? { token: token.value } : {}) });
       url.value = info.url;
       token.value = '';
-      token.placeholder = info.hasToken ? 'Saved (type to replace)' : 'Only if CamPod has one (auth_token)';
+      token.placeholder = info.hasToken ? 'Saved (type to replace)' : 'Only if CamPod asks for one';
       return true;
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -114,7 +114,7 @@ function build(i: CamPodInfo): HTMLElement {
       'CamPod records several USB cameras on a Linux computer. WavePod starts and stops its cameras together with the sound, and File › Import from CamPod… brings the camera files into the episode, synced to the microphones.',
     ),
     field('Address', url, 'The CamPod computer’s name or IP address; port 8080 unless you changed it.'),
-    field('Access token', token, 'Stored encrypted by the system keychain where available.'),
+    field('API key', token, 'Once CamPod has API keys, it needs one: create it on the CamPod computer with campod apikey create wavepod. Stored encrypted by the system keychain where available.'),
     h('label', { class: 'check' }, follow, ' Start and stop the cameras with the recording (not with punch-ins or loop recording)'),
     h('div', { class: 'row' }, h('button', { onclick: () => void test() }, 'Test Connection'), status),
     cams,

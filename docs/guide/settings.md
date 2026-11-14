@@ -25,7 +25,7 @@ See [MIDI and remote control](controllers.md).
 
 ### Cameras
 
-The [CamPod](video.md#campod) camera recorder: its address and access token, and whether its cameras start and stop with the recording. **Test Connection** shows its cameras, and **Record H.264** sets a camera that sends MJPEG to a format WavePod can import.
+The [CamPod](video.md#campod) camera recorder: its address and API key, and whether its cameras start and stop with the recording. **Test Connection** shows its cameras, and **Record H.264** sets a camera that sends MJPEG to a format WavePod can import.
 
 ### AI agents
 

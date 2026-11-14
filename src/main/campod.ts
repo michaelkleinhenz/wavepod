@@ -129,7 +129,7 @@ export class CamPodDownloader {
     if (this.abort) throw new Error('A CamPod download is already running.');
     const client = camPodClient(s);
     const info = await client.session(session);
-    if (!info.stoppedAt) throw new Error('This recording is still running on CamPod. Stop it first.');
+    if (info.stoppedAt === null) throw new Error('This recording is still running on CamPod. Stop it first.');
     const { files, skipped } = sessionFiles(info);
     if (!files.length) return { files: [], skipped };
     const rel = downloadFolder(session);

@@ -21,7 +21,7 @@ Every camera needs sound, even a poor one from its built-in microphone: that sou
 
 [CamPod](https://github.com/michaelkleinhenz/campod) is a camera recorder: a Linux computer with several USB cameras (for example an OBSBOT Tiny 2 Lite or a DJI Osmo Pocket in webcam mode) that records each camera to a file of its own. WavePod works with it in two ways.
 
-**Set it up** in **Edit › Settings… › Cameras**: type the CamPod computer's name or IP address (port 8080 is added for you) and, if CamPod has an `auth_token` in `/etc/campod/config.yaml`, the access token. **Test Connection** lists CamPod's cameras and what each records.
+**Set it up** in **Edit › Settings… › Cameras**: type the CamPod computer's name or IP address (port 8080 is added for you) and, if CamPod uses API keys, a key for WavePod: create one on the CamPod computer with `campod apikey create wavepod` and paste it into **API key**. **Test Connection** lists CamPod's cameras and what each records.
 
 WavePod decodes video with the computer's own decoders, which can't read MJPEG. CamPod keeps a camera's picture as the camera sends it, and many webcams send MJPEG. Such a camera shows "Records MJPEG"; click **Record H.264** next to it and CamPod encodes that camera to H.264 from the next recording on (smaller files, a little more work for the CamPod computer). Every camera also needs its microphone switched on in CamPod: its sound is how WavePod syncs it.
 
