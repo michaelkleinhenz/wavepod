@@ -7,7 +7,7 @@ WavePod keeps two kinds of settings apart:
 
 ## Edit › Settings…
 
-The settings dialog has three tabs. A dot on a tab means something there is switched on.
+The settings dialog has five tabs. A dot on a tab means something there is switched on.
 
 ### General
 
@@ -22,6 +22,10 @@ The settings dialog has three tabs. A dot on a tab means something there is swit
 - **Stream Deck and OSC remotes**: remote control over the network.
 
 See [MIDI and remote control](controllers.md).
+
+### Cameras
+
+The [CamPod](video.md#campod) camera recorder: its address and access token, and whether its cameras start and stop with the recording. **Test Connection** shows its cameras, and **Record H.264** sets a camera that sends MJPEG to a format WavePod can import.
 
 ### AI agents
 

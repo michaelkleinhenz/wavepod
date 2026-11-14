@@ -62,8 +62,10 @@ import { syncedFileName, stretchTranscript, type AlignOutcome, type AlignResult 
 import { loadTranscript, saveTranscript } from './transcribe/store';
 import { checkFuse, fuseTranscript } from '../core/fuse';
 import { decodeKey, encodeKey } from './auphonic';
+import { CamPodDownloader, CamPodFollower, camPodClient, camPodInfo, updateCamPodSettings } from './campod';
+import { linkSession, normalizeCamPodSettings, sessionsFromWire, type StoredCamPod } from '../core/campod';
 import { RemoteHost, normalizeRemoteSettings, remoteInfo, updateRemoteSettings, type StoredRemote } from './remote/host';
-import type { Clip, RemoteSettingsInput } from '../shared/types';
+import type { CamPodSettingsInput, Clip, RemoteSettingsInput } from '../shared/types';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
 import { VIDEO_EXTENSIONS, VideoWriter, fileSize, readRange, removeVideoTemp, resolveMediaPath, storedVideoPath, videoTempBase } from './video';
@@ -109,6 +111,8 @@ interface Settings {
   chapterImageFolder: string;
   /** Remote guests: LiveKit server and keys (secret stored like the other API keys). */
   remote: StoredRemote;
+  /** CamPod camera recorder (token stored like the other keys). */
+  campod: StoredCamPod;
 }
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -146,9 +150,10 @@ function loadSettings(): Settings {
       favouriteSounds: normalizeFavourites(raw.favouriteSounds),
       chapterImageFolder: typeof raw.chapterImageFolder === 'string' ? raw.chapterImageFolder : '',
       remote: normalizeRemoteSettings(raw.remote),
+      campod: normalizeCamPodSettings(raw.campod),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, takeBeep: true, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '', remote: normalizeRemoteSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, takeBeep: true, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '', remote: normalizeRemoteSettings(null), campod: normalizeCamPodSettings(null) };
   }
 }
 
@@ -226,6 +231,9 @@ let remoteHost: RemoteHost;
 let saveTimer: NodeJS.Timeout | null = null;
 let mcp: McpController;
 let osc: OscServer;
+let camPod: CamPodFollower;
+let camPodQuitDone = false;
+const camPodDownloads = new CamPodDownloader();
 let recordWorker: RecordWorker | null = null;
 /** Gets emergencies during a recording to the user, even with the window in the background. */
 let alerter: RecordingAlerter;
@@ -632,6 +640,23 @@ const handlers: Record<InvokeMethod, Handler> = {
     return remoteInfo(settings.remote);
   },
   testRemote: () => remoteHost.test(),
+  getCamPodSettings: () => camPodInfo(settings.campod),
+  setCamPodSettings: (input: CamPodSettingsInput) => {
+    settings.campod = updateCamPodSettings(settings.campod, input);
+    saveSettings();
+    return camPodInfo(settings.campod);
+  },
+  camPodStatus: () => camPodClient(settings.campod).status(),
+  camPodSetH264: async (cameraId: string) => {
+    await camPodClient(settings.campod).setVideoCodec(cameraId, 'h264');
+    return camPodClient(settings.campod).status();
+  },
+  camPodSessions: async () => sessionsFromWire(await camPodClient(settings.campod).sessions(), current.project),
+  camPodDownload: (session: string) => {
+    refuseImportWhileRecording();
+    return camPodDownloads.download(settings.campod, current.project, current.dir, session, (e) => send(IPC.campod, e));
+  },
+  camPodCancelDownload: () => camPodDownloads.cancel(),
   remoteStart: () => remoteHost.start(),
   remoteStop: () => remoteHost.stop(true),
   remoteInvite: (name: string) => remoteHost.invite(name),
@@ -712,7 +737,11 @@ const handlers: Record<InvokeMethod, Handler> = {
   stop: () => engine.stop(),
   record: (opts?: RecordOptions) => {
     backupNow('before-recording');
-    return engine.record(opts);
+    const from = engine.position;
+    const files = engine.record(opts);
+    // the cameras run with whole recordings, not with punch-ins or loop passes
+    if (!opts?.punch && !opts?.loop) camPod.recordingStarted(current.project.name, from);
+    return files;
   },
   seek: (pos: number) => engine.seek(pos),
   scrub: (pos: number | null) => engine.scrub(pos),
@@ -1238,6 +1267,7 @@ function buildMenu(): void {
         { label: 'Import Chapters…', click: menuSend('import-chapters') },
         { label: 'Import Script…', click: menuSend('import-script') },
         { label: 'Import Camera Video…', click: menuSend('import-video') },
+        { label: 'Import from CamPod…', click: menuSend('import-campod') },
         { type: 'separator' },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: menuSend('export') },
         { label: 'Export Video…', accelerator: 'Shift+CmdOrCtrl+E', click: menuSend('export-video') },
@@ -1539,6 +1569,10 @@ app.whenReady().then(() => {
   setImpulseDir(impulseRoot());
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
+  camPod = new CamPodFollower(
+    () => settings.campod,
+    (e) => send(IPC.campod, e),
+  );
   remoteHost = new RemoteHost({
     engine,
     settings: () => settings.remote,
@@ -1574,7 +1608,10 @@ app.whenReady().then(() => {
     () => win,
     (alert) => send(IPC.recordingAlert, alert),
   );
+  let lastTransport = engine.transportState;
   engine.on('transport', (u) => {
+    if (lastTransport === 'recording' && u.state !== 'recording') camPod.recordingStopped();
+    lastTransport = u.state;
     send(IPC.transport, u);
     alerter.transport(u);
   });
@@ -1594,6 +1631,8 @@ app.whenReady().then(() => {
     // Merge takes here so they are saved even if the window is gone (e.g. quitting mid-take).
     // Takes stack over earlier recordings of the same lines; problems found become edit markers.
     let project = mergeRecording(current.project, takes, report ?? { recordStart: 0, events: [] }, current.project.sampleRate);
+    // CamPod recordings started with the take, so their cameras can be placed where it began
+    for (const link of camPod.takeLinks()) project = linkSession(project, link);
     const prepared = settings.prepareForEditingAfterRecording ? prepareForEditing(project) : project;
     const preparedForEditing = prepared !== project;
     project = prepared;
@@ -1654,6 +1693,14 @@ app.whenReady().then(() => {
 app.on('before-quit', (e) => {
   if (!confirmQuitWhileRecording()) {
     e.preventDefault();
+    return;
+  }
+  // the cameras must not keep recording after WavePod is gone: wait (briefly) for CamPod's stop
+  if (camPod?.busy && !camPodQuitDone) {
+    e.preventDefault();
+    camPodQuitDone = true;
+    if (engine?.transportState === 'recording') stopAndSave();
+    void Promise.race([camPod.settle(), new Promise((r) => setTimeout(r, 10000))]).finally(() => app.quit());
     return;
   }
   void mcp?.dispose();
