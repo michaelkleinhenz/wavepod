@@ -63,7 +63,7 @@ The playhead snaps to clip edges, markers and selection edges while snapping is 
 - **Drag over empty space on the tracks** to select a time range on just those tracks.
 - Drag the edges of a selection to resize it.
 - **Double-click a region** on the ruler to select its time range. Double-click its name to [rename it](chapters.md#renaming-regions).
-- **Click a clip** to select it; `Shift`+click adds clips to the selection or takes them out.
+- **Click a clip** to select it. `Shift`+click another clip selects everything from the last clip you clicked to that one: every clip in the rectangle between them, across the tracks in between. With no clip clicked before, `Shift`+click adds a clip to the selection or takes it out.
 - **`Shift`+drag** draws a rectangle that selects every clip it touches.
 - `Ctrl+A` (**Edit › Select All Clips**) selects every clip.
 - `Esc` clears the selection (and stops the soundboard).

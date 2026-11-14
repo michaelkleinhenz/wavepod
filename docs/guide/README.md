@@ -29,6 +29,7 @@ plain Markdown.
 - [Chapters and markers](chapters.md)
 - [Loudness](loudness.md)
 - [Exporting](export.md)
+- [Video podcasts](video.md)
 
 **More**
 
