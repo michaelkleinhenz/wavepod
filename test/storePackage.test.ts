@@ -24,9 +24,10 @@ describe('Microsoft Store package', () => {
     // accidentally build packages that claim to be the published app.
     expect(appx.identityName).toBeUndefined();
     expect(appx.publisher).toBeUndefined();
+    // \r?\n: Windows checkouts have CRLF line endings.
     const make = readFileSync('Makefile', 'utf8');
     expect(make).toContain('-c.appx.identityName=$(MSSTORE_IDENTITY_NAME)');
-    expect(make).toMatch(/^dist-store:.*\n\tnpx electron-builder --win appx .*\$\(STORE_IDENTITY\)/m);
+    expect(make).toMatch(/^dist-store:.*\r?\n\tnpx electron-builder --win appx .*\$\(STORE_IDENTITY\)/m);
   });
 
   it('ships every tile at its size, so the Store never shows electron-builder\'s sample logos', () => {
