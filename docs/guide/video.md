@@ -17,6 +17,24 @@ The video file itself stays where it is (inside the episode folder it is stored 
 
 Every camera needs sound, even a poor one from its built-in microphone: that sound is how WavePod lines the cameras up with the other recordings.
 
+## CamPod
+
+[CamPod](https://github.com/michaelkleinhenz/campod) is a camera recorder: a Linux computer with several USB cameras (for example an OBSBOT Tiny 2 Lite or a DJI Osmo Pocket in webcam mode) that records each camera to a file of its own. WavePod works with it in two ways.
+
+**Set it up** in **Edit › Settings… › Cameras**: type the CamPod computer's name or IP address (port 8080 is added for you) and, if CamPod uses API keys, a key for WavePod: create one on the CamPod computer with `campod apikey create wavepod` and paste it into **API key**. **Test Connection** lists CamPod's cameras and what each records.
+
+WavePod decodes video with the computer's own decoders, which can't read MJPEG. CamPod keeps a camera's picture as the camera sends it, and many webcams send MJPEG. Such a camera shows "Records MJPEG"; click **Record H.264** next to it and CamPod encodes that camera to H.264 from the next recording on (smaller files, a little more work for the CamPod computer). Every camera also needs its microphone switched on in CamPod: its sound is how WavePod syncs it.
+
+**Cameras start with the recording.** With **Start and stop the cameras with the recording** ticked, pressing Record in WavePod starts CamPod's cameras too, under the episode's name, and stopping the recording stops them. A toast says when the cameras are running or if one of them didn't start; the sound recording goes on either way. Punch-ins and loop recording leave the cameras alone. When you quit WavePod during a recording, it stops the cameras before it closes.
+
+**Bring the cameras in** with **File › Import from CamPod…**. It lists CamPod's recordings, the ones started with this episode first (tagged "This episode"). Pick one, and WavePod:
+
+- downloads its camera files into the episode folder (`video/<recording>/`). A download that was cancelled or cut off continues where it stopped the next time, and files already there aren't downloaded again.
+- adds each file as a camera named after the CamPod camera. A camera that dropped out during the recording has several files; each becomes a camera of its own ("Host (part 2)").
+- places the cameras of a recording started with this episode where its take started, and then syncs every new camera to a microphone recording you pick, as **Sync cameras…** does.
+
+Cameras that recorded MJPEG or no sound are left out, with a note saying why.
+
 ## Line them up
 
 Cameras and recorders all start at different moments. **Sync cameras…** in the cameras panel lines every camera's sound up with a microphone recording you pick, over the whole length, and corrects clock drift between the devices. You can also do it one at a time: right-click a camera › **Sync to Audio…**, or right-click any track header › **Align to other track…** (see [Aligning recordings](editing.md#aligning-recordings)).

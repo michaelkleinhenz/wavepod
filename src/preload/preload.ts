@@ -24,6 +24,7 @@ const api: Record<string, unknown> = {
   onTranscribeProgress: subscribe(IPC.transcribeProgress),
   onTranscript: subscribe(IPC.transcript),
   onRecordingAlert: subscribe(IPC.recordingAlert),
+  onCamPod: subscribe(IPC.campod),
   platform: process.platform,
   pathForFile: (file: File) => {
     try {

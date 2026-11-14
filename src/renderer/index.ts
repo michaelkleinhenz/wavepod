@@ -65,7 +65,7 @@ import { showBetaNotice, showBetaNoticeOnFirstStart } from './betaNotice';
 import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
 import { TimelineView } from './timelineView';
-import { SettingsDialog } from './settingsDialog';
+import { SettingsDialog, type SettingsTab } from './settingsDialog';
 import { GuestsPanel } from './remote/guestsPanel';
 import { TranscriptPanel } from './transcriptPanel';
 import { SoundLibraryPanel } from './soundLibraryPanel';
@@ -77,6 +77,7 @@ import { shortcutLetter } from './shortcutKey';
 import { VideoPanel, showCameraMenu, switchAtPlayhead } from './video/videoPanel';
 import { WatchThrough } from './video/watchThrough';
 import { importVideos } from './video/cameras';
+import { importFromCamPod } from './video/campodImport';
 import { openAutoDirect } from './video/autoDirectDialog';
 import { videoPlayer } from './video/player';
 
@@ -157,7 +158,14 @@ async function main(): Promise<void> {
       store.setView('edit');
     } else libraryPanel.toggle();
   };
-  window.addEventListener('wavepod:open-settings', () => void settingsDialog.open());
+  window.addEventListener('wavepod:open-settings', (e) => void settingsDialog.open((e as CustomEvent<SettingsTab | undefined>).detail));
+  // CamPod follows the recording: say when the cameras started, stopped or failed
+  api().onCamPod((e) => {
+    if (e.kind === 'started') {
+      toast(e.failed.length ? `Cameras recording on CamPod, but not: ${e.failed.join('; ')}` : 'Cameras recording on CamPod', e.failed.length ? 'error' : 'info');
+    } else if (e.kind === 'stopped') toast('Cameras stopped. Bring them in with File › Import from CamPod…');
+    else if (e.kind === 'error') toast(e.message, 'error');
+  });
   window.addEventListener('wavepod:export-region', (e) => {
     if (store.transport.state === 'recording' || document.querySelector('.overlay')) return;
     exportDialog.open((e as CustomEvent<string>).detail);
@@ -497,6 +505,7 @@ async function main(): Promise<void> {
       case 'save-template': return void templates.openSave();
       case 'show-templates-folder': return void api().showTemplatesFolder();
       case 'import-audio': return void importAudioFiles();
+      case 'import-campod': return void importFromCamPod().then(() => store.project.cameras?.length && !videoPanel.isOpen && openVideo());
       case 'import-video': return void importVideos().then(() => store.project.cameras?.length && !videoPanel.isOpen && openVideo());
       case 'export-video': return void (!document.querySelector('.overlay') && exportDialog.open(undefined, true));
       case 'video': return openVideo();

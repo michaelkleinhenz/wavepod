@@ -1,8 +1,9 @@
 // Edit › Settings…: app-wide settings that don't belong to an episode, in tabs: General (sound library
-// folder and transcription), Controllers (MIDI, Stream Deck/OSC) and AI agents (MCP).
+// folder and transcription), Controllers (MIDI, Stream Deck/OSC), Cameras (CamPod), Remote guests and AI agents (MCP).
 import type { TranscriptionInfo } from '../shared/types';
 import type { SoundLibraryInfo } from '../core/soundLibrary';
 import { append, clear, errorMessage, h, toast } from './dom';
+import { isCamPodOn, renderCamPodCard } from './campodCard';
 import { isMcpOn, renderMcpCard } from './mcpCard';
 import { midi } from './midi';
 import { renderMidiCard } from './midiCard';
@@ -13,10 +14,11 @@ import { DEFAULT_POST_ROLL_SECONDS, DEFAULT_PRE_ROLL_SECONDS, MAX_POST_ROLL_SECO
 import { transcripts } from './transcripts';
 import { CROSSTALK_CHOICES, CROSSTALK_DEFAULT_DB, MIN_LEVEL_CHOICES } from '../core/wordLevels';
 
-export type SettingsTab = 'general' | 'controllers' | 'remote' | 'agents';
+export type SettingsTab = 'general' | 'controllers' | 'cameras' | 'remote' | 'agents';
 const TABS: Array<{ id: SettingsTab; label: string; blurb: string }> = [
   { id: 'general', label: 'General', blurb: 'Recording alerts, punch-in pre-roll, the sound effects folder and how transcripts are made.' },
   { id: 'controllers', label: 'Controllers', blurb: 'Start recording, drop markers and fire jingles from a MIDI controller or Stream Deck.' },
+  { id: 'cameras', label: 'Cameras', blurb: 'Record video with CamPod: its cameras start and stop with the sound, and their files come into the episode as cameras.' },
   { id: 'remote', label: 'Remote guests', blurb: 'Record guests over the internet: a live call through LiveKit, and their own full-quality recording sent to this computer.' },
   { id: 'agents', label: 'AI agents', blurb: 'Let AI apps on this computer help with filters and loudness.' },
 ];
@@ -144,6 +146,7 @@ export class SettingsDialog {
     const on: Record<SettingsTab, boolean> = {
       general: false,
       controllers: midi.settings.enabled || isOscOn(),
+      cameras: isCamPodOn(),
       remote: false,
       agents: isMcpOn(),
     };
@@ -173,6 +176,7 @@ export class SettingsDialog {
     const page = h('div', { class: 'settings-page', role: 'tabpanel' }, h('p', { class: 'setup-blurb muted' }, TABS.find((t) => t.id === this.tab)!.blurb));
     if (this.tab === 'general') append(page, this.renderGeneral());
     else if (this.tab === 'controllers') append(page, [renderMidiCard(), renderOscCard()]);
+    else if (this.tab === 'cameras') page.append(renderCamPodCard());
     else if (this.tab === 'remote') page.append(renderRemoteCard());
     else page.append(renderMcpCard());
     this.dialog = h(

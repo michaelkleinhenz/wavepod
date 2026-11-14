@@ -1,4 +1,5 @@
 // Pure project-editing operations. They return a new project and never touch the input.
+import { normalizeCamPodLinks } from './campod';
 import type { Clip, EnvelopePoint, Frames, Fx, Marker, MarkerKind, Project, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
@@ -121,6 +122,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
   if (typeof raw.remoteRoom === 'string' && /^[\w-]{1,64}$/.test(raw.remoteRoom)) p.remoteRoom = raw.remoteRoom;
   else delete p.remoteRoom;
   normalizeVideo(p);
+  normalizeCamPodLinks(p);
   const exportSettings = normalizeExportSettings(raw.exportSettings);
   if (exportSettings) p.exportSettings = exportSettings;
   else delete p.exportSettings;

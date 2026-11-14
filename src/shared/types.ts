@@ -309,6 +309,83 @@ export interface Project {
   director?: Director;
   /** Size and frame rate of the exported video. */
   video?: VideoSettings;
+  /** CamPod recordings started together with this episode's takes. */
+  campod?: { sessions: CamPodLink[] };
+}
+
+// ---------------------------------------------------------------- CamPod (camera recorder)
+
+/** A CamPod recording started with a take: its name on CamPod and where the take began. */
+export interface CamPodLink {
+  name: string;
+  start: Frames;
+}
+
+/** CamPod settings as the window sees them (the token never leaves the main process). */
+export interface CamPodInfo {
+  url: string;
+  hasToken: boolean;
+  followRecording: boolean;
+}
+
+export interface CamPodSettingsInput {
+  url?: string;
+  /** New token; '' clears it, undefined keeps it. */
+  token?: string;
+  followRecording?: boolean;
+}
+
+export interface CamPodCameraInfo {
+  id: string;
+  name: string;
+  present: boolean;
+  enabled: boolean;
+  /** CamPod's state: preview, recording, error, … */
+  state: string;
+  error?: string;
+  /** "MJPG 1920×1080 30 fps" */
+  format: string;
+  /** Records MJPEG unchanged: WavePod can switch it to H.264. */
+  canSwitchToH264: boolean;
+  /** Why WavePod can't import what it records, or null. */
+  problem: string | null;
+}
+
+export interface CamPodStatus {
+  version: string;
+  recording: { name: string; title: string; startedAt: string } | null;
+  cameras: CamPodCameraInfo[];
+  remainingSeconds?: number;
+  diskWarning?: string;
+}
+
+/** A recording on CamPod, for File › Import from CamPod. */
+export interface CamPodSessionInfo {
+  name: string;
+  title: string;
+  startedAt: string;
+  seconds: number;
+  bytes: number;
+  files: number;
+  active: boolean;
+  /** Started together with a take of this episode. */
+  linked: boolean;
+}
+
+/** What the main process tells the window about CamPod. */
+export type CamPodEvent =
+  | { kind: 'started'; name: string; failed: string[] }
+  | { kind: 'stopped'; name: string }
+  | { kind: 'error'; message: string }
+  | { kind: 'download'; file: string; index: number; count: number; fraction: number };
+
+/** A downloaded camera file, ready to be added as a camera. */
+export interface CamPodImportFile {
+  camera: string;
+  /** As stored in the episode (relative to its folder). */
+  path: string;
+  /** Where its sound goes on the timeline until it is synced (the take's start), if known. */
+  start?: Frames;
 }
 
 // ---------------------------------------------------------------- video (multi-camera)

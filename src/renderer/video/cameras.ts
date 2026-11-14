@@ -16,7 +16,7 @@ function baseName(p: string): string {
   return p.split(/[\\/]/).pop() ?? p;
 }
 
-function busyDialog(title: string): { el: HTMLElement; status: HTMLElement; bar: HTMLElement; cancelled: () => boolean } {
+export function busyDialog(title: string): { el: HTMLElement; status: HTMLElement; bar: HTMLElement; cancelled: () => boolean } {
   let cancelled = false;
   const status = h('span', null, 'Reading the file…');
   const bar = h('div', { class: 'video-import-fill' });
@@ -50,8 +50,19 @@ export async function importVideos(paths?: string[]): Promise<void> {
   }
 }
 
-async function importVideo(path: string): Promise<boolean> {
-  const name = baseName(path).replace(/\.[^.]+$/, '');
+/** Options for a camera file that comes with what it is (e.g. from CamPod). */
+export interface CameraImportOptions {
+  /** Camera name (default: the file name). */
+  name?: string;
+  /** Where its sound starts on the timeline until it is synced (default: the timeline start). */
+  at?: number;
+  /** No toast on success (the caller reports). */
+  quiet?: boolean;
+}
+
+/** Imports one camera file; returns the new camera's id, or null when it failed or was cancelled. */
+export async function importVideo(path: string, o: CameraImportOptions = {}): Promise<string | null> {
+  const name = o.name ?? baseName(path).replace(/\.[^.]+$/, '');
   const busy = busyDialog(`Importing ${name}`);
   let importId: string | null = null;
   try {
@@ -81,13 +92,13 @@ async function importVideo(path: string): Promise<boolean> {
     if (!importId) throw new Error('its sound track is empty');
     const audio = (await api().importAudioEnd(importId))!;
     importId = null;
-    store.edit((p) => addCamera(p, { name, file: stored, probe, audioFile: audio.file, audioLength: audio.length }));
-    toast(`${name} added as camera ${store.project.cameras!.length}. Line the recordings up: right-click a track › Align to other track…`);
-    return true;
+    store.edit((p) => addCamera(p, { name, file: stored, probe, audioFile: audio.file, audioLength: audio.length, at: o.at }));
+    if (!o.quiet) toast(`${name} added as camera ${store.project.cameras!.length}. Line the recordings up: right-click a track › Align to other track…`);
+    return store.project.cameras![store.project.cameras!.length - 1].id;
   } catch (e) {
     if (importId) await api().importAudioEnd(importId, true).catch(() => undefined);
     if (errorMessage(e) !== 'cancelled') toast(`Could not import ${name}: ${errorMessage(e)}`, 'error');
-    return false;
+    return null;
   } finally {
     busy.el.remove();
   }
@@ -96,7 +107,7 @@ async function importVideo(path: string): Promise<boolean> {
 /** Adds a camera and its sound track (muted: it is the camera's reference sound, not the mix). */
 export function addCamera(
   p: Project,
-  o: { name: string; file: string; probe: { width: number; height: number; fps: number; duration: number; codec: string; audioStart: number }; audioFile: string; audioLength: number },
+  o: { name: string; file: string; probe: { width: number; height: number; fps: number; duration: number; codec: string; audioStart: number }; audioFile: string; audioLength: number; at?: number },
 ): Project {
   const cams = p.cameras ?? [];
   const id = uid('cam');
@@ -119,7 +130,7 @@ export function addCamera(
   q = {
     ...q,
     tracks: q.tracks.map((t) =>
-      t.id === trackId ? { ...t, clips: [{ id: uid('clp'), file: o.audioFile, start: Math.max(0, Math.round(o.probe.audioStart * p.sampleRate)), offset: 0, length: o.audioLength, gain: 0, fadeIn: 0, fadeOut: 0 }] } : t,
+      t.id === trackId ? { ...t, clips: [{ id: uid('clp'), file: o.audioFile, start: Math.max(0, Math.round((o.at ?? 0) + o.probe.audioStart * p.sampleRate)), offset: 0, length: o.audioLength, gain: 0, fadeIn: 0, fadeOut: 0 }] } : t,
     ),
     cameras: [...cams, cam],
     director: p.director ?? { cuts: [] },
@@ -137,9 +148,9 @@ export async function syncCamera(cameraId: string): Promise<void> {
   );
 }
 
-/** Video › Sync All Cameras…: lines every camera's sound up with one recording the user picks. */
-export async function syncAllCameras(): Promise<void> {
-  const cams = store.project.cameras ?? [];
+/** Video › Sync All Cameras…: lines every camera's sound (or only `only`'s) up with one recording the user picks. */
+export async function syncAllCameras(only?: string[]): Promise<void> {
+  const cams = (store.project.cameras ?? []).filter((c) => !only || only.includes(c.id));
   if (!cams.length) return toast('Import a camera video first (File › Import Camera Video…)');
   const camTracks = new Set(cams.map((c) => cameraTrack(store.project, c.id)?.id));
   const refs = store.project.tracks.filter((t) => !camTracks.has(t.id) && t.kind !== 'soundboard' && t.clips.length);

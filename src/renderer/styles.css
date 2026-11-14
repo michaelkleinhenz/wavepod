@@ -992,3 +992,13 @@ body.video-open .fx-panel { right: 420px; }
 .export-video-options { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
 .export-video-options select { flex: 1 1 140px; min-width: 0; }
 .video-export-preview.export-video-preview { width: 240px; max-width: 50%; margin: 0 auto 4px; }
+/* CamPod: recordings to import, cameras in Settings › Cameras */
+.campod-sessions { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; max-height: 50vh; overflow-y: auto; }
+.campod-session { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 12px; }
+.campod-session.linked { border-left: 4px solid var(--accent); }
+.campod-session-title { display: flex; align-items: center; gap: 8px; }
+.campod-tag { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--panel-2); color: var(--muted); }
+.campod-tag.rec { color: #ff6b6b; }
+.campod-cameras { width: 100%; border-collapse: collapse; margin: 10px 0; }
+.campod-cameras th { text-align: left; color: var(--muted); font-weight: normal; }
+.campod-cameras td, .campod-cameras th { padding: 4px 8px 4px 0; vertical-align: top; }

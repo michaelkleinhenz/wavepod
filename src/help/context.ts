@@ -16,6 +16,7 @@ export interface HelpContext {
 export const DIALOG_TOPICS: Array<[RegExp, string]> = [
   [/^(auto-direct|who is in the picture)/i, 'video/auto-direct'],
   [/^framing/i, 'video/framing'],
+  [/^(import from campod|downloading from campod)/i, 'video/campod'],
   [/^(importing|syncing cameras)/i, 'video/import-the-cameras'],
   [/^export\b/i, 'export'],
   [/^send to auphonic/i, 'export/send-to-auphonic'],
@@ -38,6 +39,7 @@ export const DIALOG_TOPICS: Array<[RegExp, string]> = [
 export const SETTINGS_TABS: Record<string, string> = {
   general: 'settings/general',
   controllers: 'controllers',
+  cameras: 'video/campod',
   'ai agents': 'ai-agents',
   'remote guests': 'remote-guests/livekit-server',
 };

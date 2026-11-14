@@ -1,5 +1,11 @@
 // The API the preload script exposes to the renderer as `window.wavepod`.
 import type {
+  CamPodEvent,
+  CamPodImportFile,
+  CamPodInfo,
+  CamPodSessionInfo,
+  CamPodSettingsInput,
+  CamPodStatus,
   RecordingAlert,
   ImpulseRef,
   AudioDevice,
@@ -97,6 +103,7 @@ export interface ImportedAudio {
 
 export type MenuCommand =
   | 'import-video'
+  | 'import-campod'
   | 'export-video'
   | 'video'
   | 'watch-through'
@@ -188,6 +195,19 @@ export interface WavePodApi {
   setRemoteSettings(input: RemoteSettingsInput): Promise<RemoteInfo>;
   /** Checks the LiveKit URL, key and secret; returns how many rooms are open. */
   testRemote(): Promise<number>;
+
+  // CamPod camera recorder
+  getCamPodSettings(): Promise<CamPodInfo>;
+  setCamPodSettings(input: CamPodSettingsInput): Promise<CamPodInfo>;
+  /** Asks CamPod for its cameras (also the connection test). */
+  camPodStatus(): Promise<CamPodStatus>;
+  /** Sets a camera that records MJPEG to H.264, so WavePod can decode it. */
+  camPodSetH264(cameraId: string): Promise<CamPodStatus>;
+  camPodSessions(): Promise<CamPodSessionInfo[]>;
+  /** Downloads a recording's camera files into the episode (progress comes through onCamPod). */
+  camPodDownload(session: string): Promise<{ files: CamPodImportFile[]; skipped: string[] }>;
+  camPodCancelDownload(): Promise<void>;
+  onCamPod(cb: (e: CamPodEvent) => void): () => void;
   /** Starts the episode's remote session: the window gets a port for audio and a host token. */
   remoteStart(): Promise<RemoteSessionInfo>;
   remoteStop(): Promise<void>;
@@ -496,18 +516,26 @@ export const IPC = {
   transcribeProgress: 'wavepod:transcribeProgress',
   transcript: 'wavepod:transcript',
   recordingAlert: 'wavepod:recordingAlert',
+  campod: 'wavepod:campod',
 } as const;
 
 /** Methods that go through the generic invoke channel. */
 export type InvokeMethod = Exclude<
   keyof WavePodApi,
-  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'onTranscribeProgress' | 'onTranscript' | 'onRecordingAlert' | 'platform' | 'pathForFile'
+  'onTransport' | 'onStatus' | 'onRecordingFinished' | 'onExportProgress' | 'onMenu' | 'onRemote' | 'onProjectEdited' | 'onSaveState' | 'onTranscribeProgress' | 'onTranscript' | 'onRecordingAlert' | 'onCamPod' | 'platform' | 'pathForFile'
 >;
 
 export const INVOKE_METHODS: InvokeMethod[] = [
   'getRemoteSettings',
   'setRemoteSettings',
   'testRemote',
+  'getCamPodSettings',
+  'setCamPodSettings',
+  'camPodStatus',
+  'camPodSetH264',
+  'camPodSessions',
+  'camPodDownload',
+  'camPodCancelDownload',
   'remoteStart',
   'remoteStop',
   'remoteInvite',
