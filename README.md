@@ -23,7 +23,9 @@ app you install and start, with no Reaper underneath.
   recovered after a crash. If an input drops out or the disk fills up,
   WavePod raises a loud alarm instead of failing silently.
 - **Built-in post-production.** Leveler, noise reduction, de-esser, EQ,
-  compressor and a true-peak limiter on every track, plus your own VST3
+  compressor and a true-peak limiter on every track, and an AI voice cleanup
+  that separates voice, background noise and room echo with a level for each,
+  running locally, plus your own VST3
   plug-ins, which run in a separate process so a crashing plug-in can't take
   a recording down. You don't need a paid online service to make it sound
   finished.

@@ -30,6 +30,7 @@
     },
     "files": [
       "dist/**/*",
+      "!dist/main/voiceclean.wasm",
       "package.json"
     ],
     "asarUnpack": [
@@ -44,6 +45,13 @@
         "filter": [
           "wavepod-vsthost",
           "wavepod-vsthost.exe"
+        ]
+      },
+      {
+        "from": "native/voiceclean",
+        "to": ".",
+        "filter": [
+          "voiceclean.wasm"
         ]
       },
       {

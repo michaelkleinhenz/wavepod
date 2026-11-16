@@ -277,6 +277,15 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Alien', 'Bell-like and strange.', { freq: 450, shape: 0, mix: 70 }],
     ['Broken robot', 'Wobbling tone, a failing machine.', { freq: 55, shape: 1, mix: 100, wobble: 40, wobbleRate: 3 }],
   ],
+  voiceclean: [
+    ['Studio voice', 'Takes out all noise and room: as if recorded in a treated booth.', { voice: 0, ambience: -60, reverb: -60 }],
+    ['Natural room', 'Background almost gone, a little room left so the voice does not sound boxed in.', { voice: 0, ambience: -36, reverb: -9 }],
+    ['Noise only', 'Removes noise and hum but leaves the room as it was.', { voice: 0, ambience: -60, reverb: 0 }],
+    ['Room only', 'Dries out an echoey room and leaves the background as it was.', { voice: 0, ambience: 0, reverb: -60 }],
+    ['Street interview', 'Keeps a hint of the place (traffic, café, wind) under a clear voice.', { voice: 0, ambience: -20, reverb: -12 }],
+    ['Remote guest', 'Laptop or phone recordings: no noise, less room, a little more voice.', { voice: 2, ambience: -60, reverb: -24 }],
+    ['Atmo only (no voice)', 'Keeps only the background: room tone and atmos for audio drama or fills.', { voice: -60, ambience: 0, reverb: -60 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],

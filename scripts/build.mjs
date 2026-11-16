@@ -66,6 +66,8 @@ function copyStatic() {
   cpSync('src/help/help.css', 'dist/help/help.css');
   // Window and taskbar icon on Linux and Windows (macOS takes it from the bundle).
   cpSync('build/icons/512x512.png', 'dist/icon.png');
+  // the voice cleanup filter (DeepFilterNet 3 as WebAssembly, built by `make voiceclean`)
+  cpSync('native/voiceclean/voiceclean.wasm', 'dist/main/voiceclean.wasm');
 }
 
 if (watch) {

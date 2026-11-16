@@ -14,6 +14,8 @@ export interface FxParamSpec {
   options?: Array<{ value: number; label: string }>;
   /** Logarithmic slider (frequencies). */
   log?: boolean;
+  /** At or below this value the parameter is shown as "Off". */
+  offAt?: number;
 }
 
 export interface FxDefinition {
@@ -122,6 +124,18 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     params: [
       db('reduction', 'Reduction', 12, 0, 30),
       db('threshold', 'Sensitivity', 6, 0, 15),
+    ],
+  },
+  {
+    type: 'voiceclean',
+    name: 'AI voice cleanup',
+    aliases: ['Voice cleanup', 'Voice isolation', 'Voice isolate', 'Dereverb', 'De-reverb', 'AI denoise', 'DeepFilterNet'],
+    description:
+      'Separates the voice from background noise and from the room with a neural network (DeepFilterNet 3) and a room model, then lets you set each part on its own: Voice, Ambience (noise, hum, traffic, music in the background) and Reverb (the echo of the room). All the way down (−60 dB) a part is gone. Runs on the computer, nothing is uploaded. It learns the room in the first seconds. Adds about 40 ms of latency, which WavePod compensates.',
+    params: [
+      { ...db('voice', 'Voice', 0, -60, 12), offAt: -60 },
+      { ...db('ambience', 'Ambience', -60, -60, 6), offAt: -60 },
+      { ...db('reverb', 'Reverb', -15, -60, 6), offAt: -60 },
     ],
   },
   {

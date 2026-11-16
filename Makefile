@@ -1,7 +1,7 @@
 # WavePod build entry points. Run `make help` for a list.
 NPM ?= npm
 
-.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test dist dist-linux dist-win dist-store dist-mac icons desktop-install desktop-uninstall release wiki clean distclean
+.PHONY: help install build dev start demo test typecheck lint check vsthost vsthost-test voiceclean dist dist-linux dist-win dist-store dist-mac icons desktop-install desktop-uninstall release wiki clean distclean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -45,6 +45,9 @@ vsthost-test: ## Build the VST3 host plus the SDK's sample plug-ins, then run th
 	$(CMAKE) -S native/vsthost -B $(VSTHOST_BUILD) -DCMAKE_BUILD_TYPE=Release -DWAVEPOD_VST3_SAMPLES=ON
 	$(CMAKE) --build $(VSTHOST_BUILD) --config Release --target wavepod-vsthost test_plugins
 	$(NPM) test
+
+voiceclean: ## Rebuild native/voiceclean/voiceclean.wasm, the AI voice cleanup (needs Rust + the wasm32-unknown-unknown target)
+	native/voiceclean/build.sh
 
 dist: build vsthost ## Package for the current OS into release/
 	npx electron-builder --publish never

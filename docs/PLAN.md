@@ -150,6 +150,9 @@ All items of the parity roadmap are done; see
 Features that were not in either plan and shipped since (PR numbers in
 brackets):
 
+- **AI voice cleanup**: DeepFilterNet 3 plus a late-reverb room model as one
+  WebAssembly module (`native/voiceclean`), separate Voice / Ambience / Reverb
+  levels, real time on the CPU, about 40 ms latency.
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices
