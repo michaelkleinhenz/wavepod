@@ -5,8 +5,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { BrowserWindow, session, shell } from 'electron';
-import type { ExportOptions, ExportProgress, ExportResult, LetsCastInfo, Project } from '../shared/types';
-import { LETSCAST_BASE, LetsCastClient, editUrl } from '../core/letscast';
+import type { ExportOptions, ExportProgress, ExportResult, LetsCastInfo, LetsCastParts, Project } from '../shared/types';
+import { LETSCAST_BASE, LetsCastClient, editUrl, letscastUpdate, type LetsCastEpisodeUpdate } from '../core/letscast';
 import { DEFAULT_EXPORT_SETTINGS } from '../core/exportSettings';
 import { safeName } from '../core/exporter';
 
@@ -16,12 +16,17 @@ const PARTITION = 'persist:letscast';
 export interface StoredLetsCast {
   podcast: string;
   episode: string;
+  parts: LetsCastParts;
 }
+
+export const DEFAULT_LETSCAST_PARTS: LetsCastParts = { audio: true, details: true, showNotes: true, chapters: true, cover: true };
 
 export function normalizeLetsCast(raw: unknown): StoredLetsCast {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<StoredLetsCast>;
   const slug = (v: unknown) => (typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(v) ? v : '');
-  return { podcast: slug(r.podcast), episode: slug(r.episode) };
+  const p = (r.parts && typeof r.parts === 'object' ? r.parts : {}) as Partial<LetsCastParts>;
+  const parts = Object.fromEntries(Object.entries(DEFAULT_LETSCAST_PARTS).map(([k, d]) => [k, typeof p[k as keyof LetsCastParts] === 'boolean' ? p[k as keyof LetsCastParts] : d])) as unknown as LetsCastParts;
+  return { podcast: slug(r.podcast), episode: slug(r.episode), parts };
 }
 
 /** Tests point it at a local mock server. */
@@ -51,7 +56,7 @@ export async function letscastInfo(s: StoredLetsCast): Promise<LetsCastInfo> {
   } catch {
     // offline: shown as signed out; signing in tells the user more
   }
-  return { signedIn, podcast: s.podcast, episode: s.episode };
+  return { signedIn, podcast: s.podcast, episode: s.episode, parts: s.parts };
 }
 
 let signInWindow: BrowserWindow | null = null;
@@ -104,32 +109,38 @@ export async function letscastSignOut(): Promise<void> {
   await letscastSession().clearStorageData();
 }
 
-/** Renders the episode's MP3 (with its export settings) into a temporary folder and uploads it. */
+/** Sends the chosen parts; the MP3 is rendered (with the episode's export settings) into a temporary folder. */
 export async function uploadToLetsCast(
   project: Project,
+  projectDir: string,
   podcast: string,
   episode: string,
+  parts: LetsCastParts,
   render: (opts: ExportOptions) => Promise<ExportResult>,
   progress: (p: ExportProgress) => void,
 ): Promise<{ url: string }> {
-  if (!project.tracks.some((t) => t.clips.length)) throw new Error('There is no audio to upload yet.');
+  if (parts.audio && !project.tracks.some((t) => t.clips.length)) throw new Error('There is no audio to upload yet.');
+  const update: LetsCastEpisodeUpdate = letscastUpdate(project, projectDir, parts);
+  if (!parts.audio && !Object.keys(update).length) throw new Error('There is nothing to send: the chosen parts are empty in WavePod.');
   const client = letscastClient();
   // fail early (before rendering) when signed out or the episode is gone
   await client.episode(podcast, episode);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wavepod-letscast-'));
   try {
-    const s = project.exportSettings ?? DEFAULT_EXPORT_SETTINGS;
-    const res = await render({
-      ...s,
-      outputBase: path.join(dir, safeName(project.metadata.title || project.name)),
-      formats: ['mp3'],
-      stems: false,
-      chapterFiles: false,
-      video: undefined,
-    });
-    const mp3 = res.files.find((f) => f.toLowerCase().endsWith('.mp3'));
-    if (!mp3) throw new Error('Rendering the MP3 failed.');
-    await client.uploadAudio(podcast, episode, mp3, (p) => progress({ phase: p.phase, fraction: p.fraction }));
+    if (parts.audio) {
+      const s = project.exportSettings ?? DEFAULT_EXPORT_SETTINGS;
+      const res = await render({
+        ...s,
+        outputBase: path.join(dir, safeName(project.metadata.title || project.name)),
+        formats: ['mp3'],
+        stems: false,
+        chapterFiles: false,
+        video: undefined,
+      });
+      update.audioFile = res.files.find((f) => f.toLowerCase().endsWith('.mp3'));
+      if (!update.audioFile) throw new Error('Rendering the MP3 failed.');
+    }
+    await client.updateEpisode(podcast, episode, update, (p) => progress({ phase: p.phase, fraction: p.fraction }));
     return { url: editUrl(podcast, episode, base()) };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

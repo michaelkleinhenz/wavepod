@@ -30,6 +30,7 @@ import type {
   LetsCastEpisodeDetails,
   LetsCastEpisodeInfo,
   LetsCastInfo,
+  LetsCastParts,
   LetsCastPodcastInfo,
   RemoteInfo,
   RemoteSessionInfo,
@@ -246,8 +247,8 @@ export interface WavePodApi {
   /** The podcast's newest episodes. */
   letscastEpisodes(podcast: string): Promise<LetsCastEpisodeInfo[]>;
   letscastEpisode(podcast: string, episode: string): Promise<LetsCastEpisodeDetails>;
-  /** Renders the MP3 with the episode's export settings and makes it that LetsCast episode's audio. Progress comes as export progress. */
-  uploadToLetsCast(podcast: string, episode: string): Promise<{ url: string }>;
+  /** Sends the chosen parts to that LetsCast episode; the MP3 is rendered with the episode's export settings. Progress comes as export progress. */
+  uploadToLetsCast(podcast: string, episode: string, parts: LetsCastParts): Promise<{ url: string }>;
   /** Opens a letscast.fm page in the browser. */
   openLetsCast(url: string): Promise<void>;
 

@@ -1,6 +1,7 @@
 // File › Upload to LetsCast.fm…: sign in on letscast.fm, pick the podcast and an existing episode,
-// and make the rendered MP3 that episode's audio. Nothing else on the episode changes.
-import type { ExportProgress, LetsCastEpisodeDetails, LetsCastEpisodeInfo, LetsCastInfo, LetsCastPodcastInfo } from '../shared/types';
+// and send it the rendered MP3, the details, show notes, chapters and cover (each one optional).
+// Empty values in WavePod are not sent, so they never clear anything on letscast.fm.
+import type { ExportProgress, LetsCastEpisodeDetails, LetsCastEpisodeInfo, LetsCastInfo, LetsCastParts, LetsCastPodcastInfo } from '../shared/types';
 import { parseEpisodeLink } from '../core/letscastPages';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
@@ -19,6 +20,7 @@ export class LetsCastDialog {
   private status = '';
   private result: string | null = null;
   private linkDraft = '';
+  private parts: LetsCastParts = { audio: true, details: true, showNotes: true, chapters: true, cover: true };
 
   constructor() {
     this.overlay.addEventListener('mousedown', (e) => {
@@ -31,7 +33,6 @@ export class LetsCastDialog {
   }
 
   async open(): Promise<void> {
-    if (!store.project.tracks.some((t) => t.clips.length)) return toast('There is no audio to upload yet');
     this.result = null;
     this.status = '';
     this.error = '';
@@ -42,6 +43,8 @@ export class LetsCastDialog {
       this.info = await api().letscastStatus();
       this.podcast = this.info.podcast;
       this.episode = this.info.episode;
+      this.parts = { ...this.info.parts };
+      if (!store.project.tracks.some((t) => t.clips.length)) this.parts.audio = false;
       this.render();
       if (this.info.signedIn) await this.loadPodcasts();
     } catch (e) {
@@ -137,17 +140,18 @@ export class LetsCastDialog {
     if (el) el.textContent = this.status;
   }
 
-  private async upload(): Promise<void> {
+  private async upload(parts: LetsCastParts): Promise<void> {
     this.busy = true;
     this.result = null;
-    this.status = 'Rendering the MP3…';
+    this.error = '';
+    this.status = parts.audio ? 'Rendering the MP3…' : 'Sending…';
     this.render();
     try {
-      const r = await api().uploadToLetsCast(this.podcast, this.episode);
+      const r = await api().uploadToLetsCast(this.podcast, this.episode, parts);
       this.result = r.url;
       this.status = '';
-      if (this.details) this.details = { ...this.details, hasAudio: true };
-      toast('Uploaded to LetsCast.fm');
+      if (this.details && parts.audio) this.details = { ...this.details, hasAudio: true };
+      toast(parts.audio ? 'Uploaded to LetsCast.fm' : 'Sent to LetsCast.fm');
     } catch (e) {
       this.status = '';
       this.error = errorMessage(e);
@@ -216,13 +220,43 @@ export class LetsCastDialog {
       h('button', { class: 'small', disabled: !signedIn || this.busy || !this.linkDraft.trim(), onclick: () => void this.useLink() }, 'Use link'),
     );
     const s = store.project.exportSettings;
+    const m = store.project.metadata;
+    const hasAudio = store.project.tracks.some((t) => t.clips.length);
+    const chapters = store.project.markers.filter((k) => k.kind === 'chapter');
     const what = `${s?.mp3Bitrate ?? 128} kbps${s?.mono ? ' mono' : ''}${s?.normalize === false ? '' : `, ${String(s?.targetLufs ?? -16).replace('-', '−')} LUFS`}`;
-    const ready = signedIn && !!this.podcast && !!this.episode && !this.busy;
+    const details = [m.title && `title "${m.title}"`, /^\d+$/.test(m.episode.trim()) && `number ${m.episode.trim()}`, m.author && `author ${m.author}`, m.description.trim() && 'description as the summary']
+      .filter(Boolean)
+      .join(', ');
+    const notes = m.showNotes?.trim() ?? '';
+    const part = (key: keyof LetsCastParts, label: string, note: string, available: boolean) =>
+      h(
+        'label',
+        { class: 'check', title: available ? '' : 'Empty in WavePod, so nothing to send' },
+        h('input', {
+          type: 'checkbox',
+          checked: available && this.parts[key],
+          disabled: !available || this.busy,
+          onchange: (e: Event) => {
+            this.parts = { ...this.parts, [key]: (e.target as HTMLInputElement).checked };
+            this.render();
+          },
+        }),
+        h('span', null, label, h('span', { class: 'muted' }, ` · ${note}`)),
+      );
+    const chosen = (key: keyof LetsCastParts, available: boolean) => available && this.parts[key];
+    const sends = {
+      audio: chosen('audio', hasAudio),
+      details: chosen('details', !!details),
+      showNotes: chosen('showNotes', !!notes),
+      chapters: chosen('chapters', chapters.length > 0),
+      cover: chosen('cover', !!m.artwork),
+    };
+    const ready = signedIn && !!this.podcast && !!this.episode && !this.busy && Object.values(sends).some(Boolean);
     const dialog = h(
       'div',
       { class: 'dialog narrow letscast-dialog' },
       h('h2', null, 'Upload to LetsCast.fm'),
-      h('p', { class: 'muted' }, `Renders the episode as MP3 (${what}, with chapters and cover, as set in File › Export) and makes it the audio of an episode you already created on letscast.fm. Title, show notes and publishing date stay as they are there.`),
+      h('p', { class: 'muted' }, 'Fills an episode you already created on letscast.fm. Only what you tick is sent; the publishing date and everything else there stay as they are.'),
       h('h3', null, 'Account'),
       account,
       h('h3', null, 'Podcast'),
@@ -230,17 +264,23 @@ export class LetsCastDialog {
       h('h3', null, 'Episode'),
       h('label', { class: 'field' }, episodeSel),
       linkRow,
-      this.details?.hasAudio && !this.result ? h('p', { class: 'warning' }, `"${this.details.title || this.episode}" already has audio. Uploading replaces it.`) : null,
+      h('h3', null, 'Send'),
+      part('audio', 'Audio', hasAudio ? `MP3, ${what}, as set in File › Export` : 'no audio yet', hasAudio),
+      part('details', 'Episode details', details || 'empty in the Chapters view', !!details),
+      part('showNotes', 'Show notes', notes ? `${notes.length} characters` : 'empty in the Chapters view', !!notes),
+      part('chapters', 'Chapters', chapters.length ? `${chapters.length}${chapters.some((k) => k.url || k.image) ? ' with their links and images' : ''}; they replace the chapters there` : 'no chapter markers', chapters.length > 0),
+      part('cover', 'Episode cover', m.artwork ? 'the cover from the Chapters view' : 'no cover set', !!m.artwork),
+      this.details?.hasAudio && sends.audio && !this.result ? h('p', { class: 'warning' }, `"${this.details.title || this.episode}" already has audio. Uploading replaces it.`) : null,
       this.error ? h('p', { class: 'warning' }, this.error) : null,
       this.result
-        ? h('p', null, 'Uploaded. LetsCast.fm now converts it. ', h('a', { href: '#', onclick: (e: Event) => (e.preventDefault(), void api().openLetsCast(this.result!)) }, 'Open the episode on letscast.fm'))
+        ? h('p', null, sends.audio ? 'Uploaded. LetsCast.fm now converts the audio. ' : 'Sent. ', h('a', { href: '#', onclick: (e: Event) => (e.preventDefault(), void api().openLetsCast(this.result!)) }, 'Open the episode on letscast.fm'))
         : null,
       h('div', { class: 'row' }, h('span', { class: 'letscast-status muted' }, this.status)),
       h(
         'div',
         { class: 'row end' },
         h('button', { disabled: this.busy, onclick: () => this.close() }, 'Close'),
-        h('button', { class: 'primary', disabled: !ready, onclick: () => void this.upload() }, this.busy ? 'Uploading…' : this.details?.hasAudio ? 'Replace audio' : 'Upload'),
+        h('button', { class: 'primary', disabled: !ready, onclick: () => void this.upload({ ...this.parts, audio: sends.audio }) }, this.busy ? 'Uploading…' : 'Upload'),
       ),
     );
     this.overlay.append(dialog);

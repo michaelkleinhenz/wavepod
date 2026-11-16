@@ -275,6 +275,8 @@ export interface EpisodeMetadata {
   artwork?: string;
   /** Podcast category, written as the genre (ID3 TCON, FLAC GENRE); "Podcast" when empty. */
   category?: string;
+  /** Show notes as plain text (blank line = new paragraph, "- " = bullet, links stay links); sent to the podcast host. */
+  showNotes?: string;
 }
 
 export type BitDepth = 16 | 24 | 32;
@@ -1023,6 +1025,20 @@ export interface LetsCastInfo {
   /** Last podcast and episode the user uploaded to (slugs), to preselect them. */
   podcast: string;
   episode: string;
+  /** What the last upload sent. */
+  parts: LetsCastParts;
+}
+
+/** What an upload to LetsCast.fm sends. Empty values in WavePod are never sent, so they don't clear anything there. */
+export interface LetsCastParts {
+  /** The rendered MP3. */
+  audio: boolean;
+  /** Title, number, author and description (as the summary). */
+  details: boolean;
+  showNotes: boolean;
+  /** Chapter markers with links and images; they replace the chapters on letscast.fm. */
+  chapters: boolean;
+  cover: boolean;
 }
 
 export interface LetsCastPodcastInfo {

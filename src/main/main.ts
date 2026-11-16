@@ -66,7 +66,7 @@ import { decodeKey, encodeKey } from './auphonic';
 import { CamPodDownloader, CamPodFollower, camPodClient, camPodInfo, updateCamPodSettings } from './campod';
 import { linkSession, normalizeCamPodSettings, sessionsFromWire, type StoredCamPod } from '../core/campod';
 import { RemoteHost, normalizeRemoteSettings, remoteInfo, updateRemoteSettings, type StoredRemote } from './remote/host';
-import type { CamPodSettingsInput, Clip, RemoteSettingsInput } from '../shared/types';
+import type { CamPodSettingsInput, Clip, LetsCastParts, RemoteSettingsInput } from '../shared/types';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
 import { VIDEO_EXTENSIONS, VideoWriter, fileSize, readRange, removeVideoTemp, resolveMediaPath, storedVideoPath, videoTempBase } from './video';
@@ -703,17 +703,19 @@ const handlers: Record<InvokeMethod, Handler> = {
     const page = await letscastClient().episode(podcast, episode);
     return { slug: episode, title: page.title, hasAudio: !!page.audio };
   },
-  uploadToLetsCast: async (podcast: string, episode: string) => {
+  uploadToLetsCast: async (podcast: string, episode: string, parts: LetsCastParts) => {
     flushSave();
     const send2 = (p: unknown) => send(IPC.exportProgress, p);
     const res = await uploadToLetsCast(
       current.project,
+      current.dir,
       podcast,
       episode,
+      parts,
       (opts) => runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, send2),
       send2,
     );
-    settings.letscast = normalizeLetsCast({ podcast, episode });
+    settings.letscast = normalizeLetsCast({ podcast, episode, parts });
     saveSettings();
     return res;
   },

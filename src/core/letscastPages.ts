@@ -131,3 +131,67 @@ export function parseEpisodePage(html: string): LetsCastEpisodePage {
 export function editUrl(podcast: string, episode: string, base = LETSCAST_BASE): string {
   return `${base}/podcasts/${podcast}/episodes/${episode}/edit`;
 }
+
+/** Ids of the chapters an episode has now (chapters edit page), to replace them. */
+export function parseChapterIds(html: string): string[] {
+  return [...html.matchAll(/<input\b[^>]*>/gi)]
+    .map((m) => m[0])
+    .filter((t) => /^episode\[chapters_attributes\]\[\d+\]\[id\]$/.test(attr(t, 'name') ?? ''))
+    .map((t) => attr(t, 'value') ?? '')
+    .filter(Boolean);
+}
+
+/** A chapter start as LetsCast takes it: "01:02:03", or "01:02:03.250" with milliseconds. */
+export function chapterStart(seconds: number): string {
+  const ms = Math.max(0, Math.round(seconds * 1000));
+  const p = (n: number, w = 2) => String(n).padStart(w, '0');
+  const base = `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)}`;
+  return ms % 1000 ? `${base}.${p(ms % 1000, 3)}` : base;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** One line of text with its links made clickable. */
+function inline(line: string): string {
+  let out = '';
+  let last = 0;
+  for (const m of line.matchAll(/\bhttps?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]]/g)) {
+    out += escapeHtml(line.slice(last, m.index)) + `<a href="${escapeHtml(m[0])}">${escapeHtml(m[0])}</a>`;
+    last = m.index! + m[0].length;
+  }
+  return out + escapeHtml(line.slice(last));
+}
+
+/**
+ * Plain text as the HTML LetsCast's editor (Trix) writes: a <div> per paragraph (blank line between
+ * them), line breaks as <br>, lines starting with "- " or "* " as a bullet list, links clickable.
+ */
+export function textToHtml(text: string): string {
+  const blocks = text.replace(/\r\n?/g, '\n').trim().split(/\n\s*\n/);
+  const out: string[] = [];
+  for (const block of blocks) {
+    const lines = block.split('\n').map((l) => l.trimEnd());
+    let para: string[] = [];
+    let list: string[] = [];
+    const flush = () => {
+      if (para.length) out.push(`<div>${para.map(inline).join('<br>')}</div>`);
+      if (list.length) out.push(`<ul>${list.map((l) => `<li>${inline(l)}</li>`).join('')}</ul>`);
+      para = [];
+      list = [];
+    };
+    for (const l of lines) {
+      const bullet = /^\s*[-*•]\s+(.*)$/.exec(l);
+      if (bullet) {
+        if (para.length) flush();
+        list.push(bullet[1]);
+      } else {
+        if (list.length) flush();
+        para.push(l);
+      }
+    }
+    flush();
+  }
+  return out.join('');
+}

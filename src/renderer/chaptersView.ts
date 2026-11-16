@@ -239,6 +239,25 @@ export class ChaptersView {
       ),
       field('description', 'Description', true),
       h(
+        'label',
+        { class: 'field' },
+        h('span', null, 'Show notes'),
+        h('textarea', {
+          class: 'show-notes',
+          rows: 6,
+          value: meta.showNotes ?? '',
+          placeholder: 'Links, guests, credits… A blank line starts a new paragraph, "- " a bullet point.',
+          onchange: (e: Event) => {
+            const v = (e.target as HTMLTextAreaElement).value;
+            store.edit((p) => {
+              const { showNotes: _n, ...rest } = p.metadata;
+              return { ...p, metadata: v.trim() ? { ...rest, showNotes: v } : rest };
+            });
+          },
+        }),
+        h('small', { class: 'muted' }, 'Sent to your podcast host with File › Upload to LetsCast.fm.'),
+      ),
+      h(
         'div',
         { class: 'field artwork' },
         h('span', null, 'Episode cover'),
