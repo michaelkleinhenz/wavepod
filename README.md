@@ -224,6 +224,9 @@ Your episodes and settings are kept: episodes live in `Documents/WavePod`.
 To remove WavePod, use **Settings › Apps** on Windows, drag it from
 Applications to the Bin on macOS, or run `sudo apt remove wavepod` on
 Debian/Ubuntu. Your episodes in `Documents/WavePod` stay where they are.
+When you uninstall the Microsoft Store version, Windows also removes its
+settings (API keys, devices, preferences), because Store apps keep them in
+their own package folder; the `.exe` version leaves `%APPDATA%\WavePod` in place.
 
 ### Windows: Smart App Control blocks WavePod
 
