@@ -2,7 +2,7 @@
 
 WavePod is a multitrack recorder and editor made for podcasts and audio dramas. It records every speaker on a track of their own, lets you cut the conversation like a document and exports a finished episode with chapters, cover and the right loudness.
 
-This guide explains every part of the app. Use the search field at the top left to find a topic, or press `F1` anywhere in WavePod to open the page that fits what you are doing.
+This guide explains every part of the app. Use the search field at the top left to find a topic, or press `F1` anywhere in WavePod to open the page that fits what you are doing. Prefer watching? The [video tutorials](https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY) on YouTube show WavePod in action, starting with an introduction.
 
 ## Beta software
 
@@ -58,6 +58,7 @@ On macOS, read `Ctrl` as `⌘` (Command) throughout this guide. The help window 
 ## Getting help
 
 - **Help › WavePod Help** (`F1`) opens this guide at the page for the view, panel or dialog you are in. **Help › Getting Started** opens this page.
+- **Help › Video Tutorials** opens the [WavePod tutorial playlist](https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY) on YouTube in your browser.
 - **Help › Keyboard Shortcuts** (or `?` in the main window) shows every key at a glance. The same list is in this guide under [Keyboard shortcuts](shortcuts.md).
 - Most buttons explain themselves when you hold the mouse over them.
 - Something not working? See [Troubleshooting](troubleshooting.md), also under **Help › Troubleshooting**.
