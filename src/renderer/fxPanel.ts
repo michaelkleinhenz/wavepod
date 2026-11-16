@@ -8,6 +8,7 @@ import { createVstFx, visibleVstParams } from '../core/fx/vst';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
+import { sidebar } from './sidebar';
 import { findClip, updateTrack } from '../core/project';
 import { DUCK_DEFAULT_DEPTH } from '../core/ducking';
 import { AUTOMIX_DEFAULT_DEPTH, AUTOMIX_DEPTHS } from '../core/automix';
@@ -102,54 +103,79 @@ export class FxPanel {
   private impulses: ImpulseFile[] | Promise<ImpulseFile[]> | null = null;
   /** The card whose preset row is a name field: saving a new preset or renaming the current one. */
   private naming: { fxId: string; mode: 'save' | 'rename' } | null = null;
-  /** True outside the edit view: the panel keeps its target but stays off screen until the user is back. */
-  private hidden = false;
+  /** On screen in the sidebar. The target stays while another tab shows, for when FX comes back. */
+  private visible = false;
 
+  /** Shows the filters of a track, a clip or the master bus in the sidebar's FX tab. */
   open(target: FxTarget): void {
     this.target = target;
     this.structure = '';
     this.picker = null;
-    if (this.vstAvailable === null) {
-      this.vstAvailable = false;
-      api()
-        .vstStatus()
-        .then((s) => {
-          this.vstAvailable = s.available;
-          if (s.available && this.target) this.render();
-        })
-        .catch(() => {});
-    }
-    this.render();
-    if (!this.hidden) document.getElementById('app')!.append(this.el);
-  }
-
-  /** Hides the panel while another view is shown, and brings it back (if it was open) on return. */
-  setHidden(hidden: boolean): void {
-    if (hidden === this.hidden) return;
-    this.hidden = hidden;
-    if (hidden) this.el.remove();
-    else if (this.target) {
-      this.render();
-      document.getElementById('app')!.append(this.el);
-    }
-  }
-
-  close(): void {
-    this.target = null;
-    this.el.remove();
+    this.checkVst();
+    if (this.visible) this.render();
+    sidebar().show('fx');
     store.notify('project');
   }
 
+  private checkVst(): void {
+    if (this.vstAvailable !== null) return;
+    this.vstAvailable = false;
+    api()
+      .vstStatus()
+      .then((s) => {
+        this.vstAvailable = s.available;
+        if (s.available && this.target && this.visible) this.render();
+      })
+      .catch(() => {});
+  }
+
+  /** The target whose filters are showing in the sidebar now (null with the FX tab not chosen). */
+  get shownTarget(): FxTarget | null {
+    return sidebar().isOpen('fx') ? this.target : null;
+  }
+
+  /** The sidebar put the FX tab on screen. */
+  enterSidebar(): void {
+    this.visible = true;
+    this.checkVst();
+    this.structure = '';
+    this.render();
+    store.notify('project');
+  }
+
+  /** The FX tab went off screen; it keeps its target for when it comes back. */
+  leaveSidebar(): void {
+    this.visible = false;
+    store.notify('project');
+  }
+
+  /** Folds the sidebar if it shows the filters. */
+  close(): void {
+    sidebar().close('fx');
+  }
+
+  /** The FX button of a track or clip: shows its filters, or folds the sidebar if they are showing. */
   toggle(target: FxTarget): void {
-    if (this.target === target) this.close();
+    if (this.shownTarget === target) this.close();
     else this.open(target);
   }
 
   /** Re-renders when the stack changed from outside (undo, other edits), but not during slider drags. */
   refresh(): void {
-    if (!this.target || store.liveEditing || isEditingValue(this.el) || this.naming) return;
+    if (!this.visible || store.liveEditing || isEditingValue(this.el) || this.naming) return;
+    if (!this.target) {
+      // the list of tracks to choose from
+      const key = this.chooserKey();
+      if (key !== this.structure) this.render();
+      return;
+    }
     const clipId = targetClipId(this.target);
-    if (clipId !== null ? !findClip(store.project, clipId) : this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target)) return this.close();
+    if (clipId !== null ? !findClip(store.project, clipId) : this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target)) {
+      // its track or clip is gone: back to the list of tracks
+      this.target = null;
+      this.render();
+      return;
+    }
     const key = JSON.stringify(fxList(store.project, this.target)) + this.title();
     if (key !== this.structure) this.render();
   }
@@ -173,9 +199,46 @@ export class FxPanel {
     keepScroll(this.el, () => this.build());
   }
 
+  /** Back to the list of tracks. */
+  private choose(): void {
+    this.target = null;
+    this.picker = null;
+    this.render();
+    store.notify('project');
+  }
+
+  private chooserKey(): string {
+    return 'choose:' + store.project.tracks.map((t) => `${t.id}:${t.name}:${t.color}:${t.fx?.length ?? 0}`).join('|') + `|${store.project.masterFx?.length ?? 0}`;
+  }
+
+  /** With nothing chosen yet: the master bus and every track, to pick whose filters to show. */
+  private buildChooser(): void {
+    this.structure = this.chooserKey();
+    clear(this.el);
+    this.meters.clear();
+    const row = (label: string, count: number, target: FxTarget, color?: string) =>
+      h(
+        'button',
+        { class: 'fx-choose-row', onclick: () => this.open(target) },
+        h('span', { class: 'fx-choose-dot', style: color ? `background:${color}` : '' }),
+        h('span', { class: 'fx-choose-name' }, label),
+        h('span', { class: 'fx-choose-count muted' }, count ? `${count} filter${count === 1 ? '' : 's'}` : 'none'),
+      );
+    this.el.append(
+      h('div', { class: 'fx-head' }, h('div', null, h('div', { class: 'fx-kicker' }, 'Filters'), h('h2', null, 'Choose a track'))),
+      h('p', { class: 'muted fx-empty' }, 'Pick the master bus or a track to see its filters. The FX button on a track or a clip opens its filters here too.'),
+      h(
+        'div',
+        { class: 'fx-choose' },
+        row('Master', store.project.masterFx?.length ?? 0, MASTER),
+        ...store.project.tracks.map((t) => row(t.name, t.fx?.length ?? 0, t.id, t.color)),
+      ),
+    );
+  }
+
   private build(): void {
     const target = this.target;
-    if (!target) return;
+    if (!target) return this.buildChooser();
     const list = fxList(store.project, target);
     this.structure = JSON.stringify(list) + this.title();
     clear(this.el);
@@ -210,7 +273,7 @@ export class FxPanel {
         'div',
         { class: 'fx-head' },
         h('div', null, h('div', { class: 'fx-kicker' }, targetClipId(target) !== null ? 'Clip filters' : 'Filters'), h('h2', null, this.title())),
-        h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×'),
+        h('button', { class: 'small fx-choose-btn', title: 'Show the filters of another track or the master bus', onclick: () => this.choose() }, 'All tracks'),
       ),
       h(
         'div',
@@ -774,7 +837,7 @@ export class FxPanel {
 
   /** Feeds live filter activity from a transport update into the cards' meters. */
   updateMeters(meters: Record<string, FxMeter> | undefined): void {
-    if (!this.target || this.hidden) return;
+    if (!this.target || !this.visible) return;
     for (const [id, m] of this.meters) m.update(meters?.[id]);
   }
 

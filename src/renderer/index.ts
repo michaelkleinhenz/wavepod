@@ -1,5 +1,6 @@
 // App shell: header with views and transport, view switching, keyboard shortcuts, engine events.
 import { FxPanel } from './fxPanel';
+import { sidebar, type SidebarTab } from './sidebar';
 import { MASTER, clipTarget } from '../core/fx/stack';
 import { formatTimestamp } from '../shared/time';
 import { toDb } from '../core/dsp';
@@ -127,39 +128,32 @@ async function main(): Promise<void> {
   videoPanel.onWatchThrough = () => watchThrough.open();
   videoPanel.onAutoDirect = () => openAutoDirect();
   videoPanel.onExport = () => exportDialog.open(undefined, true);
-  // the library, the script, the transcript and the cameras share the right side: one at a time
-  libraryPanel.onOpen = () => {
-    if (transcriptPanel.isOpen) transcriptPanel.close();
-    if (scriptPanel.isOpen) scriptPanel.close();
-    if (videoPanel.isOpen) videoPanel.close();
-  };
-  scriptPanel.onOpen = () => {
-    if (transcriptPanel.isOpen) transcriptPanel.close();
-    if (libraryPanel.isOpen) libraryPanel.close();
-    if (videoPanel.isOpen) videoPanel.close();
-  };
-  videoPanel.onOpen = () => {
-    if (transcriptPanel.isOpen) transcriptPanel.close();
-    if (libraryPanel.isOpen) libraryPanel.close();
-    if (scriptPanel.isOpen) scriptPanel.close();
-  };
-  const openVideo = () => {
+  // Every side panel is a tab of the sidebar docked right of the timeline (Record & Edit only).
+  const side = sidebar();
+  side.add('fx', 'FX', 'Filters of the master bus, a track or a clip', fxPanel);
+  side.add('transcript', 'Transcript', 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)', transcriptPanel);
+  side.add('library', 'Sounds', 'Sound library: search your sound effects, listen and insert them (Shift+Ctrl+B)', libraryPanel);
+  side.add('script', 'Script', 'Script: every line by character, tick off what is recorded (Shift+Ctrl+J)', scriptPanel);
+  side.add('video', 'Cameras', 'Cameras: the program monitor and every camera (Shift+Ctrl+U)', videoPanel);
+  side.add('guests', 'Guests', 'Remote guests: invite them, let them in, see their uploads (Shift+Ctrl+G)', guestsPanel);
+  // A panel's shortcut or header button shows its tab, or folds the sidebar if the tab is showing.
+  // The sidebar only shows in Record & Edit: from another view they take the user there.
+  const openTab = (id: SidebarTab) => {
     if (store.view !== 'edit') {
-      if (!videoPanel.isOpen) videoPanel.toggle();
+      side.show(id);
       store.setView('edit');
-    } else videoPanel.toggle();
+    } else side.toggle(id);
   };
-  const openScript = () => {
+  const openVideo = () => openTab('video');
+  const openScript = () => openTab('script');
+  const openLibrary = () => openTab('library');
+  const openTranscript = () => openTab('transcript');
+  const openGuests = () => openTab('guests');
+  const toggleSidebar = () => {
     if (store.view !== 'edit') {
-      if (!scriptPanel.isOpen) scriptPanel.toggle();
+      side.unfold();
       store.setView('edit');
-    } else scriptPanel.toggle();
-  };
-  const openLibrary = () => {
-    if (store.view !== 'edit') {
-      if (!libraryPanel.isOpen) libraryPanel.toggle();
-      store.setView('edit');
-    } else libraryPanel.toggle();
+    } else side.toggleFolded();
   };
   window.addEventListener('wavepod:open-settings', (e) => void settingsDialog.open((e as CustomEvent<SettingsTab | undefined>).detail));
   // CamPod follows the recording: say when the cameras started, stopped or failed
@@ -173,21 +167,11 @@ async function main(): Promise<void> {
     if (store.transport.state === 'recording' || document.querySelector('.overlay')) return;
     exportDialog.open((e as CustomEvent<string>).detail);
   });
-  // the transcript panel only shows in the edit view; from another view its button takes the user there
-  const openTranscript = () => {
-    if (!transcriptPanel.isOpen && libraryPanel.isOpen) libraryPanel.close();
-    if (!transcriptPanel.isOpen && scriptPanel.isOpen) scriptPanel.close();
-    if (!transcriptPanel.isOpen && videoPanel.isOpen) videoPanel.close();
-    if (store.view !== 'edit') {
-      if (!transcriptPanel.isOpen) transcriptPanel.toggle();
-      store.setView('edit');
-    } else transcriptPanel.toggle();
-  };
   // An empty episode needs its speakers set up next; an opened one or a template is ready to record.
   setup.onEpisodeChosen = (how) => (how === 'blank' ? setup.showTab('audio') : store.setView('edit'));
   timeline.onOpenFx = (trackId) => fxPanel.toggle(trackId);
   timeline.onOpenClipFx = (clipId) => fxPanel.toggle(clipTarget(clipId));
-  timeline.isClipFxOpen = (clipId) => fxPanel.target === clipTarget(clipId);
+  timeline.isClipFxOpen = (clipId) => fxPanel.shownTarget === clipTarget(clipId);
   timeline.onOpenLoudness = () => loudnessDialog.open();
   timeline.onOpenVideo = () => openVideo();
   timeline.onCameraMenu = (id, x, y) => showCameraMenu(id, x, y);
@@ -308,12 +292,6 @@ async function main(): Promise<void> {
   const healthBar = h('div', { class: 'rec-health', role: 'status', 'aria-live': 'polite' });
   const main = h('main');
   root.append(new MenuBar().el, header, healthBar, main, statusBar);
-  // side panels (FX, transcript, sound library) start below the menu bar and header, whatever their height
-  const placePanels = () => document.documentElement.style.setProperty('--panel-top', `${Math.round(main.getBoundingClientRect().top)}px`);
-  new ResizeObserver(placePanels).observe(header);
-  new ResizeObserver(placePanels).observe(healthBar);
-  window.addEventListener('resize', placePanels);
-  placePanels();
   let healthShown = '';
   const renderHealth = () => {
     const t = store.transport;
@@ -329,18 +307,16 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------- render
   const renderView = () => {
     for (const [k, b] of Object.entries(tabs)) b.classList.toggle('active', k === store.view);
-    main.replaceChildren(store.view === 'setup' ? setup.el : store.view === 'chapters' ? chapters.el : timeline.el);
+    // the sidebar docks right of the timeline, so it never covers it
+    if (store.view === 'edit') main.replaceChildren(timeline.el, side.el);
+    else main.replaceChildren(store.view === 'setup' ? setup.el : chapters.el);
     if (store.view === 'setup') {
       setup.render();
       void setup.refreshProjects();
     }
     if (store.view === 'chapters') chapters.render();
     if (store.view === 'edit') timeline.renderHeaders();
-    fxPanel.setHidden(store.view !== 'edit');
-    transcriptPanel.setHidden(store.view !== 'edit');
-    libraryPanel.setHidden(store.view !== 'edit');
-    scriptPanel.setHidden(store.view !== 'edit');
-    videoPanel.setHidden(store.view !== 'edit');
+    side.setHidden(store.view !== 'edit');
     if (store.view !== 'edit' && watchThrough.isOpen) watchThrough.close();
   };
 
@@ -405,7 +381,7 @@ async function main(): Promise<void> {
       const n = (store.project.masterFx ?? []).filter((f) => f.enabled).length;
       masterFxBtn.textContent = n ? `Master FX ${n}` : 'Master FX';
       masterFxBtn.classList.toggle('active', n > 0);
-      masterFxBtn.classList.toggle('open', fxPanel.target === MASTER);
+      masterFxBtn.classList.toggle('open', fxPanel.shownTarget === MASTER);
       if (store.view === 'edit') timeline.renderHeaders();
       if (store.view === 'chapters') chapters.render();
       if (store.view === 'setup') setup.render();
@@ -556,7 +532,9 @@ async function main(): Promise<void> {
       case 'auphonic': return void auphonic.open();
       case 'letscast': return void letscast.open();
       case 'settings': return void settingsDialog.open();
-      case 'remote-guests': return guestsPanel.toggle();
+      case 'remote-guests': return openGuests();
+      case 'sidebar': return toggleSidebar();
+      case 'filters': return openTab('fx');
       case 'transcript': return openTranscript();
       case 'sound-library': return openLibrary();
       case 'script': return openScript();

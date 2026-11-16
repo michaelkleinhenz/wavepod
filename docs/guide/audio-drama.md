@@ -19,7 +19,7 @@ WavePod recognises Fountain in a `.txt` file by itself. Importing again (for a r
 
 ### The script panel
 
-Open **View › Script** (`Shift+Ctrl+J`), or click **Script** in the header. It shows:
+Open **View › Script** (`Shift+Ctrl+J`), click **Script** in the header, or pick the **Script** tab of the [sidebar](timeline.md#the-sidebar). It shows:
 
 - the script's progress: how many lines are recorded,
 - every character with their recorded and total lines. Click a character to see only their lines (handy in a session with one actor), click again for everyone,
@@ -47,7 +47,7 @@ Click **⧉** in the script panel's toolbar, or choose **View › Script in New 
 - **All characters** shows only one character's lines in the window, for a session with one actor, while the panel still shows everyone.
 - Folded acts and scenes are folded in the window as well. Clicking and the keys work there just like in the panel.
 
-The panel can be closed while the window stays open. Closing WavePod closes the window too; click **⧉** again to close it yourself.
+The panel can be closed, or the sidebar switched to another tab, while the window stays open. Closing WavePod closes the window too; click **⧉** again to close it yourself.
 
 ### Ticking lines off while recording
 

@@ -11,6 +11,7 @@ import { rippleCut, seek } from './actions';
 import { api, store } from './store';
 import { transcripts } from './transcripts';
 import { SpeechDialog } from './speechDialog';
+import { sidebar } from './sidebar';
 
 export class TranscriptPanel {
   readonly el = h('aside', { class: 'transcript-panel', tabIndex: -1 });
@@ -25,16 +26,15 @@ export class TranscriptPanel {
   private picked: number | null = null;
   private dragging = false;
   private follow = true;
-  private shown = false;
-  private hidden = false;
+  /** On screen in the sidebar. */
+  private visible = false;
   private speech = new SpeechDialog();
   /** Opens the cleanup dialog (set by the app shell). */
   onCleanup: () => void = () => {};
 
   constructor() {
     this.el.append(
-      h('div', { class: 'fx-head' }, h('div', null, h('div', { class: 'fx-kicker' }, 'Text'), h('h2', null, 'Transcript')), h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×')),
-      this.toolbar,
+            this.toolbar,
       this.status,
       this.body,
     );
@@ -68,57 +68,48 @@ export class TranscriptPanel {
     this.body.addEventListener('wheel', () => {
       if (store.transport.state === 'playing') this.follow = false;
     });
-    transcripts().subscribe(() => this.shown && this.render());
+    transcripts().subscribe(() => this.visible && this.render());
   }
 
   get isOpen(): boolean {
-    return this.shown;
+    return sidebar().isOpen('transcript');
   }
 
   toggle(): void {
-    if (this.shown) this.close();
-    else this.open();
+    sidebar().toggle('transcript');
   }
 
   open(): void {
-    this.shown = true;
-    this.follow = true;
-    document.body.classList.add('transcript-open');
-    void transcripts().ensureLoaded();
-    this.render();
-    if (!this.hidden) document.getElementById('app')!.append(this.el);
+    sidebar().show('transcript');
   }
 
   close(): void {
-    this.shown = false;
-    document.body.classList.remove('transcript-open');
-    this.el.remove();
+    sidebar().close('transcript');
   }
 
-  /** Off screen outside the edit view, back on return. */
-  setHidden(hidden: boolean): void {
-    if (hidden === this.hidden) return;
-    this.hidden = hidden;
-    if (hidden) {
-      this.el.remove();
-      document.body.classList.remove('transcript-open');
-    } else if (this.shown) {
-      document.body.classList.add('transcript-open');
-      this.render();
-      document.getElementById('app')!.append(this.el);
-    }
+  /** The sidebar put the panel on screen. */
+  enterSidebar(): void {
+    this.visible = true;
+    this.follow = true;
+    void transcripts().ensureLoaded();
+    this.render();
+  }
+
+  /** The panel went off screen (another tab, folded sidebar or another view). */
+  leaveSidebar(): void {
+    this.visible = false;
   }
 
   /** The project or selection changed. */
   refresh(): void {
-    if (!this.shown || this.hidden) return;
+    if (!this.visible) return;
     if (transcripts().words() !== this.shownWords) this.render();
     else this.markSelection();
   }
 
   /** Transport update: highlight the playing word and keep it in view. */
   updatePosition(): void {
-    if (!this.shown || this.hidden || !this.shownWords) return;
+    if (!this.visible || !this.shownWords) return;
     const i = wordAt(this.shownWords, store.transport.position);
     const w = this.shownWords[i];
     const idx = w && store.transport.position <= w.end + store.sampleRate * 0.3 ? i : -1;

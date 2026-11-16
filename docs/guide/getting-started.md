@@ -45,7 +45,7 @@ The bar at the top is always there:
 - **Playback speed:** listen faster without changing pitch. See [Navigating the timeline](timeline.md#playback-speed).
 - **Time display** with the master output meter inside it.
 - **Master FX** opens the filters on the master bus. See [Filters and effects](filters.md).
-- **Transcript**, **Sounds** and **Script** open the side panels. See [Transcript and text editing](transcript.md), [Sound library](audio-drama.md#sound-library) and [Script](audio-drama.md#script).
+- **Transcript**, **Sounds** and **Script** open their tab in the [sidebar](timeline.md#the-sidebar). See [Transcript and text editing](transcript.md), [Sound library](audio-drama.md#sound-library) and [Script](audio-drama.md#script).
 - **Pre-show** plays only the soundboard, for waiting music before the show. See [Recording](recording.md#pre-show).
 - The **save dot** at the right is green when every change is saved. See [Episodes and saving](episodes.md#saving).
 

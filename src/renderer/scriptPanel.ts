@@ -40,6 +40,7 @@ import { showContextMenu } from './contextMenu';
 import { append, errorMessage, h, toast } from './dom';
 import { seek } from './actions';
 import { api, store } from './store';
+import { sidebar } from './sidebar';
 import { transcripts } from './transcripts';
 
 const OPEN_ONLY_KEY = 'wavepod.scriptOpenOnly';
@@ -125,17 +126,14 @@ export class ScriptPanel {
   private hiddenRows: boolean[] = [];
   private openOnly = load(OPEN_ONLY_KEY) === '1';
   private castOpen = false;
+  /** On screen in the sidebar. */
   private shown = false;
-  private hidden = false;
   private lining = false;
   /** A time range is selected on the timeline (Line up then works on it only). */
   private hadSelection = false;
-  /** Called when the panel opens (the app closes the other side panels). */
-  onOpen: () => void = () => {};
 
   constructor() {
     this.el.append(
-      h('div', { class: 'fx-head' }, h('div', null, h('div', { class: 'fx-kicker' }, 'Audio drama'), h('h2', null, 'Script')), h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×')),
       this.toolbar,
       this.summary,
       this.cast,
@@ -151,7 +149,7 @@ export class ScriptPanel {
   /** Where the lines show right now. */
   private views(): LinesView[] {
     const out: LinesView[] = [];
-    if (this.shown && !this.hidden) out.push(this.main);
+    if (this.shown) out.push(this.main);
     if (this.popout && !this.popout.win.closed) out.push(this.popout.view);
     return out;
   }
@@ -161,45 +159,34 @@ export class ScriptPanel {
   }
 
   get isOpen(): boolean {
-    return this.shown;
+    return sidebar().isOpen('script');
   }
 
   toggle(): void {
-    if (this.shown) this.close();
-    else this.open();
+    sidebar().toggle('script');
   }
 
   open(): void {
-    if (!this.shown) this.onOpen();
-    this.shown = true;
-    document.body.classList.add('script-open');
-    this.shownProject = null;
-    this.render();
-    if (!this.hidden) {
-      document.getElementById('app')!.append(this.el);
-      this.el.focus({ preventScroll: true });
-      this.scrollTo(this.main, this.focus);
-    }
+    if (this.shown) this.el.focus({ preventScroll: true });
+    sidebar().show('script');
   }
 
   close(): void {
-    this.shown = false;
-    document.body.classList.remove('script-open');
-    this.el.remove();
+    sidebar().close('script');
   }
 
-  /** Off screen outside the edit view, back on return. */
-  setHidden(hidden: boolean): void {
-    if (hidden === this.hidden) return;
-    this.hidden = hidden;
-    if (hidden) {
-      this.el.remove();
-      document.body.classList.remove('script-open');
-    } else if (this.shown) {
-      document.body.classList.add('script-open');
-      this.render();
-      document.getElementById('app')!.append(this.el);
-    }
+  /** The sidebar put the panel on screen. */
+  enterSidebar(): void {
+    this.shown = true;
+    this.shownProject = null;
+    this.render();
+    this.el.focus({ preventScroll: true });
+    this.scrollTo(this.main, this.focus);
+  }
+
+  /** The panel went off screen (the script window, if open, stays). */
+  leaveSidebar(): void {
+    this.shown = false;
   }
 
   /** The project changed. Lines ticked while recording move onto the take's clip once it exists. */

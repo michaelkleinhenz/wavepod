@@ -18,7 +18,9 @@ function currentContext(): HelpContext {
           ? 'script'
           : document.querySelector('.video-panel')
             ? 'video'
-            : null;
+            : document.querySelector('.sidebar .remote-panel')
+              ? 'guests'
+              : null;
   return { dialog, tab, view: store.view, panel, recording: store.transport?.state === 'recording' };
 }
 

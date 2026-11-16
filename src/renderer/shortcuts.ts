@@ -43,6 +43,8 @@ export const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
       ['G', 'Fuse the selected clips into one (one clip: with the next one)'],
       ['P', 'Preview: play 2 s around the playhead, then go back (check a cut)'],
       ['L', 'Repeat: loop playback of the selection'],
+      [`Shift+${mod}+D`, 'Sidebar: fold it away for the full timeline width, or bring it back'],
+      [`Shift+${mod}+F`, 'Filters tab of the sidebar (FX of the track or master bus)'],
       [`Shift+${mod}+T`, 'Transcript: click a word to jump, drag to select, Delete cuts, Enter or double-click changes the words (experimental)'],
       [`Shift+${mod}+B`, 'Sound library: type to search, ↑/↓ listen, Enter inserts at the playhead'],
       [`Shift+${mod}+J`, 'Script: ↑/↓ pick a line, Enter ticks it off at the playhead and goes to the next, Shift+Enter jumps to its take'],

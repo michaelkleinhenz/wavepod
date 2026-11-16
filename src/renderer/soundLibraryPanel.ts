@@ -25,6 +25,7 @@ import { decodeBytes, uploadDecoded } from './audioFiles';
 import { showContextMenu } from './contextMenu';
 import { append, errorMessage, h, toast } from './dom';
 import { api, store } from './store';
+import { sidebar } from './sidebar';
 
 /** Drag data type of a library row (its path inside the library). */
 export const LIBRARY_DRAG_TYPE = 'application/x-wavepod-sound';
@@ -225,16 +226,14 @@ export class SoundLibraryPanel {
   private rows: HTMLElement[] = [];
   private sel = -1;
   private playing: { rel: string; startedAt: number } | null = null;
+  /** On screen in the sidebar. */
   private shown = false;
-  private hidden = false;
   private searchTimer: number | undefined;
   private scanning = false;
   private tab: LibraryTab = load(TAB_KEY, 'library') === 'favourites' ? 'favourites' : 'library';
   private tabBar = h('div', { class: 'library-tabs', role: 'tablist' });
   /** A favourite whose name is being edited in its row. */
   private renaming: string | null = null;
-  /** Called when the panel opens (the app closes the transcript, which sits in the same place). */
-  onOpen: () => void = () => {};
 
   constructor() {
     this.autoplayBox.checked = load(AUTOPLAY_KEY, '1') === '1';
@@ -245,7 +244,6 @@ export class SoundLibraryPanel {
       this.searchTimer = window.setTimeout(() => this.runSearch(), (this.info?.files.length ?? 0) > 20000 ? 120 : 30);
     });
     this.el.append(
-      h('div', { class: 'fx-head' }, h('div', null, h('div', { class: 'fx-kicker' }, 'Sound effects'), h('h2', null, 'Sound library')), h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×')),
       this.tabBar,
       h('div', { class: 'library-toolbar' }, this.search),
       h(
@@ -316,19 +314,28 @@ export class SoundLibraryPanel {
   }
 
   get isOpen(): boolean {
-    return this.shown;
+    return sidebar().isOpen('library');
   }
 
   toggle(): void {
-    if (this.shown) this.close();
-    else this.open();
+    sidebar().toggle('library');
   }
 
   open(): void {
-    if (!this.shown) this.onOpen();
+    if (this.shown) {
+      this.search.focus();
+      this.search.select();
+    }
+    sidebar().show('library');
+  }
+
+  close(): void {
+    sidebar().close('library');
+  }
+
+  /** The sidebar put the panel on screen. */
+  enterSidebar(): void {
     this.shown = true;
-    document.body.classList.add('library-open');
-    if (!this.hidden) document.getElementById('app')!.append(this.el);
     this.renderTargets();
     void loadFavourites(true);
     if (!this.info) void this.reload(false);
@@ -337,25 +344,10 @@ export class SoundLibraryPanel {
     this.search.select();
   }
 
-  close(): void {
+  /** The panel went off screen: the sound being heard stops. */
+  leaveSidebar(): void {
     this.stopPreview();
     this.shown = false;
-    document.body.classList.remove('library-open');
-    this.el.remove();
-  }
-
-  /** Off screen outside the edit view, back on return. */
-  setHidden(hidden: boolean): void {
-    if (hidden === this.hidden) return;
-    this.hidden = hidden;
-    if (hidden) {
-      this.stopPreview();
-      this.el.remove();
-      document.body.classList.remove('library-open');
-    } else if (this.shown) {
-      document.body.classList.add('library-open');
-      document.getElementById('app')!.append(this.el);
-    }
   }
 
   /** The project changed: tracks for "Insert on". */

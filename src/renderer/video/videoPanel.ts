@@ -7,6 +7,7 @@ import { showContextMenu, type ContextMenuEntry } from '../contextMenu';
 import { h, toast } from '../dom';
 import { askName } from '../nameDialog';
 import { store } from '../store';
+import { sidebar } from '../sidebar';
 import { deleteCamera, importVideos, renameCamera, setFraming, setSpeakers, shiftCamera, syncAllCameras, syncCamera } from './cameras';
 import { videoPlayer } from './player';
 
@@ -16,25 +17,16 @@ export class VideoPanel {
   private programLabel = h('div', { class: 'video-program-label' });
   private tiles = h('div', { class: 'video-tiles' });
   private body = h('div', { class: 'video-body' });
+  /** On screen in the sidebar. */
   private shown = false;
-  private hidden = false;
   private detach: Array<() => void> = [];
   private tileKey = '';
-  onOpen: () => void = () => {};
   onWatchThrough: () => void = () => {};
   onAutoDirect: () => void = () => {};
   onExport: () => void = () => {};
 
   constructor() {
-    this.el.append(
-      h(
-        'div',
-        { class: 'fx-head' },
-        h('div', null, h('div', { class: 'fx-kicker' }, 'Video podcast'), h('h2', null, 'Cameras')),
-        h('button', { class: 'fx-close', title: 'Close', onclick: () => this.close() }, '×'),
-      ),
-      this.body,
-    );
+    this.el.append(this.body);
     videoPlayer.onFrame = (frame, pos) => {
       if (!this.shown) return;
       const cam = frame.b ?? frame.a;
@@ -47,53 +39,42 @@ export class VideoPanel {
   }
 
   get isOpen(): boolean {
-    return this.shown;
+    return sidebar().isOpen('video');
   }
 
   toggle(): void {
-    if (this.shown) this.close();
-    else this.open();
+    sidebar().toggle('video');
   }
 
   open(): void {
-    if (!this.shown) this.onOpen();
-    this.shown = true;
-    document.body.classList.add('video-open');
-    this.render(true);
-    if (!this.hidden) document.getElementById('app')!.append(this.el);
-    this.attach();
+    sidebar().show('video');
   }
 
   close(): void {
-    this.shown = false;
-    document.body.classList.remove('video-open');
-    this.el.remove();
-    this.release();
+    sidebar().close('video');
   }
 
-  setHidden(hidden: boolean): void {
-    if (hidden === this.hidden) return;
-    this.hidden = hidden;
-    if (hidden) {
-      this.el.remove();
-      document.body.classList.remove('video-open');
-      this.release();
-    } else if (this.shown) {
-      document.body.classList.add('video-open');
-      document.getElementById('app')!.append(this.el);
-      this.render(true);
-      this.attach();
-    }
+  /** The sidebar put the panel on screen. */
+  enterSidebar(): void {
+    this.shown = true;
+    this.render(true);
+    this.attach();
+  }
+
+  /** The panel went off screen: the camera pictures stop drawing. */
+  leaveSidebar(): void {
+    this.shown = false;
+    this.release();
   }
 
   /** Called when the project changes. */
   refresh(): void {
-    if (this.shown && !this.hidden) this.render(false);
+    if (this.shown) this.render(false);
   }
 
   private attach(): void {
     this.release();
-    if (!this.shown || this.hidden) return;
+    if (!this.shown) return;
     this.detach.push(videoPlayer.attach({ canvas: this.program, kind: 'program' }));
     for (const tile of this.tiles.querySelectorAll<HTMLCanvasElement>('canvas[data-camera]')) {
       this.detach.push(videoPlayer.attach({ canvas: tile, kind: 'camera', cameraId: tile.dataset.camera! }));

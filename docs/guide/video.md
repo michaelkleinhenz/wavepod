@@ -54,7 +54,7 @@ Edits that only touch some tracks (moving a single clip on a microphone track, f
 
 ## The cameras panel
 
-**View › Video** (`Shift+Ctrl+U`) opens the cameras panel. At the top is the program: what the exported video shows at the playhead, with the name of its camera. Below it are all cameras; the one in the program has a coloured frame.
+**View › Video** (`Shift+Ctrl+U`) opens the cameras panel, the **Cameras** tab of the [sidebar](timeline.md#the-sidebar). At the top is the program: what the exported video shows at the playhead, with the name of its camera. Below it are all cameras; the one in the program has a coloured frame.
 
 - Click a camera to switch to it at the playhead. `Alt+1`…`Alt+9` do the same from the keyboard, also while the episode plays.
 - Right-click a camera for **Sync to Audio…**, **Framing…**, **Who Is in the Picture…**, **Rename…**, **Move Up** / **Move Down** (its number) and **Remove Camera**. The same menu is under **Camera…** when you right-click the camera's track header.

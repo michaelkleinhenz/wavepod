@@ -1,15 +1,18 @@
-// View › Remote Guests: a floating panel (it stays open while recording, so the host can see the
-// guests and their uploads). Invite guests, let them in from the waiting room, see who is talking,
+// View › Remote Guests: the Guests tab of the sidebar (it can stay open while recording, so the host
+// sees the guests and their uploads). Invite guests, let them in from the waiting room, see who is talking,
 // how the connection is, whether their recording has reached this computer, and, if video is on,
 // see each other (video is only for eye contact and is never recorded).
 import { clear, errorMessage, h, toast } from '../dom';
 import { api, store } from '../store';
+import { sidebar } from '../sidebar';
 import { remoteSession, type GuestState } from './session';
 import type { RemoteTakeInfo, Track } from '../../shared/types';
 import { guestIdentity } from '../../shared/remoteProtocol';
 
 export class GuestsPanel {
-  private el = h('div', { class: 'remote-panel', role: 'dialog', 'aria-label': 'Remote Guests' });
+  readonly el = h('div', { class: 'remote-panel', 'aria-label': 'Remote Guests' });
+  /** On screen in the sidebar. */
+  private visible = false;
   private nameDraft = '';
   private configured: boolean | null = null;
   private onSettings: () => void;
@@ -18,22 +21,39 @@ export class GuestsPanel {
     this.onSettings = openSettings;
     remoteSession.subscribe(() => this.render());
     store.subscribe((kinds) => {
-      if (this.isOpen && kinds.has('project')) this.render();
+      if (this.visible && kinds.has('project')) this.render();
     });
   }
 
   get isOpen(): boolean {
-    return this.el.isConnected;
+    return sidebar().isOpen('guests');
   }
 
   toggle(): void {
-    if (this.isOpen) this.close();
-    else void this.open();
+    sidebar().toggle('guests');
   }
 
-  async open(): Promise<void> {
-    document.body.append(this.el);
+  open(): void {
+    sidebar().show('guests');
+  }
+
+  close(): void {
+    sidebar().close('guests');
+  }
+
+  /** The sidebar put the panel on screen. */
+  enterSidebar(): void {
+    this.visible = true;
     this.render();
+    void this.checkConfigured();
+  }
+
+  /** The panel went off screen (the session keeps running). */
+  leaveSidebar(): void {
+    this.visible = false;
+  }
+
+  private async checkConfigured(): Promise<void> {
     try {
       const info = await api().getRemoteSettings();
       this.configured = !!(info.url && info.apiKey && info.hasSecret);
@@ -44,16 +64,12 @@ export class GuestsPanel {
     this.render();
   }
 
-  close(): void {
-    this.el.remove();
-  }
-
   private remoteTracks(): Track[] {
     return store.project.tracks.filter((t) => t.remote);
   }
 
   private render(): void {
-    if (!this.isOpen) return;
+    if (!this.visible) return;
     // redrawing would close the camera list under the mouse: wait until it lets go
     if (document.activeElement instanceof HTMLSelectElement && this.el.contains(document.activeElement)) return;
     // the panel redraws as guests talk; keep the cursor in the name field
@@ -76,7 +92,6 @@ export class GuestsPanel {
       { class: 'remote-head' },
       h('h3', null, 'Remote Guests'),
       s.connected ? h('span', { class: 'remote-badge live' }, 'Session open') : null,
-      h('button', { class: 'icon-close', title: 'Close (the session keeps running)', onclick: () => this.close() }, '×'),
     );
     this.el.append(head);
     if (this.configured === false) {

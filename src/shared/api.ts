@@ -162,7 +162,9 @@ export type MenuCommand =
   | 'loop-record'
   | 'next-take'
   | 'previous-take'
-  | 'remote-guests';
+  | 'remote-guests'
+  | 'sidebar'
+  | 'filters';
 
 /** One entry of the in-app menu bar that stands in for the native one on Linux and Windows. */
 export interface MenuModelItem {

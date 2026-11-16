@@ -25,7 +25,7 @@ The settings tab has these fields:
 
 ## Invite a guest
 
-1. Open **View › Remote Guests** (`Shift+Ctrl+G`). The panel floats over the window and stays open while you record.
+1. Open **View › Remote Guests** (`Shift+Ctrl+G`), or the **Guests** tab of the [sidebar](timeline.md#the-sidebar). It stays open while you record; the session keeps running when you switch to another tab or fold the sidebar.
 2. Press **Open Session**.
 3. Type the guest's name and press **Invite**. WavePod adds an armed track for them, marked **Remote** in its header where other tracks pick their input (the audio comes over the internet, not from an input), and copies the invite link. Send it to them by mail or chat.
 4. The guest opens the link, picks their microphone and joins. They wait until you press **Let In** next to their name.
