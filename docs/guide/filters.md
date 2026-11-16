@@ -28,6 +28,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Dynamics** | Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. A port of Ultraschall's Dynamics. |
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
 | **AI voice cleanup** | Separates the voice from background noise and from the room's echo with a neural network, and gives each part its own level: Voice, Ambience and Reverb. See [AI voice cleanup](#ai-voice-cleanup). |
+| **Mouth de-click** | Removes lip smacks, tongue clicks and the sticky clicks of a dry mouth, and fills each one in from the voice around it. See [Repair filters](#repair-filters). |
 | **Reverb** | Adds room to a dry signal, for example a jingle bed or a voice that sounds too close. **Decay (RT60)** sets how long the tail lasts in seconds (a furnished room is about 0.3–0.5 s, a church 2–4 s); **Room size** sets how dense and spread out it is. |
 | **Band-pass** | Keeps only the frequencies between the low and the high cut: telephone, radio and walkie-talkie voices, or a muffled voice behind a wall. |
 | **Distortion** | Saturation, clipping or fuzz, optionally with fewer bits and a lower sample rate. |
@@ -38,7 +39,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |
 | **Chorus / flanger** | Chorus, flanger and vibrato: magic, dreams, teleports, ghosts. |
 
-Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
+Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
 
 For the voice effects (telephone, robot, giant, …) and places (kitchen, church, forest, …), see [Audio drama](audio-drama.md).
 
@@ -70,11 +71,27 @@ Good to know:
 - Very strong settings on a very noisy or very echoey recording can make a voice sound thin or slightly processed. Turning **Ambience** or **Reverb** up a few dB from Off usually sounds more natural than removing everything.
 - The simpler **Noise reduction** filter needs far less processing power and is enough for steady hiss.
 
+## Repair filters
+
+The repair filters fix small faults in a voice recording that the listener notices more than you would think. Like everything else in WavePod they run on your computer and work live while you play, so you hear every change at once.
+
+### Mouth de-click
+
+**Mouth de-click** removes the small noises a mouth makes between and inside words: lip smacks, tongue clicks, and the sticky saliva clicks of a dry mouth. Each of these lasts only a few thousandths of a second and is much sharper than the voice around it. The filter finds them and fills each one in with what the voice just before and just after it predicts, so the words themselves stay as they were.
+
+| Control | What it sets |
+| --- | --- |
+| **Sensitivity** | How far a sound has to stand out from the voice around it to count as a click. Higher catches quieter clicks. |
+| **Click length** | The longest sound that still counts as a click (0.5–10 ms). Raise it for long, wet lip smacks; lower it if sharp consonants lose their edge. |
+| **Listen to** | *Clicks only* plays just what the filter takes out. Turn up Sensitivity until you hear the clicks, and stop before you hear bits of words. |
+
+Start with the default or the *Dry mouth* preset. If a sharp *t*, *k* or *p* sounds dull afterwards, lower Sensitivity or Click length. Put the filter first on the track, before compressor and Dynamics, because those make clicks louder. It adds about 27 ms of latency, which WavePod compensates.
+
 ## Presets
 
 Every filter card has a **Presets…** menu.
 
-- Built-in filters come with **factory presets** tuned for speech, for example Compressor *Spoken word*, EQ *Clarity for dynamic mics*, Noise reduction *Computer fan* or AI voice cleanup *Studio voice*. Hover one to see what it is for. *Default* goes back to the starting values.
+- Built-in filters come with **factory presets** tuned for speech, for example Compressor *Spoken word*, EQ *Clarity for dynamic mics*, Noise reduction *Computer fan*, AI voice cleanup *Studio voice* or Mouth de-click *Dry mouth*. Hover one to see what it is for. *Default* goes back to the starting values.
 - VST3 plug-ins offer their own programs (factory presets) there.
 - **Save as preset…** stores the current settings (for VST3 plug-ins including the plug-in's state) as your own preset, available in every episode. Rename (✎) or delete (🗑) the preset that is loaded.
 - The menu shows *(edited)* once you change a value after loading a preset.
