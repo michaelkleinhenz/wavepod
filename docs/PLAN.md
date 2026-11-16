@@ -156,7 +156,8 @@ brackets):
 - **Repair filters**: Mouth de-click (short-transient detection on the
   third difference, gaps filled by least-squares linear prediction); Breath
   control (unvoiced frames between noise floor and speech level, turned down
-  after a minimum length).
+  after a minimum length); Smart de-esser & de-plosive (band share relative
+  to the voice, reduced just to a target balance, with 3 ms look-ahead).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices

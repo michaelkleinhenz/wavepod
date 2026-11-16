@@ -300,6 +300,15 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Audiobook', 'Gentle and careful: only clear breaths, kept audible.', { reduction: -10, sensitivity: 35, minLength: 160 }],
     ['Find the breaths', 'Plays only what the filter turns down, to check it by ear.', { output: 1, reduction: -40 }],
   ],
+  smartdeess: [
+    ['Male voice', 'Sibilance a little lower, pops from a close mic.', { freq: 4500, popFreq: 150 }],
+    ['Female voice', 'Sibilance higher up; pops a little higher too.', { freq: 6500, popFreq: 180 }],
+    ['Bright condenser mic', 'Stronger de-essing for crisp, sibilant mics.', { deess: 14, sSensitivity: 65 }],
+    ['Close dynamic mic', 'Strong pops from speaking right into the mic, gentle s.', { deess: 6, deplosive: 18, pSensitivity: 65 }],
+    ['De-ess only', 'Only the s sounds; pops are left alone.', { deplosive: 0 }],
+    ['De-plosive only', 'Only the pops; the highs are left alone.', { deess: 0 }],
+    ['Hear what is removed', 'Plays only what the filter takes out, to set it by ear.', { output: 1 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],

@@ -98,6 +98,22 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'smartdeess',
+    name: 'Smart de-esser & de-plosive',
+    aliases: ['Smart de-esser', 'De-plosive', 'Deplosive', 'Plosive', 'Pop filter', 'De-pop', 'Sibilance'],
+    description:
+      'Tames sharp "s" and "sh" sounds and the low thumps of "p" and "b" pops, only where they happen. Instead of a fixed threshold it compares the highs (for s) and the lows (for pops) with the rest of the voice, so it works at any level, and it turns that band down just as far as needed to sound natural again, at most by the amount you set. Everywhere else the voice passes untouched. Adds 3 ms of latency, which WavePod compensates.',
+    params: [
+      { ...db('deess', 'De-ess', 10, 0, 24), offAt: 0 },
+      { key: 'sSensitivity', label: 'S sensitivity', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      hz('freq', 'S frequency', 5000, 2500, 10000),
+      { ...db('deplosive', 'De-plosive', 12, 0, 30), offAt: 0 },
+      { key: 'pSensitivity', label: 'Pop sensitivity', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      hz('popFreq', 'Pop frequency', 150, 60, 300),
+      { key: 'output', label: 'Listen to', min: 0, max: 1, step: 1, default: 0, options: [{ value: 0, label: 'Voice' }, { value: 1, label: 'What is removed' }] },
+    ],
+  },
+  {
     type: 'limiter',
     name: 'Limiter',
     description: 'Keeps peaks below the ceiling.',
