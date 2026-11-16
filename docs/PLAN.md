@@ -153,6 +153,8 @@ brackets):
 - **AI voice cleanup**: DeepFilterNet 3 plus a late-reverb room model as one
   WebAssembly module (`native/voiceclean`), separate Voice / Ambience / Reverb
   levels, real time on the CPU, about 40 ms latency.
+- **Repair filters**: Mouth de-click (short-transient detection on the
+  third difference, gaps filled by least-squares linear prediction).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices

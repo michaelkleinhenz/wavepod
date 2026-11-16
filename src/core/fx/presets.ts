@@ -286,6 +286,13 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Remote guest', 'Laptop or phone recordings: no noise, less room, a little more voice.', { voice: 2, ambience: -60, reverb: -24 }],
     ['Atmo only (no voice)', 'Keeps only the background: room tone and atmos for audio drama or fills.', { voice: -60, ambience: 0, reverb: -60 }],
   ],
+  declick: [
+    ['Gentle', 'Only the loudest smacks and ticks; leaves everything else alone.', { sensitivity: 30, length: 2 }],
+    ['Dry mouth', 'Many small sticky saliva clicks, as with a dry mouth or after coffee.', { sensitivity: 65, length: 2 }],
+    ['Lip smacks', 'Louder, longer smacks before and between sentences.', { sensitivity: 55, length: 5 }],
+    ['Thorough', 'Catches nearly everything; check that sharp t and k sounds stay crisp.', { sensitivity: 75, length: 4 }],
+    ['Find the clicks', 'Plays only what the filter takes out, to set Sensitivity by ear.', { output: 1 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],

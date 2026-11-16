@@ -139,6 +139,18 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'declick',
+    name: 'Mouth de-click',
+    aliases: ['De-click', 'Declick', 'Mouth click', 'Lip smack', 'Mouth noise'],
+    description:
+      'Removes lip smacks, tongue clicks and the sticky saliva clicks of a dry mouth. It finds the very short, sharp sounds that stand out from the voice around them and fills each one in with what the voice before and after it predicts, so the words stay untouched. Sensitivity sets how much a click has to stand out; Click length is the longest sound that still counts as a click. Clicks only lets you hear what is taken out. Adds about 27 ms of latency, which WavePod compensates.',
+    params: [
+      { key: 'sensitivity', label: 'Sensitivity', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      ms('length', 'Click length', 3, 0.5, 10, 0.1),
+      { key: 'output', label: 'Listen to', min: 0, max: 1, step: 1, default: 0, options: [{ value: 0, label: 'Repaired voice' }, { value: 1, label: 'Clicks only' }] },
+    ],
+  },
+  {
     type: 'reverb',
     name: 'Reverb',
     description: 'Adds room to a dry signal, e.g. a jingle bed or a voice that sounds too close.',
