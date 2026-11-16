@@ -1433,6 +1433,7 @@ function buildMenu(): void {
         // the renderer picks the page that fits the open view or dialog
         { label: 'WavePod Help', accelerator: 'F1', click: menuSend('help') },
         { label: 'Getting Started', click: () => openHelp('getting-started') },
+        { label: 'Video Tutorials', click: () => void shell.openExternal(VIDEO_TUTORIALS_URL) },
         { label: 'Keyboard Shortcuts', click: menuSend('shortcuts') },
         { label: 'Troubleshooting', click: () => openHelp('troubleshooting') },
         { label: 'Beta Notice', click: menuSend('beta-notice') },
@@ -1446,6 +1447,9 @@ function buildMenu(): void {
   // Still set on Linux and Windows (hidden there), so its accelerators and roles keep working.
   Menu.setApplicationMenu(appMenu);
 }
+
+/** WavePod's tutorial playlist on YouTube, opened in the browser from Help › Video Tutorials. */
+const VIDEO_TUTORIALS_URL = 'https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY';
 
 let helpWin: BrowserWindow | null = null;
 let scriptWin: BrowserWindow | null = null;

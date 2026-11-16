@@ -117,7 +117,7 @@ const link = (p) => `[${p.title}](${p.name})`;
 
 const home = [
   '**Record and edit your podcast or audio drama like a document.** WavePod is a free, open-source multitrack recorder and editor for Linux, Windows and macOS.',
-  `**[Download WavePod](https://github.com/${REPO}/releases/latest)** · [Website](https://${REPO.split('/')[0]}.github.io/${REPO.split('/')[1]}/) · [Source code](https://github.com/${REPO}) · [Report a problem](https://github.com/${REPO}/issues)`,
+  `**[Download WavePod](https://github.com/${REPO}/releases/latest)** · [Website](https://${REPO.split('/')[0]}.github.io/${REPO.split('/')[1]}/) · [Video tutorials](https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY) · [Source code](https://github.com/${REPO}) · [Report a problem](https://github.com/${REPO}/issues)`,
   "This is WavePod's user guide. The same pages open in the app under **Help › WavePod Help** (`F1`), with full-text search and at the page for the view or dialog you are in.",
   'New to WavePod? Start with [Installation](Installation) and then [Getting started](Getting-started).',
   ...groups.map((g) => `## ${g.name}\n\n${g.pages.map((p) => `- ${link(p)}`).join('\n')}`),

@@ -4,6 +4,9 @@ These pages are the help that WavePod shows under **Help › WavePod Help** (`F1
 come with a contents list, full-text search and the keyboard shortcuts page; here they read as
 plain Markdown.
 
+Prefer watching? The [video tutorials](https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY) on YouTube (also under **Help › Video
+Tutorials**) show WavePod in action.
+
 **Basics**
 
 - [Getting started](getting-started.md)

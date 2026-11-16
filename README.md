@@ -8,6 +8,7 @@ app you install and start, with no Reaper underneath.
 **[Download WavePod](https://github.com/michaelkleinhenz/wavepod/releases/latest)**
 · [Website](https://michaelkleinhenz.github.io/wavepod/)
 · [User guide (wiki)](https://github.com/michaelkleinhenz/wavepod/wiki)
+· [Video tutorials](https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY)
 
 ![WavePod's timeline: one track per speaker, chapter markers and a soundboard track](site/img/timeline.png)
 
@@ -86,6 +87,10 @@ in), with a contents list and full-text search. Online it is the
   [Loudness](https://github.com/michaelkleinhenz/wavepod/wiki/Loudness) and [Exporting](https://github.com/michaelkleinhenz/wavepod/wiki/Exporting)
 - [Keyboard shortcuts](https://github.com/michaelkleinhenz/wavepod/wiki/Keyboard-shortcuts) and
   [Troubleshooting](https://github.com/michaelkleinhenz/wavepod/wiki/Troubleshooting)
+
+Prefer watching? The **[video tutorials on YouTube](https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY)** show WavePod in
+action, starting with an introduction. **Help › Video Tutorials** in the app
+opens the same playlist.
 
 See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.
 
