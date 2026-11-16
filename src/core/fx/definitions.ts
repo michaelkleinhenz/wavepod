@@ -1,5 +1,5 @@
 // The filters WavePod offers, their parameters and defaults. Used by the UI and the processors.
-import type { Fx, FxType, ImpulseRef } from '../../shared/types';
+import type { Fx, FxType, ImpulseRef, MatchCurve } from '../../shared/types';
 import { uid } from '../../shared/time';
 
 export interface FxParamSpec {
@@ -56,6 +56,17 @@ export const FX_DEFINITIONS: FxDefinition[] = [
       { key: 'p2Q', label: 'Band 2 Q', min: 0.2, max: 8, step: 0.1, default: 1 },
       hz('hsFreq', 'High shelf', 8000, 1000, 18000),
       db('hsGain', 'High shelf gain', 0, -18, 18),
+    ],
+  },
+  {
+    type: 'matcheq',
+    name: 'Voice match',
+    aliases: ['Match EQ', 'Matching EQ', 'EQ match', 'Match', 'Tone match'],
+    description:
+      'Makes a voice sound like a reference: a guest\'s mic like the host\'s, or a retake like the original recording. Choose the reference and press Learn: WavePod compares the tone of the speech in both and sets a smooth EQ that brings this voice towards the reference. Only the tone is matched, not the loudness. Amount sets how far; Detail how closely it follows the difference. No latency.',
+    params: [
+      { key: 'amount', label: 'Amount', min: 0, max: 100, step: 1, default: 80, unit: '%' },
+      { key: 'detail', label: 'Detail', min: 0, max: 2, step: 1, default: 1, options: [{ value: 0, label: 'Broad (smooth)' }, { value: 1, label: 'Medium' }, { value: 2, label: 'Fine' }] },
     ],
   },
   {
@@ -387,13 +398,21 @@ export function normalizeFx(fx: Partial<Fx>): Fx | null {
     const v = Number(fx.params?.[p.key]);
     params[p.key] = Number.isFinite(v) ? Math.min(p.max, Math.max(p.min, v)) : p.default;
   }
-  return { id: fx.id ?? uid('fx'), type: fx.type, enabled: fx.enabled !== false, params, ...presetRef(fx), ...(fx.type === 'convolution' ? irRef(fx.ir) : {}) };
+  return { id: fx.id ?? uid('fx'), type: fx.type, enabled: fx.enabled !== false, params, ...presetRef(fx), ...(fx.type === 'convolution' ? irRef(fx.ir) : {}), ...(fx.type === 'matcheq' ? matchRef(fx.match) : {}) };
 }
 
 /** A valid impulse response reference, or nothing. */
 export function irRef(ir: unknown): Pick<Fx, 'ir'> {
   const r = ir as Partial<ImpulseRef> | undefined;
   return r && typeof r.file === 'string' && r.file ? { ir: { file: r.file, name: typeof r.name === 'string' && r.name ? r.name : r.file.replace(/\.[^.]+$/, '') } } : {};
+}
+
+/** A valid voice match curve, or nothing. */
+export function matchRef(m: unknown): Pick<Fx, 'match'> {
+  const r = m as Partial<MatchCurve> | undefined;
+  if (!r || !Array.isArray(r.gains) || !r.gains.length || r.gains.length > 64) return {};
+  const gains = r.gains.map((g) => (Number.isFinite(Number(g)) ? Math.max(-24, Math.min(24, Number(g))) : 0));
+  return { match: { gains, reference: typeof r.reference === 'string' ? r.reference : '' } };
 }
 
 function presetRef(fx: Partial<Fx>): Pick<Fx, 'preset'> {

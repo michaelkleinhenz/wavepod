@@ -364,6 +364,10 @@ header .fx-btn { white-space: nowrap; flex: none; }
 .fx-ir-load { width: auto; flex: none; padding: 0 8px; }
 .fx-ir-info { font-size: 11px; opacity: 0.75; }
 .fx-ir-info.warn { color: var(--warn); opacity: 1; }
+.fx-match-label { font-size: 11px; opacity: 0.75; align-self: center; white-space: nowrap; }
+.fx-match-curve { display: block; width: 100%; height: 40px; margin: 2px 0 4px; }
+.fx-match-curve .zero { stroke: currentColor; opacity: 0.25; stroke-width: 1; }
+.fx-match-curve polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .fx-param { display: grid; grid-template-columns: 92px 1fr 64px; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 2px 0; }
 .fx-param input[type=range] { width: 100%; }
 .fx-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }

@@ -21,6 +21,8 @@ import type { WordFilter } from '../wordLevels';
 import { formatTimestamp, uid } from '../../shared/time';
 import { WEAK_CONFIDENCE, alignedPosition, applyAlignment, type AlignOutcome } from '../alignEdit';
 import { McpServer, ToolError, type JsonSchema, type McpTool } from './protocol';
+import type { MatchLearnResult } from '../matchLearn';
+import { MATCH_BANDS } from '../fx/matchEq';
 
 /** What the tools need from the app. The main process implements it; tests use a fake. */
 export interface WavePodHost {
@@ -33,6 +35,8 @@ export interface WavePodHost {
   measureLoudness(): Promise<LoudnessReport[]>;
   /** Measures how clips have to move to line up with a reference track (and makes drift-corrected copies). */
   alignClips?(clipIds: string[], refTrackId: string): Promise<AlignOutcome>;
+  /** Voice match: the EQ curve that makes the source clips sound like the reference clips. */
+  learnMatch?(sourceClipIds: string[], referenceClipIds: string[]): Promise<MatchLearnResult>;
   /** The episode's transcripts by media file (made with Transcribe in WavePod). */
   transcripts?(): Record<string, FileTranscript>;
   /** Which quiet words (crosstalk) to leave out of the transcript, from Settings › Transcription. */
@@ -191,6 +195,7 @@ async function describeFx(host: WavePodHost, fx: Fx, position: number) {
     enabled: fx.enabled,
     ...(fx.preset ? { preset: { name: fx.preset.name, edited: presetEdited(fx) } } : {}),
     ...(fx.type === 'convolution' ? { impulseResponse: fx.ir?.name ?? null } : {}),
+    ...(fx.type === 'matcheq' ? { matchedTo: fx.match?.reference ?? null } : {}),
   };
   if (fx.type !== 'vst3') {
     const def = fxDefinition(fx.type);
@@ -534,6 +539,56 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         const name = project.folders!.find((f) => f.id === id)!.name;
         host.apply(removeFolder(project, id), `Removed folder ${name}`);
         return { removed: name };
+      },
+    },
+    {
+      name: 'match_voice',
+      description:
+        "Voice match (match EQ): makes one track sound like another, e.g. a guest's mic like the host's, by learning the tonal difference of their speech and setting a Voice match filter on the track (added at the top of its stack, or the existing one is updated). Only tone is matched, not loudness. " +
+        'Takes a moment for long recordings. amount (0–100 %) and detail are the filter\'s parameters and can be changed later with set_filter_params.',
+      inputSchema: obj(
+        {
+          track: { type: 'string', description: 'Track id or name: the voice that should change.' },
+          to: { type: 'string', description: 'Track id or name: the reference voice.' },
+          amount: { type: 'number', description: 'How far to move towards the reference, 0–100 % (default 80).' },
+        },
+        ['track', 'to'],
+      ),
+      annotations: { title: 'Match voice', ...EDIT },
+      run: async (args) => {
+        if (!host.learnMatch) throw new ToolError('Voice match is not available here.');
+        const p = host.project();
+        const src = resolveTarget(p, str(args, 'track', true));
+        const ref = resolveTarget(p, str(args, 'to', true));
+        if (src.target === MASTER || ref.target === MASTER) throw new ToolError('Voice match works on tracks, not the master bus.');
+        if (src.target === ref.target) throw new ToolError('Pick two different tracks.');
+        const srcIds = p.tracks.find((t) => t.id === src.target)!.clips.map((c) => c.id);
+        const refIds = p.tracks.find((t) => t.id === ref.target)!.clips.map((c) => c.id);
+        if (!srcIds.length) throw new ToolError(`${src.name} has no audio.`);
+        if (!refIds.length) throw new ToolError(`${ref.name} has no audio.`);
+        let learned: MatchLearnResult;
+        try {
+          learned = await host.learnMatch(srcIds, refIds);
+        } catch (e) {
+          throw new ToolError((e as Error).message);
+        }
+        const now = host.project();
+        const match = { gains: learned.gains, reference: ref.name };
+        const amount = args.amount === undefined ? undefined : Math.max(0, Math.min(100, Number(args.amount)));
+        const existing = fxList(now, src.target).find((f) => f.type === 'matcheq');
+        const next = existing
+          ? updateFx(now, src.target, existing.id, { match, ...(amount !== undefined ? { params: { ...existing.params, amount } } : {}) })
+          : insertFx(now, src.target, { ...createFx('matcheq', amount !== undefined ? { amount } : {}), match }, 0);
+        host.apply(next, `${src.name} now matches the voice of ${ref.name}`);
+        const list = fxList(host.project(), src.target);
+        const i = list.findIndex((f) => f.type === 'matcheq');
+        return {
+          track: src.name,
+          to: ref.name,
+          speechSeconds: { track: round(learned.sourceSeconds, 1), reference: round(learned.referenceSeconds, 1) },
+          curveDb: Object.fromEntries(MATCH_BANDS.map((f, b) => [f < 1000 ? `${Math.round(f)} Hz` : `${round(f / 1000, 1)} kHz`, round(learned.gains[b], 1)])),
+          filter: await describeFx(host, list[i], i),
+        };
       },
     },
     {

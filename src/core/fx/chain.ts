@@ -5,6 +5,7 @@ import { createProcessor, type FxProcessor } from './processors';
 /** What a processor instance is built from besides its parameters: a new key means a new instance. */
 function pluginKey(fx: Fx): string {
   if (fx.type === 'convolution') return `ir:${fx.ir?.file ?? ''}`;
+  if (fx.type === 'matcheq') return `match:${fx.match?.gains.join(',') ?? ''}`;
   return fx.plugin ? `${fx.plugin.path}|${fx.plugin.cid}|${fx.state ?? ''}` : '';
 }
 

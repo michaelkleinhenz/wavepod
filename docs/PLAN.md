@@ -163,7 +163,9 @@ brackets):
   (flat runs at the held peak level, refilled by linear prediction and kept
   at least at the clip level); Voice leveler (400 ms K-weighted loudness of
   speech-only blocks, slow gain towards a target within a range, 300 ms
-  look-ahead, held in pauses).
+  look-ahead, held in pauses); Voice match (third-octave long-term speech
+  spectra of source and reference clips, learned in the export worker, fitted
+  as a bank of bell filters; MCP match_voice).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices
