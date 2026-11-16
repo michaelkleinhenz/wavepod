@@ -469,10 +469,13 @@ it on the website first.
 
 ## LetsCast.fm
 
-**File → Upload to LetsCast.fm…** fills an episode you already created on
-[letscast.fm](https://letscast.fm): the MP3 (rendered with the episode's export
-settings), title, number, author, summary, show notes, chapters with links and
-images, and the cover; you tick what to send, and empty fields are never sent. Sign in once on letscast.fm's own page in a WavePod window;
+**File → Upload to LetsCast.fm…** sends the episode to
+[letscast.fm](https://letscast.fm): it updates the episode with the same
+number there, or creates it. It sends the MP3 (rendered with the episode's
+export settings), the episode details (title, subtitle, date, type, number,
+author, keywords, summary, links, visibility) and the cover, plus the show
+notes if the episode there has none yet. You tick what to send, and fields
+that are empty in WavePod are never sent. Sign in once on letscast.fm's own page in a WavePod window;
 WavePod keeps the sign-in, never the password. LetsCast.fm has no public upload
 API, so this uses the same requests as its website.
 

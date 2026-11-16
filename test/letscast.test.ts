@@ -3,8 +3,8 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LetsCastClient, LetsCastSignedOut, chapterStart, editUrl, letscastUpdate, parseChapterIds, parseEpisodeLink, parseEpisodePage, parseEpisodes, parsePodcasts, textToHtml } from '../src/core/letscast';
-import { addMarker, createProject } from '../src/core/project';
+import { LetsCastClient, LetsCastSignedOut, editUrl, letscastDate, letscastUpdate, parseEpisodeLink, parseEpisodePage, parseEpisodes, parsePodcasts, parseShowNotes, textToHtml } from '../src/core/letscast';
+import { createProject } from '../src/core/project';
 import { tmpDir } from './helpers';
 
 // Shaped like letscast.fm's pages as of November 2026.
@@ -45,11 +45,11 @@ function multipart(body: string): Array<[string, string]> {
   return [...body.matchAll(/name="([^"]+)"\r\n\r\n([\s\S]*?)\r\n--/g)].map((m) => [m[1], m[2]]);
 }
 
-function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ url: string; fields: Array<[string, string]> }>; close: () => Promise<void> }> {
+function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ url: string; fields: Array<[string, string]> }>; state: { showNotes: string; created: string }; close: () => Promise<void> }> {
   const seen: Seen[] = [];
   let audio = '';
   let uploads = 0;
-  let chapterIds = ['c-old-1', 'c-old-2'];
+  const state = { showNotes: '', created: '' };
   const forms: Array<{ url: string; fields: Array<[string, string]> }> = [];
   let stored: Buffer | null = null;
   const server = http.createServer((req, res) => {
@@ -75,8 +75,11 @@ function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ ur
         return res.end();
       }
       if (url === '/podcasts') return res.end(PODCASTS);
-      if (url === '/podcasts/tabulaludo-5d181655/episodes') return res.end(EPISODES);
-      if (url === '/podcasts/tabulaludo-5d181655/episodes/claude-test/edit') return res.end(editPage(audio, `blob-${uploads}`));
+      if (url === '/podcasts/tabulaludo-5d181655/episodes' && req.method === 'GET')
+        return res.end(
+          (state.created ? `<div><a href="/podcasts/tabulaludo-5d181655/episodes/${state.created}/edit">Folge 441</a><p> 31.12.26 06:00 Uhr (Episode: 441) </p></div>` : '') + EPISODES,
+        );
+      if (/^\/podcasts\/tabulaludo-5d181655\/episodes\/[^/]+\/edit$/.test(url)) return res.end(editPage(audio, `blob-${uploads}`));
       if (url === '/media/direct_uploads' && req.method === 'POST') {
         if (req.headers['x-csrf-token'] !== 'TOKEN+/=') {
           res.statusCode = 422;
@@ -94,11 +97,17 @@ function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ ur
           }),
         );
       }
-      if (url === '/podcasts/tabulaludo-5d181655/episodes/claude-test/chapters/edit')
-        return res.end(chapterIds.map((id, i) => `<input type="hidden" value="${id}" name="episode[chapters_attributes][${i}][id]" id="x${i}">`).join('') + `<input name="episode[chapters_attributes][${chapterIds.length}][start]">`);
-      if (url.startsWith('/podcasts/tabulaludo-5d181655/episodes/claude-test/') && req.method === 'POST') {
+      if (/\/show_notes\/edit$/.test(url)) return res.end(`<input type="hidden" name="episode[content]" value="${state.showNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}">`);
+      if (url === '/podcasts/tabulaludo-5d181655/episodes/new') return res.end(editPage(''));
+      if (url === '/podcasts/tabulaludo-5d181655/episodes' && req.method === 'POST') {
         forms.push({ url, fields: multipart(body.toString()) });
-        if (url.endsWith('/chapters')) chapterIds = ['c-new-1'];
+        state.created = '441-folge-441';
+        res.statusCode = 302;
+        res.setHeader('Location', `/podcasts/tabulaludo-5d181655/episodes/${state.created}/edit`);
+        return res.end();
+      }
+      if (url.startsWith('/podcasts/tabulaludo-5d181655/episodes/') && url.endsWith('/show_notes') && req.method === 'POST') {
+        forms.push({ url, fields: multipart(body.toString()) });
         res.statusCode = 302;
         res.setHeader('Location', '/podcasts/tabulaludo-5d181655/episodes/claude-test/edit');
         return res.end();
@@ -122,7 +131,7 @@ function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ ur
   return new Promise((resolve) =>
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as { port: number }).port;
-      resolve({ base: `http://127.0.0.1:${port}`, seen, forms, close: () => new Promise((r) => server.close(() => r())) });
+      resolve({ base: `http://127.0.0.1:${port}`, seen, forms, state, close: () => new Promise((r) => server.close(() => r())) });
     }),
   );
 }
@@ -155,8 +164,8 @@ describe('LetsCast.fm', () => {
       { slug: 'tabulaludo-5d181655', title: 'Tabulaludo & Freunde' },
     ]);
     expect(parseEpisodes(EPISODES, 'tabulaludo-5d181655')).toEqual([
-      { slug: 'claude-test', title: 'Claude Test', info: '31.12.26 12:00 Uhr (Episode: 888)' },
-      { slug: '999-review-the-last-kingdom', title: 'Review: "The Last Kingdom"', info: '01.11.26 06:00 Uhr (Episode: 999)' },
+      { slug: 'claude-test', title: 'Claude Test', info: '31.12.26 12:00 Uhr (Episode: 888)', number: '888' },
+      { slug: '999-review-the-last-kingdom', title: 'Review: "The Last Kingdom"', info: '01.11.26 06:00 Uhr (Episode: 999)', number: '999' },
     ]);
     expect(parseEpisodePage(editPage(''))).toEqual({ csrf: 'TOKEN+/=', title: 'Claude & Test', audio: '', audioBlobId: '' });
     expect(parseEpisodePage(editPage('https://lcdn.letscast.fm/x.mp3')).audio).toBe('https://lcdn.letscast.fm/x.mp3');
@@ -195,91 +204,105 @@ describe('LetsCast.fm', () => {
     expect(fields).toEqual(['_method', 'authenticity_token', 'episode[audio]']);
   });
 
-  it('formats chapter times and show notes the way LetsCast stores them', () => {
-    expect(chapterStart(0)).toBe('00:00:00');
-    expect(chapterStart(3723.25)).toBe('01:02:03.250');
-    expect(chapterStart(59.9996)).toBe('00:01:00');
+  it('formats dates and show notes the way LetsCast stores them', () => {
+    expect(letscastDate('2026-12-31T06:05')).toBe('31.12.2026 06:05');
+    expect(letscastDate('nope')).toBe('');
     expect(textToHtml('Hallo <Welt> & so\nzweite Zeile\n\n- Punkt https://wavepod.de.\n- zwei\nDanach')).toBe(
       '<div>Hallo &lt;Welt&gt; &amp; so<br>zweite Zeile</div><ul><li>Punkt <a href="https://wavepod.de">https://wavepod.de</a>.</li><li>zwei</li></ul><div>Danach</div>',
     );
-    expect(parseChapterIds('<input type="hidden" value="a1" name="episode[chapters_attributes][0][id]"><input value=\'b2\' name=\'episode[chapters_attributes][1][id]\'>')).toEqual(['a1', 'b2']);
+    expect(parseShowNotes('<input type="hidden" name="episode[content]" id="x" value="&lt;div&gt;Hi&lt;/div&gt;">')).toBe('<div>Hi</div>');
+    expect(parseShowNotes('<input type="hidden" name="episode[content]" value="&lt;div&gt;&lt;br&gt;&lt;/div&gt;">')).toBe('');
   });
 
-  it('sends only what is chosen and not empty', () => {
+  it('sends only what is chosen and has a value in WavePod', () => {
     const dir = tmpDir();
     fs.mkdirSync(path.join(dir, 'images'));
     fs.writeFileSync(path.join(dir, 'images', 'cover.jpg'), 'jpg');
-    fs.writeFileSync(path.join(dir, 'images', 'ch.png'), 'png');
-    let p = createProject('Ep', 48000);
-    p.metadata = { ...p.metadata, title: 'Folge 441', episode: '441', author: '', description: 'Kurz', showNotes: '', artwork: 'images/cover.jpg' };
-    p = addMarker(p, 0, 'chapter', 'Intro').project;
-    p = addMarker(p, 48000 * 61.5, 'chapter', 'Thema').project;
-    p.markers[1].url = 'https://example.com';
-    p.markers[1].image = 'images/ch.png';
-    p.markers[0].image = 'images/missing.png';
-    const all = { audio: true, details: true, showNotes: true, chapters: true, cover: true };
-    expect(letscastUpdate(p, dir, all)).toEqual({
+    const p = createProject('Ep', 48000);
+    p.metadata = {
+      ...p.metadata,
       title: 'Folge 441',
-      number: '441',
-      summaryHtml: '<div>Kurz</div>',
-      coverFile: path.join(dir, 'images', 'cover.jpg'),
-      chapters: [
-        { start: 0, title: 'Intro' },
-        { start: 61.5, title: 'Thema', url: 'https://example.com', imageFile: path.join(dir, 'images', 'ch.png') },
+      episode: '441',
+      author: '',
+      description: 'Kurz',
+      showNotes: 'Notizen',
+      artwork: 'images/cover.jpg',
+      subtitle: 'Mit Gästen',
+      publishDate: '2026-12-31T06:00',
+      episodeType: 'bonus',
+      keywords: 'Brettspiele, Heat',
+      explicit: false,
+      hidden: true,
+    };
+    const all = { audio: true, details: true, showNotes: true, cover: true };
+    expect(letscastUpdate(p, dir, all)).toEqual({
+      fields: [
+        ['episode[title]', 'Folge 441'],
+        ['episode[subtitle]', 'Mit Gästen'],
+        ['episode[publishing_date]', '31.12.2026 06:00'],
+        ['episode[episode_type]', 'bonus'],
+        ['episode[number]', '441'],
+        ['episode[keywords]', 'Brettspiele, Heat'],
+        ['episode[summary]', '<div>Kurz</div>'],
+        ['episode[has_explicit_content]', '0'],
+        ['episode[hidden]', '1'],
       ],
+      showNotesHtml: '<div>Notizen</div>',
+      coverFile: path.join(dir, 'images', 'cover.jpg'),
     });
-    expect(letscastUpdate(p, dir, { ...all, details: false, chapters: false, cover: false })).toEqual({});
+    expect(letscastUpdate(p, dir, { ...all, details: false, showNotes: false, cover: false })).toEqual({});
+    p.metadata.episode = 'S2E3';
+    expect(letscastUpdate(p, dir, all).fields!.some(([k]) => k === 'episode[number]')).toBe(false);
   });
 
-  it('fills details, show notes, chapters and cover through their forms', async () => {
+  it('updates the episode with the same number, keeping show notes it has', async () => {
+    const mock = await mockLetsCast();
+    close = mock.close;
+    mock.state.showNotes = '<div>Schon da</div>';
+    const c = new LetsCastClient(withCookie('session=ok'), mock.base);
+    expect((await c.findByNumber('tabulaludo-5d181655', '888'))?.slug).toBe('claude-test');
+    expect(await c.findByNumber('tabulaludo-5d181655', '441')).toBeNull();
+    const dir = tmpDir();
+    const cover = path.join(dir, 'cover.jpg');
+    fs.writeFileSync(cover, 'jpg');
+    await c.updateEpisode('tabulaludo-5d181655', 'claude-test', { coverFile: cover, fields: [['episode[title]', 'Folge 441'], ['episode[hidden]', '0']], showNotesHtml: '<div>Neu</div>' });
+    const byUrl = (u: string) => mock.forms.filter((f) => f.url.endsWith(u)).map((f) => f.fields.filter(([k]) => k !== 'authenticity_token'));
+    expect(byUrl('/episodes/claude-test')).toEqual([
+      [
+        ['_method', 'patch'],
+        ['episode[image]', 'SIGNED-cover.jpg'],
+        ['episode[title]', 'Folge 441'],
+        ['episode[hidden]', '0'],
+      ],
+    ]);
+    expect(byUrl('/show_notes')).toEqual([]);
+    // without show notes there, they are written
+    mock.state.showNotes = '';
+    await c.updateEpisode('tabulaludo-5d181655', 'claude-test', { showNotesHtml: '<div>Neu</div>' });
+    expect(byUrl('/show_notes')).toEqual([
+      [
+        ['_method', 'patch'],
+        ['episode[content]', '<div>Neu</div>'],
+      ],
+    ]);
+  });
+
+  it('creates a new episode when there is none with that number', async () => {
     const mock = await mockLetsCast();
     close = mock.close;
     const c = new LetsCastClient(withCookie('session=ok'), mock.base);
-    const dir = tmpDir();
-    const cover = path.join(dir, 'cover.jpg');
-    const pic = path.join(dir, 'chapter.png');
-    fs.writeFileSync(cover, 'jpg');
-    fs.writeFileSync(pic, 'png');
-    await c.updateEpisode('tabulaludo-5d181655', 'claude-test', {
-      title: 'Folge 441',
-      number: '441',
-      author: 'Jutta & Michael',
-      summaryHtml: '<div>Kurz</div>',
-      coverFile: cover,
-      showNotesHtml: '<div>Notizen</div>',
-      chapters: [
-        { start: 0, title: 'Intro' },
-        { start: 61.5, title: 'Thema', url: 'https://example.com', imageFile: pic },
+    await expect(c.createEpisode('tabulaludo-5d181655', '441', { fields: [['episode[title]', 'Folge 441']] })).rejects.toThrow(/publishing date/);
+    const slug = await c.createEpisode('tabulaludo-5d181655', '441', {
+      fields: [
+        ['episode[title]', 'Folge 441'],
+        ['episode[publishing_date]', '31.12.2026 06:00'],
+        ['episode[number]', '441'],
       ],
+      showNotesHtml: '<div>Notizen</div>',
     });
-    const byUrl = (u: string) => mock.forms.find((f) => f.url.endsWith(u))!.fields.filter(([k]) => k !== 'authenticity_token');
-    expect(byUrl('/episodes/claude-test')).toEqual([
-      ['_method', 'patch'],
-      ['episode[image]', 'SIGNED-cover.jpg'],
-      ['episode[title]', 'Folge 441'],
-      ['episode[number]', '441'],
-      ['episode[author]', 'Jutta & Michael'],
-      ['episode[summary]', '<div>Kurz</div>'],
-    ]);
-    expect(byUrl('/show_notes')).toEqual([
-      ['_method', 'patch'],
-      ['episode[content]', '<div>Notizen</div>'],
-    ]);
-    expect(byUrl('/chapters')).toEqual([
-      ['_method', 'patch'],
-      ['episode[chapters_attributes][0][id]', 'c-old-1'],
-      ['episode[chapters_attributes][0][_destroy]', '1'],
-      ['episode[chapters_attributes][1][id]', 'c-old-2'],
-      ['episode[chapters_attributes][1][_destroy]', '1'],
-      ['episode[chapters_attributes][2][start]', '00:00:00'],
-      ['episode[chapters_attributes][2][title]', 'Intro'],
-      ['episode[chapters_attributes][2][href]', ''],
-      ['episode[chapters_attributes][3][start]', '00:01:01.500'],
-      ['episode[chapters_attributes][3][title]', 'Thema'],
-      ['episode[chapters_attributes][3][href]', 'https://example.com'],
-      ['episode[chapters_attributes][3][picture]', 'SIGNED-chapter.png'],
-    ]);
-    // no audio was sent, so the audio check does not apply
-    expect(mock.seen.some((x) => x.url.startsWith('/storage'))).toBe(true);
+    expect(slug).toBe('441-folge-441');
+    const create = mock.forms.find((f) => f.url === '/podcasts/tabulaludo-5d181655/episodes')!;
+    expect(create.fields.map(([k]) => k)).toEqual(['authenticity_token', 'episode[title]', 'episode[publishing_date]', 'episode[number]']);
+    expect(mock.forms.some((f) => f.url.endsWith('/441-folge-441/show_notes'))).toBe(true);
   });
 });

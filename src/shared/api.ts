@@ -247,8 +247,14 @@ export interface WavePodApi {
   /** The podcast's newest episodes. */
   letscastEpisodes(podcast: string): Promise<LetsCastEpisodeInfo[]>;
   letscastEpisode(podcast: string, episode: string): Promise<LetsCastEpisodeDetails>;
-  /** Sends the chosen parts to that LetsCast episode; the MP3 is rendered with the episode's export settings. Progress comes as export progress. */
-  uploadToLetsCast(podcast: string, episode: string, parts: LetsCastParts): Promise<{ url: string }>;
+  /** The episode with this number among the podcast's newest ones, or null. */
+  letscastFindEpisode(podcast: string, number: string): Promise<LetsCastEpisodeInfo | null>;
+  /**
+   * Sends the chosen parts to that LetsCast episode (a slug), or with episode '' creates a new one
+   * with WavePod's episode number; the MP3 is rendered with the episode's export settings. Progress
+   * comes as export progress.
+   */
+  uploadToLetsCast(podcast: string, episode: string, parts: LetsCastParts): Promise<{ url: string; episode: string }>;
   /** Opens a letscast.fm page in the browser. */
   openLetsCast(url: string): Promise<void>;
 
@@ -583,6 +589,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'letscastPodcasts',
   'letscastEpisodes',
   'letscastEpisode',
+  'letscastFindEpisode',
   'uploadToLetsCast',
   'openLetsCast',
   'getOscStatus',

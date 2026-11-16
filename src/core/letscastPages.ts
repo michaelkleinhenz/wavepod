@@ -13,6 +13,8 @@ export interface LetsCastEpisode {
   title: string;
   /** The line under the title on the episode list: date and number ("31.12.26 12:00 Uhr (Episode: 888)"). */
   info: string;
+  /** The episode number from that line, '' if none. */
+  number: string;
 }
 
 export interface LetsCastEpisodePage {
@@ -105,7 +107,8 @@ export function parseEpisodes(html: string, podcast: string): LetsCastEpisode[] 
     if (!e) {
       // the date line comes right after the title link
       const info = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(html.slice(l.end, l.end + 1500));
-      out.set(slug, { slug, title: t, info: info ? text(info[1]) : '' });
+      const line = info ? text(info[1]) : '';
+      out.set(slug, { slug, title: t, info: line, number: /\(Episode:\s*(\d+)\)/.exec(line)?.[1] ?? '' });
     } else if (!e.title && t) {
       e.title = t;
     }
@@ -130,23 +133,6 @@ export function parseEpisodePage(html: string): LetsCastEpisodePage {
 
 export function editUrl(podcast: string, episode: string, base = LETSCAST_BASE): string {
   return `${base}/podcasts/${podcast}/episodes/${episode}/edit`;
-}
-
-/** Ids of the chapters an episode has now (chapters edit page), to replace them. */
-export function parseChapterIds(html: string): string[] {
-  return [...html.matchAll(/<input\b[^>]*>/gi)]
-    .map((m) => m[0])
-    .filter((t) => /^episode\[chapters_attributes\]\[\d+\]\[id\]$/.test(attr(t, 'name') ?? ''))
-    .map((t) => attr(t, 'value') ?? '')
-    .filter(Boolean);
-}
-
-/** A chapter start as LetsCast takes it: "01:02:03", or "01:02:03.250" with milliseconds. */
-export function chapterStart(seconds: number): string {
-  const ms = Math.max(0, Math.round(seconds * 1000));
-  const p = (n: number, w = 2) => String(n).padStart(w, '0');
-  const base = `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)}`;
-  return ms % 1000 ? `${base}.${p(ms % 1000, 3)}` : base;
 }
 
 function escapeHtml(s: string): string {
@@ -194,4 +180,18 @@ export function textToHtml(text: string): string {
     flush();
   }
   return out.join('');
+}
+
+/** The show notes an episode has now (show notes edit page), '' when none. */
+export function parseShowNotes(html: string): string {
+  const input = [...html.matchAll(/<input\b[^>]*>/gi)].map((m) => m[0]).find((t) => attr(t, 'name') === 'episode[content]');
+  const v = input ? (attr(input, 'value') ?? '') : '';
+  // an empty editor still holds an empty <div>
+  return text(v) ? v : '';
+}
+
+/** "2026-12-31T12:00" (WavePod) → "31.12.2026 12:00" (LetsCast's date field); '' if unreadable. */
+export function letscastDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso.trim());
+  return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : '';
 }

@@ -49,8 +49,9 @@ The **Episode** section holds what goes into the exported file's tags:
 - **Episode title**, **Podcast**, **Author**, **Episode number**, **Year**
 - **Category**: written into MP3 and FLAC as the genre. Pick a podcast directory category or type your own.
 - **Description**
-- **Show notes**: links, guests, credits. They are not written into the file; **File › Upload to LetsCast.fm** sends them to your podcast host. A blank line starts a new paragraph, a line starting with "- " a bullet point, and web addresses become links.
+- **Show notes**: links, guests, credits. They are not written into the file; **File › Upload to LetsCast.fm** sends them to your podcast host if the episode there has none yet. A blank line starts a new paragraph, a line starting with "- " a bullet point, and web addresses become links.
 - **Episode cover**: a square JPEG or PNG, ideally 1400–3000 px. It is embedded in exported MP3, FLAC and Opus files and shown by podcast apps that read it.
+- **Podcast host**: subtitle, publishing date, type (full, trailer, bonus), keywords, episode web page, YouTube ID, explicit language, hidden from feed and website, and blocked on Apple Podcasts. They are not written into the file; **File › Upload to LetsCast.fm** sends the ones you fill in. An empty field or **Leave as it is** keeps what is set on letscast.fm.
 
 ## Regions
 

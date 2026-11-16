@@ -700,9 +700,11 @@ const handlers: Record<InvokeMethod, Handler> = {
   letscastPodcasts: () => letscastClient().podcasts(),
   letscastEpisodes: (podcast: string) => letscastClient().episodes(podcast),
   letscastEpisode: async (podcast: string, episode: string) => {
-    const page = await letscastClient().episode(podcast, episode);
-    return { slug: episode, title: page.title, hasAudio: !!page.audio };
+    const c = letscastClient();
+    const page = await c.episode(podcast, episode);
+    return { slug: episode, title: page.title, hasAudio: !!page.audio, hasShowNotes: !!(await c.showNotes(podcast, episode)) };
   },
+  letscastFindEpisode: (podcast: string, number: string) => letscastClient().findByNumber(podcast, number),
   uploadToLetsCast: async (podcast: string, episode: string, parts: LetsCastParts) => {
     flushSave();
     const send2 = (p: unknown) => send(IPC.exportProgress, p);
@@ -715,7 +717,7 @@ const handlers: Record<InvokeMethod, Handler> = {
       (opts) => runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, send2),
       send2,
     );
-    settings.letscast = normalizeLetsCast({ podcast, episode, parts });
+    settings.letscast = normalizeLetsCast({ podcast, episode: res.episode, parts });
     saveSettings();
     return res;
   },

@@ -115,18 +115,17 @@ Paste your API key from Auphonic's Account Settings once (**Save key**). Choose 
 
 ## Upload to LetsCast.fm
 
-**File › Upload to LetsCast.fm…** fills an episode you already created on letscast.fm with what you made in WavePod, so you don't have to download the MP3, upload it and type everything in again:
+**File › Upload to LetsCast.fm…** sends the episode to letscast.fm, so you don't have to download the MP3, upload it and type everything in again:
 
 1. Click **Sign in…** and sign in on letscast.fm's own page, which opens in a WavePod window. You only do this once: WavePod keeps the sign-in (like a browser does) and never sees or stores your password. **Sign out** forgets it.
-2. Choose the **podcast** and the **episode**. The list shows the newest episodes; for an older one, copy its link from letscast.fm (the address of its edit page) and click **Use link**.
+2. Choose the **podcast**. WavePod looks for the episode with the same **episode number** (set in the Chapters view) and picks it, so it is updated. If there is none yet, the list says **New episode …** and WavePod creates it; a new episode needs a **publishing date**. You can also pick another episode in the list, or paste an episode's link from letscast.fm and click **Use link**.
 3. Tick what to **send**:
    - **Audio**: the MP3, rendered with the settings of **File › Export** (bit rate, mono, loudness, chapters and cover in the file). If the episode already has audio, WavePod tells you; uploading replaces it.
-   - **Episode details**: the title, the episode number (if it is a number), the author, and the description as the episode's summary.
-   - **Show notes**: from the episode details in the Chapters view.
-   - **Chapters**: your chapter markers with their links and images. They replace the chapters on letscast.fm.
+   - **Episode details**: title, subtitle, publishing date, type, number, author, keywords, the description as the summary, episode web page, YouTube ID, and the explicit, hidden and Apple Podcasts settings.
+   - **Show notes**: only when the episode on letscast.fm has none yet. Show notes written there are never replaced.
    - **Episode cover**.
-4. Click **Upload**.
+4. Click **Upload** (or **Create and upload** for a new episode).
 
-Only what you tick is sent, and nothing that is empty in WavePod: an empty description never clears the summary on letscast.fm. The publishing date, keywords and everything else there stay as they are. LetsCast.fm then converts the audio; **Open the episode on letscast.fm** takes you there to check it and publish. WavePod remembers the podcast, episode and what you ticked.
+Only fields that are filled in in WavePod are sent: an empty field (or **Leave as it is**) never clears anything on letscast.fm. Chapters need no separate upload: LetsCast.fm reads them, with their links, from the MP3 (rounded to whole seconds). LetsCast.fm then converts the audio; **Open the episode on letscast.fm** takes you there to check it. WavePod remembers the podcast and what you ticked.
 
 LetsCast.fm has no public interface for uploads, so WavePod uses the same requests as its website. If LetsCast.fm changes its website, the upload may stop working until WavePod is updated; uploading on letscast.fm itself always works.
