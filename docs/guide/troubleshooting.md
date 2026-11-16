@@ -64,7 +64,7 @@ Check the ElevenLabs API key in **Edit › Settings… › General**, that your 
 
 ## Windows: WavePod is blocked
 
-WavePod isn't code-signed, because a code-signing certificate costs money every year and WavePod is a free, open-source project without income. Windows therefore warns about it in one of two ways:
+WavePod isn't code-signed, because a code-signing certificate costs money every year and WavePod is a free, open-source project without income. Windows therefore warns about it in one of two ways. The simplest way around both is the [Microsoft Store version](https://apps.microsoft.com/detail/9NRV8PP5JPCB): Microsoft signs it, so it installs without warnings, also with Smart App Control on, and updates itself. If you use the installer from GitHub instead:
 
 - **"Windows protected your PC"** (SmartScreen): click **More info**, then **Run anyway**. You only need to do this once per download.
 - **"Smart App Control blocked an app that may be unsafe"**: Smart App Control in Windows 11 only runs signed or already-known apps and has no way to allow a single app. To run WavePod, open **Windows Security › App & browser control › Smart App Control settings** and choose **Off**, then start WavePod again. Defender Antivirus and SmartScreen stay on. On an up-to-date Windows 11 you can switch Smart App Control back on later on the same page (on older versions, turning it off is permanent until Windows is reset), but while it is on, WavePod and its updates are blocked again.

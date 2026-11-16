@@ -98,13 +98,19 @@ start it. You don't need to build anything.
 
 ### 1. Download
 
-Get the file for your computer from the
+**Windows:** get WavePod from the
+[Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB). Microsoft signs
+it, so it installs without any warning (also with Smart App Control on), and
+the Store keeps it up to date.
+
+For macOS and Linux, or if you prefer an installer on Windows, get the file
+for your computer from the
 [latest release](https://github.com/michaelkleinhenz/wavepod/releases/latest)
 (under **Assets**):
 
 | Computer | File to download |
 | --- | --- |
-| Windows 10 or 11 (64-bit) | `WavePod-<version>-win-x64.exe` |
+| Windows 10 or 11 (64-bit) | [Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB), or `WavePod-<version>-win-x64.exe` |
 | Mac with Apple silicon (M1 or newer) | `WavePod-<version>-mac-arm64.dmg` |
 | Ubuntu, Debian, Linux Mint, Pop!_OS | `WavePod-<version>-linux-amd64.deb` |
 | Other Linux (Fedora, Arch, …) | `WavePod-<version>-linux-x86_64.AppImage` |
@@ -112,18 +118,24 @@ Get the file for your computer from the
 There is no build for Macs with an Intel processor yet.
 
 > **Windows 11 users:** if **Smart App Control** is switched on, Windows blocks
-> WavePod without offering "Run anyway". See
-> [Windows: Smart App Control blocks WavePod](#windows-smart-app-control-blocks-wavepod)
-> before you install.
+> the `.exe` installer without offering "Run anyway". Install WavePod from the
+> [Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB) instead; see
+> [Windows: Smart App Control blocks WavePod](#windows-smart-app-control-blocks-wavepod).
 
 ### 2. Install and start
 
 WavePod's installers are not signed with a code-signing certificate, so
-Windows and macOS warn you the first time. That is expected; the steps below
+Windows and macOS warn you the first time (the Microsoft Store version is
+signed by Microsoft and doesn't warn). That is expected; the steps below
 get you past it once. (Why aren't they signed? See
 [Why WavePod isn't code-signed](#why-wavepod-isnt-code-signed).)
 
-**Windows**
+**Windows, from the Microsoft Store**
+
+1. Open [WavePod in the Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB) and click **Get** (or **Install**).
+2. Start WavePod from the Start menu.
+
+**Windows, with the `.exe` installer**
 
 1. Double-click the downloaded `.exe`.
 2. If Windows shows "Windows protected your PC", click **More info**, then
@@ -204,7 +216,8 @@ need something else (see [Linux: which audio driver](#linux-which-audio-driver))
 
 ### Updating and uninstalling
 
-To update, download the new release and install it over the old one (on
+The Microsoft Store version updates itself. Otherwise, to update, download
+the new release and install it over the old one (on
 Linux: `sudo apt install ./WavePod-*.deb` again, or replace the AppImage).
 Your episodes and settings are kept: episodes live in `Documents/WavePod`.
 
@@ -213,6 +226,15 @@ Applications to the Bin on macOS, or run `sudo apt remove wavepod` on
 Debian/Ubuntu. Your episodes in `Documents/WavePod` stay where they are.
 
 ### Windows: Smart App Control blocks WavePod
+
+The easy way: install WavePod from the
+[Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB). Microsoft signs
+the Store version, so Smart App Control lets it run and you don't have to
+change anything. If you already installed the `.exe` version, uninstall it
+first under **Settings › Apps** so you don't have WavePod twice; your
+episodes in `Documents/WavePod` stay where they are.
+
+If you want the `.exe` installer instead, read on.
 
 Smart App Control is a protection in Windows 11 that only lets apps run that
 are code-signed or that Microsoft already knows. Because WavePod isn't
@@ -249,6 +271,10 @@ open-source project without income, so it can't pay for that. The builds are
 made by GitHub Actions straight from the public source code in this
 repository, so you can always check what you install, or
 [build it yourself](#build-from-source).
+
+The [Microsoft Store](#microsoft-store) version is the exception: Microsoft
+checks and signs every Store release for free, so on Windows it runs without
+any warning.
 
 For a RØDECaster Pro II with all 16 channels, also install RØDE's ASIO
 driver (see [Using a RØDECaster Pro II](#using-a-rødecaster-pro-ii)).
