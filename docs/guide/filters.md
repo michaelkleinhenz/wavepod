@@ -28,6 +28,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Limiter** | Keeps peaks below the ceiling. |
 | **Dynamics** | Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. A port of Ultraschall's Dynamics. |
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
+| **De-clip** | Rebuilds peaks that were cut flat because the recording was too loud. See [Repair filters](#repair-filters). |
 | **De-hum** | Removes the 50 or 60 Hz hum and buzz of a ground loop or a bad cable, following its exact frequency. See [Repair filters](#repair-filters). |
 | **AI voice cleanup** | Separates the voice from background noise and from the room's echo with a neural network, and gives each part its own level: Voice, Ambience and Reverb. See [AI voice cleanup](#ai-voice-cleanup). |
 | **Mouth de-click** | Removes lip smacks, tongue clicks and the sticky clicks of a dry mouth, and fills each one in from the voice around it. See [Repair filters](#repair-filters). |
@@ -42,7 +43,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |
 | **Chorus / flanger** | Chorus, flanger and vibrato: magic, dreams, teleports, ghosts. |
 
-Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Breath control, Smart de-esser & de-plosive, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
+Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Breath control, Smart de-esser & de-plosive, De-clip, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
 
 For the voice effects (telephone, robot, giant, …) and places (kitchen, church, forest, …), see [Audio drama](audio-drama.md).
 
@@ -130,6 +131,18 @@ The presets *Male voice* and *Female voice* set the two frequencies; *De-ess onl
 | **Listen to** | *Hum only* plays just what the filter takes out. If you hear voice in it, use fewer harmonics. |
 
 The filter needs about half a second to find the hum and a second to remove it completely, also after you jump to another place in the episode. It adds no latency. For broadband noise such as hiss or fans, use **Noise reduction** or **AI voice cleanup** instead.
+
+### De-clip
+
+**De-clip** repairs clipping: when the input was turned up too far, the loudest moments hit the top of the range and their peaks were cut off flat. That sounds like a harsh crackle on loud words or laughter. The filter finds runs of samples stuck at the highest level and redraws the round top the waveform should have had, from the sound just before and after each peak.
+
+| Control | What it sets |
+| --- | --- |
+| **Shortest clip** | How many samples in a row have to be stuck at the top to count as clipped. 3 is safe; 2 also catches the lightest clipping. |
+| **Output gain** | The rebuilt peaks go higher than the old maximum, so the filter turns its output down a little (−3 dB by default) to make room. A **Limiter** later in the chain works too. |
+| **Listen to** | *Rebuilt peaks only* plays just what the filter adds back. |
+
+Put De-clip first on the track, before any other filter, because it has to see the flat tops exactly as they were recorded. It repairs short clipping (up to 5 ms per peak) very well. A recording that was distorted heavily for long stretches can be improved, but not restored. It adds about 16 ms of latency, which WavePod compensates.
 
 ## Presets
 

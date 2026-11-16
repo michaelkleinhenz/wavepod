@@ -143,6 +143,18 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'declip',
+    name: 'De-clip',
+    aliases: ['Declip', 'Clipping', 'Clip repair', 'Distortion repair'],
+    description:
+      'Rebuilds peaks that were cut flat because the recording was too loud (clipping, the harsh crackle of an overloaded input). It finds runs of samples stuck at the highest level and redraws the round top the waveform should have had, from the sound just before and after. The rebuilt peaks go above the old maximum, so turn the output down or put a limiter after it. Works on short clipping (up to 5 ms per peak); heavily distorted recordings can only be improved, not restored. Adds about 16 ms of latency, which WavePod compensates.',
+    params: [
+      { key: 'minRun', label: 'Shortest clip', min: 2, max: 8, step: 1, default: 3, unit: 'samples' },
+      db('gain', 'Output gain', -3, -12, 0),
+      { key: 'output', label: 'Listen to', min: 0, max: 1, step: 1, default: 0, options: [{ value: 0, label: 'Repaired' }, { value: 1, label: 'Rebuilt peaks only' }] },
+    ],
+  },
+  {
     type: 'dehum',
     name: 'De-hum',
     aliases: ['Hum removal', 'Dehum', 'Hum', 'Buzz', 'Ground loop', 'Mains hum'],
