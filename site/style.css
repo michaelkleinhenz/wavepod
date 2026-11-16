@@ -370,6 +370,8 @@ h2 .dim { color: var(--dim); }
 .win-note b { color: var(--text); font-weight: 600; }
 .win-note .why { color: var(--dim); font-size: .9rem; }
 .win-note a { color: var(--cyan); }
+.win-note .store-badge { display: inline-block; margin: 2px 0 12px; }
+.win-note .store-badge img { display: block; height: 44px; width: auto; }
 
 /* ------------------------------------------------------------ footer */
 footer { border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; padding-top: 36px; padding-bottom: 48px; }

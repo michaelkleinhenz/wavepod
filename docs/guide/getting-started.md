@@ -10,6 +10,13 @@ WavePod is beta software that is still being tested, so the first time it starts
 
 WavePod does a lot to keep a take safe: it writes every take to disk as it happens and recovers it after a crash, detects dropouts, crackle and a full disk while you record, and raises a loud alarm with a system notification when the input device is lost (see [Recording safety](recording.md#recording-safety)). But while WavePod is in beta, anything can still happen. Read the notice again any time under **Help › Beta Notice**.
 
+## Installing and updating
+
+- **Windows 10 or 11:** install WavePod from the [Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB). Microsoft signs the Store version, so it installs without warnings (also with Smart App Control on) and updates itself. An `.exe` installer is on the [releases page](https://github.com/michaelkleinhenz/wavepod/releases/latest) too, but Windows warns about it; see [Windows: WavePod is blocked](troubleshooting.md#windows-wavepod-is-blocked).
+- **macOS (Apple silicon) and Linux:** download the `.dmg`, `.deb` or `.AppImage` from the [latest release](https://github.com/michaelkleinhenz/wavepod/releases/latest) and install it over the old version to update.
+
+Your episodes, presets and templates live in `Documents/WavePod` and are kept when you update, switch between the Store and the `.exe` version, or uninstall WavePod.
+
 ## Your first episode in five steps
 
 1. **Name the episode.** WavePod opens on **Setup › Project**. Type a name under **Start a new episode** and create it, or pick a template to start with your usual tracks and filters. See [Episodes and saving](episodes.md).

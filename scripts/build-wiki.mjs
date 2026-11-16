@@ -99,7 +99,7 @@ function rewriteLinks(md, source, current) {
   return md
     .split(/(^```[\s\S]*?^```)/m)
     .map((part, i) =>
-      i % 2 ? part : part.split(/(`[^`\n]*`)/).map((bit, j) => (j % 2 ? bit : bit.replace(/(!?)\[([^\]]*)\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g, (_, b, t, h) => fix(b, t, h)))).join(''),
+      i % 2 ? part : part.split(/(`[^`\n]*`)/).map((bit, j) => (j % 2 ? bit : bit.replace(/(!?)\[([^[\]]*)\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g, (_, b, t, h) => fix(b, t, h)))).join(''),
     )
     .join('');
 }

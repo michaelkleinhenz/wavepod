@@ -98,6 +98,8 @@ start it. You don't need to build anything.
 
 ### 1. Download
 
+[![Download from the Microsoft Store](site/img/microsoft-store-badge-dark.svg)](https://apps.microsoft.com/detail/9NRV8PP5JPCB)
+
 **Windows:** get WavePod from the
 [Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB). Microsoft signs
 it, so it installs without any warning (also with Smart App Control on), and
@@ -224,6 +226,9 @@ Your episodes and settings are kept: episodes live in `Documents/WavePod`.
 To remove WavePod, use **Settings › Apps** on Windows, drag it from
 Applications to the Bin on macOS, or run `sudo apt remove wavepod` on
 Debian/Ubuntu. Your episodes in `Documents/WavePod` stay where they are.
+When you uninstall the Microsoft Store version, Windows also removes its
+settings (API keys, devices, preferences), because Store apps keep them in
+their own package folder; the `.exe` version leaves `%APPDATA%\WavePod` in place.
 
 ### Windows: Smart App Control blocks WavePod
 
