@@ -24,6 +24,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Noise gate** | Turns the track down while nobody speaks into it (room noise, other speakers bleeding in). Pre-open looks ahead so the gate is already open when a word starts. |
 | **Compressor** | Evens out loud and quiet passages of a voice. |
 | **De-esser** | Tames sharp "s" and "sh" sounds by turning down only the highs when they get loud. |
+| **Smart de-esser & de-plosive** | Tames "s" sounds and "p"/"b" pops only where they happen, by comparing them with the rest of the voice, at any level. See [Repair filters](#repair-filters). |
 | **Limiter** | Keeps peaks below the ceiling. |
 | **Dynamics** | Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. A port of Ultraschall's Dynamics. |
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
@@ -40,7 +41,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |
 | **Chorus / flanger** | Chorus, flanger and vibrato: magic, dreams, teleports, ghosts. |
 
-Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Breath control, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
+Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Breath control, Smart de-esser & de-plosive, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
 
 For the voice effects (telephone, robot, giant, …) and places (kitchen, church, forest, …), see [Audio drama](audio-drama.md).
 
@@ -100,6 +101,22 @@ Start with the default or the *Dry mouth* preset. If a sharp *t*, *k* or *p* sou
 | **Listen to** | *Breaths only* plays just what the filter turns down. If you hear bits of words, lower Sensitivity. |
 
 Put Breath control before the compressor and Dynamics, which would otherwise raise the breaths again. The filter needs to hear a whole breath before it acts, so it adds about 160 ms of latency, which WavePod compensates.
+
+### Smart de-esser & de-plosive
+
+**Smart de-esser & de-plosive** handles two faults of close-up speech in one filter: sharp *s* and *sh* sounds, and the low thump of air hitting the mic on *p* and *b*. Unlike the plain **De-esser**, it has no threshold to set. It compares the highs with the whole voice (for *s*) and the lows with the rest of the voice (for pops), so it works the same on a quiet and on a loud recording. It turns the band down only as far as needed for a natural balance, and never more than the amount you set. Wherever there is no *s* and no pop, the voice passes untouched.
+
+| Control | What it sets |
+| --- | --- |
+| **De-ess** | The most the highs are turned down on an *s*. **Off** switches the de-esser part off. |
+| **S sensitivity** | Higher treats milder *s* sounds too. |
+| **S frequency** | Where sibilance starts: about 4–5 kHz for deeper voices, 6–7 kHz for higher voices. |
+| **De-plosive** | The most the lows are turned down on a pop. **Off** switches the de-plosive part off. |
+| **Pop sensitivity** | Higher treats softer pops too. |
+| **Pop frequency** | The top of the pop band. Raise it for very boomy pops. |
+| **Listen to** | *What is removed* plays only what the filter takes away. |
+
+The presets *Male voice* and *Female voice* set the two frequencies; *De-ess only* and *De-plosive only* switch one part off. It adds 3 ms of latency, which WavePod compensates.
 
 ## Presets
 
