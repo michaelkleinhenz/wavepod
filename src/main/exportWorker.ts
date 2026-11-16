@@ -4,6 +4,7 @@ import type { Clip, CleanupOptions, ExportOptions, Project, TimelineWord } from 
 import { scanCleanup } from '../core/cleanupScan';
 import { exportProject } from '../core/exporter';
 import { analyseClips, analyseProject } from '../core/analysis';
+import { learnMatch } from '../core/matchLearn';
 import { alignClips, alignToClips, stretchWav } from '../core/align';
 import { importWav } from '../core/importAudio';
 import { renderFused } from '../core/fuseRender';
@@ -13,7 +14,7 @@ import { setImpulseDir } from '../core/fx/convolution';
 import { setVoiceCleanWasm } from '../core/fx/voiceClean';
 
 interface Job {
-  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav' | 'fuse';
+  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav' | 'fuse' | 'match';
   /** stretch / importWav: absolute source and destination WAV (and the stretch factor); fuse: the destination. */
   src?: string;
   dest?: string;
@@ -27,6 +28,8 @@ interface Job {
   dir: string;
   opts?: ExportOptions;
   clipIds?: string[];
+  /** match: the reference clips the voice should sound like. */
+  refClipIds?: string[];
   mixOnly?: boolean;
   /** loudness: measure the mix folded to mono. */
   mono?: boolean;
@@ -44,7 +47,7 @@ const job = workerData as Job;
 if (job.impulseDir) setImpulseDir(job.impulseDir);
 if (job.voiceCleanWasm) setVoiceCleanWasm(job.voiceCleanWasm);
 // VST3 filters render through a host process of this worker's own
-const usesVst = job.kind !== 'clips' && job.kind !== 'align' && job.kind !== 'stretch' && job.kind !== 'importWav' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
+const usesVst = job.kind !== 'clips' && job.kind !== 'match' && job.kind !== 'align' && job.kind !== 'stretch' && job.kind !== 'importWav' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
 const vstHost = usesVst && job.vstExe && job.vstBridge ? new VstHostProcess(job.vstExe, job.vstBridge) : null;
 if (vstHost) setVstHost(vstHost);
 try {
@@ -65,6 +68,8 @@ try {
   } else if (job.kind === 'fuse') {
     const r = renderFused(job.project, job.dir, job.clipIds ?? [], job.dest!, (f) => parentPort!.postMessage({ type: 'progress', progress: f }));
     parentPort!.postMessage({ type: 'done', result: r });
+  } else if (job.kind === 'match') {
+    parentPort!.postMessage({ type: 'done', result: learnMatch(job.project, job.dir, job.clipIds ?? [], job.refClipIds ?? []) });
   } else if (job.kind === 'clips') {
     parentPort!.postMessage({ type: 'done', result: analyseClips(job.project, job.dir, job.clipIds ?? []) });
   } else {

@@ -1,4 +1,5 @@
 // The API the preload script exposes to the renderer as `window.wavepod`.
+import type { MatchLearnResult } from '../core/matchLearn';
 import type {
   CamPodEvent,
   CamPodImportFile,
@@ -423,6 +424,8 @@ export interface WavePodApi {
   measureLoudness(mixOnly?: boolean, mono?: boolean): Promise<LoudnessReport[]>;
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
+  /** Voice match: the EQ curve that makes the source clips sound like the reference clips. */
+  learnMatch(sourceClipIds: string[], referenceClipIds: string[]): Promise<MatchLearnResult>;
   revealFile(path: string): Promise<void>;
   /** Opens the help window at a page of the user guide (`topic` or `topic/anchor`). */
   openHelp(topic?: string): Promise<void>;
@@ -671,6 +674,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'exportProject',
   'measureLoudness',
   'measureClips',
+  'learnMatch',
   'revealFile',
   'openHelp',
   'alignClips',

@@ -15,6 +15,7 @@ import { editableNumber, editableValue, isEditingValue } from './valueEdit';
 import { leadingNumber, parseNumberInput, precisionForStep } from '../core/numberInput';
 import { clipboardLabel, copyFilter, copyStack, pasteFilters, pasteSettings, settingsSource, type FxClipboard } from '../core/fx/fxClipboard';
 import { iconButton } from './icons';
+import { MATCH_BANDS, MATCH_MAX_DB } from '../core/fx/matchEq';
 import { VOICE_EFFECTS, addVoiceEffect, findVoiceEffect, type VoiceEffect } from '../core/fx/voiceEffects';
 
 const EFFECT_PREFIX = 'effect:';
@@ -388,6 +389,7 @@ export class FxPanel {
         : [
             this.presetRow(target, fx),
             fx.type === 'convolution' ? this.impulseRow(target, fx) : null,
+            fx.type === 'matcheq' ? this.matchRow(target, fx) : null,
             meter?.el ?? null,
             curve,
             ...(vst ? this.vstParamRows(target, fx) : def!.params.map((spec) => this.paramRow(target, fx, spec, drawCurve))),
@@ -497,6 +499,80 @@ export class FxPanel {
       this.pasteSettingsButton(target, fx, fxName(fx)),
       user ? h('button', { class: 'toggle', title: `Rename "${user.name}"`, onclick: () => ((this.naming = { fxId: fx.id, mode: 'rename' }), this.render()) }, '✎') : null,
       user ? h('button', { class: 'toggle remove', title: `Delete the preset "${user.name}"`, onclick: () => void this.deletePreset(target, fx) }, '🗑') : null,
+    );
+  }
+
+  /** Voice match: the chosen reference per filter, and filters that are learning right now. */
+  private matchChoice = new Map<string, string>();
+  private matchBusy = new Set<string>();
+
+  /** Voice match: pick the reference voice and learn the curve from it. */
+  private matchRow(target: FxTarget, fx: Fx): HTMLElement {
+    const REST = '__rest';
+    const project = store.project;
+    const clipId = targetClipId(target);
+    const own = clipId !== null ? findClip(project, clipId)?.track : project.tracks.find((t) => t.id === target);
+    if (!own) return h('div', { class: 'fx-ir-info warn' }, 'Voice match works on a track or a clip, not on the master bus.');
+    const sourceIds = clipId !== null ? [clipId] : own.clips.map((c) => c.id);
+    const options: Array<{ value: string; label: string; ids: string[] }> = [];
+    if (clipId !== null) {
+      const rest = own.clips.filter((c) => c.id !== clipId).map((c) => c.id);
+      if (rest.length) options.push({ value: REST, label: `The rest of ${own.name}`, ids: rest });
+    }
+    for (const t of project.tracks) if (t.id !== own.id && t.clips.length) options.push({ value: t.id, label: t.name, ids: t.clips.map((c) => c.id) });
+    const chosen = options.find((o) => o.value === this.matchChoice.get(fx.id)) ?? options[0];
+    const busy = this.matchBusy.has(fx.id);
+    const learn = () => {
+      if (!chosen) return;
+      this.matchBusy.add(fx.id);
+      this.render();
+      api()
+        .learnMatch(sourceIds, chosen.ids)
+        .then((r) => {
+          this.edit((p) => updateFx(p, target, fx.id, { match: { gains: r.gains, reference: chosen.label } }));
+          toast(`Learned how ${clipId !== null ? 'this clip' : own.name} differs from ${chosen.label} (${Math.round(r.sourceSeconds)} s and ${Math.round(r.referenceSeconds)} s of speech)`);
+        })
+        .catch((err) => toast(errorMessage(err), 'error'))
+        .finally(() => {
+          this.matchBusy.delete(fx.id);
+          this.render();
+        });
+    };
+    const select = h(
+      'select',
+      {
+        class: 'fx-ir-select',
+        title: 'The voice this one should sound like',
+        disabled: busy || !options.length,
+        onchange: (e: Event) => {
+          this.matchChoice.set(fx.id, (e.target as HTMLSelectElement).value);
+        },
+      },
+      ...(options.length ? options.map((o) => h('option', { value: o.value }, o.label)) : [h('option', { value: '' }, 'No other recording to match')]),
+    ) as HTMLSelectElement;
+    if (chosen) select.value = chosen.value;
+    return h(
+      'div',
+      { class: 'fx-ir fx-match' },
+      h(
+        'div',
+        { class: 'fx-presets' },
+        h('span', { class: 'fx-match-label' }, 'Sound like'),
+        select,
+        h(
+          'button',
+          { class: 'toggle fx-ir-load', disabled: busy || !chosen, title: 'Compare the speech in both and set the EQ', onclick: learn },
+          busy ? 'Learning…' : fx.match ? 'Learn again' : 'Learn',
+        ),
+      ),
+      fx.match ? matchCurveSvg(fx.match.gains) : null,
+      h(
+        'div',
+        { class: `fx-ir-info${fx.match ? '' : ' warn'}` },
+        fx.match
+          ? `Matched to ${fx.match.reference || 'a reference'}. Learn again after editing or recording more.`
+          : 'Not learned yet: choose the voice to sound like and press Learn. Until then the filter does nothing.',
+      ),
     );
   }
 
@@ -1096,4 +1172,29 @@ function drawDynamicsCurve(c: HTMLCanvasElement, p: Record<string, number>, live
     ctx.arc(x(xi), y(yo), 4, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+/** A small picture of a learned voice match curve (0 dB in the middle). */
+function matchCurveSvg(gains: number[]): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const W = 200;
+  const H = 40;
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('class', 'fx-match-curve');
+  const x = (i: number) => (i / (MATCH_BANDS.length - 1)) * W;
+  const y = (g: number) => H / 2 - (Math.max(-MATCH_MAX_DB, Math.min(MATCH_MAX_DB, g)) / MATCH_MAX_DB) * (H / 2 - 2);
+  const zero = document.createElementNS(NS, 'line');
+  zero.setAttribute('x1', '0');
+  zero.setAttribute('x2', String(W));
+  zero.setAttribute('y1', String(H / 2));
+  zero.setAttribute('y2', String(H / 2));
+  zero.setAttribute('class', 'zero');
+  const line = document.createElementNS(NS, 'polyline');
+  line.setAttribute('points', gains.map((g, i) => `${x(i).toFixed(1)},${y(g).toFixed(1)}`).join(' '));
+  svg.append(zero, line);
+  const title = document.createElementNS(NS, 'title');
+  title.textContent = MATCH_BANDS.map((f, i) => `${f < 1000 ? Math.round(f) + ' Hz' : (f / 1000).toFixed(1) + ' kHz'}: ${gains[i] > 0 ? '+' : ''}${gains[i].toFixed(1)} dB`).join('\n');
+  svg.append(title);
+  return svg;
 }

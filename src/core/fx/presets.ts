@@ -1,7 +1,7 @@
 // Filter presets: named settings for one kind of filter (a built-in type, or one VST3 plug-in),
 // stored per user so they work in every episode. Pure helpers; the files live in main/presetStore.
-import type { Fx, FxPresetRef, FxType, ImpulseRef, VstParamInfo } from '../../shared/types';
-import { FX_DEFINITIONS, defaultParams, irRef, normalizeFx } from './definitions';
+import type { Fx, FxPresetRef, FxType, ImpulseRef, MatchCurve, VstParamInfo } from '../../shared/types';
+import { FX_DEFINITIONS, defaultParams, irRef, matchRef, normalizeFx } from './definitions';
 import { visibleVstParams } from './vst';
 
 /** What a preset file holds. */
@@ -16,6 +16,8 @@ export interface FxPreset {
   state?: string;
   /** Convolution reverb only: the impulse response. */
   ir?: ImpulseRef;
+  /** Voice match only: the learned curve (a saved match, e.g. "Guest on the Shure"). */
+  match?: MatchCurve;
 }
 
 export type FxPresetSource = 'factory' | 'program' | 'user';
@@ -57,7 +59,7 @@ export function presetEdited(fx: Fx): boolean {
 export function presetFromFx(fx: Fx, name: string): FxPreset {
   const clean = name.trim();
   if (!clean) throw new Error('Please give the preset a name.');
-  if (fx.type !== 'vst3') return { name: clean, type: fx.type, params: { ...fx.params }, ...(fx.type === 'convolution' && fx.ir ? { ir: { ...fx.ir } } : {}) };
+  if (fx.type !== 'vst3') return { name: clean, type: fx.type, params: { ...fx.params }, ...(fx.type === 'convolution' && fx.ir ? { ir: { ...fx.ir } } : {}), ...(fx.type === 'matcheq' && fx.match ? { match: { gains: [...fx.match.gains], reference: fx.match.reference } } : {}) };
   if (!fx.plugin) throw new Error('This filter has no plug-in.');
   return {
     name: clean,
@@ -89,7 +91,7 @@ export function normalizePreset(raw: unknown, fallbackName = 'Preset'): FxPreset
   if (!r.type || !FX_DEFINITIONS.some((d) => d.type === r.type)) return null;
   // clamp into range and fill missing values with defaults
   const fx = normalizeFx({ type: r.type, params });
-  return fx ? { name, type: r.type, params: fx.params, ...(r.type === 'convolution' ? irRef(r.ir) : {}) } : null;
+  return fx ? { name, type: r.type, params: fx.params, ...(r.type === 'convolution' ? irRef(r.ir) : {}), ...(r.type === 'matcheq' ? matchRef(r.match) : {}) } : null;
 }
 
 /** The filter set to a preset (same id, on/off state and plug-in). */
@@ -110,6 +112,8 @@ export function applyPreset(fx: Fx, preset: FxPreset, ref: Omit<FxPresetRef, 'si
   const next: Fx = { ...fx, params, preset: { ...ref, sig: paramSignature(params) } };
   // a convolution preset brings its impulse response; one without keeps the current one
   if (preset.ir) next.ir = { ...preset.ir };
+  // a saved voice match brings its curve; a factory preset keeps the learned one
+  if (preset.match) next.match = { gains: [...preset.match.gains], reference: preset.match.reference };
   if (fx.type === 'vst3') {
     if (preset.state) next.state = preset.state;
     else delete next.state;
@@ -328,6 +332,12 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Remote guest', 'Laptop and phone guests whose level jumps a lot.', { range: 14, speed: 2 }],
     ['Audiobook (−23 LUFS)', 'Calm, even narration at broadcast level.', { target: -23, range: 6, speed: 0 }],
     ['Loud (−16 LUFS)', 'Brings the voice close to podcast loudness before the limiter.', { target: -16, range: 12, speed: 1 }],
+  ],
+  matcheq: [
+    ['Subtle', 'Moves the voice part of the way: keeps some of its own character.', { amount: 50, detail: 0 }],
+    ['Close match', 'Follows the reference closely, for a retake that must not stand out.', { amount: 100, detail: 2 }],
+    ['Smooth full match', 'The whole difference, but only its broad shape.', { amount: 100, detail: 0 }],
+    ['Hint', 'Just a touch of the reference, for voices that are already close.', { amount: 30, detail: 0 }],
   ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],

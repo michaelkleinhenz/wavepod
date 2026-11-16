@@ -68,6 +68,7 @@ import { CamPodDownloader, CamPodFollower, camPodClient, camPodInfo, updateCamPo
 import { linkSession, normalizeCamPodSettings, sessionsFromWire, type StoredCamPod } from '../core/campod';
 import { RemoteHost, normalizeRemoteSettings, remoteInfo, updateRemoteSettings, type StoredRemote } from './remote/host';
 import type { CamPodSettingsInput, Clip, LetsCastParts, RemoteSettingsInput } from '../shared/types';
+import type { MatchLearnResult } from '../core/matchLearn';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
 import { VIDEO_EXTENSIONS, VideoWriter, fileSize, readRange, removeVideoTemp, resolveMediaPath, storedVideoPath, videoTempBase } from './video';
@@ -470,6 +471,7 @@ const mcpHost: WavePodHost = {
   },
   measureLoudness: () => handlers.measureLoudness() as Promise<LoudnessReport[]>,
   alignClips: (clipIds, refTrackId) => alignClipsTo(clipIds, refTrackId),
+  learnMatch: (sourceClipIds, referenceClipIds) => learnMatchIn(sourceClipIds, referenceClipIds),
   transcripts: () => transcription.load(),
   transcriptFilter: () => settings.transcription,
   get presets() {
@@ -537,6 +539,11 @@ function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise
  * writes stretched copies of the moving files (next to them in the project) and carries their
  * transcripts over, so nothing has to be transcribed again.
  */
+/** Voice match: learns in a worker from the clips as they are saved now. */
+function learnMatchIn(sourceClipIds: string[], referenceClipIds: string[]): Promise<MatchLearnResult> {
+  return runWorker<MatchLearnResult>({ kind: 'match', project: current.project, dir: current.dir, clipIds: sourceClipIds, refClipIds: referenceClipIds });
+}
+
 async function alignClipsTo(clipIds: string[], refTrackId: string | Clip[], project = current.project): Promise<AlignOutcome> {
   const dir = current.dir;
   const ref = typeof refTrackId === 'string' ? { refTrackId } : { refClips: refTrackId };
@@ -1075,6 +1082,7 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   measureLoudness: (mixOnly?: boolean, mono?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly, mono: !!mono }),
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
+  learnMatch: (sourceClipIds: string[], referenceClipIds: string[]) => learnMatchIn(sourceClipIds, referenceClipIds),
   revealFile: (p: string) => shell.showItemInFolder(p),
   openHelp: (topic?: string) => openHelp(topic),
   alignClips: (clipIds: string[], refTrackId: string) => alignClipsTo(clipIds, refTrackId),

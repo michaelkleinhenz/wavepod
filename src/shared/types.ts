@@ -160,7 +160,7 @@ export interface EnvelopePoint {
   db: number;
 }
 
-export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'bandpass' | 'distortion' | 'echo' | 'space' | 'pitch' | 'ringmod' | 'chorus' | 'convolution' | 'voiceclean' | 'declick' | 'breath' | 'smartdeess' | 'dehum' | 'declip' | 'leveler' | 'vst3';
+export type FxType = 'highpass' | 'eq' | 'gate' | 'compressor' | 'deesser' | 'limiter' | 'dynamics' | 'denoise' | 'reverb' | 'bandpass' | 'distortion' | 'echo' | 'space' | 'pitch' | 'ringmod' | 'chorus' | 'convolution' | 'voiceclean' | 'declick' | 'breath' | 'smartdeess' | 'dehum' | 'declip' | 'leveler' | 'matcheq' | 'vst3';
 
 /** One filter in a track's or the master's filter stack. */
 export interface Fx {
@@ -180,6 +180,8 @@ export interface Fx {
   preset?: FxPresetRef;
   /** Convolution reverb only: the impulse response it uses. */
   ir?: ImpulseRef;
+  /** Voice match only: the learned EQ curve. */
+  match?: MatchCurve;
 }
 
 /** An impulse response file: a WAV in the user's "Impulse responses" folder (or an absolute path). */
@@ -292,6 +294,13 @@ export interface EpisodeMetadata {
   hidden?: boolean;
   /** Tells Apple Podcasts not to list it ("block"). */
   hideOnPlatforms?: boolean;
+}
+
+/** A learned voice match curve: dB per third-octave band (MATCH_BANDS) and what it matches. */
+export interface MatchCurve {
+  gains: number[];
+  /** What the voice was matched to, for the user (e.g. a track name). */
+  reference: string;
 }
 
 export type BitDepth = 16 | 24 | 32;

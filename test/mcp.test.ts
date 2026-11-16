@@ -380,3 +380,30 @@ describe('MCP script', () => {
     expect(r.data.lines.map((l: { text: string }) => l.text)).toEqual(['INT. TRAIN', 'I lost mine.']);
   });
 });
+
+describe('MCP voice match', () => {
+  it('learns a curve from two tracks and puts a Voice match filter on the track', async () => {
+    const fake = fakeHost();
+    const sr = fake.project.sampleRate;
+    let asked: { src: string[]; ref: string[] } | null = null;
+    const gains = Array.from({ length: 28 }, (_, i) => (i === 20 ? 4 : 0));
+    fake.host.learnMatch = async (src, ref) => {
+      asked = { src, ref };
+      return { gains, sourceSeconds: 50, referenceSeconds: 40 };
+    };
+    const server = createWavePodServer(fake.host, '1');
+    const p = fake.project;
+    p.tracks[0].clips.push({ id: 'h', file: 'h.wav', start: 0, offset: 0, length: 60 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    p.tracks[1].clips.push({ id: 'g', file: 'g.wav', start: 0, offset: 0, length: 60 * sr, gain: 0, fadeIn: 0, fadeOut: 0 });
+    fake.host.apply(p, 'setup');
+    let r = await call(server, 'match_voice', { track: 'Guest', to: 'Host', amount: 60 });
+    expect(asked).toEqual({ src: ['g'], ref: ['h'] });
+    expect(r.data.curveDb['1.6 kHz']).toBe(0);
+    expect(fxList(fake.project, fake.project.tracks[1].id)[0]).toMatchObject({ type: 'matcheq', params: { amount: 60 }, match: { gains, reference: 'Host' } });
+    expect(fake.summaries.at(-1)).toBe('Guest now matches the voice of Host');
+    // learning again updates the same filter
+    r = await call(server, 'match_voice', { track: 'Guest', to: 'Host' });
+    expect(fxList(fake.project, fake.project.tracks[1].id).filter((f) => f.type === 'matcheq')).toHaveLength(1);
+    expect((await call(server, 'match_voice', { track: 'Guest', to: 'Guest' })).isError).toBe(true);
+  });
+});

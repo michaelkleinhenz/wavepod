@@ -21,6 +21,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | --- | --- |
 | **High-pass** | Removes rumble, handling noise and plosive thumps below the voice. |
 | **Equalizer** | Parametric EQ: low shelf, two bell bands and a high shelf. |
+| **Voice match** | Makes a voice sound like a reference: a guest's mic like the host's, or a retake like the original take. See [Repair filters](#repair-filters). |
 | **Noise gate** | Turns the track down while nobody speaks into it (room noise, other speakers bleeding in). Pre-open looks ahead so the gate is already open when a word starts. |
 | **Voice leveler** | Rides each speaker's level slowly towards a target, like a hand on the fader, before the compressor. See [Repair filters](#repair-filters). |
 | **Compressor** | Evens out loud and quiet passages of a voice. |
@@ -158,6 +159,31 @@ Put De-clip first on the track, before any other filter, because it has to see t
 Only speech moves the leveler. In pauses, breaths and room noise it holds still, so it does not pump the background up between sentences. It looks 300 ms ahead so it can move before a phrase starts. That adds 300 ms of latency, which WavePod compensates. The card shows how far it is currently turning the speaker up (+) or down (−).
 
 The **Dynamics** filter also brings a voice to a target loudness, but it acts faster and gates the noise. Use Voice leveler when you want a natural, slow correction, or put it before Dynamics to give it an even start.
+
+### Voice match
+
+**Voice match** makes one voice sound like another recording. Typical cases:
+
+- A guest's mic sounds thin or boomy next to the host's: put Voice match on the guest's track and match it to the host.
+- A retake or pickup recorded on another day (another room, another mic position) stands out from the rest. Give that clip its own filter (**FX** on the clip) and match it to *the rest of* its track.
+
+Add the filter, choose the voice to sound like under **Sound like**, and press **Learn**. WavePod compares the tone of the speech in both (pauses are left out) and sets a smooth EQ that brings this voice towards the reference. The card then shows the learned curve: above the line is raised, below is lowered. Hold the mouse over it to see each band.
+
+| Control | What it sets |
+| --- | --- |
+| **Amount** | How far the voice moves towards the reference. 100 % is the whole difference; 50–80 % keeps some of the voice's own character. |
+| **Detail** | *Broad* follows only the overall shape (smooth, safe); *Fine* also matches narrow differences, such as a resonance of the room or the mic. |
+
+Good to know:
+
+- Only the tone is matched, not the loudness. Level the voices with Voice leveler or Dynamics.
+- Learn needs a few seconds of speech in both, and works best with a minute or more. Learn again after you have recorded or cut a lot.
+- It matches what the mic and room did to the voice, not the voice itself. Two different people keep sounding like themselves, just as if they had used the same mic.
+- Missing frequencies cannot be brought back: a phone line has nothing above about 3.5 kHz, so Voice match leaves those bands alone.
+- Save a learned match as a preset (for example *Guest on the SM7B*) to use it in the next episode. The preset keeps the curve.
+- AI agents can do the same with `match_voice`.
+
+It adds no latency.
 
 ## Presets
 
