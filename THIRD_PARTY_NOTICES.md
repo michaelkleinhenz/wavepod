@@ -62,6 +62,34 @@ wasm-media-encoders:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
+### DeepFilterNet 3 (MIT OR Apache-2.0) and tract (MIT OR Apache-2.0)
+
+The **AI voice cleanup** filter (`resources/voiceclean.wasm`, built from
+`native/voiceclean/`) contains the [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet)
+3 model and the real-time part of its `libDF` library, Copyright (c) 2021
+Hendrik Schröter, dual-licensed under the MIT License and the Apache License
+2.0 (`native/voiceclean/deep_filter/LICENSE-MIT` and
+[LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)); WavePod uses them under
+the MIT License. The copy in `native/voiceclean/deep_filter/` is trimmed to
+that runtime and adds a hook before the inverse STFT (see
+`native/voiceclean/README.md`). The model file `DeepFilterNet3_onnx.tar.gz` is
+taken unchanged from the DeepFilterNet repository.
+
+The model runs on [tract](https://github.com/sonos/tract), Copyright Sonos,
+Inc., MIT OR Apache-2.0. Other Rust crates compiled into the module:
+
+| Crates | License |
+| --- | --- |
+| ndarray, num-complex, num-traits, rustfft, itertools, flate2, tar, anyhow, log, rand, regex, serde, smallvec, half, hashbrown, ahash, crossbeam, getrandom and other small crates | MIT OR Apache-2.0 |
+| realfft, rubato, rust-ini, ordered-multimap, nom, libm, bytes, derive-new, scan_fmt | MIT |
+| prost (ONNX protobuf) | Apache-2.0 |
+| miniz_oxide | MIT OR Zlib OR Apache-2.0 |
+| zlib-rs | Zlib |
+| memchr, aho-corasick, byteorder, walkdir | Unlicense OR MIT |
+
+The exact list with versions is in `native/voiceclean/Cargo.lock`; each
+crate's license text is in its source package on crates.io.
+
 ### audify (MIT) and RtAudio (MIT-style)
 
 <https://github.com/almoghamdani/audify>, built from source with the changes in

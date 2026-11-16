@@ -66,6 +66,7 @@ function saveCollapsed(ids: Set<string>): void {
 
 function formatValue(spec: FxParamSpec, v: number): string {
   if (spec.options) return spec.options.find((o) => o.value === v)?.label ?? String(v);
+  if (spec.offAt !== undefined && v <= spec.offAt) return 'Off';
   if (spec.unit === 'Hz') return v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 1 : 2)} kHz` : `${Math.round(v)} Hz`;
   const digits = spec.step < 0.1 ? 2 : spec.step < 1 ? 1 : 0;
   const s = v.toFixed(digits);
@@ -931,7 +932,7 @@ const GAIN_RANGE = 24;
 const PEAK_DECAY = 0.8;
 const toDb = (v: number) => (v > 1e-6 ? Math.max(METER_FLOOR, 20 * Math.log10(v)) : METER_FLOOR);
 /** Filters that change gain dynamically show a gain meter; the others show in/out levels only. */
-const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamics', 'denoise']);
+const GAIN_TYPES = new Set(['gate', 'compressor', 'deesser', 'limiter', 'dynamics', 'denoise', 'voiceclean']);
 
 /**
  * Live meters of one filter card: input and output level, and for dynamic filters the gain they

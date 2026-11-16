@@ -27,6 +27,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Limiter** | Keeps peaks below the ceiling. |
 | **Dynamics** | Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. A port of Ultraschall's Dynamics. |
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
+| **AI voice cleanup** | Separates the voice from background noise and from the room's echo with a neural network, and gives each part its own level: Voice, Ambience and Reverb. See [AI voice cleanup](#ai-voice-cleanup). |
 | **Reverb** | Adds room to a dry signal, for example a jingle bed or a voice that sounds too close. **Decay (RT60)** sets how long the tail lasts in seconds (a furnished room is about 0.3–0.5 s, a church 2–4 s); **Room size** sets how dense and spread out it is. |
 | **Band-pass** | Keeps only the frequencies between the low and the high cut: telephone, radio and walkie-talkie voices, or a muffled voice behind a wall. |
 | **Distortion** | Saturation, clipping or fuzz, optionally with fewer bits and a lower sample rate. |
@@ -37,15 +38,43 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |
 | **Chorus / flanger** | Chorus, flanger and vibrato: magic, dreams, teleports, ghosts. |
 
-Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
+Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
 
 For the voice effects (telephone, robot, giant, …) and places (kitchen, church, forest, …), see [Audio drama](audio-drama.md).
+
+## AI voice cleanup
+
+**AI voice cleanup** takes a recording apart into three parts and lets you mix them back at the level you want:
+
+| Control | What it sets |
+| --- | --- |
+| **Voice** | The dry voice. Leave it at 0 dB, or raise it a little to bring a speaker forward. |
+| **Ambience** | Everything that is not the voice and not the room's echo: fan and air-conditioning noise, hum, traffic, wind, a café, music playing in the background. |
+| **Reverb** | The echo of the room on the voice: the hollow sound of a kitchen, an office or a large hall. |
+
+All the way down (**Off**, −60 dB) a part is gone; 0 dB leaves it as it was recorded. With all three at 0 dB you hear the original. By default the filter removes the background completely and leaves a little room (−15 dB), which sounds natural; the presets cover the common cases:
+
+- *Studio voice* removes all noise and room, as if recorded in a booth.
+- *Natural room* and *Street interview* keep a hint of the place.
+- *Noise only* and *Room only* touch just one of the two.
+- *Remote guest* is made for laptop and phone recordings.
+- *Atmo only (no voice)* keeps only the background, for room tone and atmos in an audio drama.
+
+How it works: a neural network ([DeepFilterNet 3](https://github.com/Rikorose/DeepFilterNet)) separates speech from everything else, and a room model predicts the echo of each sound from what was said a moment before, using the room's reverberation time. WavePod measures that time by itself from how fast the sound dies away after words, so the Reverb control gets better over the first 10–20 seconds of a recording; a jump in the timeline keeps what it has learned.
+
+Good to know:
+
+- It runs **on your computer**, on the processor (no graphics card needed), and nothing is uploaded. Each mono track takes roughly a tenth of one processor core; a stereo track twice that.
+- It is meant for **voices**. On music, singing or sound effects it takes away much of what you want to keep. Put it on the voice tracks, not on the master.
+- It adds about **40 ms of latency**, which WavePod compensates during playback and export. Your recordings stay untouched: the filter works live while you play and edit, and in the export. WavePod does not send inputs through filters while recording, so what you hear on headphones while recording is not cleaned.
+- Very strong settings on a very noisy or very echoey recording can make a voice sound thin or slightly processed. Turning **Ambience** or **Reverb** up a few dB from Off usually sounds more natural than removing everything.
+- The simpler **Noise reduction** filter needs far less processing power and is enough for steady hiss.
 
 ## Presets
 
 Every filter card has a **Presets…** menu.
 
-- Built-in filters come with **factory presets** tuned for speech, for example Compressor *Spoken word*, EQ *Clarity for dynamic mics* or Noise reduction *Computer fan*. Hover one to see what it is for. *Default* goes back to the starting values.
+- Built-in filters come with **factory presets** tuned for speech, for example Compressor *Spoken word*, EQ *Clarity for dynamic mics*, Noise reduction *Computer fan* or AI voice cleanup *Studio voice*. Hover one to see what it is for. *Default* goes back to the starting values.
 - VST3 plug-ins offer their own programs (factory presets) there.
 - **Save as preset…** stores the current settings (for VST3 plug-ins including the plug-in's state) as your own preset, available in every episode. Rename (✎) or delete (🗑) the preset that is loaded.
 - The menu shows *(edited)* once you change a value after loading a preset.

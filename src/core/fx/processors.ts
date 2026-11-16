@@ -10,6 +10,7 @@ import { BandPass, DistortionMix, Echo } from './drama';
 import { Space } from './space';
 import { Chorus, PitchShift, RingMod } from './voiceMod';
 import { Convolution } from './convolution';
+import { VoiceClean } from './voiceClean';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -365,6 +366,8 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new Convolution(sampleRate, fx?.ir);
     case 'chorus':
       return new Chorus(sampleRate);
+    case 'voiceclean':
+      return new VoiceClean(sampleRate);
   }
 }
 

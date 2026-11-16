@@ -43,6 +43,7 @@ import { createProjectFromTemplate, deleteTemplate, listTemplates, saveTemplate 
 import { deleteUserPreset, listUserPresets, loadUserPreset, renameUserPreset, saveUserPreset } from './presetStore';
 import { createPresetLibrary } from '../core/fx/presetLibrary';
 import { setImpulseDir } from '../core/fx/convolution';
+import { setVoiceCleanWasm } from '../core/fx/voiceClean';
 import { importImpulse, listImpulses } from './impulseStore';
 import { normalizeMidiSettings, type MidiSettings } from '../core/midi';
 import { migrateUserData, resolveProjectsRoot } from './legacyPaths';
@@ -513,7 +514,7 @@ const speech = new SpeechService({
 function runWorker<T>(data: unknown, onProgress?: (p: unknown) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'exportWorker.js'), {
-      workerData: { ...(data as object), vstExe, vstBridge: path.join(__dirname, 'vstBridge.js'), impulseDir: impulseRoot() },
+      workerData: { ...(data as object), vstExe, vstBridge: path.join(__dirname, 'vstBridge.js'), impulseDir: impulseRoot(), voiceCleanWasm: voiceCleanWasm() },
     });
     worker.on('message', (msg: { type: string; result?: T; progress?: unknown; message?: string }) => {
       if (msg.type === 'progress') onProgress?.(msg.progress);
@@ -1561,12 +1562,18 @@ function createWindow(): void {
   });
 }
 
+/** The voice cleanup filter's WebAssembly: in the resources of a packaged app, next to the bundle otherwise. */
+function voiceCleanWasm(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'voiceclean.wasm') : path.join(__dirname, 'voiceclean.wasm');
+}
+
 app.whenReady().then(() => {
   if (!primaryInstance) return;
   // Windows shows notifications only for an app with an id (the installer uses the same one).
   if (process.platform === 'win32') app.setAppUserModelId('net.kleinhenz.wavepod');
   settings = loadSettings();
   setImpulseDir(impulseRoot());
+  setVoiceCleanWasm(voiceCleanWasm());
   const useNative = process.env.WAVEPOD_SIMULATED !== '1';
   engine = new AudioEngine(useNative ? () => new RtAudioBackend() : null);
   camPod = new CamPodFollower(

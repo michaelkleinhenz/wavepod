@@ -3,3 +3,6 @@
 # patch-package needs the audify patch byte for byte: it mixes CRLF and LF lines
 # like the files it patches, so Git must never convert its line endings (Windows).
 patches/*.patch -text
+# built WebAssembly and the packed model
+*.wasm binary
+*.tar.gz binary

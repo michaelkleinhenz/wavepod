@@ -10,6 +10,7 @@ import { renderFused } from '../core/fuseRender';
 import { setVstHost } from '../core/fx/vst';
 import { VstHostProcess } from './vst/host';
 import { setImpulseDir } from '../core/fx/convolution';
+import { setVoiceCleanWasm } from '../core/fx/voiceClean';
 
 interface Job {
   kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav' | 'fuse';
@@ -33,12 +34,15 @@ interface Job {
   vstBridge?: string;
   /** Where convolution filters find their impulse responses. */
   impulseDir?: string;
+  /** Where the voice cleanup filter's WebAssembly is. */
+  voiceCleanWasm?: string;
   /** importWav: the episode's sample rate. */
   sampleRate?: number;
 }
 
 const job = workerData as Job;
 if (job.impulseDir) setImpulseDir(job.impulseDir);
+if (job.voiceCleanWasm) setVoiceCleanWasm(job.voiceCleanWasm);
 // VST3 filters render through a host process of this worker's own
 const usesVst = job.kind !== 'clips' && job.kind !== 'align' && job.kind !== 'stretch' && job.kind !== 'importWav' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
 const vstHost = usesVst && job.vstExe && job.vstBridge ? new VstHostProcess(job.vstExe, job.vstBridge) : null;
