@@ -159,7 +159,9 @@ brackets):
   after a minimum length); Smart de-esser & de-plosive (band share relative
   to the voice, reduced just to a target balance, with 3 ms look-ahead);
   De-hum (harmonic Goertzel search for 50/60 Hz, frequency-locked loop on
-  the phase of per-harmonic LMS sine models, which are subtracted).
+  the phase of per-harmonic LMS sine models, which are subtracted); De-clip
+  (flat runs at the held peak level, refilled by linear prediction and kept
+  at least at the clip level).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices

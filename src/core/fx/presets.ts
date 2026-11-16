@@ -316,6 +316,12 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Harsh buzz', 'Ground loops and dimmers: many overtones up to over 1 kHz.', { harmonics: 20 }],
     ['Hear the hum', 'Plays only what the filter takes out.', { output: 1 }],
   ],
+  declip: [
+    ['Light clipping', 'A few overloaded peaks: rebuilds them and keeps the level.', { gain: -1 }],
+    ['Heavy clipping', 'Many clipped words: more headroom for the rebuilt peaks.', { gain: -6, minRun: 2 }],
+    ['Careful', 'Only clear flat tops of four samples or more.', { minRun: 4 }],
+    ['Hear the rebuilt peaks', 'Plays only what the filter adds back.', { output: 1, gain: 0 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],
