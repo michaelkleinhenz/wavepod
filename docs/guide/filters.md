@@ -32,6 +32,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
 | **De-clip** | Rebuilds peaks that were cut flat because the recording was too loud. See [Repair filters](#repair-filters). |
 | **De-hum** | Removes the 50 or 60 Hz hum and buzz of a ground loop or a bad cable, following its exact frequency. See [Repair filters](#repair-filters). |
+| **Speech restoration** | Brings back the highs and lows that a phone line, a Zoom or Teams call or a low-bitrate recording cut off, so a remote guest sounds fuller next to a studio mic. See [Repair filters](#repair-filters). |
 | **AI voice cleanup** | Separates the voice from background noise and from the room's echo with a neural network, and gives each part its own level: Voice, Ambience and Reverb. See [AI voice cleanup](#ai-voice-cleanup). |
 | **Mouth de-click** | Removes lip smacks, tongue clicks and the sticky clicks of a dry mouth, and fills each one in from the voice around it. See [Repair filters](#repair-filters). |
 | **Breath control** | Finds the breaths between phrases and turns them down, without cutting them out. See [Repair filters](#repair-filters). |
@@ -179,9 +180,29 @@ Good to know:
 - Only the tone is matched, not the loudness. Level the voices with Voice leveler or Dynamics.
 - Learn needs a few seconds of speech in both, and works best with a minute or more. Learn again after you have recorded or cut a lot.
 - It matches what the mic and room did to the voice, not the voice itself. Two different people keep sounding like themselves, just as if they had used the same mic.
-- Missing frequencies cannot be brought back: a phone line has nothing above about 3.5 kHz, so Voice match leaves those bands alone.
+- Voice match cannot bring back missing frequencies: a phone line has nothing above about 3.5 kHz, so it leaves those bands alone. Put **Speech restoration** before it to rebuild them first.
 - Save a learned match as a preset (for example *Guest on the SM7B*) to use it in the next episode. The preset keeps the curve.
 - AI agents can do the same with `match_voice`.
+
+It adds no latency.
+
+### Speech restoration
+
+**Speech restoration** is for a guest on a phone line, a Zoom, Teams or Skype call, or an old low-bitrate MP3. Those cut off the top of the voice (above 3.4 kHz on a phone, 7–8 kHz on most calls) and, on a phone, the bottom below about 300 Hz, so the guest sounds small and boxed in next to a studio mic. The filter finds where the voice was cut off and rebuilds the missing parts from the voice that is there: the overtones above the edge grow from the octave below it, and the fundamental below a phone's edge grows from the octave above. Each rebuilt band rises and falls with the voice and is kept at about the level a full-range voice has there.
+
+| Control | What it sets |
+| --- | --- |
+| **Source** | *Find it* listens to the speech and finds the limits by itself (it needs a second or two of speech, and the card's meter starts moving when it has found them). Or pick the kind of recording: *Phone*, *Mobile / HD voice*, *Zoom, Teams, Skype* or *Low-bitrate MP3*. |
+| **Highs** | Level of the rebuilt highs. 0 dB is a little under a natural voice; turn it down if *s* sounds get harsh, all the way down to switch the highs off. |
+| **Lows** | Level of the rebuilt lows (only on phone-like recordings that have none). All the way down switches them off. |
+| **Listen to** | *What is added* plays only the rebuilt parts, to hear what the filter does. |
+
+Good to know:
+
+- It cannot bring back what was never recorded: the words stay as clear as they were, but the voice no longer sounds like it comes through a pipe.
+- If the recording has nothing missing, the filter adds nothing.
+- Put it early in the chain, after noise reduction or AI voice cleanup (so it does not rebuild noise) and before Voice match and the compressor.
+- The card shows how much it adds, in dB.
 
 It adds no latency.
 

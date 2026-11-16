@@ -18,6 +18,7 @@ import { DeHum } from './dehum';
 import { DeClip } from './declip';
 import { VoiceLeveler } from './leveler';
 import { MatchEq } from './matchEq';
+import { SpeechRestore } from './restore';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -389,6 +390,8 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new VoiceLeveler(sampleRate);
     case 'matcheq':
       return new MatchEq(sampleRate, fx?.match);
+    case 'restore':
+      return new SpeechRestore(sampleRate);
   }
 }
 

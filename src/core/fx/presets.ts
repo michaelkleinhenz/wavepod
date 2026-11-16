@@ -339,6 +339,14 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Smooth full match', 'The whole difference, but only its broad shape.', { amount: 100, detail: 0 }],
     ['Hint', 'Just a touch of the reference, for voices that are already close.', { amount: 30, detail: 0 }],
   ],
+  restore: [
+    ['Phone call', 'A guest on a landline or mobile call: rebuilds the highs above 3.4 kHz and the lows below 300 Hz.', { source: 1 }],
+    ['Zoom / Teams guest', 'Video-call audio that stops at 8 kHz: adds air and clarity on top.', { source: 3, lows: -18 }],
+    ['Gentle', 'Just a hint of what is missing, for a voice that is only a little dull.', { highs: -6, lows: -6 }],
+    ['Strong', 'Brings back as much as sounds natural, for very thin phone audio.', { highs: 4, lows: 3 }],
+    ['Highs only', 'Leaves the lows alone, for a call that already has enough body.', { lows: -18 }],
+    ['Hear what is added', 'Plays only the rebuilt highs and lows.', { output: 1 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],
