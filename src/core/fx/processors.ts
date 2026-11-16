@@ -12,6 +12,7 @@ import { Chorus, PitchShift, RingMod } from './voiceMod';
 import { Convolution } from './convolution';
 import { VoiceClean } from './voiceClean';
 import { MouthDeclick } from './declick';
+import { BreathControl } from './breath';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -371,6 +372,8 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new VoiceClean(sampleRate);
     case 'declick':
       return new MouthDeclick(sampleRate);
+    case 'breath':
+      return new BreathControl(sampleRate);
   }
 }
 
