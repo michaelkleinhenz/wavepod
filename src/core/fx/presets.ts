@@ -322,6 +322,13 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Careful', 'Only clear flat tops of four samples or more.', { minRun: 4 }],
     ['Hear the rebuilt peaks', 'Plays only what the filter adds back.', { output: 1, gain: 0 }],
   ],
+  leveler: [
+    ['Interview', 'Evens out guests who move around or trail off, without sounding processed.', { target: -20, range: 12, speed: 1 }],
+    ['Gentle', 'Only slow, small corrections: keeps the speaker\'s own dynamics.', { range: 5, speed: 0 }],
+    ['Remote guest', 'Laptop and phone guests whose level jumps a lot.', { range: 14, speed: 2 }],
+    ['Audiobook (−23 LUFS)', 'Calm, even narration at broadcast level.', { target: -23, range: 6, speed: 0 }],
+    ['Loud (−16 LUFS)', 'Brings the voice close to podcast loudness before the limiter.', { target: -16, range: 12, speed: 1 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],

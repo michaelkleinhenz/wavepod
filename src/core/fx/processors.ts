@@ -16,6 +16,7 @@ import { BreathControl } from './breath';
 import { SmartDeesser } from './smartDeess';
 import { DeHum } from './dehum';
 import { DeClip } from './declip';
+import { VoiceLeveler } from './leveler';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -383,6 +384,8 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new DeHum(sampleRate);
     case 'declip':
       return new DeClip(sampleRate);
+    case 'leveler':
+      return new VoiceLeveler(sampleRate);
   }
 }
 
