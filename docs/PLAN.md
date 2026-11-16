@@ -165,7 +165,10 @@ brackets):
   speech-only blocks, slow gain towards a target within a range, 300 ms
   look-ahead, held in pauses); Voice match (third-octave long-term speech
   spectra of source and reference clips, learned in the export worker, fitted
-  as a bank of bell filters; MCP match_voice).
+  as a bank of bell filters; MCP match_voice); Speech restoration (band
+  limits found from the long-term speech spectrum, missing highs and lows
+  rebuilt by rectifying the octave next to the edge, two stages above,
+  each held at a natural share of its source band's energy).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices

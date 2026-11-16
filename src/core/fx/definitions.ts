@@ -70,6 +70,19 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'restore',
+    name: 'Speech restoration',
+    aliases: ['Bandwidth extension', 'Restore', 'Phone restore', 'Enhance', 'Speech enhance', 'Telephone restore', 'Zoom restore'],
+    description:
+      'Brings back what a phone line, a Zoom or Teams call or a low-bitrate recording cut off: the highs above 3.4, 7 or 8 kHz and, on a phone, the lows below 300 Hz. It finds those limits by itself and rebuilds the missing parts from the voice that is there, so a guest on the phone sounds fuller and clearer next to a studio mic. It cannot invent detail that was never recorded, but the voice no longer sounds boxed in. No latency.',
+    params: [
+      { key: 'source', label: 'Source', min: 0, max: 4, step: 1, default: 0, options: [{ value: 0, label: 'Find it' }, { value: 1, label: 'Phone (300 Hz–3.4 kHz)' }, { value: 2, label: 'Mobile / HD voice (7 kHz)' }, { value: 3, label: 'Zoom, Teams, Skype (8 kHz)' }, { value: 4, label: 'Low-bitrate MP3 (11 kHz)' }] },
+      { ...db('highs', 'Highs', 0, -18, 6), offAt: -18 },
+      { ...db('lows', 'Lows', 0, -18, 6), offAt: -18 },
+      { key: 'output', label: 'Listen to', min: 0, max: 1, step: 1, default: 0, options: [{ value: 0, label: 'Restored voice' }, { value: 1, label: 'What is added' }] },
+    ],
+  },
+  {
     type: 'gate',
     name: 'Noise gate',
     description:
