@@ -14,6 +14,7 @@ import { VoiceClean } from './voiceClean';
 import { MouthDeclick } from './declick';
 import { BreathControl } from './breath';
 import { SmartDeesser } from './smartDeess';
+import { DeHum } from './dehum';
 
 export interface FxProcessor {
   /** Delay the processor adds, in frames (compensated by the mixer). */
@@ -377,6 +378,8 @@ export function createProcessor(type: FxType, sampleRate: number, fx?: Fx): FxPr
       return new BreathControl(sampleRate);
     case 'smartdeess':
       return new SmartDeesser(sampleRate);
+    case 'dehum':
+      return new DeHum(sampleRate);
   }
 }
 
