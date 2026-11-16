@@ -1040,8 +1040,6 @@ export interface LetsCastInfo {
   /** Last podcast and episode the user uploaded to (slugs), to preselect them. */
   podcast: string;
   episode: string;
-  /** What the last upload sent. */
-  parts: LetsCastParts;
 }
 
 /** What an upload to LetsCast.fm sends. Empty values in WavePod are never sent, so they don't clear anything there. */

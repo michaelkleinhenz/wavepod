@@ -23,7 +23,10 @@ export class LetsCastDialog {
   private linkDraft = '';
   /** WavePod's episode number was looked up on LetsCast: the slug found there, '' for none, null while looking. */
   private matched: string | null = null;
-  private parts: LetsCastParts = { audio: true, details: true, showNotes: true, cover: true };
+  /** Only the audio is ticked when the dialog opens. */
+  private parts: LetsCastParts = { audio: true, details: false, showNotes: false, cover: false };
+  /** The MP3 the export dialog just wrote, uploaded as it is instead of rendering again. */
+  private mp3: string | undefined;
 
   constructor() {
     this.overlay.addEventListener('mousedown', (e) => {
@@ -35,7 +38,9 @@ export class LetsCastDialog {
     api().onExportProgress((p) => this.progress(p));
   }
 
-  async open(): Promise<void> {
+  async open(mp3?: string): Promise<void> {
+    this.mp3 = mp3;
+    this.parts = { audio: !!mp3 || store.project.tracks.some((t) => t.clips.length), details: false, showNotes: false, cover: false };
     this.result = null;
     this.status = '';
     this.error = '';
@@ -45,9 +50,7 @@ export class LetsCastDialog {
     try {
       this.info = await api().letscastStatus();
       this.podcast = this.info.podcast;
-      this.episode = this.info.episode;
-      this.parts = { ...this.info.parts };
-      if (!store.project.tracks.some((t) => t.clips.length)) this.parts.audio = false;
+      this.episode = '';
       this.render();
       if (this.info.signedIn) await this.loadPodcasts();
     } catch (e) {
@@ -92,7 +95,8 @@ export class LetsCastDialog {
         if (hit && !this.episodes.some((e) => e.slug === hit.slug)) this.episodes = [hit, ...this.episodes];
         this.matched = hit?.slug ?? '';
         this.episode = this.matched;
-      } else if (!this.episodes.some((e) => e.slug === this.episode)) {
+      } else {
+        // without a number nothing can match: a new episode unless the user picks one
         this.episode = '';
       }
       this.render();
@@ -157,10 +161,10 @@ export class LetsCastDialog {
     this.busy = true;
     this.result = null;
     this.error = '';
-    this.status = parts.audio ? 'Rendering the MP3…' : 'Sending…';
+    this.status = parts.audio && !this.mp3 ? 'Rendering the MP3…' : 'Sending…';
     this.render();
     try {
-      const r = await api().uploadToLetsCast(this.podcast, this.episode, parts);
+      const r = await api().uploadToLetsCast(this.podcast, this.episode, parts, parts.audio ? this.mp3 : undefined);
       this.result = r.url;
       this.status = '';
       if (!this.episode) {
@@ -212,7 +216,7 @@ export class LetsCastDialog {
       ...(this.podcasts ?? []).map((p) => h('option', { value: p.slug, selected: p.slug === this.podcast }, p.title)),
     );
     const number = store.project.metadata.episode.trim();
-    const canCreate = /^\d+$/.test(number) && this.matched === '';
+    const hasNumber = /^\d+$/.test(number);
     const episodeSel = h(
       'select',
       {
@@ -223,7 +227,7 @@ export class LetsCastDialog {
           void this.loadDetails();
         },
       },
-      h('option', { value: '', selected: !this.episode }, !this.episodes ? 'Loading…' : canCreate ? `New episode ${number} (created on upload)` : 'Choose an episode'),
+      h('option', { value: '', selected: !this.episode }, !this.episodes ? 'Loading…' : hasNumber ? `New episode ${number}` : 'New episode'),
       ...(this.episodes ?? []).map((e) => h('option', { value: e.slug, selected: e.slug === this.episode }, e.info ? `${e.title} · ${e.info}` : e.title)),
     );
     const linkRow = h(
@@ -243,7 +247,8 @@ export class LetsCastDialog {
     );
     const s = store.project.exportSettings;
     const m = store.project.metadata;
-    const hasAudio = store.project.tracks.some((t) => t.clips.length);
+    const hasAudio = !!this.mp3 || store.project.tracks.some((t) => t.clips.length);
+    const fileName = this.mp3 ? this.mp3.split(/[\\/]/).pop() : '';
     const what = `${s?.mp3Bitrate ?? 128} kbps${s?.mono ? ' mono' : ''}${s?.normalize === false ? '' : `, ${String(s?.targetLufs ?? -16).replace('-', '−')} LUFS`}`;
     const yes = (v: boolean | undefined, on: string, off: string) => (v === undefined ? '' : v ? on : off);
     const details = [
@@ -287,20 +292,21 @@ export class LetsCastDialog {
       showNotes: chosen('showNotes', !!notes && !notesThere),
       cover: chosen('cover', !!m.artwork),
     };
-    const target = signedIn && !!this.podcast && (!!this.episode || canCreate);
-    const ready = target && !this.busy && (this.matched !== null || !/^\d+$/.test(number)) && Object.values(sends).some(Boolean) && (!!this.episode || !!m.publishDate);
+    const missing = [!m.title.trim() && 'a title', !m.publishDate && 'a publishing date'].filter(Boolean).join(' and ');
+    const looking = hasNumber && this.matched === null;
+    const ready = signedIn && !!this.podcast && !!this.episodes && !this.busy && !looking && (this.episode ? Object.values(sends).some(Boolean) : !missing);
     const found =
-      !signedIn || !this.episodes || !/^\d+$/.test(number)
+      !signedIn || !this.episodes
         ? null
-        : this.matched === null
+        : looking
           ? h('p', { class: 'muted' }, `Looking for episode ${number} on LetsCast.fm…`)
-          : this.matched
-            ? this.episode === this.matched
+          : this.episode
+            ? this.matched && this.episode === this.matched
               ? h('p', { class: 'muted' }, `Episode ${number} is already on LetsCast.fm, so it is updated.`)
               : null
-            : !this.episode
-              ? h('p', { class: m.publishDate ? 'muted' : 'warning' }, m.publishDate ? `There is no episode ${number} on LetsCast.fm yet, so it is created.` : `There is no episode ${number} on LetsCast.fm yet. Set a publishing date in the episode details to create it.`)
-              : null;
+            : missing
+              ? h('p', { class: 'warning' }, `A new episode is created. It needs ${missing}: set ${missing.includes(' and ') ? 'them' : 'it'} in the episode details (Chapters view).`)
+              : h('p', { class: 'muted' }, `A new episode "${m.title.trim()}" is created${hasNumber ? ` as number ${number}` : ''}, with its publishing date.`);
     const dialog = h(
       'div',
       { class: 'dialog narrow letscast-dialog' },
@@ -315,7 +321,7 @@ export class LetsCastDialog {
       found,
       linkRow,
       h('h3', null, 'Send'),
-      part('audio', 'Audio', hasAudio ? `MP3, ${what}, as set in File › Export` : 'no audio yet', hasAudio),
+      part('audio', 'Audio', this.mp3 ? `the exported ${fileName}` : hasAudio ? `MP3, ${what}, as set in File › Export` : 'no audio yet', hasAudio),
       part('details', 'Episode details', details || 'none filled in (Chapters view)', !!details),
       part('showNotes', 'Show notes', notesThere ? 'the episode there has show notes already; they are kept' : notes ? `${notes.length} characters` : 'none filled in (Chapters view)', !!notes && !notesThere),
       part('cover', 'Episode cover', m.artwork ? 'the cover from the Chapters view' : 'no cover set', !!m.artwork),
@@ -329,7 +335,7 @@ export class LetsCastDialog {
         'div',
         { class: 'row end' },
         h('button', { disabled: this.busy, onclick: () => this.close() }, 'Close'),
-        h('button', { class: 'primary', disabled: !ready, onclick: () => void this.upload({ ...this.parts, audio: sends.audio }) }, this.busy ? 'Uploading…' : this.episode ? 'Upload' : 'Create and upload'),
+        h('button', { class: 'primary', disabled: !ready, onclick: () => void this.upload({ ...this.parts, audio: sends.audio }) }, this.busy ? 'Uploading…' : this.episode ? 'Upload' : 'Create Episode and Upload'),
       ),
     );
     this.overlay.append(dialog);

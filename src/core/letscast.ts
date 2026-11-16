@@ -170,10 +170,13 @@ export class LetsCastClient {
     return { audio: after.audio };
   }
 
-  /** Creates a new episode with this number (the fields must include a publishing date); returns its slug. */
-  async createEpisode(podcast: string, number: string, u: LetsCastEpisodeUpdate, progress: (p: UploadProgress) => void = () => {}): Promise<string> {
-    if (!u.fields?.some(([k]) => k === 'episode[publishing_date]')) throw new Error('Set a publishing date in the episode details: LetsCast.fm needs one for a new episode.');
+  /** Creates a new episode (the fields must include a title and a publishing date); returns its slug. */
+  async createEpisode(podcast: string, u: LetsCastEpisodeUpdate, progress: (p: UploadProgress) => void = () => {}): Promise<string> {
+    const field = (name: string) => u.fields?.find(([k]) => k === `episode[${name}]`)?.[1] ?? '';
+    if (!field('title')) throw new Error('Set an episode title in the episode details: LetsCast.fm needs one for a new episode.');
+    if (!field('publishing_date')) throw new Error('Set a publishing date in the episode details: LetsCast.fm needs one for a new episode.');
     progress({ phase: 'Connecting to LetsCast.fm', fraction: 0 });
+    const known = new Set((await this.episodes(podcast)).map((e) => e.slug));
     const csrf = parseEpisodePage(await this.page(`/podcasts/${podcast}/episodes/new`)).csrf;
     if (!csrf) throw new Error('LetsCast.fm changed its page; the upload needs an update of WavePod.');
     const { fields } = await this.formFields(csrf, u, progress);
@@ -184,7 +187,10 @@ export class LetsCastClient {
     const res = await this.fetchFn(`${this.base}/podcasts/${podcast}/episodes`, { method: 'POST', headers: { Accept: 'text/html' }, body: form });
     const html = await res.text();
     if (isSignInPage(res.url, html)) throw new LetsCastSignedOut();
-    const created = await this.findByNumber(podcast, number, 1);
+    // the new one: on the first list page and not there before, or found by its number
+    const fresh = (await this.episodes(podcast)).filter((e) => !known.has(e.slug));
+    const number = field('number');
+    const created = fresh.find((e) => number && e.number === number) ?? (fresh.length === 1 ? fresh[0] : null) ?? (number ? await this.findByNumber(podcast, number) : null);
     if (!res.ok || !created) throw new Error(`LetsCast.fm did not create the episode (HTTP ${res.status}). Check the title and publishing date, or create it on letscast.fm.`);
     await this.saveShowNotes(podcast, created.slug, csrf, u, progress);
     progress({ phase: 'Done', fraction: 1 });

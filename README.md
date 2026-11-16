@@ -473,8 +473,8 @@ it on the website first.
 
 **File → Upload to LetsCast.fm…** sends the episode to
 [letscast.fm](https://letscast.fm): it updates the episode with the same
-number there, or creates it. It sends the MP3 (rendered with the episode's
-export settings), the episode details (title, subtitle, date, type, number,
+number there, or creates it. It sends the MP3 (the one just exported, via
+**Upload…** in the export dialog, or rendered with the episode's export settings), the episode details (title, subtitle, date, type, number,
 author, keywords, summary, links, visibility) and the cover, plus the show
 notes if the episode there has none yet. You tick what to send, and fields
 that are empty in WavePod are never sent. Sign in once on letscast.fm's own page in a WavePod window;

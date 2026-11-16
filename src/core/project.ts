@@ -31,7 +31,7 @@ export function createProject(name = 'Untitled episode', sampleRate = 48000): Pr
     tracks: [],
     markers: [],
     soundboard: [],
-    metadata: { title: name, podcast: '', author: '', episode: '', description: '', year: String(new Date().getFullYear()) },
+    metadata: { title: '', podcast: '', author: '', episode: '', description: '', year: '' },
   };
 }
 

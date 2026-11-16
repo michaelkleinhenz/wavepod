@@ -706,7 +706,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     return { slug: episode, title: page.title, hasAudio: !!page.audio, hasShowNotes: !!(await c.showNotes(podcast, episode)) };
   },
   letscastFindEpisode: (podcast: string, number: string) => letscastClient().findByNumber(podcast, number),
-  uploadToLetsCast: async (podcast: string, episode: string, parts: LetsCastParts) => {
+  uploadToLetsCast: async (podcast: string, episode: string, parts: LetsCastParts, mp3?: string) => {
     flushSave();
     const send2 = (p: unknown) => send(IPC.exportProgress, p);
     const res = await uploadToLetsCast(
@@ -715,10 +715,11 @@ const handlers: Record<InvokeMethod, Handler> = {
       podcast,
       episode,
       parts,
+      mp3,
       (opts) => runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, send2),
       send2,
     );
-    settings.letscast = normalizeLetsCast({ podcast, episode: res.episode, parts });
+    settings.letscast = normalizeLetsCast({ podcast, episode: res.episode });
     saveSettings();
     return res;
   },

@@ -236,8 +236,7 @@ export class ChaptersView {
     const hostCard = h(
       'div',
       { class: 'host-fields' },
-      h('h3', null, 'Podcast host'),
-      h('small', { class: 'muted' }, 'Sent with File › Upload to LetsCast.fm. Empty fields are not sent, so they keep what is set there.'),
+      h('h3', null, 'Additional Settings'),
       h(
         'div',
         { class: 'grid' },
@@ -317,7 +316,6 @@ export class ChaptersView {
             });
           },
         }),
-        h('small', { class: 'muted' }, 'Sent with File › Upload to LetsCast.fm, unless the episode there has show notes already.'),
       ),
       h(
         'div',

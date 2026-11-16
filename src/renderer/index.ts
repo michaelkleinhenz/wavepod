@@ -113,6 +113,7 @@ async function main(): Promise<void> {
   const templates = new TemplateDialog();
   const auphonic = new AuphonicDialog();
   const letscast = new LetsCastDialog();
+  exportDialog.onUpload = (mp3) => void letscast.open(mp3);
   const settingsDialog = new SettingsDialog();
   const guestsPanel = new GuestsPanel(() => void settingsDialog.open('remote'));
   new RecordingAlertModal();

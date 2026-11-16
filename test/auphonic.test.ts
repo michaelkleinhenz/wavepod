@@ -54,7 +54,7 @@ describe('Auphonic', () => {
 
   it('builds a multitrack production with metadata and chapters', () => {
     let p = createProject('Ep', 48000);
-    p.metadata = { ...p.metadata, title: 'Episode 3', author: 'Me', podcast: 'Show', description: 'About things', category: 'Technology' };
+    p.metadata = { ...p.metadata, title: 'Episode 3', author: 'Me', podcast: 'Show', description: 'About things', category: 'Technology', year: '2026' };
     p = addMarker(p, 0, 'chapter', 'Intro').project;
     p = addMarker(p, 48000 * 75, 'chapter', 'Talk').project;
     p.markers[1].url = 'https://example.com';
@@ -63,7 +63,7 @@ describe('Auphonic', () => {
     expect(body).toEqual({
       preset: 'p1',
       is_multitrack: true,
-      metadata: { title: 'Episode 3', artist: 'Me', album: 'Show', year: p.metadata.year, summary: 'About things', genre: 'Technology' },
+      metadata: { title: 'Episode 3', artist: 'Me', album: 'Show', year: '2026', summary: 'About things', genre: 'Technology' },
       multi_input_files: [{ type: 'multitrack', id: 'host' }, { type: 'multitrack', id: 'guest' }],
       chapters: [{ start: '00:00:00.000', title: 'Intro' }, { start: '00:01:15.000', title: 'Talk', url: 'https://example.com' }],
     });

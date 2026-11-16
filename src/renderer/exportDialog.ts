@@ -235,6 +235,8 @@ export class ExportDialog {
   private replacing: { files: string[]; jobs: ExportJob[] } | null = null;
   /** Files of the last finished export, for "Show in Folder". */
   private written: string[] = [];
+  /** Opens the LetsCast.fm upload with the exported MP3 ("Upload" button). */
+  onUpload?: (mp3: string) => void;
   private regionLabel = '';
   private busy = false;
   private wave = new WaveProgress();
@@ -367,6 +369,8 @@ export class ExportDialog {
     const files = jobs.flatMap((j) => plannedFiles(store.project, o, j));
     const nothing = o.formats.length === 0 && !o.stems && !this.videoOn();
     const canExport = !this.busy && !nothing && jobs.length > 0 && files.length > 0;
+    // the main mix: the first MP3 of the last export (stems and video come after it)
+    const mp3 = this.written.find((f) => /\.mp3$/i.test(f));
 
     const dialog = h(
       'div',
@@ -399,6 +403,13 @@ export class ExportDialog {
             'Show files when done'),
           h('div', { class: 'spacer' }),
           this.written.length && !this.busy ? h('button', { onclick: () => void api().revealFile(this.written[0]) }, 'Show in Folder') : null,
+          this.onUpload
+            ? h('button', {
+                disabled: this.busy || !mp3,
+                title: mp3 ? 'Upload the exported MP3 to LetsCast.fm' : 'Export an MP3 first, then upload it to LetsCast.fm',
+                onclick: () => { if (!mp3) return; this.close(); this.onUpload?.(mp3); },
+              }, 'Upload…')
+            : null,
           this.videoRunning
             ? h('button', { disabled: this.videoCancel, title: 'Stop the video; the files written so far stay', onclick: () => { this.videoCancel = true; this.render(); } }, 'Cancel Video')
             : h('button', { disabled: this.busy, onclick: () => this.close() }, this.written.length ? 'Close' : 'Cancel'),

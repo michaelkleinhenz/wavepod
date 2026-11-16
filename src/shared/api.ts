@@ -251,10 +251,10 @@ export interface WavePodApi {
   letscastFindEpisode(podcast: string, number: string): Promise<LetsCastEpisodeInfo | null>;
   /**
    * Sends the chosen parts to that LetsCast episode (a slug), or with episode '' creates a new one
-   * with WavePod's episode number; the MP3 is rendered with the episode's export settings. Progress
-   * comes as export progress.
+   * with WavePod's details. The MP3 is `mp3` (just written by the export dialog) or rendered with
+   * the episode's export settings. Progress comes as export progress.
    */
-  uploadToLetsCast(podcast: string, episode: string, parts: LetsCastParts): Promise<{ url: string; episode: string }>;
+  uploadToLetsCast(podcast: string, episode: string, parts: LetsCastParts, mp3?: string): Promise<{ url: string; episode: string }>;
   /** Opens a letscast.fm page in the browser. */
   openLetsCast(url: string): Promise<void>;
 
