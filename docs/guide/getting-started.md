@@ -44,14 +44,13 @@ The bar at the top is always there:
 - **Transport:** Record (`R`), Punch in (`Shift+R`, the record dot between brackets), Play / Pause (`Space`), Stop, Repeat (`L`) and To start (`Home`). See [Punch-in](recording.md#punch-in-re-record-one-line).
 - **Playback speed:** listen faster without changing pitch. See [Navigating the timeline](timeline.md#playback-speed).
 - **Time display** with the master output meter inside it.
-- **Master FX** opens the filters on the master bus. See [Filters and effects](filters.md).
-- **Transcript**, **Sounds** and **Script** open the side panels. See [Transcript and text editing](transcript.md), [Sound library](audio-drama.md#sound-library) and [Script](audio-drama.md#script).
 - **Pre-show** plays only the soundboard, for waiting music before the show. See [Recording](recording.md#pre-show).
 - The **save dot** at the right is green when every change is saved. See [Episodes and saving](episodes.md#saving).
+- Filters, transcript, sound library, script, cameras and remote guests are tabs of the [sidebar](timeline.md#the-sidebar) at the right of **Record & Edit**.
 
 ## Menus
 
-On Windows and Linux the menu bar sits at the top of the window; on macOS it is in the system menu bar. Every menu command is described in this guide; search for its name to find it.
+On Windows and Linux the menus (File, Edit, View, Window, Help) sit at the left end of the header; on macOS they are in the system menu bar. Every menu command is described in this guide; search for its name to find it.
 
 On macOS, read `Ctrl` as `⌘` (Command) throughout this guide. The help window shows the right key for your computer.
 

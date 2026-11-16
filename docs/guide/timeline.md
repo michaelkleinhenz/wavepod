@@ -72,6 +72,17 @@ The playhead snaps to clip edges, markers and selection edges while snapping is 
 
 With **Snapping** on (the magnet button in the toolbar), dragged clips, edges, selections, markers and the playhead snap to clip edges on other tracks, markers and the playhead. Hold `Alt` while dragging to move freely.
 
+## The sidebar
+
+The filters, the transcript, the sound library, the script, the cameras and the remote guests share one sidebar at the right of **Record & Edit**. It sits next to the timeline, never over it: the timeline gets narrower while the sidebar is open.
+
+- **Tabs** at the top switch between **FX**, **Transcript**, **Sounds**, **Script**, **Cameras** and **Guests**. One shows at a time; the others keep their place (the filters of the track you were on, your search in the sound library, the line you picked in the script).
+- **Resize** it by dragging its left edge. Double-click the edge for the default width. The timeline always keeps some room, and WavePod remembers the width on this computer.
+- **»** folds the sidebar to a thin strip at the right edge, for the full timeline width. Click a tab name on the strip, or **«**, to bring it back. **View › Sidebar** (`Shift+Ctrl+D`) folds and unfolds it from the keyboard.
+- The keys of the panels open their tab: **View › Filters** (`Shift+Ctrl+F`), **View › Transcript** (`Shift+Ctrl+T`), **View › Sound Library** (`Shift+Ctrl+B`), **View › Script** (`Shift+Ctrl+J`), **View › Video** (`Shift+Ctrl+U`) and **View › Remote Guests** (`Shift+Ctrl+G`). Pressing the key of the tab that is showing folds the sidebar.
+- The sidebar only shows in **Record & Edit**. Opening a tab from **Setup** or **Chapters** takes you there; the sidebar comes back as you left it.
+- **View › Script in New Window** still opens the script in a window of its own, for an actor on a video call. It stays open whatever the sidebar shows. See [Script](audio-drama.md#script).
+
 ## The toolbar
 
 The toolbar above the tracks holds, from left to right:

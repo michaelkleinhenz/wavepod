@@ -4,7 +4,7 @@ Every track, every clip and the master bus can have a stack of filters: EQ, comp
 
 ## The FX panel
 
-Open it with **FX** in a track header, **FX** on a clip, or **Master FX** in the header. The panel opens at the side of **Record & Edit** and stays open while you move between tracks; click another track's **FX** to switch to it. It hides outside **Record & Edit** and comes back when you return.
+The filters are the **FX** tab of the [sidebar](timeline.md#the-sidebar) right of the timeline. Open it with **FX** in a track header, **FX** on a clip, the **FX** tab, or **View › Filters** (`Shift+Ctrl+F`). It stays open while you move between tracks; click another track's **FX** to switch to it, or **All tracks** at the top to pick the master bus or a track from a list. Clicking the **FX** button of the track that is showing folds the sidebar away again.
 
 - **+ Add filter…** adds a built-in filter, a voice effect, a place, or a VST3 plug-in.
 - **Voice chain** (on a track without filters) adds High-pass, De-esser and Dynamics: a good start for any voice.
@@ -220,7 +220,7 @@ Your presets are JSON files in `Documents/WavePod/Presets/`, one folder per filt
 ## Copy and paste filters
 
 - **Copy all** in the panel copies a track's whole filter stack; the copy button on a card copies just that filter.
-- Open another track (or Master FX) and use **Paste…** to add the filters at the end or at the top, or to replace the stack.
+- Open another track (or Master) and use **Paste…** to add the filters at the end or at the top, or to replace the stack.
 - When the copied filter is the same kind as a card (the same built-in filter or the same VST3 plug-in), that card offers **Paste settings**, which keeps its place and bypass.
 
 Copies include VST3 state and the preset name, work across episodes, and each paste is one undo step.
@@ -231,7 +231,7 @@ Hover a clip and click **FX** on it to give just that clip filters of its own. T
 
 ## Master FX
 
-**Master FX** in the header holds the filters on the whole mix. A **Limiter** at the end keeps peaks below a ceiling. The master filters are applied to the export but not to stems.
+**Master** at the top of the FX tab's track list holds the filters on the whole mix (click **All tracks** in the FX tab to get to the list). A **Limiter** at the end keeps peaks below a ceiling. The master filters are applied to the export but not to stems.
 
 ## VST3 plug-ins
 

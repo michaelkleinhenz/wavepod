@@ -58,7 +58,7 @@ The playback speed, Repeat, the open Setup and Settings tab, which filter cards 
 Besides switching views and the playback options, the **View** menu has:
 
 - **Reload**: reloads the window (your episode and any recording are not affected).
-- **Remote Guests** (`Shift+Ctrl+G`): the panel for guests who join from their browser. See [Remote guests](remote-guests.md).
+- **Remote Guests** (`Shift+Ctrl+G`): the sidebar tab for guests who join from their browser. See [Remote guests](remote-guests.md).
 - **Toggle Developer Tools**: for troubleshooting.
 - **Toggle Full Screen**.
 
