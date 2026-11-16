@@ -27,6 +27,11 @@ import type {
   OscStatus,
   AuphonicInfo,
   AuphonicSettingsInput,
+  LetsCastEpisodeDetails,
+  LetsCastEpisodeInfo,
+  LetsCastInfo,
+  LetsCastParts,
+  LetsCastPodcastInfo,
   RemoteInfo,
   RemoteSessionInfo,
   RemoteSettingsInput,
@@ -144,6 +149,7 @@ export type MenuCommand =
   | 'speed-down'
   | 'speed-normal'
   | 'auphonic'
+  | 'letscast'
   | 'settings'
   | 'transcript'
   | 'sound-library'
@@ -231,6 +237,26 @@ export interface WavePodApi {
   sendToAuphonic(): Promise<{ uuid: string; url: string; started: boolean }>;
   /** Opens a production page on auphonic.com in the browser. */
   openAuphonic(url: string): Promise<void>;
+
+  // LetsCast.fm hand-off (no public API: the app signs in like the browser does)
+  letscastStatus(): Promise<LetsCastInfo>;
+  /** Opens the LetsCast sign-in window; resolves when the user is signed in (true) or closed it (false). */
+  letscastSignIn(): Promise<boolean>;
+  letscastSignOut(): Promise<LetsCastInfo>;
+  letscastPodcasts(): Promise<LetsCastPodcastInfo[]>;
+  /** The podcast's newest episodes. */
+  letscastEpisodes(podcast: string): Promise<LetsCastEpisodeInfo[]>;
+  letscastEpisode(podcast: string, episode: string): Promise<LetsCastEpisodeDetails>;
+  /** The episode with this number among the podcast's newest ones, or null. */
+  letscastFindEpisode(podcast: string, number: string): Promise<LetsCastEpisodeInfo | null>;
+  /**
+   * Sends the chosen parts to that LetsCast episode (a slug), or with episode '' creates a new one
+   * with WavePod's episode number; the MP3 is rendered with the episode's export settings. Progress
+   * comes as export progress.
+   */
+  uploadToLetsCast(podcast: string, episode: string, parts: LetsCastParts): Promise<{ url: string; episode: string }>;
+  /** Opens a letscast.fm page in the browser. */
+  openLetsCast(url: string): Promise<void>;
 
   // OSC remote control (app settings, off by default)
   getOscStatus(): Promise<OscStatus>;
@@ -557,6 +583,15 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'auphonicPresets',
   'sendToAuphonic',
   'openAuphonic',
+  'letscastStatus',
+  'letscastSignIn',
+  'letscastSignOut',
+  'letscastPodcasts',
+  'letscastEpisodes',
+  'letscastEpisode',
+  'letscastFindEpisode',
+  'uploadToLetsCast',
+  'openLetsCast',
   'getOscStatus',
   'setOscSettings',
   'soundcheckInfo',

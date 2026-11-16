@@ -64,6 +64,7 @@ import { showAbout } from './aboutDialog';
 import { showBetaNotice, showBetaNoticeOnFirstStart } from './betaNotice';
 import { remoteHooks, runRemote } from './remote';
 import { AuphonicDialog } from './auphonicDialog';
+import { LetsCastDialog } from './letscastDialog';
 import { TimelineView } from './timelineView';
 import { SettingsDialog, type SettingsTab } from './settingsDialog';
 import { GuestsPanel } from './remote/guestsPanel';
@@ -111,6 +112,7 @@ async function main(): Promise<void> {
   const fxPanel = new FxPanel();
   const templates = new TemplateDialog();
   const auphonic = new AuphonicDialog();
+  const letscast = new LetsCastDialog();
   const settingsDialog = new SettingsDialog();
   const guestsPanel = new GuestsPanel(() => void settingsDialog.open('remote'));
   new RecordingAlertModal();
@@ -551,6 +553,7 @@ async function main(): Promise<void> {
       case 'speed-down': return stepPlaybackSpeed(-1);
       case 'speed-normal': return setSpeed(1, true);
       case 'auphonic': return void auphonic.open();
+      case 'letscast': return void letscast.open();
       case 'settings': return void settingsDialog.open();
       case 'remote-guests': return guestsPanel.toggle();
       case 'transcript': return openTranscript();

@@ -51,6 +51,7 @@ import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
 import { McpController, normalizeMcpSettings } from './mcp/controller';
 import { OscServer } from './oscServer';
 import { auphonicInfo, auphonicPresets, normalizeAuphonic, sendToAuphonic, updateAuphonic, type StoredAuphonic } from './auphonic';
+import { letscastClient, letscastInfo, letscastSignIn, letscastSignOut, normalizeLetsCast, uploadToLetsCast, type StoredLetsCast } from './letscast';
 import { normalizeOscSettings } from '../core/osc';
 import { unpackZencastrZip } from './zencastr';
 import { TranscriptionService } from './transcribe/service';
@@ -65,7 +66,7 @@ import { decodeKey, encodeKey } from './auphonic';
 import { CamPodDownloader, CamPodFollower, camPodClient, camPodInfo, updateCamPodSettings } from './campod';
 import { linkSession, normalizeCamPodSettings, sessionsFromWire, type StoredCamPod } from '../core/campod';
 import { RemoteHost, normalizeRemoteSettings, remoteInfo, updateRemoteSettings, type StoredRemote } from './remote/host';
-import type { CamPodSettingsInput, Clip, RemoteSettingsInput } from '../shared/types';
+import type { CamPodSettingsInput, Clip, LetsCastParts, RemoteSettingsInput } from '../shared/types';
 import type { CleanupItem, CleanupOptions, SpeechSettings, SpokenWords, TranscriptionSettings, TranscriptionSettingsInput } from '../shared/types';
 import { libraryFilePath, scanLibrary } from './soundLibrary';
 import { VIDEO_EXTENSIONS, VideoWriter, fileSize, readRange, removeVideoTemp, resolveMediaPath, storedVideoPath, videoTempBase } from './video';
@@ -98,6 +99,8 @@ interface Settings {
   /** OSC remote control; off unless switched on in Settings › Controllers. */
   osc: OscSettings;
   auphonic: StoredAuphonic;
+  /** LetsCast.fm: the podcast and episode of the last upload (the sign-in itself is a separate browser session). */
+  letscast: StoredLetsCast;
   transcription: TranscriptionSettings;
   /** ElevenLabs API key, stored like the Auphonic one ("enc:…" where the OS can encrypt). */
   elevenLabsKey: string;
@@ -143,6 +146,7 @@ function loadSettings(): Settings {
       mcp: normalizeMcpSettings(raw.mcp),
       osc: normalizeOscSettings(raw.osc),
       auphonic: normalizeAuphonic(raw.auphonic),
+      letscast: normalizeLetsCast(raw.letscast),
       transcription: normalizeTranscriptionSettings(raw.transcription),
       elevenLabsKey: typeof raw.elevenLabsKey === 'string' ? raw.elevenLabsKey : '',
       speech: normalizeSpeechSettings(raw.speech),
@@ -153,7 +157,7 @@ function loadSettings(): Settings {
       campod: normalizeCamPodSettings(raw.campod),
     };
   } catch {
-    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, takeBeep: true, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '', remote: normalizeRemoteSettings(null), campod: normalizeCamPodSettings(null) };
+    return { device: defaultConfig(), lastProject: null, midi: normalizeMidiSettings(null), prepareForEditingAfterRecording: false, confirmStopRecording: true, markerPing: false, takeBeep: true, mcp: normalizeMcpSettings(null), osc: normalizeOscSettings(null), auphonic: normalizeAuphonic(null), letscast: normalizeLetsCast(null), transcription: normalizeTranscriptionSettings(null), elevenLabsKey: '', speech: normalizeSpeechSettings(null), soundLibraryFolder: '', favouriteSounds: [], chapterImageFolder: '', remote: normalizeRemoteSettings(null), campod: normalizeCamPodSettings(null) };
   }
 }
 
@@ -685,6 +689,40 @@ const handlers: Record<InvokeMethod, Handler> = {
   },
   openAuphonic: async (url: string) => {
     if (!/^https:\/\/auphonic\.com\//.test(url)) throw new Error('Not an Auphonic link');
+    await shell.openExternal(url);
+  },
+  letscastStatus: () => letscastInfo(settings.letscast),
+  letscastSignIn: () => letscastSignIn(win),
+  letscastSignOut: async () => {
+    await letscastSignOut();
+    return letscastInfo(settings.letscast);
+  },
+  letscastPodcasts: () => letscastClient().podcasts(),
+  letscastEpisodes: (podcast: string) => letscastClient().episodes(podcast),
+  letscastEpisode: async (podcast: string, episode: string) => {
+    const c = letscastClient();
+    const page = await c.episode(podcast, episode);
+    return { slug: episode, title: page.title, hasAudio: !!page.audio, hasShowNotes: !!(await c.showNotes(podcast, episode)) };
+  },
+  letscastFindEpisode: (podcast: string, number: string) => letscastClient().findByNumber(podcast, number),
+  uploadToLetsCast: async (podcast: string, episode: string, parts: LetsCastParts) => {
+    flushSave();
+    const send2 = (p: unknown) => send(IPC.exportProgress, p);
+    const res = await uploadToLetsCast(
+      current.project,
+      current.dir,
+      podcast,
+      episode,
+      parts,
+      (opts) => runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, send2),
+      send2,
+    );
+    settings.letscast = normalizeLetsCast({ podcast, episode: res.episode, parts });
+    saveSettings();
+    return res;
+  },
+  openLetsCast: async (url: string) => {
+    if (!/^https:\/\/letscast\.fm\//.test(url)) throw new Error('Not a LetsCast.fm link');
     await shell.openExternal(url);
   },
   getOscStatus: () => osc.status(),
@@ -1272,6 +1310,7 @@ function buildMenu(): void {
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: menuSend('export') },
         { label: 'Export Video…', accelerator: 'Shift+CmdOrCtrl+E', click: menuSend('export-video') },
         { label: 'Send to Auphonic…', click: menuSend('auphonic') },
+        { label: 'Upload to LetsCast.fm…', click: menuSend('letscast') },
         { label: 'Show Project Folder', click: menuSend('show-project-folder') },
         { label: 'Restore Backup…', click: menuSend('restore-backup') },
         { type: 'separator' },

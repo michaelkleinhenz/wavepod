@@ -205,6 +205,68 @@ export class ChaptersView {
           },
         }),
       );
+    // optional host fields: empty (or "leave as it is") removes the key, so nothing is sent for it
+    type Optional = 'subtitle' | 'keywords' | 'episodeType' | 'publishDate' | 'siteUrl' | 'youtubeId' | 'explicit' | 'hidden' | 'hideOnPlatforms';
+    const setOptional = (key: Optional, v: string | boolean | undefined) =>
+      store.edit((p) => {
+        const rest: EpisodeMetadata = { ...p.metadata };
+        delete rest[key];
+        return { ...p, metadata: v === undefined || v === '' ? rest : { ...rest, [key]: v } };
+      });
+    const hostText = (key: 'subtitle' | 'keywords' | 'siteUrl' | 'youtubeId', label: string, placeholder = '') =>
+      h(
+        'label',
+        { class: 'field' },
+        h('span', null, label),
+        h('input', { value: meta[key] ?? '', placeholder, onchange: (e: Event) => setOptional(key, (e.target as HTMLInputElement).value.trim()) }),
+      );
+    const hostFlag = (key: 'explicit' | 'hidden' | 'hideOnPlatforms', label: string) =>
+      h(
+        'label',
+        { class: 'field' },
+        h('span', null, label),
+        h(
+          'select',
+          { onchange: (e: Event) => setOptional(key, { yes: true, no: false }[(e.target as HTMLSelectElement).value as 'yes' | 'no']) },
+          h('option', { value: '', selected: meta[key] === undefined }, 'Leave as it is'),
+          h('option', { value: 'yes', selected: meta[key] === true }, 'Yes'),
+          h('option', { value: 'no', selected: meta[key] === false }, 'No'),
+        ),
+      );
+    const hostCard = h(
+      'div',
+      { class: 'host-fields' },
+      h('h3', null, 'Podcast host'),
+      h('small', { class: 'muted' }, 'Sent with File › Upload to LetsCast.fm. Empty fields are not sent, so they keep what is set there.'),
+      h(
+        'div',
+        { class: 'grid' },
+        hostText('subtitle', 'Subtitle'),
+        h(
+          'label',
+          { class: 'field' },
+          h('span', null, 'Publishing date'),
+          h('input', { type: 'datetime-local', class: 'publish-date', value: meta.publishDate ?? '', onchange: (e: Event) => setOptional('publishDate', (e.target as HTMLInputElement).value) }),
+        ),
+        h(
+          'label',
+          { class: 'field' },
+          h('span', null, 'Type'),
+          h(
+            'select',
+            { onchange: (e: Event) => setOptional('episodeType', (e.target as HTMLSelectElement).value) },
+            h('option', { value: '', selected: !meta.episodeType }, 'Leave as it is'),
+            ...(['full', 'trailer', 'bonus'] as const).map((t) => h('option', { value: t, selected: meta.episodeType === t }, t[0].toUpperCase() + t.slice(1))),
+          ),
+        ),
+        hostText('keywords', 'Keywords', 'board games, review, …'),
+        hostText('siteUrl', 'Episode web page', 'https://…'),
+        hostText('youtubeId', 'YouTube ID'),
+        hostFlag('explicit', 'Explicit language'),
+        hostFlag('hidden', 'Hidden from feed and website'),
+        hostFlag('hideOnPlatforms', 'Blocked on Apple Podcasts'),
+      ),
+    );
     const metaCard = h(
       'section',
       { class: 'card' },
@@ -239,6 +301,25 @@ export class ChaptersView {
       ),
       field('description', 'Description', true),
       h(
+        'label',
+        { class: 'field' },
+        h('span', null, 'Show notes'),
+        h('textarea', {
+          class: 'show-notes',
+          rows: 6,
+          value: meta.showNotes ?? '',
+          placeholder: 'Links, guests, credits… A blank line starts a new paragraph, "- " a bullet point.',
+          onchange: (e: Event) => {
+            const v = (e.target as HTMLTextAreaElement).value;
+            store.edit((p) => {
+              const { showNotes: _n, ...rest } = p.metadata;
+              return { ...p, metadata: v.trim() ? { ...rest, showNotes: v } : rest };
+            });
+          },
+        }),
+        h('small', { class: 'muted' }, 'Sent with File › Upload to LetsCast.fm, unless the episode there has show notes already.'),
+      ),
+      h(
         'div',
         { class: 'field artwork' },
         h('span', null, 'Episode cover'),
@@ -250,6 +331,7 @@ export class ChaptersView {
         ),
         h('small', { class: 'muted' }, 'Embedded in the MP3. Shown by podcatchers that read the file.'),
       ),
+      hostCard,
     );
 
     const regions = store.project.regions ?? [];

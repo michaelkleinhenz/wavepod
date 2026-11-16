@@ -275,6 +275,23 @@ export interface EpisodeMetadata {
   artwork?: string;
   /** Podcast category, written as the genre (ID3 TCON, FLAC GENRE); "Podcast" when empty. */
   category?: string;
+  /** Show notes as plain text (blank line = new paragraph, "- " = bullet, links stay links); sent to the podcast host. */
+  showNotes?: string;
+  /** Podcast host details (sent with File › Upload to LetsCast.fm); not set = left as it is there. */
+  subtitle?: string;
+  /** Comma-separated. */
+  keywords?: string;
+  episodeType?: 'full' | 'trailer' | 'bonus';
+  /** Publishing date and time, local time, "YYYY-MM-DDTHH:MM". */
+  publishDate?: string;
+  /** Web page about the episode on your own site. */
+  siteUrl?: string;
+  youtubeId?: string;
+  explicit?: boolean;
+  /** Hidden from the RSS feed and the podcast website. */
+  hidden?: boolean;
+  /** Tells Apple Podcasts not to list it ("block"). */
+  hideOnPlatforms?: boolean;
 }
 
 export type BitDepth = 16 | 24 | 32;
@@ -1015,6 +1032,50 @@ export interface AuphonicSettingsInput {
   apiKey?: string;
   preset?: string;
   start?: boolean;
+}
+
+/** LetsCast.fm hand-off as the renderer sees it (the session cookie stays in the main process). */
+export interface LetsCastInfo {
+  signedIn: boolean;
+  /** Last podcast and episode the user uploaded to (slugs), to preselect them. */
+  podcast: string;
+  episode: string;
+  /** What the last upload sent. */
+  parts: LetsCastParts;
+}
+
+/** What an upload to LetsCast.fm sends. Empty values in WavePod are never sent, so they don't clear anything there. */
+export interface LetsCastParts {
+  /** The rendered MP3. */
+  audio: boolean;
+  /** Title, number, author, description (as the summary) and the podcast host details. */
+  details: boolean;
+  /** Only sent when the episode on letscast.fm has no show notes yet. */
+  showNotes: boolean;
+  cover: boolean;
+}
+
+export interface LetsCastPodcastInfo {
+  slug: string;
+  title: string;
+}
+
+export interface LetsCastEpisodeInfo {
+  slug: string;
+  title: string;
+  /** Date and number as LetsCast lists them. */
+  info: string;
+  /** The episode number, '' if none. */
+  number: string;
+}
+
+/** One episode's edit page: its title and whether it already has audio (an upload replaces it). */
+export interface LetsCastEpisodeDetails {
+  slug: string;
+  title: string;
+  hasAudio: boolean;
+  /** It has show notes, so WavePod's are not sent. */
+  hasShowNotes: boolean;
 }
 
 export interface OscSettings {
