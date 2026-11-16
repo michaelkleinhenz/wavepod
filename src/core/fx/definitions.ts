@@ -143,6 +143,18 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'dehum',
+    name: 'De-hum',
+    aliases: ['Hum removal', 'Dehum', 'Hum', 'Buzz', 'Ground loop', 'Mains hum'],
+    description:
+      'Removes mains hum and buzz: the 50 Hz (Europe) or 60 Hz (Americas) tone of a ground loop or a bad cable and its overtones. It measures the exact hum frequency itself and follows it as it drifts, then learns the hum\'s level and subtracts exactly that, so the voice stays untouched. Raise Harmonics for a harsh buzz. No latency.',
+    params: [
+      { key: 'mains', label: 'Mains', min: 0, max: 2, step: 1, default: 0, options: [{ value: 0, label: 'Find it (50 or 60 Hz)' }, { value: 1, label: '50 Hz' }, { value: 2, label: '60 Hz' }] },
+      { key: 'harmonics', label: 'Harmonics', min: 1, max: 24, step: 1, default: 8 },
+      { key: 'output', label: 'Listen to', min: 0, max: 1, step: 1, default: 0, options: [{ value: 0, label: 'Without hum' }, { value: 1, label: 'Hum only' }] },
+    ],
+  },
+  {
     type: 'voiceclean',
     name: 'AI voice cleanup',
     aliases: ['Voice cleanup', 'Voice isolation', 'Voice isolate', 'Dereverb', 'De-reverb', 'AI denoise', 'DeepFilterNet'],

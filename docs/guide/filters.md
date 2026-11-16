@@ -28,6 +28,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Limiter** | Keeps peaks below the ceiling. |
 | **Dynamics** | Brings a voice to an even target loudness: quiet speech is raised, loud speech is held back, and everything below the noise gate is muted. A port of Ultraschall's Dynamics. |
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
+| **De-hum** | Removes the 50 or 60 Hz hum and buzz of a ground loop or a bad cable, following its exact frequency. See [Repair filters](#repair-filters). |
 | **AI voice cleanup** | Separates the voice from background noise and from the room's echo with a neural network, and gives each part its own level: Voice, Ambience and Reverb. See [AI voice cleanup](#ai-voice-cleanup). |
 | **Mouth de-click** | Removes lip smacks, tongue clicks and the sticky clicks of a dry mouth, and fills each one in from the voice around it. See [Repair filters](#repair-filters). |
 | **Breath control** | Finds the breaths between phrases and turns them down, without cutting them out. See [Repair filters](#repair-filters). |
@@ -117,6 +118,18 @@ Put Breath control before the compressor and Dynamics, which would otherwise rai
 | **Listen to** | *What is removed* plays only what the filter takes away. |
 
 The presets *Male voice* and *Female voice* set the two frequencies; *De-ess only* and *De-plosive only* switch one part off. It adds 3 ms of latency, which WavePod compensates.
+
+### De-hum
+
+**De-hum** removes mains hum: the low 50 Hz (Europe, Asia, Africa, Australia) or 60 Hz (the Americas) tone you get from a ground loop, a bad cable, a laptop on its charger or a dimmer, together with its overtones, which make it sound like a buzz. The mains frequency is never exactly 50 or 60 Hz and drifts a little, so the filter measures it itself and follows it. It then learns the hum's steady level and subtracts exactly that, which leaves the voice untouched. A notch filter would also cut the voice at those frequencies.
+
+| Control | What it sets |
+| --- | --- |
+| **Mains** | *Find it* works out whether the hum is at 50 or 60 Hz; choose 50 or 60 Hz if you know it. |
+| **Harmonics** | How many overtones are removed. A soft, low hum needs 2–4; a harsh buzz up to 20 or more. |
+| **Listen to** | *Hum only* plays just what the filter takes out. If you hear voice in it, use fewer harmonics. |
+
+The filter needs about half a second to find the hum and a second to remove it completely, also after you jump to another place in the episode. It adds no latency. For broadband noise such as hiss or fans, use **Noise reduction** or **AI voice cleanup** instead.
 
 ## Presets
 

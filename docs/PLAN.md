@@ -157,7 +157,9 @@ brackets):
   third difference, gaps filled by least-squares linear prediction); Breath
   control (unvoiced frames between noise floor and speech level, turned down
   after a minimum length); Smart de-esser & de-plosive (band share relative
-  to the voice, reduced just to a target balance, with 3 ms look-ahead).
+  to the voice, reduced just to a target balance, with 3 ms look-ahead);
+  De-hum (harmonic Goertzel search for 50/60 Hz, frequency-locked loop on
+  the phase of per-harmonic LMS sine models, which are subtracted).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices

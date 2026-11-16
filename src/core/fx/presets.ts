@@ -309,6 +309,13 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['De-plosive only', 'Only the pops; the highs are left alone.', { deess: 0 }],
     ['Hear what is removed', 'Plays only what the filter takes out, to set it by ear.', { output: 1 }],
   ],
+  dehum: [
+    ['Europe (50 Hz)', 'Mains hum in Europe, Asia, Africa and Australia.', { mains: 1 }],
+    ['Americas (60 Hz)', 'Mains hum in North America and parts of South America and Asia.', { mains: 2 }],
+    ['Soft hum', 'A pure low hum: only the first few overtones.', { harmonics: 3 }],
+    ['Harsh buzz', 'Ground loops and dimmers: many overtones up to over 1 kHz.', { harmonics: 20 }],
+    ['Hear the hum', 'Plays only what the filter takes out.', { output: 1 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],
