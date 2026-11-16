@@ -98,6 +98,8 @@ start it. You don't need to build anything.
 
 ### 1. Download
 
+[![Download from the Microsoft Store](site/img/microsoft-store-badge-dark.svg)](https://apps.microsoft.com/detail/9NRV8PP5JPCB)
+
 **Windows:** get WavePod from the
 [Microsoft Store](https://apps.microsoft.com/detail/9NRV8PP5JPCB). Microsoft signs
 it, so it installs without any warning (also with Smart App Control on), and
