@@ -151,6 +151,19 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'breath',
+    name: 'Breath control',
+    aliases: ['Breath', 'Breaths', 'De-breath', 'Breath reduction'],
+    description:
+      'Finds the breaths between phrases and turns them down by the reduction, so they stay natural but no longer sound like gasps. Breaths are recognised as soft, unvoiced sound well under the speaking level and above the room noise; the filter learns both levels as it goes. Breaths only lets you hear what it turns down. Adds about 160 ms of latency, which WavePod compensates.',
+    params: [
+      db('reduction', 'Reduction', -12, -40, 0),
+      { key: 'sensitivity', label: 'Sensitivity', min: 0, max: 100, step: 1, default: 50, unit: '%' },
+      ms('minLength', 'Shortest breath', 150, 50, 160, 10),
+      { key: 'output', label: 'Listen to', min: 0, max: 1, step: 1, default: 0, options: [{ value: 0, label: 'Voice' }, { value: 1, label: 'Breaths only' }] },
+    ],
+  },
+  {
     type: 'reverb',
     name: 'Reverb',
     description: 'Adds room to a dry signal, e.g. a jingle bed or a voice that sounds too close.',

@@ -29,6 +29,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Noise reduction** | Turns down steady background noise (hiss, hum, fans, air conditioning) between and under the words. It learns the noise by itself from the quiet moments. |
 | **AI voice cleanup** | Separates the voice from background noise and from the room's echo with a neural network, and gives each part its own level: Voice, Ambience and Reverb. See [AI voice cleanup](#ai-voice-cleanup). |
 | **Mouth de-click** | Removes lip smacks, tongue clicks and the sticky clicks of a dry mouth, and fills each one in from the voice around it. See [Repair filters](#repair-filters). |
+| **Breath control** | Finds the breaths between phrases and turns them down, without cutting them out. See [Repair filters](#repair-filters). |
 | **Reverb** | Adds room to a dry signal, for example a jingle bed or a voice that sounds too close. **Decay (RT60)** sets how long the tail lasts in seconds (a furnished room is about 0.3–0.5 s, a church 2–4 s); **Room size** sets how dense and spread out it is. |
 | **Band-pass** | Keeps only the frequencies between the low and the high cut: telephone, radio and walkie-talkie voices, or a muffled voice behind a wall. |
 | **Distortion** | Saturation, clipping or fuzz, optionally with fewer bits and a lower sample rate. |
@@ -39,7 +40,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |
 | **Chorus / flanger** | Chorus, flanger and vibrato: magic, dreams, teleports, ghosts. |
 
-Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
+Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Breath control, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
 
 For the voice effects (telephone, robot, giant, …) and places (kitchen, church, forest, …), see [Audio drama](audio-drama.md).
 
@@ -86,6 +87,19 @@ The repair filters fix small faults in a voice recording that the listener notic
 | **Listen to** | *Clicks only* plays just what the filter takes out. Turn up Sensitivity until you hear the clicks, and stop before you hear bits of words. |
 
 Start with the default or the *Dry mouth* preset. If a sharp *t*, *k* or *p* sounds dull afterwards, lower Sensitivity or Click length. Put the filter first on the track, before compressor and Dynamics, because those make clicks louder. It adds about 27 ms of latency, which WavePod compensates.
+
+### Breath control
+
+**Breath control** finds the breaths between phrases and turns them down instead of cutting them out. A podcast without any breaths sounds unnatural, but loud gasps, especially after a compressor, are tiring to listen to. The filter recognises a breath as soft, unvoiced sound that sits well below the speaking level and above the room noise, and lasts at least **Shortest breath**. It learns both levels by itself in the first seconds.
+
+| Control | What it sets |
+| --- | --- |
+| **Reduction** | How far breaths are turned down. −9 to −12 dB keeps them natural; −30 dB or more almost removes them. |
+| **Sensitivity** | Higher also catches softer and shorter breaths, and breaths closer to the speaking level. |
+| **Shortest breath** | Shorter unvoiced sounds are left alone, so soft word endings stay. |
+| **Listen to** | *Breaths only* plays just what the filter turns down. If you hear bits of words, lower Sensitivity. |
+
+Put Breath control before the compressor and Dynamics, which would otherwise raise the breaths again. The filter needs to hear a whole breath before it acts, so it adds about 160 ms of latency, which WavePod compensates.
 
 ## Presets
 

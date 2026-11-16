@@ -154,7 +154,9 @@ brackets):
   WebAssembly module (`native/voiceclean`), separate Voice / Ambience / Reverb
   levels, real time on the CPU, about 40 ms latency.
 - **Repair filters**: Mouth de-click (short-transient detection on the
-  third difference, gaps filled by least-squares linear prediction).
+  third difference, gaps filled by least-squares linear prediction); Breath
+  control (unvoiced frames between noise floor and speech level, turned down
+  after a minimum length).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices

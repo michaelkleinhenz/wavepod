@@ -293,6 +293,13 @@ const FACTORY: Partial<Record<FxType, Factory[]>> = {
     ['Thorough', 'Catches nearly everything; check that sharp t and k sounds stay crisp.', { sensitivity: 75, length: 4 }],
     ['Find the clicks', 'Plays only what the filter takes out, to set Sensitivity by ear.', { output: 1 }],
   ],
+  breath: [
+    ['Natural', 'Breaths still there, just no longer loud: the usual choice for interviews.', { reduction: -9 }],
+    ['Quiet breaths', 'Turns breaths well down; for close mics and compressed voices.', { reduction: -18 }],
+    ['Almost gone', 'Breaths are barely heard. Can sound unnatural on fast speakers.', { reduction: -30, sensitivity: 60 }],
+    ['Audiobook', 'Gentle and careful: only clear breaths, kept audible.', { reduction: -10, sensitivity: 35, minLength: 160 }],
+    ['Find the breaths', 'Plays only what the filter turns down, to check it by ear.', { output: 1, reduction: -40 }],
+  ],
   chorus: [
     ['Chorus', 'Gently thickened, like two takes at once.', { delay: 18, depth: 35, rate: 0.6, feedback: 0, voices: 2, mix: 40 }],
     ['Thick chorus', 'A crowd of one: rich and wide.', { delay: 25, depth: 50, rate: 0.4, feedback: 0, voices: 4, mix: 55 }],
