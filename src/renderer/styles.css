@@ -48,15 +48,15 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); }
 header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 14px;
+  gap: 12px;
+  padding: 6px 14px 6px 10px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 700; font-size: 15px; letter-spacing: 0.3px; white-space: nowrap; }
 .logo { color: var(--rec); }
 nav { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radius: 8px; }
-.tab { background: transparent; border: none; padding: 5px 12px; color: var(--muted); }
+.tab { background: transparent; border: none; padding: 5px 10px; color: var(--muted); white-space: nowrap; }
 .tab.active { background: var(--panel-2); color: var(--text); }
 .transport-group { display: flex; align-items: center; gap: 4px; }
 .transport { width: 36px; height: 32px; padding: 0; }
@@ -630,6 +630,9 @@ input.value-edit {
   font-size: 13px;
 }
 .menubar[hidden] { display: none; }
+/* the menus open the header row: no bar of their own, and the window title already names the app */
+header .menubar { padding: 0; background: transparent; border: none; flex: none; }
+header:has(.menubar:not([hidden])) .brand { display: none; }
 .menubar-title {
   background: transparent;
   border: 1px solid transparent;

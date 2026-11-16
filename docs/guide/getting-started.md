@@ -50,7 +50,7 @@ The bar at the top is always there:
 
 ## Menus
 
-On Windows and Linux the menu bar sits at the top of the window; on macOS it is in the system menu bar. Every menu command is described in this guide; search for its name to find it.
+On Windows and Linux the menus (File, Edit, View, Window, Help) sit at the left end of the header; on macOS they are in the system menu bar. Every menu command is described in this guide; search for its name to find it.
 
 On macOS, read `Ctrl` as `⌘` (Command) throughout this guide. The help window shows the right key for your computer.
 

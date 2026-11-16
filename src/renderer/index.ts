@@ -267,7 +267,10 @@ async function main(): Promise<void> {
   // Live problems of the running take (dropouts, crackle, clipping, a stalled input, disk).
   const healthBar = h('div', { class: 'rec-health', role: 'status', 'aria-live': 'polite' });
   const main = h('main');
-  root.append(new MenuBar().el, header, healthBar, main, statusBar);
+  // The menus (Linux and Windows) sit at the start of the header: one compact bar instead of two.
+  const menuBar = new MenuBar();
+  header.prepend(menuBar.el);
+  root.append(header, healthBar, main, statusBar);
   let healthShown = '';
   const renderHealth = () => {
     const t = store.transport;
