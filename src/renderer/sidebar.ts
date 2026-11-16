@@ -125,6 +125,16 @@ export class Sidebar {
     return this.onScreen?.id === id;
   }
 
+  /** Shows a tab as working (a spinner on its name), e.g. the transcript while transcribing. */
+  setBusy(id: SidebarTab, busy: boolean, busyTitle: string): void {
+    const t = this.tabs.find((x) => x.id === id);
+    if (!t) return;
+    for (const b of [t.button, t.rail]) {
+      b.classList.toggle('busy', busy);
+      b.title = busy ? busyTitle : t.title;
+    }
+  }
+
   /** Chooses a tab and unfolds the sidebar. */
   show(id: SidebarTab): void {
     if (!this.tabs.some((t) => t.id === id)) return;

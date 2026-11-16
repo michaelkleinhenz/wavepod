@@ -686,15 +686,15 @@ input.value-edit {
 
 /* transcript panel (View › Transcript) */
 .transcript-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; padding-top: 8px; }
-body.transcript-open .transcript-btn { background: var(--panel-2); color: var(--text); }
 .transcript-toolbar { display: flex; gap: 6px; padding: 4px 14px 8px; align-items: center; }
 .transcript-export { flex: 1; min-width: 0; }
 .transcript-status { padding: 0 14px 8px; font-size: 11px; border-bottom: 1px solid var(--border); min-height: 14px; }
 .transcript-status.busy { color: var(--accent); display: flex; align-items: center; gap: 6px; }
 .spinner { display: inline-block; flex: none; width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.transcript-btn.busy::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px; vertical-align: -1px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .spinner, .transcript-btn.busy::before { animation-duration: 2.4s; } }
+.sidebar-tab.busy::before, .sidebar-rail-tab.busy::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px; vertical-align: -1px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .spinner, .sidebar-tab.busy::before, .sidebar-rail-tab.busy::before { animation-duration: 2.4s; } }
+.sidebar-rail-tab.busy::before { margin: 0 0 6px; }
 .transcript-body { flex: 1; overflow: auto; padding: 10px 14px 24px; user-select: none; }
 .transcript-empty { line-height: 1.5; }
 .transcript-para { margin: 0 0 12px; padding-left: 8px; border-left: 3px solid var(--track-color); }
@@ -734,7 +734,6 @@ body.transcript-open .transcript-btn { background: var(--panel-2); color: var(--
 
 /* sound library panel (View › Sound Library) */
 .library-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; padding-top: 8px; }
-body.library-open .library-btn { background: var(--panel-2); color: var(--text); }
 .library-tabs { display: flex; gap: 4px; padding: 0 14px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
 .library-tab { position: relative; background: transparent; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; padding: 6px 14px; margin-bottom: -1px; color: var(--muted); font-size: 12px; }
 .library-tab:hover { color: var(--text); }
@@ -777,7 +776,6 @@ body.library-open .library-btn { background: var(--panel-2); color: var(--text);
 
 /* script panel (View › Script, audio drama) */
 .script-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; padding-top: 8px; }
-body.script-open .script-btn { background: var(--panel-2); color: var(--text); }
 .script-toolbar { display: flex; gap: 6px; padding: 4px 14px 8px; align-items: center; }
 .script-toolbar .spinner { width: 8px; height: 8px; }
 .script-scenes { flex: 1; min-width: 0; }

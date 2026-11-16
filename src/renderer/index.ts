@@ -1,7 +1,7 @@
 // App shell: header with views and transport, view switching, keyboard shortcuts, engine events.
 import { FxPanel } from './fxPanel';
 import { sidebar, type SidebarTab } from './sidebar';
-import { MASTER, clipTarget } from '../core/fx/stack';
+import { clipTarget } from '../core/fx/stack';
 import { formatTimestamp } from '../shared/time';
 import { toDb } from '../core/dsp';
 import { projectLength } from '../core/project';
@@ -223,28 +223,8 @@ async function main(): Promise<void> {
     saveDot.title = `${text}\n${store.dir}`;
     saveDot.setAttribute('aria-label', text);
   };
-  const masterFxBtn = h(
-    'button',
-    {
-      class: 'fx-btn',
-      title: 'Filters on the master bus',
-      onclick: () => {
-        // The panel only shows in the edit view; from another view the button takes the user there.
-        if (store.view === 'edit') return fxPanel.toggle(MASTER);
-        fxPanel.open(MASTER);
-        store.setView('edit');
-      },
-    },
-    'Master FX',
-  );
-  const transcriptBtn = h('button', { class: 'fx-btn transcript-btn', title: 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)', onclick: () => openTranscript() }, 'Transcript');
-  // transcribing goes on with the panel closed: the button spins meanwhile
-  transcripts().subscribe(() => {
-    transcriptBtn.classList.toggle('busy', transcripts().busy);
-    transcriptBtn.title = transcripts().busy ? 'Transcribing… (it goes on with the transcript closed)' : 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)';
-  });
-  const libraryBtn = h('button', { class: 'fx-btn library-btn', title: 'Sound library: search your sound effects, listen and insert them (Shift+Ctrl+B)', onclick: () => openLibrary() }, 'Sounds');
-  const scriptBtn = h('button', { class: 'fx-btn script-btn', title: 'Script: every line by character, tick off what is recorded, jump to scenes (Shift+Ctrl+J)', onclick: () => openScript() }, 'Script');
+  // transcribing goes on with the transcript closed: its sidebar tab spins meanwhile
+  transcripts().subscribe(() => side.setBusy('transcript', transcripts().busy, 'Transcribing… (it goes on with the transcript closed)'));
   const preShowBtn = h(
     'button',
     {
@@ -277,10 +257,6 @@ async function main(): Promise<void> {
       ),
       speedSel,
     ),
-    masterFxBtn,
-    transcriptBtn,
-    libraryBtn,
-    scriptBtn,
     preShowBtn,
     h('div', { class: 'spacer' }),
     projectName,
@@ -378,10 +354,6 @@ async function main(): Promise<void> {
     if (kinds.has('project')) {
       void transcripts().ensureLoaded();
       fxPanel.refresh();
-      const n = (store.project.masterFx ?? []).filter((f) => f.enabled).length;
-      masterFxBtn.textContent = n ? `Master FX ${n}` : 'Master FX';
-      masterFxBtn.classList.toggle('active', n > 0);
-      masterFxBtn.classList.toggle('open', fxPanel.shownTarget === MASTER);
       if (store.view === 'edit') timeline.renderHeaders();
       if (store.view === 'chapters') chapters.render();
       if (store.view === 'setup') setup.render();

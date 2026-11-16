@@ -72,4 +72,4 @@ When several people share a room, every microphone also picks up the others. Tic
 
 ## The master bus
 
-**Master FX** in the header opens the filters on the master bus, which process the whole mix, for example a limiter at the end to keep peaks below a ceiling. See [Filters and effects](filters.md#master-fx).
+**Master** in the FX tab of the [sidebar](timeline.md#the-sidebar) holds the filters on the master bus, which process the whole mix, for example a limiter at the end to keep peaks below a ceiling. See [Filters and effects](filters.md#master-fx).

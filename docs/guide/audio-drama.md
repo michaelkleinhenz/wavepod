@@ -19,7 +19,7 @@ WavePod recognises Fountain in a `.txt` file by itself. Importing again (for a r
 
 ### The script panel
 
-Open **View › Script** (`Shift+Ctrl+J`), click **Script** in the header, or pick the **Script** tab of the [sidebar](timeline.md#the-sidebar). It shows:
+Open **View › Script** (`Shift+Ctrl+J`), or pick the **Script** tab of the [sidebar](timeline.md#the-sidebar). It shows:
 
 - the script's progress: how many lines are recorded,
 - every character with their recorded and total lines. Click a character to see only their lines (handy in a session with one actor), click again for everyone,
@@ -164,7 +164,7 @@ Episodes refer to IRs by file name in your Impulse responses folder. To open an 
 Keep your sound effects and atmospheres in a folder and search them from inside WavePod.
 
 1. Choose the folder in **Edit › Settings… › General › Sound library** (subfolders are included).
-2. Open **View › Sound Library** (`Shift+Ctrl+B`), or click **Sounds** in the header.
+2. Open **View › Sound Library** (`Shift+Ctrl+B`), or pick the **Sounds** tab of the [sidebar](timeline.md#the-sidebar).
 3. Type to search file and folder names, for example *door creak* or *forest wind*. Words match the start of words in the names.
 4. `↑` and `↓` walk the results and play each one (switch this off with the listen toggle). **Listen** plays the selected sound.
 5. `Enter` or a double-click inserts the sound at the playhead. Or drag a row onto any track.

@@ -14,9 +14,9 @@ Open **Edit › Settings…** (`Ctrl+,`) › **General › Transcription**:
 
 ## Transcribe
 
-Open the transcript with **View › Transcript** (`Shift+Ctrl+T`) or **Transcript** in the header, and click **Transcribe** (or use **Edit › Transcribe Episode**).
+Open the transcript with **View › Transcript** (`Shift+Ctrl+T`) or the **Transcript** tab of the [sidebar](timeline.md#the-sidebar), and click **Transcribe** (or use **Edit › Transcribe Episode**).
 
-Each speaker track is uploaded as a small 16 kHz mono file and comes back with every word and its time. Only files without a transcript are sent, so transcribing again after recording more only sends the new parts. The transcript shows up as soon as the first track is done; transcribing goes on with the panel closed, and the **Transcript** button spins meanwhile.
+Each speaker track is uploaded as a small 16 kHz mono file and comes back with every word and its time. Only files without a transcript are sent, so transcribing again after recording more only sends the new parts. The transcript shows up as soon as the first track is done; transcribing goes on with the panel closed, and the **Transcript** tab of the sidebar spins meanwhile.
 
 The script panel's [Line up selection](audio-drama.md#lining-up-a-part-of-the-recording) transcribes only a selected part of the timeline. A file transcribed that way only partly is finished by the next **Transcribe**.
 
