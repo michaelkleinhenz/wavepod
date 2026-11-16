@@ -20,6 +20,7 @@ export const DIALOG_TOPICS: Array<[RegExp, string]> = [
   [/^(importing|syncing cameras)/i, 'video/import-the-cameras'],
   [/^export\b/i, 'export'],
   [/^send to auphonic/i, 'export/send-to-auphonic'],
+  [/^upload to letscast/i, 'export/upload-to-letscastfm'],
   [/^loudness analysis/i, 'loudness/loudness-analysis'],
   [/^clean up/i, 'transcript/clean-up-pauses-hesitations-and-retakes'],
   [/^change words/i, 'transcript/changing-words-experimental'],

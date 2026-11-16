@@ -467,6 +467,15 @@ Paste the API key from Auphonic's Account Settings once; pick one of your
 multitrack presets and whether to start the production right away or review
 it on the website first.
 
+## LetsCast.fm
+
+**File → Upload to LetsCast.fm…** renders the MP3 with the episode's export
+settings and makes it the audio of an episode you already created on
+[letscast.fm](https://letscast.fm); title, show notes and publishing date stay
+as they are there. Sign in once on letscast.fm's own page in a WavePod window;
+WavePod keeps the sign-in, never the password. LetsCast.fm has no public upload
+API, so this uses the same requests as its website.
+
 ## Audio drama
 
 **Voices.** "+ Add filter" in the FX panel has a *Voice effects* group: telephone, mobile phone, old radio, walkie-talkie, megaphone, next room, robot, broken robot, alien, giant, demon, small creature, child-like voice, chipmunk, magic, ghost, time travel, dream and more. Each one adds a few ordinary filters set from factory presets, so every value stays editable. The building blocks are also filters of their own: Band-pass, Distortion, Echo, **Pitch shift** (−24 to +24 semitones, speed kept), **Ring modulator** (robots, aliens) and **Chorus / flanger** (chorus, flanger, vibrato).

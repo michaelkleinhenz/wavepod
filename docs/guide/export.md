@@ -112,3 +112,15 @@ Set the cover and episode details in the **Chapters** view. See [Chapters and ma
 - the chapters, the episode details and the cover.
 
 Paste your API key from Auphonic's Account Settings once (**Save key**). Choose one of your multitrack presets (or **No preset** for Auphonic's defaults), and whether to **start the production right away** or review it on the website first. When it is sent, **Open the production on auphonic.com** takes you there.
+
+## Upload to LetsCast.fm
+
+**File › Upload to LetsCast.fm…** puts the finished episode into an episode you already created on letscast.fm, so you don't have to download and upload the MP3 yourself:
+
+1. Click **Sign in…** and sign in on letscast.fm's own page, which opens in a WavePod window. You only do this once: WavePod keeps the sign-in (like a browser does) and never sees or stores your password. **Sign out** forgets it.
+2. Choose the **podcast** and the **episode**. The list shows the newest episodes; for an older one, copy its link from letscast.fm (the address of its edit page) and click **Use link**.
+3. Click **Upload**. WavePod renders the MP3 with the settings of **File › Export** (bit rate, mono, loudness, chapters and cover) and makes it the episode's audio.
+
+Only the audio changes: the title, show notes, cover and publishing date on letscast.fm stay as they are. If the episode already has audio, WavePod tells you, and the button says **Replace audio**. LetsCast.fm then converts the file; **Open the episode on letscast.fm** takes you there to check it and publish.
+
+LetsCast.fm has no public interface for uploads, so WavePod uses the same requests as its website. If LetsCast.fm changes its website, the upload may stop working until WavePod is updated; uploading on letscast.fm itself always works.

@@ -1017,6 +1017,33 @@ export interface AuphonicSettingsInput {
   start?: boolean;
 }
 
+/** LetsCast.fm hand-off as the renderer sees it (the session cookie stays in the main process). */
+export interface LetsCastInfo {
+  signedIn: boolean;
+  /** Last podcast and episode the user uploaded to (slugs), to preselect them. */
+  podcast: string;
+  episode: string;
+}
+
+export interface LetsCastPodcastInfo {
+  slug: string;
+  title: string;
+}
+
+export interface LetsCastEpisodeInfo {
+  slug: string;
+  title: string;
+  /** Date and number as LetsCast lists them. */
+  info: string;
+}
+
+/** One episode's edit page: its title and whether it already has audio (an upload replaces it). */
+export interface LetsCastEpisodeDetails {
+  slug: string;
+  title: string;
+  hasAudio: boolean;
+}
+
 export interface OscSettings {
   enabled: boolean;
   port: number;
