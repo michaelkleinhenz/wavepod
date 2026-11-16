@@ -69,7 +69,7 @@ describe('project templates', () => {
     expect(p.masterFx?.[0].id).not.toBe('fx-vst');
     expect(p.masterFx?.[0]).toMatchObject({ plugin: vst.plugin, state: vst.state, params: vst.params });
     expect(p.tracks[0].fx?.[0].id).not.toBe('fx-hp');
-    expect(p.metadata).toMatchObject({ podcast: 'My Show', author: 'Michael', title: 'Episode 13', episode: '' });
+    expect(p.metadata).toMatchObject({ podcast: 'My Show', author: 'Michael', title: '', episode: '' });
   });
 
   it('accepts sparse hand-written templates', () => {

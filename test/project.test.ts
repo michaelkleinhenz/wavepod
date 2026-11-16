@@ -132,7 +132,7 @@ describe('project editing', () => {
     const p = normalizeProject({ name: 'X', tracks: [{ name: 'T', clips: [{ id: 'c', file: 'f', start: 0, length: 5 }] }] } as never);
     expect(p.tracks[0].id).toBeTruthy();
     expect(p.tracks[0].clips[0].gain).toBe(0);
-    expect(p.metadata.title).toBe('X');
+    expect(p.metadata.title).toBe('');
   });
 });
 

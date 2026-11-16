@@ -291,8 +291,9 @@ describe('LetsCast.fm', () => {
     const mock = await mockLetsCast();
     close = mock.close;
     const c = new LetsCastClient(withCookie('session=ok'), mock.base);
-    await expect(c.createEpisode('tabulaludo-5d181655', '441', { fields: [['episode[title]', 'Folge 441']] })).rejects.toThrow(/publishing date/);
-    const slug = await c.createEpisode('tabulaludo-5d181655', '441', {
+    await expect(c.createEpisode('tabulaludo-5d181655', { fields: [['episode[title]', 'Folge 441']] })).rejects.toThrow(/publishing date/);
+    await expect(c.createEpisode('tabulaludo-5d181655', { fields: [['episode[publishing_date]', '31.12.2026 06:00']] })).rejects.toThrow(/title/);
+    const slug = await c.createEpisode('tabulaludo-5d181655', {
       fields: [
         ['episode[title]', 'Folge 441'],
         ['episode[publishing_date]', '31.12.2026 06:00'],

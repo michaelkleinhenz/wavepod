@@ -16,17 +16,12 @@ const PARTITION = 'persist:letscast';
 export interface StoredLetsCast {
   podcast: string;
   episode: string;
-  parts: LetsCastParts;
 }
-
-export const DEFAULT_LETSCAST_PARTS: LetsCastParts = { audio: true, details: true, showNotes: true, cover: true };
 
 export function normalizeLetsCast(raw: unknown): StoredLetsCast {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<StoredLetsCast>;
   const slug = (v: unknown) => (typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(v) ? v : '');
-  const p = (r.parts && typeof r.parts === 'object' ? r.parts : {}) as Partial<LetsCastParts>;
-  const parts = Object.fromEntries(Object.entries(DEFAULT_LETSCAST_PARTS).map(([k, d]) => [k, typeof p[k as keyof LetsCastParts] === 'boolean' ? p[k as keyof LetsCastParts] : d])) as unknown as LetsCastParts;
-  return { podcast: slug(r.podcast), episode: slug(r.episode), parts };
+  return { podcast: slug(r.podcast), episode: slug(r.episode) };
 }
 
 /** Tests point it at a local mock server. */
@@ -56,7 +51,7 @@ export async function letscastInfo(s: StoredLetsCast): Promise<LetsCastInfo> {
   } catch {
     // offline: shown as signed out; signing in tells the user more
   }
-  return { signedIn, podcast: s.podcast, episode: s.episode, parts: s.parts };
+  return { signedIn, podcast: s.podcast, episode: s.episode };
 }
 
 let signInWindow: BrowserWindow | null = null;
@@ -111,8 +106,9 @@ export async function letscastSignOut(): Promise<void> {
 
 /**
  * Sends the chosen parts to the episode `episode` (a slug), or, with episode '', creates a new one
- * with WavePod's episode number. The MP3 is rendered (with the episode's export settings) into a
- * temporary folder. Returns the edit page of the episode.
+ * (with WavePod's title, number and publishing date even when the details are not ticked). The MP3 is
+ * `mp3` when the export dialog just wrote it, else it is rendered (with the episode's export
+ * settings) into a temporary folder. Returns the edit page of the episode.
  */
 export async function uploadToLetsCast(
   project: Project,
@@ -120,21 +116,29 @@ export async function uploadToLetsCast(
   podcast: string,
   episode: string,
   parts: LetsCastParts,
+  mp3: string | undefined,
   render: (opts: ExportOptions) => Promise<ExportResult>,
   progress: (p: ExportProgress) => void,
 ): Promise<{ url: string; episode: string }> {
-  if (parts.audio && !project.tracks.some((t) => t.clips.length)) throw new Error('There is no audio to upload yet.');
+  if (mp3 !== undefined && (!/\.mp3$/i.test(mp3) || !fs.existsSync(mp3))) throw new Error('The exported MP3 is not there any more. Export again, or upload without it.');
+  if (parts.audio && !mp3 && !project.tracks.some((t) => t.clips.length)) throw new Error('There is no audio to upload yet.');
   const update: LetsCastEpisodeUpdate = letscastUpdate(project, projectDir, parts);
+  if (!episode) {
+    // a new episode needs its basics, ticked or not
+    const basics = letscastUpdate(project, projectDir, { audio: false, details: true, showNotes: false, cover: false }).fields ?? [];
+    const have = new Set((update.fields ?? []).map(([k]) => k));
+    update.fields = [...(update.fields ?? []), ...basics.filter(([k]) => ['episode[title]', 'episode[number]', 'episode[publishing_date]'].includes(k) && !have.has(k))];
+  }
   if (!parts.audio && !Object.keys(update).length) throw new Error('There is nothing to send: the chosen parts are empty in WavePod.');
   const number = project.metadata.episode.trim();
-  if (!episode && !/^\d+$/.test(number)) throw new Error('Set the episode number in the episode details first: WavePod finds or creates the LetsCast episode by its number.');
   const client = letscastClient();
   // fail early (before rendering) when signed out or the episode is gone
   if (episode) await client.episode(podcast, episode);
-  else if (await client.findByNumber(podcast, number)) throw new Error(`Episode ${number} already exists on LetsCast.fm. Pick it in the list.`);
+  else if (/^\d+$/.test(number) && (await client.findByNumber(podcast, number))) throw new Error(`Episode ${number} already exists on LetsCast.fm. Pick it in the list.`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wavepod-letscast-'));
   try {
-    if (parts.audio) {
+    if (parts.audio && mp3) update.audioFile = mp3;
+    else if (parts.audio) {
       const s = project.exportSettings ?? DEFAULT_EXPORT_SETTINGS;
       const res = await render({
         ...s,
@@ -150,7 +154,7 @@ export async function uploadToLetsCast(
     const report = (p: { phase: string; fraction: number }) => progress({ phase: p.phase, fraction: p.fraction });
     let slug = episode;
     if (slug) await client.updateEpisode(podcast, slug, update, report);
-    else slug = await client.createEpisode(podcast, number, update, report);
+    else slug = await client.createEpisode(podcast, update, report);
     return { url: editUrl(podcast, slug, base()), episode: slug };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
