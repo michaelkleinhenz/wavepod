@@ -22,6 +22,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **High-pass** | Removes rumble, handling noise and plosive thumps below the voice. |
 | **Equalizer** | Parametric EQ: low shelf, two bell bands and a high shelf. |
 | **Noise gate** | Turns the track down while nobody speaks into it (room noise, other speakers bleeding in). Pre-open looks ahead so the gate is already open when a word starts. |
+| **Voice leveler** | Rides each speaker's level slowly towards a target, like a hand on the fader, before the compressor. See [Repair filters](#repair-filters). |
 | **Compressor** | Evens out loud and quiet passages of a voice. |
 | **De-esser** | Tames sharp "s" and "sh" sounds by turning down only the highs when they get loud. |
 | **Smart de-esser & de-plosive** | Tames "s" sounds and "p"/"b" pops only where they happen, by comparing them with the rest of the voice, at any level. See [Repair filters](#repair-filters). |
@@ -43,7 +44,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |
 | **Chorus / flanger** | Chorus, flanger and vibrato: magic, dreams, teleports, ghosts. |
 
-Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Breath control, Smart de-esser & de-plosive, De-clip, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
+Hold the mouse over a filter's name in the panel for a fuller description. Filters that need to look ahead (Noise gate, Voice leveler, Dynamics, Noise reduction, AI voice cleanup, Mouth de-click, Breath control, Smart de-esser & de-plosive, De-clip, Pitch shift, Convolution reverb) add a little latency, which WavePod compensates, so tracks stay in sync.
 
 For the voice effects (telephone, robot, giant, …) and places (kitchen, church, forest, …), see [Audio drama](audio-drama.md).
 
@@ -143,6 +144,20 @@ The filter needs about half a second to find the hum and a second to remove it c
 | **Listen to** | *Rebuilt peaks only* plays just what the filter adds back. |
 
 Put De-clip first on the track, before any other filter, because it has to see the flat tops exactly as they were recorded. It repairs short clipping (up to 5 ms per peak) very well. A recording that was distorted heavily for long stretches can be improved, but not restored. It adds about 16 ms of latency, which WavePod compensates.
+
+### Voice leveler
+
+**Voice leveler** does what a sound engineer does with a hand on the fader. A guest who leans back, turns away or trails off at the end of sentences is brought up slowly, and one who gets excited and loud is brought down. It changes the level smoothly over a second or so, so the voice keeps its own dynamics within a sentence. Use one on each speaker's track, before the compressor, which then only has to catch the short peaks.
+
+| Control | What it sets |
+| --- | --- |
+| **Target** | The loudness (LUFS) the speaker is brought to. −20 LUFS is a good level before compressor and limiter. |
+| **Range (±)** | The most it turns a speaker up or down. |
+| **Speed** | How quickly it follows: *Slow* for calm narration, *Fast* for remote guests whose level jumps around. |
+
+Only speech moves the leveler. In pauses, breaths and room noise it holds still, so it does not pump the background up between sentences. It looks 300 ms ahead so it can move before a phrase starts. That adds 300 ms of latency, which WavePod compensates. The card shows how far it is currently turning the speaker up (+) or down (−).
+
+The **Dynamics** filter also brings a voice to a target loudness, but it acts faster and gates the noise. Use Voice leveler when you want a natural, slow correction, or put it before Dynamics to give it an even start.
 
 ## Presets
 

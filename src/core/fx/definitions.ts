@@ -74,6 +74,18 @@ export const FX_DEFINITIONS: FxDefinition[] = [
     ],
   },
   {
+    type: 'leveler',
+    name: 'Voice leveler',
+    aliases: ['Leveler', 'Leveller', 'Voice leveller', 'Vocal rider', 'Rider', 'Level rider', 'AGC'],
+    description:
+      'Rides the level of one speaker slowly and smoothly towards the target, like a hand on the fader: someone who leans back from the mic or trails off is brought up, someone who gets loud is brought down. Only speech moves it; in pauses it holds still, so room noise is not pumped up. Put it on each speaker\'s track before the compressor. Adds 300 ms of latency (it looks ahead so it moves before a phrase starts), which WavePod compensates.',
+    params: [
+      { key: 'target', label: 'Target', min: -30, max: -12, step: 0.5, default: -20, unit: 'LUFS' },
+      db('range', 'Range (±)', 9, 0, 18),
+      { key: 'speed', label: 'Speed', min: 0, max: 2, step: 1, default: 1, options: [{ value: 0, label: 'Slow (3 s)' }, { value: 1, label: 'Medium (1.2 s)' }, { value: 2, label: 'Fast (0.5 s)' }] },
+    ],
+  },
+  {
     type: 'compressor',
     name: 'Compressor',
     description: 'Evens out loud and quiet passages of a voice.',

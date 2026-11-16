@@ -161,7 +161,9 @@ brackets):
   De-hum (harmonic Goertzel search for 50/60 Hz, frequency-locked loop on
   the phase of per-harmonic LMS sine models, which are subtracted); De-clip
   (flat runs at the held peak level, refilled by linear prediction and kept
-  at least at the clip level).
+  at least at the clip level); Voice leveler (400 ms K-weighted loudness of
+  speech-only blocks, slow gain towards a target within a range, 300 ms
+  look-ahead, held in pauses).
 - **Recording safety**: crash-safe writer thread with journal recovery, live
   problem monitor, loud alerts (modal, alarm, system notification) when an
   input is lost or a take can't be written (#36, #72, #84); input devices
