@@ -52,7 +52,7 @@ import { createWavePodServer, type WavePodHost } from '../core/mcp/tools';
 import { McpController, normalizeMcpSettings } from './mcp/controller';
 import { OscServer } from './oscServer';
 import { auphonicInfo, auphonicPresets, normalizeAuphonic, sendToAuphonic, updateAuphonic, type StoredAuphonic } from './auphonic';
-import { letscastClient, letscastInfo, letscastSignIn, letscastSignOut, normalizeLetsCast, uploadToLetsCast, type StoredLetsCast } from './letscast';
+import { letscastClient, letscastInfo, letscastSignIn, letscastSignOut, normalizeLetsCast, readExportStamp, uploadToLetsCast, writeExportStamp, type StoredLetsCast } from './letscast';
 import { normalizeOscSettings } from '../core/osc';
 import { unpackZencastrZip } from './zencastr';
 import { TranscriptionService } from './transcribe/service';
@@ -713,6 +713,7 @@ const handlers: Record<InvokeMethod, Handler> = {
     return { slug: episode, title: page.title, hasAudio: !!page.audio, hasShowNotes: !!(await c.showNotes(podcast, episode)) };
   },
   letscastFindEpisode: (podcast: string, number: string) => letscastClient().findByNumber(podcast, number),
+  letscastExportedMp3: async () => readExportStamp(current.dir, current.project),
   uploadToLetsCast: async (podcast: string, episode: string, parts: LetsCastParts, mp3?: string) => {
     flushSave();
     const send2 = (p: unknown) => send(IPC.exportProgress, p);
@@ -1076,9 +1077,15 @@ const handlers: Record<InvokeMethod, Handler> = {
     return res.canceled || !res.filePaths[0] ? null : res.filePaths[0];
   },
   existingFiles: async (paths: string[]) => (Array.isArray(paths) ? paths.filter((p) => typeof p === 'string' && path.isAbsolute(p) && fs.existsSync(p)) : []),
-  exportProject: (opts: ExportOptions) => {
+  exportProject: async (opts: ExportOptions) => {
     flushSave();
-    return runWorker<ExportResult>({ kind: 'export', project: current.project, dir: current.dir, opts }, (p) => send(IPC.exportProgress, p));
+    const project = current.project;
+    const dir = current.dir;
+    const res = await runWorker<ExportResult>({ kind: 'export', project, dir, opts }, (p) => send(IPC.exportProgress, p));
+    // a whole-episode MP3 can be uploaded later without rendering again (File › Upload to LetsCast.fm)
+    const mp3 = res.files.find((f) => /\.mp3$/i.test(f));
+    if (mp3 && opts.start === undefined && opts.end === undefined) writeExportStamp(dir, project, mp3);
+    return res;
   },
   measureLoudness: (mixOnly?: boolean, mono?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly, mono: !!mono }),
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),

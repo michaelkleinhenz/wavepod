@@ -1,5 +1,6 @@
 // The API the preload script exposes to the renderer as `window.wavepod`.
 import type { MatchLearnResult } from '../core/matchLearn';
+import type { ExportedMp3 } from '../core/exportStamp';
 import type {
   CamPodEvent,
   CamPodImportFile,
@@ -252,10 +253,12 @@ export interface WavePodApi {
   letscastEpisode(podcast: string, episode: string): Promise<LetsCastEpisodeDetails>;
   /** The episode with this number among the podcast's newest ones, or null. */
   letscastFindEpisode(podcast: string, number: string): Promise<LetsCastEpisodeInfo | null>;
+  /** The episode's last whole-episode MP3 export and whether it is still current, or null when there is none. */
+  letscastExportedMp3(): Promise<ExportedMp3 | null>;
   /**
    * Sends the chosen parts to that LetsCast episode (a slug), or with episode '' creates a new one
    * with WavePod's details. The MP3 is `mp3` (just written by the export dialog) or rendered with
-   * the episode's export settings. Progress comes as export progress.
+   * the episode's export settings (the dialog passes the last export when it is current). Progress comes as export progress.
    */
   uploadToLetsCast(podcast: string, episode: string, parts: LetsCastParts, mp3?: string): Promise<{ url: string; episode: string }>;
   /** Opens a letscast.fm page in the browser. */
@@ -595,6 +598,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'letscastEpisodes',
   'letscastEpisode',
   'letscastFindEpisode',
+  'letscastExportedMp3',
   'uploadToLetsCast',
   'openLetsCast',
   'getOscStatus',

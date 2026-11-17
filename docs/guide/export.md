@@ -115,17 +115,23 @@ Paste your API key from Auphonic's Account Settings once (**Save key**). Choose 
 
 ## Upload to LetsCast.fm
 
-**File › Upload to LetsCast.fm…** sends the episode to letscast.fm, so you don't have to download the MP3, upload it and type everything in again. After an MP3 export, **Upload…** in the export dialog opens the same dialog with the MP3 you just exported, so it is not rendered again:
+**File › Upload to LetsCast.fm…** sends the episode to letscast.fm, so you don't have to download the MP3, upload it and type everything in again. If you already exported the whole episode as MP3, that file is uploaded as it is, without rendering again (see [Reusing the exported MP3](#reusing-the-exported-mp3)). **Upload…** in the export dialog opens the same dialog with the MP3 you just exported:
 
 1. Click **Sign in…** and sign in on letscast.fm's own page, which opens in a WavePod window. You only do this once: WavePod keeps the sign-in (like a browser does) and never sees or stores your password. **Sign out** forgets it.
 2. Choose the **podcast**. WavePod looks for the episode with the same **episode number** (set in the Chapters view) and picks it, so it is updated. If there is none, **New episode …** stays selected and WavePod creates the episode; a new episode needs a **title** and a **publishing date**. You can also pick another episode in the list, or paste an episode's link from letscast.fm and click **Use link**.
 3. Tick what to **send**. Only **Audio** is ticked at first:
-   - **Audio**: the MP3 you just exported, or else the MP3 rendered with the settings of **File › Export** (bit rate, mono, loudness, chapters and cover in the file). If the episode already has audio, WavePod tells you; uploading replaces it.
+   - **Audio**: your exported MP3, or else a new MP3 rendered with the settings of **File › Export** (bit rate, mono, loudness, chapters and cover in the file). Tick **Render a new MP3** to render one even though there is an export. If the episode already has audio, WavePod tells you; uploading replaces it.
    - **Episode details**: title, subtitle, publishing date, type, number, author, keywords, the description as the summary, episode web page, YouTube ID, and the explicit, hidden and Apple Podcasts settings.
    - **Show notes**: only when the episode on letscast.fm has none yet. Show notes written there are never replaced.
-   - **Episode cover**.
+   - **Episode cover**. Without it, the cover on letscast.fm stays as it is (or, if there is none, LetsCast.fm shows the podcast cover).
 4. Click **Upload** (or **Create Episode and Upload** for a new episode).
 
 Only fields that are filled in in WavePod are sent: an empty field (or **Leave as it is**) never clears anything on letscast.fm. Chapters need no separate upload: LetsCast.fm reads them, with their links, from the MP3 (rounded to whole seconds). LetsCast.fm then converts the audio; **Open the episode on letscast.fm** takes you there to check it. WavePod remembers the podcast.
+
+### Reusing the exported MP3
+
+When you export the whole episode with MP3 ticked, WavePod notes the file and the state of the episode (in `last-export.json` in the episode folder). The upload uses that MP3 while it is current: the file is still where it was written, unchanged, and nothing that is in the file was changed since. That is the clips, levels, filters, automation, mute and solo, the chapters and the details written into the file (title, author, number, description, cover).
+
+If the episode was changed after the export, the dialog says so and **Render a new MP3** is ticked for you. Untick it to upload the older file anyway. Exports of a selection or of regions are never reused. Changing things that are not in the file, such as show notes, the publishing date, track colours or the export settings, keeps the export current.
 
 LetsCast.fm has no public interface for uploads, so WavePod uses the same requests as its website. If LetsCast.fm changes its website, the upload may stop working until WavePod is updated; uploading on letscast.fm itself always works.
