@@ -38,6 +38,8 @@ export interface Clip {
   sound?: ClipSound;
   /** The take (Track.takes) this part of the comp was cut from. */
   takeId?: string;
+  /** Laid by WavePod as the ambience bed of this script heading (line id); replaced when the beds are laid again. */
+  bed?: string;
 }
 
 /**
@@ -547,6 +549,22 @@ export interface Script {
   lines: ScriptLine[];
   /** Character name (upper case) → the track their lines are recorded on. */
   cast: Record<string, string>;
+  /** Ambience beds: act or scene heading (line id) → the atmosphere looped under it. */
+  beds?: Record<string, SceneBed>;
+  /** Crossfade between one scene's bed and the next, in seconds (default 3). */
+  bedFade?: number;
+}
+
+/** A scene's atmosphere (forest, tavern, rain): looped under the scene's lines on the ambience track. */
+export interface SceneBed {
+  /** The sound in the episode's media folder (copied there from the library). */
+  file: string;
+  /** Frames of the file: one loop cycle. */
+  length: Frames;
+  /** Shown on the heading and the clip. */
+  name: string;
+  /** Clip gain in dB. */
+  gain: number;
 }
 
 // ---------------------------------------------------------------- transcripts

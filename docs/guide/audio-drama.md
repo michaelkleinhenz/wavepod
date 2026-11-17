@@ -103,6 +103,26 @@ Clips that hold one line of the script are named after it: the role and the firs
 - Click an act or scene heading, or pick it in **Jump to scene…**, to jump to the first recorded line of that act or scene. The list shows the progress of each, with the scenes indented under their act.
 - While playing, the line you hear is highlighted.
 
+### Scene ambience beds
+
+Every act or scene can have an atmosphere, such as a forest at night, a tavern or rain on a window. WavePod loops it under that part of the recording and crossfades it into the next scene's atmosphere by itself.
+
+1. Right-click a scene heading in the script panel › **Choose Ambience…**.
+2. The [Sounds](#sound-library) tab opens with *Ambience for "…"* on top. Listen as usual, then double-click a sound or press `Enter` (or right-click › **Choose This Sound**). `Esc` or **Cancel** leaves without one.
+3. The sound's name now shows on the heading, and the sound plays under the scene.
+
+Where a scene is on the timeline comes from its recorded lines: its bed starts a second before the scene's first line and lasts until the next scene starts. The last scene's bed runs on for two seconds after its last line. Between two scenes, both beds overlap by the crossfade (3 seconds unless you choose another one) with equal-power fades, so one place turns into the next. When a scene has no bed, the bed before it fades out where that scene starts.
+
+- A bed on an act plays under every scene of the act that has no bed of its own.
+- A scene with nothing recorded yet shows its bed with a dashed outline. The bed is placed once one of its lines is ticked off or found by **Line up**.
+- Beds are looped clips on an **Ambience** track, which is created the first time a bed is needed. It goes into an *Atmo* folder when the episode has one, and into the effects [stem](export.md#stems). If you already have a track named *Ambience*, the beds go there.
+- Click the sound's name on a heading, or right-click the heading, for **Change Ambience…**, the bed's volume (0 to −24 dB, −12 dB for a new bed) and **Remove Ambience**. Changing the clip gain of a bed on the timeline changes the bed's volume too.
+- **Line up**, ticking a line and importing a new draft lay the beds again. A new draft keeps the beds of headings whose text stayed the same.
+- After you move or cut the recording, the panel shows *Ambience beds no longer match the scenes*. Click **Lay again**, or use **⋯ › Lay Ambience Beds Again**.
+- **⋯ › Ambience crossfade** sets the crossfade between scenes: 1, 3, 6 or 10 seconds. **⋯ › Remove All Ambience Beds** takes them all away.
+
+Laying the beds again replaces the bed clips, so trims, moves or fades you made to them by hand are lost. For a one-off atmosphere that you shape yourself, use **Fill the Selection (Loop)** in the sound library instead. The sound is copied into the episode, like every sound you insert. `get_script` shows each bed and where it plays to AI agents.
+
 The **⋯** menu imports a new draft, ticks all lines off again or removes the script (the recording stays as it is). The script is saved with the episode. AI agents can read it with the `get_script` tool. See [AI agents (MCP)](ai-agents.md).
 
 The script, the sound library and the transcript share the right side of the window: opening one closes the others.
@@ -248,6 +268,6 @@ A single fluffed line doesn't need a whole new take of the scene: select it, arm
 1. **Track folders › Audio drama folders** creates Dialogue, SFX, Atmo and Music folders.
 2. Give each character a track in Dialogue, named like the character, with Room & distance for the scene's place. For a headphone mix, put the characters on the [3D stage](#3d-stage-binaural).
 3. Import the script. Record each line in a loop (`Alt+Shift+R`), comp the best take and tick the line off with `Enter`, or let **Line up** find the lines afterwards. Fix single fluffed lines later with a [punch-in](recording.md#punch-in-re-record-one-line) (`Shift+R`).
-4. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
+4. Give each scene its atmosphere with [scene ambience beds](#scene-ambience-beds), or lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
 5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
 6. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).
