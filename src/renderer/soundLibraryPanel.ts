@@ -2,6 +2,8 @@
 // folder names; arrow keys walk the results and play each one (pre-listen on the main output);
 // Enter or a double click inserts the sound at the playhead, dragging a row drops it on a track
 // at the drop position, and "Fill selection" loops an ambience over a selected time range.
+// Sounds are split into two groups, SFX and Music: a sound whose path contains "music" (any case)
+// is music. Both tabs show one group at a time; a search also says how many matches the other has.
 // The Favourites tab holds sounds the user keeps at hand in every episode (intro, jingles,
 // intermissions, room tone): any audio files, stored in the app settings, not in the episode.
 import type { Clip } from '../shared/types';
@@ -11,12 +13,14 @@ import {
   favouritePathOf,
   favouriteRef,
   fillClips,
+  groupSounds,
   libraryFolderOf,
   libraryTitle,
   matchRanges,
   moveFavourite,
   searchLibrary,
   type FavouriteSoundInfo,
+  type SoundGroup,
   type LibraryEntry,
   type SoundLibraryInfo,
 } from '../core/soundLibrary';
@@ -37,6 +41,8 @@ const TARGET_KEY = 'wavepod.libraryTarget';
 const AUTOPLAY_KEY = 'wavepod.libraryAutoplay';
 const TAB_KEY = 'wavepod.libraryTab';
 type LibraryTab = 'library' | 'favourites';
+const GROUP_KEY = 'wavepod.libraryGroup';
+const GROUP_LABEL: Record<SoundGroup, string> = { sfx: 'SFX', music: 'Music' };
 /** Crossfade between the repeats of "Fill selection". */
 const FILL_CROSSFADE_SECONDS = 1;
 
@@ -232,6 +238,10 @@ export class SoundLibraryPanel {
   private scanning = false;
   private tab: LibraryTab = load(TAB_KEY, 'library') === 'favourites' ? 'favourites' : 'library';
   private tabBar = h('div', { class: 'library-tabs', role: 'tablist' });
+  private group: SoundGroup = load(GROUP_KEY, 'sfx') === 'music' ? 'music' : 'sfx';
+  private groupBar = h('div', { class: 'library-groups', role: 'radiogroup', 'aria-label': 'Sound group' });
+  /** Search matches in the group that is not shown. */
+  private otherTotal = 0;
   /** A favourite whose name is being edited in its row. */
   private renaming: string | null = null;
 
@@ -245,7 +255,7 @@ export class SoundLibraryPanel {
     });
     this.el.append(
       this.tabBar,
-      h('div', { class: 'library-toolbar' }, this.search),
+      h('div', { class: 'library-toolbar' }, this.groupBar, this.search),
       h(
         'div',
         { class: 'library-options' },
@@ -261,6 +271,7 @@ export class SoundLibraryPanel {
     window.addEventListener('wavepod:favourites-changed', () => {
       this.renderTabs();
       if (this.shown && this.tab === 'favourites') this.runSearch();
+      else if (this.tab === 'favourites') this.renderGroups();
       else if (this.shown) this.renderRows(); // the stars in the library list
     });
     this.renderTabs();
@@ -299,6 +310,42 @@ export class SoundLibraryPanel {
       tab('library', 'Library', 'Every sound in your sound library folder'),
       tab('favourites', '★ Favourites', 'Your own set of sounds for every episode: intros, jingles, intermissions. Stored with WavePod\'s settings.', favourites.length),
     );
+  }
+
+  /** The SFX / Music switch, with the number of sounds in each group of the current tab. */
+  private renderGroups(): void {
+    const groups = groupSounds(this.tabFiles());
+    this.groupBar.replaceChildren(
+      ...(['sfx', 'music'] as SoundGroup[]).map((g) =>
+        h(
+          'button',
+          {
+            class: `library-group${this.group === g ? ' active' : ''}`,
+            role: 'radio',
+            'aria-checked': String(this.group === g),
+            title: g === 'music' ? 'Sounds with "music" in their file or folder name' : 'Sound effects: every sound without "music" in its path',
+            onclick: () => this.setGroup(g),
+          },
+          GROUP_LABEL[g],
+          h('span', { class: 'library-group-count' }, groups[g].length.toLocaleString()),
+        ),
+      ),
+    );
+  }
+
+  private setGroup(group: SoundGroup): void {
+    if (group === this.group) return;
+    this.group = group;
+    save(GROUP_KEY, group);
+    this.renaming = null;
+    this.sel = -1;
+    this.runSearch();
+    this.search.focus();
+  }
+
+  /** Every sound of the current tab, both groups. */
+  private tabFiles(): LibraryEntry[] {
+    return this.tab === 'favourites' ? favouriteList : this.info?.files ?? [];
   }
 
   private setTab(tab: LibraryTab): void {
@@ -382,11 +429,13 @@ export class SoundLibraryPanel {
   }
 
   private runSearch(): void {
-    const files = this.tab === 'favourites' ? favouriteList : this.info?.files ?? [];
+    const groups = groupSounds(this.tabFiles());
+    const other: SoundGroup = this.group === 'music' ? 'sfx' : 'music';
     const prev = this.results[this.sel]?.path;
-    const r = searchLibrary(files, this.search.value, MAX_ROWS);
+    const r = searchLibrary(groups[this.group], this.search.value, MAX_ROWS);
     this.results = r.results;
     this.total = r.total;
+    this.otherTotal = this.search.value.trim() ? searchLibrary(groups[other], this.search.value, 0).total : 0;
     const keep = prev ? this.results.findIndex((e) => e.path === prev) : -1;
     this.sel = keep >= 0 ? keep : this.results.length ? 0 : -1;
     this.renderRows();
@@ -402,16 +451,21 @@ export class SoundLibraryPanel {
 
   private renderStatus(): void {
     const info = this.info;
+    this.renderGroups();
     if (this.tab === 'favourites') return this.renderFavouritesStatus();
     if (this.scanning) this.status.textContent = 'Reading the library folder…';
     else if (!info?.folder) this.status.textContent = '';
     else if (info.error) this.status.textContent = info.error;
     else {
-      const n = info.files.length;
-      const all = `${n.toLocaleString()} sound${n === 1 ? '' : 's'}${info.truncated ? ' (first part of the folder only)' : ''}`;
-      this.status.textContent = this.search.value.trim()
-        ? `${this.total.toLocaleString()} of ${all}${this.total > MAX_ROWS ? `, showing the best ${MAX_ROWS}` : ''}`
-        : `${all}${n > MAX_ROWS ? `, showing the first ${MAX_ROWS}: type to search` : ''}`;
+      const n = groupSounds(info.files)[this.group].length;
+      const what = this.group === 'music' ? 'music sound' : 'sound effect';
+      const all = `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}${info.truncated ? ' (first part of the folder only)' : ''}`;
+      this.status.replaceChildren(
+        this.search.value.trim()
+          ? `${this.total.toLocaleString()} of ${all}${this.total > MAX_ROWS ? `, showing the best ${MAX_ROWS}` : ''}`
+          : `${all}${n > MAX_ROWS ? `, showing the first ${MAX_ROWS}: type to search` : ''}`,
+        ...this.otherGroupHint(),
+      );
     }
     this.folderLine.replaceChildren();
     append(this.folderLine, [
@@ -422,13 +476,23 @@ export class SoundLibraryPanel {
   }
 
   private renderFavouritesStatus(): void {
-    const n = favourites.length;
-    const all = `${n} favourite${n === 1 ? '' : 's'}`;
-    this.status.textContent = !n ? '' : this.search.value.trim() ? `${this.total} of ${all}` : all;
+    const n = groupSounds(favouriteList)[this.group].length;
+    const all = `${n} ${GROUP_LABEL[this.group]} favourite${n === 1 ? '' : 's'}`;
+    this.status.replaceChildren(!favourites.length ? '' : this.search.value.trim() ? `${this.total} of ${all}` : all, ...this.otherGroupHint());
     this.folderLine.replaceChildren(
       h('span', { class: 'library-folder-path muted', style: 'direction: ltr' }, 'Saved with WavePod, in every episode'),
       h('button', { class: 'small', title: 'Add audio files from anywhere on your computer', onclick: () => void this.chooseFavourites() }, 'Add sounds…'),
     );
+  }
+
+  /** While searching: "· 3 in Music", a link to the other group's matches. */
+  private otherGroupHint(): Array<string | HTMLElement> {
+    if (!this.otherTotal) return [];
+    const other: SoundGroup = this.group === 'music' ? 'sfx' : 'music';
+    return [
+      ' · ',
+      h('button', { class: 'library-other-group link', title: `Show the matches in ${GROUP_LABEL[other]}`, onclick: () => this.setGroup(other) }, `${this.otherTotal.toLocaleString()} in ${GROUP_LABEL[other]}`),
+    ];
   }
 
   private async chooseFavourites(): Promise<void> {
@@ -460,7 +524,7 @@ export class SoundLibraryPanel {
     if (this.tab === 'favourites' && !this.rows.length) {
       this.body.replaceChildren(
         favourites.length
-          ? h('div', { class: 'library-empty muted' }, 'No favourite matches.')
+          ? h('div', { class: 'library-empty muted' }, this.search.value.trim() ? `No ${GROUP_LABEL[this.group]} favourite matches.` : this.group === 'music' ? 'No music among your favourites. Sounds with "music" in their file or folder name show here.' : 'All your favourites are music: see the Music group.')
           : h(
               'div',
               { class: 'library-empty' },
@@ -484,7 +548,14 @@ export class SoundLibraryPanel {
       return;
     }
     if (!this.rows.length && !this.scanning) {
-      this.body.replaceChildren(h('div', { class: 'library-empty muted' }, this.search.value.trim() ? 'No sound matches. Words are matched at the start of the words in file and folder names.' : 'No audio files in this folder.'));
+      const empty = this.search.value.trim()
+        ? `No ${this.group === 'music' ? 'music' : 'sound effect'} matches. Words are matched at the start of the words in file and folder names.`
+        : !this.info?.files.length
+          ? 'No audio files in this folder.'
+          : this.group === 'music'
+            ? 'No music in this folder. Sounds with "music" anywhere in their file or folder name show here, for example in a folder called Music.'
+            : 'Every sound in this folder is music: see the Music group.';
+      this.body.replaceChildren(h('div', { class: 'library-empty muted' }, empty));
       return;
     }
     this.body.replaceChildren(...this.rows);

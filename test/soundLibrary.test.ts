@@ -8,6 +8,7 @@ import {
   favouritePathOf,
   favouriteRef,
   fillClips,
+  groupSounds,
   isLibraryAudio,
   matchRanges,
   moveFavourite,
@@ -15,6 +16,7 @@ import {
   normalizeName,
   searchLibrary,
   soundFileTitle,
+  soundGroupOf,
   type LibraryEntry,
 } from '../src/core/soundLibrary';
 import { libraryFilePath, scanLibrary } from '../src/main/soundLibrary';
@@ -66,6 +68,32 @@ describe('sound library search', () => {
     expect(isLibraryAudio('a.aiff')).toBe(true);
     expect(isLibraryAudio('notes.txt')).toBe(false);
     expect(isLibraryAudio('.wav')).toBe(false);
+  });
+});
+
+describe('SFX and Music groups', () => {
+  it('counts a sound as music when "music" is anywhere in its path, any case', () => {
+    expect(soundGroupOf('Music/Calm piano.wav')).toBe('music');
+    expect(soundGroupOf('Beds/background_MUSIC_loop.mp3')).toBe('music');
+    expect(soundGroupOf('Toys/Musicbox melody.wav')).toBe('music');
+    expect(soundGroupOf('Doors/Door_Creak_01.wav')).toBe('sfx');
+    expect(soundGroupOf('Ambience/Musik im Nebenraum.wav')).toBe('sfx');
+  });
+
+  it('judges favourites by their full path', () => {
+    expect(soundGroupOf(favouriteRef('/home/me/Music/intro.wav'))).toBe('music');
+    expect(soundGroupOf(favouriteRef('C:\\Users\\me\\Jingles\\sting.wav'))).toBe('sfx');
+  });
+
+  it('splits entries into groups in order, and searches each group on its own', () => {
+    const files = lib('Music/Door theme.wav', 'Doors/Door_Creak_01.wav', 'Doors/door-slam.wav', 'Music/Rain jazz.mp3');
+    const g = groupSounds(files);
+    expect(g.sfx.map((e) => e.path)).toEqual(['Doors/Door_Creak_01.wav', 'Doors/door-slam.wav']);
+    expect(g.music.map((e) => e.path)).toEqual(['Music/Door theme.wav', 'Music/Rain jazz.mp3']);
+    expect(groupSounds(files)).toBe(g); // cached per list, so each group's search index is too
+    expect(searchLibrary(g.sfx, 'door').total).toBe(2);
+    expect(searchLibrary(g.music, 'door').results.map((e) => e.path)).toEqual(['Music/Door theme.wav']);
+    expect(groupSounds(favouriteEntries([{ path: '/x/music/a.wav', name: 'Intro' }])).music).toHaveLength(1);
   });
 });
 
