@@ -2,6 +2,7 @@
 import type { MatchLearnResult } from '../core/matchLearn';
 import type { ExportedMp3 } from '../core/exportStamp';
 import type {
+  AcxStats,
   CamPodEvent,
   CamPodImportFile,
   CamPodInfo,
@@ -428,6 +429,8 @@ export interface WavePodApi {
   /** Loudness of the mix and (unless `mixOnly`) of every track with clips. */
   /** `mono`: the mix folded to mono, as a mono export is measured. */
   measureLoudness(mixOnly?: boolean, mono?: boolean): Promise<LoudnessReport[]>;
+  /** ACX figures of parts of the mix (frames), one per future file; progress comes as export progress. */
+  measureAcx(spans: Array<[number, number]>, mono?: boolean): Promise<AcxStats[]>;
   /** Loudness of single clips (with their fades and clip gain, before track processing). */
   measureClips(clipIds: string[]): Promise<LoudnessReport[]>;
   /** Voice match: the EQ curve that makes the source clips sound like the reference clips. */
@@ -680,6 +683,7 @@ export const INVOKE_METHODS: InvokeMethod[] = [
   'existingFiles',
   'exportProject',
   'measureLoudness',
+  'measureAcx',
   'measureClips',
   'learnMatch',
   'revealFile',

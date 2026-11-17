@@ -1,7 +1,7 @@
 // Offline mixdown: loudness measurement, normalisation, WAV/MP3 with ID3 chapters, stems, chapter files.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ExportOptions, ExportProgress, ExportResult, ExportWave, LiveLoudness, LoudnessStats, Project, Track } from '../shared/types';
+import type { AcxStats, ExportOptions, ExportProgress, ExportResult, ExportWave, LiveLoudness, LoudnessStats, Project, Track } from '../shared/types';
 import { dbToGain } from '../shared/time';
 import { CHAPTER_FORMATS, exportChapters } from './chapters';
 import { buildId3Tag, imageMime, type Id3Chapter, type Id3Picture } from './id3';
@@ -16,6 +16,7 @@ import { TruePeakLimiter } from './truePeakLimiter';
 import { STEM_GROUPS, stemFilePath, stemIndex } from './stems';
 import { folderOf } from './folders';
 import { safeName } from './exportPlan';
+import { ACX_MIN_BITRATE, ACX_PEAK_CEILING, ACX_SAMPLE_RATE, AcxMeter, NO_ROOM_TONE_FIX, acxGainDb, hasRoomTone, plansAnything, roomToneFill, roomTonePlan, type RoomTonePlan } from './acx';
 
 const BLOCK = 4096;
 /** Width of the export waveform in columns, whatever the length of the export. */
@@ -114,6 +115,30 @@ export function measureLoudness(project: Project, projectDir: string, tracks?: T
   }
 }
 
+/**
+ * ACX figures (RMS, peak, noise floor, room tone at both ends) of parts of the mix, one per
+ * [start, end) span in frames, as they would be written: folded to mono when `mono`.
+ */
+export function measureAcx(project: Project, projectDir: string, spans: Array<[number, number]>, mono = false, onProgress?: (fraction: number) => void): AcxStats[] {
+  const readers = new ReaderCache(projectDir);
+  const mixer = new Mixer(project, readers);
+  try {
+    const total = Math.max(1, spans.reduce((a, [s, e]) => a + Math.max(0, e - s), 0));
+    let done = 0;
+    return spans.map(([start, end]) => {
+      const meter = new AcxMeter(project.sampleRate, mono ? 1 : 2);
+      const shape = shaper(mono);
+      const len = Math.max(0, end - start);
+      renderRange(mixer, start, start + len, null, (b, n) => meter.push(shape(b, n), n), onProgress ? (f) => onProgress((done + f * len) / total) : undefined);
+      done += len;
+      return meter.stats();
+    });
+  } finally {
+    mixer.dispose();
+    readers.closeAll();
+  }
+}
+
 /** Folds a stereo block to mono (the average of both channels) into `dst`. */
 export function foldToMono(block: Float32Array[], n: number, dst: Float32Array): Float32Array {
   const [l, r] = block;
@@ -171,24 +196,40 @@ function makeLimiter(sampleRate: number, ceilingDb: number): TruePeakLimiter {
 const MAX_FIT_PASSES = 3;
 const FIT_TOLERANCE_LU = 0.1;
 
-/** Integrated loudness of the mix with `gainDb` applied and its peaks limited at `ceilingDb`. */
-function limitedLoudness(mixer: Mixer, start: number, end: number, sampleRate: number, gainDb: number, ceilingDb: number, mono: boolean, onProgress: (f: number) => void): number {
-  const meter = new LoudnessMeter(sampleRate, mono ? 1 : 2);
-  const lim = makeLimiter(sampleRate, ceilingDb);
-  const shape = shaper(mono);
+/** Renders the audio of an export, shaped as written (mono or stereo), in blocks; reports the fraction done. */
+type Source = (onBlock: (x: Float32Array[], n: number) => void, onProgress?: (f: number) => void) => void;
+
+/**
+ * Level of the mix with `gainDb` applied and its peaks limited at `ceilingDb` (no limiter when
+ * `limit` is off): integrated loudness in LUFS, or for ACX the RMS in dB.
+ */
+function limitedLevel(source: Source, sampleRate: number, gainDb: number, ceilingDb: number, limit: boolean, mono: boolean, rms: boolean, onProgress: (f: number) => void): number {
+  const meter = rms ? new AcxMeter(sampleRate, 2) : new LoudnessMeter(sampleRate, mono ? 1 : 2);
+  const lim = limit ? makeLimiter(sampleRate, ceilingDb) : null;
   const out = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
   const g = dbToGain(gainDb);
-  renderRange(mixer, start, end, null, (b, n) => {
-    const x = shape(b, n);
+  source((x, n) => {
     for (const ch of x) for (let i = 0; i < n; i++) ch[i] *= g;
     // mono: the same signal on both sides of the (linked) limiter, so one output is the mono result
-    lim.process(x[0], x[1] ?? x[0], n, out[0], out[1]);
+    if (lim) lim.process(x[0], x[1] ?? x[0], n, out[0], out[1]);
+    else for (let c = 0; c < 2; c++) out[c].set(x[c] ?? x[0]);
     meter.push(out, n);
   }, onProgress);
-  const tail = [new Float32Array(lim.latency), new Float32Array(lim.latency)];
-  lim.flush(tail[0], tail[1]);
-  meter.push(tail, lim.latency);
-  return meter.integrated();
+  if (lim) {
+    const tail = [new Float32Array(lim.latency), new Float32Array(lim.latency)];
+    lim.flush(tail[0], tail[1]);
+    meter.push(tail, lim.latency);
+  }
+  return meter instanceof AcxMeter ? meter.stats().rmsDb : meter.integrated();
+}
+
+/** Feeds prepared audio (room tone) in blocks. */
+function feed(audio: Float32Array[], onBlock: (x: Float32Array[], n: number) => void): void {
+  const len = audio[0]?.length ?? 0;
+  for (let pos = 0; pos < len; pos += BLOCK) {
+    const n = Math.min(BLOCK, len - pos);
+    onBlock(audio.map((c) => c.slice(pos, pos + n)), n);
+  }
 }
 
 /**
@@ -253,7 +294,10 @@ export function exportProject(project: Project, projectDir: string, opts: Export
   try {
     const start = Math.max(0, opts.start ?? 0);
     const end = Math.max(start, opts.end ?? projectLength(project));
-    const durationSeconds = (end - start) / project.sampleRate;
+    const sr = project.sampleRate;
+    const acx = opts.acx ?? null;
+    // ACX holds sample peaks under −3 dBFS: the limiter works under that, whatever the ceiling setting
+    const ceiling = acx ? ACX_PEAK_CEILING : opts.peakCeiling;
     fs.mkdirSync(path.dirname(opts.outputBase), { recursive: true });
 
     // Pass 1: loudness of the mix, as it will be written (a mono file is measured as mono)
@@ -262,26 +306,64 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     const shape = shaper(mono);
     const meter = new LoudnessMeter(project.sampleRate, channels);
     const measureTap = new LiveTap(end - start, meter);
+    const acxMeter = acx ? new AcxMeter(sr, channels, acx.roomTone) : null;
     // the mix is measured for normalisation and rendered for mix files; stems alone need neither
     const mixFiles = opts.formats.length > 0;
     if (mixFiles || opts.normalize) {
-      renderRange(mixer, start, end, null, (b, n) => measureTap.push(shape(b, n), n), (f) => progress({ phase: 'Measuring loudness', step: 'analysing', fraction: f, ...measureTap.take() }));
+      renderRange(mixer, start, end, null, (b, n) => {
+        const x = shape(b, n);
+        measureTap.push(x, n);
+        acxMeter?.push(x, n);
+      }, (f) => progress({ phase: 'Measuring loudness', step: 'analysing', fraction: f, ...measureTap.take() }));
     }
     const loudness = meter.integrated();
     const peakDb = meter.peakDb();
+    // ACX: room tone at both ends brought into range (cut, or lengthened with the quietest 0.5 s)
+    const acxIn = acxMeter && (mixFiles || opts.normalize) ? acxMeter.stats() : null;
+    let plan: RoomTonePlan = NO_ROOM_TONE_FIX;
+    const tone = acxIn && hasRoomTone(acxIn) ? (acxMeter?.roomTone()?.samples ?? null) : null;
+    if (acx?.roomTone && acxIn && tone && mixFiles) plan = roomTonePlan(acxIn);
+    const rangeStart = Math.min(end, start + Math.round(plan.trimHead * sr));
+    const rangeEnd = Math.max(rangeStart, end - Math.round(plan.trimTail * sr));
+    const headPad = tone && plan.padHead > 0 ? roomToneFill(tone, Math.round(plan.padHead * sr), sr) : null;
+    const tailPad = tone && plan.padTail > 0 ? roomToneFill(tone, Math.round(plan.padTail * sr), sr) : null;
+    const headFrames = headPad?.[0].length ?? 0;
+    const totalFrames = headFrames + (rangeEnd - rangeStart) + (tailPad?.[0].length ?? 0);
+    const durationSeconds = totalFrames / sr;
+    /** The mix as written: room tone, the range, room tone. */
+    const source: Source = (onBlock, onProgress) => {
+      if (headPad) feed(headPad, onBlock);
+      renderRange(mixer, rangeStart, rangeEnd, null, (b, n) => onBlock(shape(b, n), n), onProgress);
+      if (tailPad) feed(tailPad, onBlock);
+    };
     // The ceiling is in dBTP, like the loudness analysis: the peaks between samples count too.
     // Gain alone stops where the loudest peak meets the ceiling, which for speech is often well
     // short of the target; a true-peak limiter then holds the peaks so the target is reached.
     let appliedGainDb = 0;
     let limiting = false;
-    if (opts.normalize && Number.isFinite(loudness)) {
+    if (opts.normalize && acxIn && Number.isFinite(acxIn.rmsDb)) {
+      // ACX: the RMS goes to −20 dB, the limiter holds the peaks; cutting or adding room tone
+      // changes the RMS a little, so the fit runs then too
+      appliedGainDb = acxGainDb(acxIn.rmsDb);
+      limiting = meter.truePeakDb() + appliedGainDb > ceiling;
+      if (mixFiles && (limiting || plansAnything(plan))) {
+        for (let pass = 1; pass <= MAX_FIT_PASSES; pass++) {
+          const reached = limitedLevel(source, sr, appliedGainDb, ceiling, limiting, mono, true, (f) =>
+            progress({ phase: pass === 1 ? 'Fitting the limiter' : `Fitting the limiter (${pass})`, step: 'preparing', fraction: f }),
+          );
+          const short = acxGainDb(reached);
+          if (!Number.isFinite(short) || Math.abs(short) <= FIT_TOLERANCE_LU) break;
+          appliedGainDb += Math.max(-6, Math.min(short, 6));
+        }
+      }
+    } else if (opts.normalize && Number.isFinite(loudness)) {
       appliedGainDb = opts.targetLufs - loudness;
       limiting = meter.truePeakDb() + appliedGainDb > opts.peakCeiling;
       if (limiting && mixFiles) {
         // limiting takes a little loudness off: measure the limited mix and make up for it,
         // again if the make-up gain itself got limited enough to miss
         for (let pass = 1; pass <= MAX_FIT_PASSES; pass++) {
-          const reached = limitedLoudness(mixer, start, end, project.sampleRate, appliedGainDb, opts.peakCeiling, mono, (f) =>
+          const reached = limitedLevel(source, sr, appliedGainDb, opts.peakCeiling, true, mono, false, (f) =>
             progress({ phase: pass === 1 ? 'Fitting the limiter' : `Fitting the limiter (${pass})`, step: 'preparing', fraction: f }),
           );
           const short = opts.targetLufs - reached;
@@ -293,13 +375,17 @@ export function exportProject(project: Project, projectDir: string, opts: Export
       appliedGainDb = normalizationGain(loudness, meter.truePeakDb(), opts.targetLufs, opts.peakCeiling);
     }
     const gain = dbToGain(appliedGainDb);
-    const limiter = limiting ? makeLimiter(project.sampleRate, opts.peakCeiling) : null;
+    const limiter = limiting ? makeLimiter(project.sampleRate, ceiling) : null;
 
     // Pass 2: write outputs.
     const wav = opts.formats.includes('wav') ? new WavWriter(`${opts.outputBase}.wav`, channels, project.sampleRate, 24, 1 << 20) : null;
     let mp3Fd: number | null = null;
     let encoder: Mp3Encoder | null = null;
+    // room tone cut or added at the start moves the chapters (one at the very start stays there)
+    const trimmedSec = (rangeStart - start) / sr;
+    const shiftSec = headFrames / sr - trimmedSec;
     const chapters: Id3Chapter[] = markersToChapters(project, start)
+      .map((c) => (shiftSec === 0 ? c : { ...c, start: c.start <= trimmedSec ? 0 : c.start + shiftSec }))
       .filter((c) => c.start < durationSeconds)
       .map((c) => {
         const picture = loadPicture(projectDir, c.image);
@@ -337,14 +423,19 @@ export function exportProject(project: Project, projectDir: string, opts: Export
         durationSeconds,
       });
       fs.writeSync(mp3Fd, tag);
-      encoder = new Mp3Encoder(channels as 1 | 2, project.sampleRate, opts.mp3Bitrate);
+      // ACX takes MP3 at 192 kbps or more and 44.1 kHz; LAME resamples other episode rates
+      encoder = acx
+        ? new Mp3Encoder(channels as 1 | 2, sr, Math.max(ACX_MIN_BITRATE, opts.mp3Bitrate), ACX_SAMPLE_RATE)
+        : new Mp3Encoder(channels as 1 | 2, sr, opts.mp3Bitrate);
     }
     const scaled = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     // waveform and loudness of the audio as written (after normalisation)
-    const renderTap = new LiveTap(end - start, new LoudnessMeter(project.sampleRate, channels));
+    const renderTap = new LiveTap(totalFrames, new LoudnessMeter(project.sampleRate, channels));
+    const acxOut = acx ? new AcxMeter(sr, channels) : null;
     const emit = (out: Float32Array[], n: number): void => {
       if (n <= 0) return;
       renderTap.push(out, n);
+      acxOut?.push(out, n);
       if (wav) wav.write(out, n);
       if (flac) flac.write(out, n);
       if (opus) opus.write(out, n);
@@ -357,13 +448,8 @@ export function exportProject(project: Project, projectDir: string, opts: Export
     let skip = limiter ? limiter.latency : 0;
     const limited = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     if (mixFiles) {
-      renderRange(
-        mixer,
-        start,
-        end,
-        null,
-        (b, n) => {
-          const x = shape(b, n);
+      source(
+        (x, n) => {
           for (let c = 0; c < channels; c++) for (let i = 0; i < n; i++) scaled[c][i] = x[c][i] * gain;
           const sc = scaled.slice(0, channels);
           if (!limiter) return emit(sc, n);
@@ -437,6 +523,7 @@ export function exportProject(project: Project, projectDir: string, opts: Export
       appliedGainDb,
       ...(mixFiles ? { outputLoudness: written.integrated(), outputTruePeakDb: written.truePeakDb() } : {}),
       limiterReductionDb: limiter ? limiter.maxReductionDb : 0,
+      ...(acxOut && mixFiles ? { acx: acxOut.stats() } : {}),
     };
   } finally {
     mixer.dispose();
