@@ -210,6 +210,42 @@ export async function insertLibrarySound(rel: string, opts: { at?: number; track
   }
 }
 
+/** Copies a library sound or favourite into the episode for use elsewhere (a scene's ambience bed). */
+export async function importLibrarySound(ref: string): Promise<{ file: string; length: number; name: string }> {
+  if (favouritePathOf(ref) !== null) await loadFavourites();
+  const media = await importLibraryFile(ref);
+  return { ...media, name: soundTitle(ref) };
+}
+
+/** A sound being chosen for something else (a scene's ambience): Enter or a double click picks it. */
+interface SoundPick {
+  label: string;
+  resolve: (ref: string | null) => void;
+}
+let pick: SoundPick | null = null;
+const pickListeners = new Set<() => void>();
+
+/**
+ * Opens the Sounds tab to choose a sound: resolves with the chosen sound (library path or
+ * favourite reference), or null when cancelled. `label` says what it is for.
+ */
+export function pickLibrarySound(label: string): Promise<string | null> {
+  pick?.resolve(null);
+  return new Promise((resolve) => {
+    const me: SoundPick = {
+      label,
+      resolve: (ref) => {
+        if (pick === me) pick = null;
+        for (const f of pickListeners) f();
+        resolve(ref);
+      },
+    };
+    pick = me;
+    for (const f of pickListeners) f();
+    sidebar().show('library');
+  });
+}
+
 /** The panel's "Insert on" choice: a track id, or SFX_TARGET. */
 function libraryTarget(): string {
   const t = load(TARGET_KEY, SFX_TARGET);
@@ -238,6 +274,7 @@ export class SoundLibraryPanel {
   private scanning = false;
   private tab: LibraryTab = load(TAB_KEY, 'library') === 'favourites' ? 'favourites' : 'library';
   private tabBar = h('div', { class: 'library-tabs', role: 'tablist' });
+  private pickBar = h('div', { class: 'library-pick', hidden: true });
   private group: SoundGroup = load(GROUP_KEY, 'sfx') === 'music' ? 'music' : 'sfx';
   private groupBar = h('div', { class: 'library-groups', role: 'radiogroup', 'aria-label': 'Sound group' });
   /** Search matches in the group that is not shown. */
@@ -255,6 +292,7 @@ export class SoundLibraryPanel {
     });
     this.el.append(
       this.tabBar,
+      this.pickBar,
       h('div', { class: 'library-toolbar' }, this.groupBar, this.search),
       h(
         'div',
@@ -275,6 +313,17 @@ export class SoundLibraryPanel {
       else if (this.shown) this.renderRows(); // the stars in the library list
     });
     this.renderTabs();
+    pickListeners.add(() => this.renderPick());
+  }
+
+  /** The line on top while a sound is being chosen for a scene. */
+  private renderPick(): void {
+    this.pickBar.hidden = !pick;
+    if (!pick) return this.pickBar.replaceChildren();
+    this.pickBar.replaceChildren(
+      h('span', { class: 'library-pick-text' }, pick.label, h('span', { class: 'muted' }, ' · Double-click a sound or press Enter')),
+      h('button', { class: 'small', onclick: () => pick?.resolve(null) }, 'Cancel'),
+    );
   }
 
   private renderTabs(): void {
@@ -692,8 +741,10 @@ export class SoundLibraryPanel {
           { label: 'Remove from Favourites', accel: 'Delete', run: () => removeFavourite(e.path) },
         ]
       : [{ kind: 'separator' as const }, { label: this.isFavourite(e.path) ? 'Remove from Favourites' : 'Add to Favourites', run: () => this.toggleFavourite(e.path) }];
+    const picking = pick ? [{ label: 'Choose This Sound', accel: 'Enter', title: pick.label, run: () => pick?.resolve(e.path) }, { kind: 'separator' as const }] : [];
     showContextMenu(
       [
+        ...picking,
         { label: this.playing?.rel === e.path ? 'Stop' : 'Listen', accel: 'Click', run: () => this.togglePreview(e.path) },
         { kind: 'separator' },
         { label: 'Insert at the Playhead', accel: 'Enter', run: () => void this.insert(e.path) },
@@ -736,6 +787,7 @@ export class SoundLibraryPanel {
       if (sel) void this.insert(sel.path);
     } else if (e.key === 'Escape') {
       if (this.playing) this.stopPreview();
+      else if (pick) pick.resolve(null);
       else if (this.search.value) {
         this.search.value = '';
         this.runSearch();
@@ -761,6 +813,10 @@ export class SoundLibraryPanel {
   }
 
   private async insert(rel: string): Promise<void> {
+    if (pick) {
+      this.stopPreview();
+      return pick.resolve(rel);
+    }
     await insertLibrarySound(rel);
   }
 

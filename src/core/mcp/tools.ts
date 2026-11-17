@@ -17,6 +17,7 @@ import { compTake, pickTake, takeSpan, takeUsage } from '../takes';
 import { FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addFolder, folderOf, removeFolder, setTrackFolder, updateFolder } from '../folders';
 import { paragraphs, timelineWords } from '../transcript';
 import { scriptCharacters, scriptProgress, scriptSummary } from '../script';
+import { bedSummary } from '../ambience';
 import type { WordFilter } from '../wordLevels';
 import { formatTimestamp, uid } from '../../shared/time';
 import { WEAK_CONFIDENCE, alignedPosition, applyAlignment, type AlignOutcome } from '../alignEdit';
@@ -797,7 +798,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
       name: 'get_script',
       description:
         'The audio drama script the user imported in WavePod (View › Script): scenes, stage directions and every line with its character, ' +
-        'whether it is recorded yet, and where its take is on the timeline (seconds). Useful to see what is still to record, or to check a scene.',
+        'whether it is recorded yet, and where its take is on the timeline (seconds), plus the ambience bed (atmosphere) of each scene that has one and where it plays. Useful to see what is still to record, or to check a scene.',
       inputSchema: obj({ open: { type: 'boolean', description: 'Only lines that are not recorded yet (and their scene headings).' } }),
       annotations: { title: 'Get script', ...READ },
       run: (args) => {
@@ -813,6 +814,7 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
           progress: scriptProgress(script),
           characters: scriptCharacters(script).map((c) => ({ name: c.name, lines: c.lines, recorded: c.recorded, ...(script.cast[c.key] && names.has(script.cast[c.key]) ? { track: names.get(script.cast[c.key]) } : {}) })),
           lines,
+          ...(script.beds ? { ambience: bedSummary(p) } : {}),
         };
       },
     },
