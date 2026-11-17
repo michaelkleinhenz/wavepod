@@ -122,8 +122,10 @@ jobs:
           name: store-msix
           path: store
       - uses: microsoft/microsoft-store-apppublisher@v1.4
+      # --verbose: without it the CLI only prints "Ops, something doesn't seem to be right!" and
+      # hides the actual sign-in error (wrong ID, expired key, missing Manager role).
       - name: Sign in to Partner Center
-        run: msstore reconfigure --tenantId "$TENANT_ID" --sellerId "$SELLER_ID" --clientId "$CLIENT_ID" --clientSecret "$CLIENT_SECRET"
+        run: msstore reconfigure --verbose --tenantId "$TENANT_ID" --sellerId "$SELLER_ID" --clientId "$CLIENT_ID" --clientSecret "$CLIENT_SECRET"
         env:
           TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
           SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
@@ -136,6 +138,6 @@ jobs:
         run: |
           msix=$(ls store/*.msix)
           echo "Submitting $msix"
-          msstore publish store --inputFile "$msix" --appId "$PRODUCT_ID"
+          msstore publish store --inputFile "$msix" --appId "$PRODUCT_ID" --verbose
         env:
           PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
