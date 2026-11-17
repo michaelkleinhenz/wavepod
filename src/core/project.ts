@@ -9,6 +9,7 @@ import { pruneClipFxGroups } from './fx/clipGroups';
 import { insertIntoRegionList, normalizeRegions, rippleDeleteRegions } from './regions';
 import { migrateTrackEnvelope, sortPoints } from './envelope';
 import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
+import { normalizeStage } from './stage';
 import { clampRate } from './clipSound';
 import { audibleTracks, groupFolderTracks, normalizeFolders } from './folders';
 import { normalizeExportSettings } from './exportSettings';
@@ -104,6 +105,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     gain: t.gain ?? 0,
     pan: Number.isFinite(t.pan) ? Math.max(-1, Math.min(1, t.pan)) : 0,
     ...(normalizeAutomation(t.automation) ? { automation: normalizeAutomation(t.automation) } : {}),
+    ...(normalizeStage(t.stage) ? { stage: normalizeStage(t.stage) } : {}),
     muteRegions: mergeRegions(t.muteRegions ?? []),
     fx: normalizeFxList(t.fx),
     ...(t.duck ? { duck: { enabled: !!t.duck.enabled, depth: Number.isFinite(t.duck.depth) ? Math.min(40, Math.max(1, Math.abs(t.duck.depth))) : 12 } } : {}),
@@ -136,6 +138,8 @@ export function normalizeProject(raw: Partial<Project>): Project {
   else delete p.remoteRoom;
   normalizeVideo(p);
   normalizeCamPodLinks(p);
+  if (raw.stage?.mode === 'speakers') p.stage = { mode: 'speakers' };
+  else delete p.stage;
   const exportSettings = normalizeExportSettings(raw.exportSettings);
   if (exportSettings) p.exportSettings = exportSettings;
   else delete p.exportSettings;

@@ -12,7 +12,8 @@ import { clipsEnd, projectLength, updateTrack } from '../project';
 import { applyPass, cameraSyncAfterStretch, cameraTrack, normalizeCuts, shots } from '../video';
 import { AUTOMIX_DEFAULT_DEPTH } from '../automix';
 import { STEM_CHOICES, trackStem } from '../stems';
-import { setTrackAutomation, showTrackAutomation } from '../automation';
+import { AUTOMATION_LANES, isAutomationLane, setTrackAutomation, showTrackAutomation } from '../automation';
+import { formatAzimuth, placeOnStage, removeFromStage, setStageMode, stageMode } from '../stage';
 import { compTake, pickTake, takeSpan, takeUsage } from '../takes';
 import { FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addFolder, folderOf, removeFolder, setTrackFolder, updateFolder } from '../folders';
 import { paragraphs, timelineWords } from '../transcript';
@@ -389,10 +390,11 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
             ...(t.duck?.enabled ? { duck: { depthDb: t.duck.depth } } : {}),
             stem: trackStem(t, folderOf(p, t)?.name),
             ...(t.stem ? {} : { stemGuessed: true }),
-            ...(t.automation?.volume?.length || t.automation?.pan?.length
+            ...(t.stage ? { stage: { ...t.stage, where: formatAzimuth(t.stage.azimuth), mode: stageMode(p) } } : {}),
+            ...(AUTOMATION_LANES.some((lane) => t.automation?.[lane]?.length)
               ? {
                   automation: Object.fromEntries(
-                    (['volume', 'pan'] as const)
+                    AUTOMATION_LANES
                       .filter((lane) => t.automation?.[lane]?.length)
                       .map((lane) => [lane, t.automation![lane]!.map((q) => ({ seconds: round(q.pos / p.sampleRate, 3), value: round(q.value, 2) }))]),
                   ),
@@ -667,13 +669,14 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
     {
       name: 'set_track_automation',
       description:
-        'Sets a track\'s volume or pan automation: breakpoints over the timeline that the track follows in playback and export, e.g. to move a voice across the stage or fade music under a scene. ' +
+        'Sets a track\'s volume, pan, angle or distance automation: breakpoints over the timeline that the track follows in playback and export, e.g. to move a voice across the stage or fade music under a scene. ' +
         'Volume values are dB relative to the track gain (-60 = silent, 0 = unchanged, up to +6); pan values are -1 (left) .. 1 (right) and replace the track\'s fixed pan while there are points. ' +
+        'Angle (degrees, -180 .. 180, 0 in front, 90 right) and distance (metres, 0.3 .. 30) move a voice placed on the 3D stage (set_track_stage) and replace its fixed place while there are points; for other tracks they do nothing. ' +
         'Between points the value moves smoothly; before the first and after the last point it holds. Two points at the same time make a jump. An empty list clears the lane.',
       inputSchema: obj(
         {
           track: { type: 'string', description: 'Track id or name.' },
-          lane: { type: 'string', enum: ['volume', 'pan'] },
+          lane: { type: 'string', enum: [...AUTOMATION_LANES] },
           points: {
             type: 'array',
             items: obj({ seconds: { type: 'number', minimum: 0 }, value: { type: 'number' } }, ['seconds', 'value']),
@@ -689,7 +692,10 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         const { target, name } = resolveTarget(project, str(args, 'track', true));
         if (target === MASTER) throw new ToolError('The master bus has no automation; use a track.');
         const lane = str(args, 'lane', true);
-        if (lane !== 'volume' && lane !== 'pan') throw new ToolError('"lane" must be "volume" or "pan".');
+        if (!isAutomationLane(lane)) throw new ToolError(`"lane" must be one of ${AUTOMATION_LANES.join(', ')}.`);
+        if ((lane === 'angle' || lane === 'distance') && !project.tracks.find((x) => x.id === target)?.stage) {
+          throw new ToolError(`${name} is not on the 3D stage; place it with set_track_stage first.`);
+        }
         if (!Array.isArray(args.points)) throw new ToolError('"points" must be a list.');
         const points = (args.points as Array<Record<string, unknown>>).map((q, i) => {
           const sec = Number(q?.seconds);
@@ -699,9 +705,69 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         });
         project = setTrackAutomation(project, target, lane, points);
         if (bool(args, 'show') !== false && points.length) project = showTrackAutomation(project, target, lane);
-        host.apply(project, points.length ? `${lane === 'volume' ? 'Volume' : 'Pan'} automation on ${name}` : `Cleared ${lane} automation on ${name}`);
+        host.apply(project, points.length ? `${lane[0].toUpperCase()}${lane.slice(1)} automation on ${name}` : `Cleared ${lane} automation on ${name}`);
         const t = host.project().tracks.find((x) => x.id === target);
         return { track: name, lane, points: (t?.automation?.[lane] ?? []).map((q) => ({ seconds: round(q.pos / project.sampleRate, 3), value: round(q.value, 2) })) };
+      },
+    },
+    {
+      name: 'set_track_stage',
+      description:
+        'Places a track\'s voice on the 3D stage around the listener, for a binaural (headphone) audio drama mix: angle around the head, height and distance. ' +
+        'A placed track is no longer panned; it is heard from that direction and distance (level, air and closeness change with distance). If the track has a Room & distance filter, the filter follows the stage distance and the room stays all around. ' +
+        'Only the values given change; a track put on the stage for the first time starts at the angle of its pan, at ear height, 1 m away (same level as before). "off": true takes it off the stage again. ' +
+        'To move a voice over time, use set_track_automation with the angle or distance lane.',
+      inputSchema: obj(
+        {
+          tracks: { type: 'array', items: { type: 'string' }, description: 'Track ids or names.' },
+          azimuth: { type: 'number', minimum: -180, maximum: 180, description: 'Degrees around the listener: 0 in front, 90 right, -90 left, 180 behind.' },
+          elevation: { type: 'number', minimum: -45, maximum: 90, description: 'Degrees above (positive) or below ear height.' },
+          distance: { type: 'number', minimum: 0.3, maximum: 30, description: 'Metres from the listener; 1 m keeps the level as it was.' },
+          off: { type: 'boolean', description: 'Take the tracks off the stage (they are panned again).' },
+        },
+        ['tracks'],
+      ),
+      annotations: { title: 'Place voices on the 3D stage', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        let project = host.project();
+        const ids = trackRefs(project, args.tracks, true);
+        const names = ids.map((id) => project.tracks.find((t) => t.id === id)!.name);
+        if (bool(args, 'off')) {
+          project = removeFromStage(project, ids);
+          host.apply(project, `Took ${names.join(', ')} off the stage`);
+        } else {
+          const pos: Record<string, number> = {};
+          for (const key of ['azimuth', 'elevation', 'distance'] as const) {
+            const v = args[key];
+            if (v === undefined || v === null) continue;
+            if (typeof v !== 'number' || !Number.isFinite(v)) throw new ToolError(`"${key}" must be a number.`);
+            pos[key] = v;
+          }
+          project = placeOnStage(project, ids, pos);
+          host.apply(project, `Placed ${names.join(', ')} on the stage`);
+        }
+        const p = host.project();
+        return {
+          mode: stageMode(p),
+          tracks: ids.map((id) => {
+            const t = p.tracks.find((x) => x.id === id)!;
+            return { track: t.name, ...(t.stage ? { ...t.stage, where: formatAzimuth(t.stage.azimuth) } : { onStage: false }) };
+          }),
+        };
+      },
+    },
+    {
+      name: 'set_stage_mode',
+      description:
+        'Chooses how voices on the 3D stage are mixed: "binaural" for headphones (default; direction is heard all around, including behind and above) ' +
+        'or "speakers" for a loudspeaker mix, where each placed voice is panned by its angle (behind folds to the sides) and distance still applies.',
+      inputSchema: obj({ mode: { type: 'string', enum: ['binaural', 'speakers'] } }, ['mode']),
+      annotations: { title: 'Set stage mode', ...EDIT, idempotentHint: true },
+      run: (args) => {
+        const mode = str(args, 'mode', true);
+        if (mode !== 'binaural' && mode !== 'speakers') throw new ToolError('"mode" must be "binaural" or "speakers".');
+        host.apply(setStageMode(host.project(), mode), mode === 'binaural' ? 'Stage: binaural mix' : 'Stage: speakers mix');
+        return { mode };
       },
     },
     {

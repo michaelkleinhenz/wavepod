@@ -40,7 +40,7 @@ Every slider's value can be clicked to type an exact number, such as `-3,5 dB`, 
 | **Band-pass** | Keeps only the frequencies between the low and the high cut: telephone, radio and walkie-talkie voices, or a muffled voice behind a wall. |
 | **Distortion** | Saturation, clipping or fuzz, optionally with fewer bits and a lower sample rate. |
 | **Echo** | Repeats the sound after a delay, each repeat a little duller. |
-| **Room & distance** | Puts a voice into a place and moves it closer or further away. See [Audio drama](audio-drama.md#places). |
+| **Room & distance** | Puts a voice into a place and moves it closer or further away. See [Audio drama](audio-drama.md#places). On a track on the [3D stage](audio-drama.md#3d-stage-binaural), the stage sets the distance. |
 | **Convolution reverb** | Puts the sound into a real room by convolving it with an impulse response (IR), a WAV recording of that room. See [Impulse responses](audio-drama.md#impulse-responses). |
 | **Pitch shift** | Makes a voice higher or lower without changing its speed. |
 | **Ring modulator** | Makes a voice metallic: robots, aliens, broken machines. |

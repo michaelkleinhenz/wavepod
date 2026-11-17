@@ -89,6 +89,11 @@ export interface Track {
   pan: number;
   /** Volume and pan automation over the timeline; `shown` is the lane drawn on the track's row. */
   automation?: TrackAutomation;
+  /**
+   * Where the voice stands on the 3D stage (View › Stage). While set, the track is rendered
+   * binaurally (or panned for speakers, Project.stage) from this position instead of using `pan`.
+   */
+  stage?: StagePosition;
   clips: Clip[];
   /** Cough-button mutes: [start, end) in timeline frames, sorted, non-overlapping. */
   muteRegions?: MuteRegion[];
@@ -139,19 +144,40 @@ export interface TrackVoice {
   cloned?: boolean;
 }
 
-export type AutomationLane = 'volume' | 'pan';
+/**
+ * 'angle' and 'distance' move a voice placed on the 3D stage (Track.stage) and only apply to such tracks.
+ */
+export type AutomationLane = 'volume' | 'pan' | 'angle' | 'distance';
+
+/** A voice's place around the listener on the 3D stage. */
+export interface StagePosition {
+  /** Degrees around the listener: 0 in front, 90 right, -90 left, ±180 behind. */
+  azimuth: number;
+  /** Degrees up (positive) or down (negative) from ear height. */
+  elevation: number;
+  /** Metres from the listener's head. */
+  distance: number;
+}
+
+/** How voices on the 3D stage are rendered: binaural for headphones, or panned for loudspeakers. */
+export type StageMode = 'binaural' | 'speakers';
 
 /** One breakpoint of a track automation lane. */
 export interface AutomationPoint {
   /** Timeline frame. */
   pos: Frames;
-  /** Volume: dB (-60 is silent, up to +6), relative to the track gain. Pan: -1 (left) .. 1 (right). */
+  /**
+   * Volume: dB (-60 is silent, up to +6), relative to the track gain. Pan: -1 (left) .. 1 (right).
+   * Angle: degrees around the listener (-180 .. 180, 0 in front). Distance: metres.
+   */
   value: number;
 }
 
 export interface TrackAutomation {
   volume?: AutomationPoint[];
   pan?: AutomationPoint[];
+  angle?: AutomationPoint[];
+  distance?: AutomationPoint[];
   shown?: AutomationLane;
 }
 
@@ -347,6 +373,8 @@ export interface Project {
   video?: VideoSettings;
   /** CamPod recordings started together with this episode's takes. */
   campod?: { sessions: CamPodLink[] };
+  /** The 3D stage (Track.stage): how its voices are rendered; binaural when unset. */
+  stage?: { mode: StageMode };
 }
 
 // ---------------------------------------------------------------- CamPod (camera recorder)
