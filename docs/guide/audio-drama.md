@@ -24,6 +24,7 @@ Open **View › Script** (`Shift+Ctrl+J`), or pick the **Script** tab of the [si
 - the script's progress: how many lines are recorded,
 - every character with their recorded and total lines. Click a character to see only their lines (handy in a session with one actor), click again for everyone,
 - **Tracks**: the track each character is recorded on. Characters go to the track with their name by themselves (*Anna* for ANNA, *Dr. Hill* for HILL); pick another track here,
+- **Character tracks**: each character's own track, voice and room. See [Character tracks](#character-tracks),
 - the lines, scene by scene, with stage directions in grey. **Open lines only** hides what is ticked off.
 
 ### Folding acts and scenes
@@ -96,6 +97,27 @@ Clips that hold one line of the script are named after it: the role and the firs
 - **Cut Around Every Take** names each clip holding a take after its line, so the takes of a line are easy to tell apart on the timeline.
 - **Line up**, and lines ticked while recording, name a clip when it holds exactly that one line and not much more, for example when you record each line on its own.
 - Clips you have [renamed](editing.md#clip-names) keep their name. A clip with several lines keeps showing its file name.
+
+### Character tracks
+
+A character can have a track of its own, the *character track*, with its voice and the room it is in. **Line up** and **Cut Around Every Take** then move the character's lines there by themselves, wherever they were recorded: a narrator who reads three parts on one microphone, or a scene recorded with the whole cast around one mic, ends up with every line on the right character's track, with that character's sound.
+
+Open **Character tracks** in the script panel. For each character:
+
+- **Track**: *+ New track* makes a track named after the character (*Dr. Sarah Meyer* for DR. SARAH MEYER) in the folder of the track the character is recorded on, or in the *Dialogue* [folder](tracks-mixing.md#track-folders). It starts with a copy of that track's filters, so the clean-up of the actor's voice still applies. A track already named after the character is used as it is. Or pick any other track. *Stays on its track* switches routing off for the character.
+- **Voice**: one of the [voice effects](#voice-effects), such as Telephone, Robot or Giant. *Natural voice* removes it again.
+- **Room**: one of the [places](#places) (Room & distance), such as Living room, Car or Forest. Set its **Distance** in the FX panel to move the character away from the listener.
+
+Picking a voice or a room makes the character track when there is none yet. The voice goes before the room in the track's filters, and picking another one replaces only the filters the voice (or the room) added; filters you added yourself stay. Everything stays editable in the [FX panel](filters.md).
+
+**⋯ › Make Character Tracks** gives every character its own track in one go.
+
+#### How lines are moved
+
+- After **Line up**, a clip is moved to the character track when it holds only that character's lines and isn't much longer than them, for example when each line was recorded on its own. It keeps its time, so the timing of the scene doesn't change.
+- A long recording with lines of several characters stays where it is: use **Cut Around Every Take** on the scene (or **⋯ › Cut Around Every Take of Every Line**) first. Each take then is a clip of its own and moves to its character's track.
+- **⋯ › Move Lines to Character Tracks** moves the clips of every line found so far, for example after setting up character tracks for lines you lined up earlier.
+- Moving is one step you can undo (`Ctrl+Z`). Lining up again later still finds the lines on the character tracks.
 
 ### Jumping
 
@@ -225,7 +247,7 @@ A single fluffed line doesn't need a whole new take of the scene: select it, arm
 ## Typical audio drama setup
 
 1. **Track folders › Audio drama folders** creates Dialogue, SFX, Atmo and Music folders.
-2. Give each character a track in Dialogue, named like the character, with Room & distance for the scene's place.
+2. Give each character a track in Dialogue, named like the character, with Room & distance for the scene's place. Or record on any tracks and let the script's [character tracks](#character-tracks) sort the lines onto a track per character, each with its voice and room.
 3. Import the script. Record each line in a loop (`Alt+Shift+R`), comp the best take and tick the line off with `Enter`, or let **Line up** find the lines afterwards. Fix single fluffed lines later with a [punch-in](recording.md#punch-in-re-record-one-line) (`Shift+R`).
 4. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
 5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.

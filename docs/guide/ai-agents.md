@@ -47,7 +47,7 @@ Every change an agent makes is one undo step (`Ctrl+Z`), shows up in the FX pane
 | `list_tracks` | Tracks and the master with gain, pan, mute/solo, clips and filter names |
 | `list_markers` | Chapter and edit markers with times |
 | `get_transcript` | The episode's transcript as text |
-| `get_script` | The imported audio drama script: every line, whether it is recorded and where its take is |
+| `get_script` | The imported audio drama script: every line, whether it is recorded and where its take is, and each character's track, voice and room |
 | `measure_loudness` | Loudness figures of the mix and every track, after the filters |
 | `list_filter_types` | Built-in filters with their parameters, units, ranges and defaults |
 | `list_vst_plugins` | Installed VST3 effects |
@@ -65,6 +65,7 @@ Every change an agent makes is one undo step (`Ctrl+Z`), shows up in the FX pane
 | `align_track` | Line a track up with another one by its content (separate recorders, double-enders), with clock drift corrected |
 | `list_takes`, `use_take` | Takes of a track; play a whole take or splice part of one into the comp |
 | `create_folder`, `move_tracks_to_folder`, `update_folder`, `remove_folder` | Track folders |
+| `set_character`, `route_script_lines` | [Character tracks](audio-drama.md#character-tracks): a script role's own track with a voice and a room, and moving its lines there |
 | `list_cameras`, `get_director`, `set_director_cuts` | [Video podcasts](video.md): the cameras, which one is seen when, and new camera switches (for example to whoever speaks in the transcript) |
 
 Agents never open VST3 plug-in windows; they set the same parameters you see as sliders.

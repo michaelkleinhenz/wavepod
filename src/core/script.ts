@@ -3,7 +3,7 @@
 // (which track each character is recorded on), ticking lines off as recorded and finding each
 // line in the recording from the transcript ("Line up"). A recorded line is kept as a frame range
 // of its media file, like transcript words, so it stays found through every cut and move.
-import type { Frames, Project, Script, ScriptLine, ScriptTake, TimelineWord, Track } from '../shared/types';
+import type { Frames, Project, Script, ScriptLine, ScriptRole, ScriptTake, TimelineWord, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import { bareWord, isFiller } from './transcript';
 
@@ -430,7 +430,28 @@ export function normalizeScript(raw: unknown): Script | undefined {
   }
   const cast: Record<string, string> = {};
   if (s.cast && typeof s.cast === 'object') for (const [k, v] of Object.entries(s.cast)) if (typeof v === 'string' && v) cast[characterKey(k)] = v;
-  return { title: typeof s.title === 'string' ? s.title : 'Script', ...(typeof s.source === 'string' ? { source: s.source } : {}), lines, cast };
+  const roles: Record<string, ScriptRole> = {};
+  if (s.roles && typeof s.roles === 'object') {
+    for (const [k, v] of Object.entries(s.roles)) {
+      if (!v || typeof v !== 'object') continue;
+      const ids = (a: unknown) => (Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string' && !!x) : []);
+      const role: ScriptRole = {
+        ...(typeof v.trackId === 'string' && v.trackId ? { trackId: v.trackId } : {}),
+        ...(typeof v.voice === 'string' && v.voice ? { voice: v.voice } : {}),
+        ...(typeof v.room === 'string' && v.room ? { room: v.room } : {}),
+        ...(ids(v.voiceFx).length ? { voiceFx: ids(v.voiceFx) } : {}),
+        ...(ids(v.roomFx).length ? { roomFx: ids(v.roomFx) } : {}),
+      };
+      if (Object.keys(role).length) roles[characterKey(k)] = role;
+    }
+  }
+  return {
+    title: typeof s.title === 'string' ? s.title : 'Script',
+    ...(typeof s.source === 'string' ? { source: s.source } : {}),
+    lines,
+    cast,
+    ...(Object.keys(roles).length ? { roles } : {}),
+  };
 }
 
 // ---------------------------------------------------------------- characters and cast
@@ -492,6 +513,16 @@ export function autoCast(script: Script, tracks: Track[], current: Record<string
 /** The track a line is recorded on, if its character is cast. */
 export function lineTrack(script: Script, l: ScriptLine): string | undefined {
   return l.character ? script.cast[characterKey(l.character)] : undefined;
+}
+
+/** The character track a line is moved to (character routing), if its character has one. */
+export function roleTrack(script: Script, l: ScriptLine): string | undefined {
+  return l.character ? script.roles?.[characterKey(l.character)]?.trackId : undefined;
+}
+
+/** Where a line is now: its character track first, then the track it was recorded on. */
+function homeTrack(script: Script, l: ScriptLine): string | undefined {
+  return roleTrack(script, l) ?? lineTrack(script, l);
 }
 
 export interface ScriptProgress {
@@ -606,7 +637,7 @@ export function nameScriptClips(project: Project): Project {
   const byTrack = new Map<string, Array<{ line: ScriptLine; start: Frames; end?: Frames }>>();
   for (const l of script.lines) {
     if (l.kind !== 'dialogue' || !l.take) continue;
-    const p = takePosition(project, l.take, lineTrack(script, l));
+    const p = takePosition(project, l.take, homeTrack(script, l));
     if (!p?.trackId) continue;
     let list = byTrack.get(p.trackId);
     if (!list) byTrack.set(p.trackId, (list = []));
@@ -648,7 +679,7 @@ export function placedLines(project: Project): PlacedLine[] {
   const out: PlacedLine[] = [];
   script.lines.forEach((l, index) => {
     if (!l.take) return;
-    const p = takePosition(project, l.take, lineTrack(script, l));
+    const p = takePosition(project, l.take, homeTrack(script, l));
     if (p) out.push({ index, start: p.start, ...(p.end !== undefined ? { end: p.end } : {}) });
   });
   return out.sort((a, b) => a.start - b.start);
@@ -970,13 +1001,15 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
   }
   const all = words.map((_, i) => i).filter((i) => tokens[i].length);
   const indexCache = new Map<string, { list: number[]; toks: string[]; pos: Map<string, number[]> }>();
-  const indexFor = (trackId: string | undefined) => {
-    const key = trackId && byTrack.has(trackId) ? trackId : '*';
+  const indexFor = (trackIds: string[]) => {
+    const own = [...new Set(trackIds)].filter((id) => byTrack.has(id)).sort();
+    const key = own.length ? own.join('|') : '*';
     let idx = indexCache.get(key);
     if (!idx) {
       const list: number[] = [];
       const toks: string[] = [];
-      for (const i of key === '*' ? all : byTrack.get(key)!) {
+      const source = key === '*' ? all : own.length === 1 ? byTrack.get(own[0])! : own.flatMap((id) => byTrack.get(id)!).sort((a, b) => a - b);
+      for (const i of source) {
         for (const t of tokens[i]) {
           list.push(i);
           toks.push(t);
@@ -996,8 +1029,8 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
 
   type Hit = { first: number; last: number; score: number };
   const sr = project.sampleRate;
-  const search = (lineToks: string[], trackId: string | undefined, within?: [Frames, Frames]): { best: Hit; takes: Hit[] } | null => {
-    const { list, toks, pos } = indexFor(trackId);
+  const search = (lineToks: string[], trackIds: string[], within?: [Frames, Frames]): { best: Hit; takes: Hit[] } | null => {
+    const { list, toks, pos } = indexFor(trackIds);
     const n = lineToks.length;
     // seed from the line's rarest words (common ones like "the" would try everything)
     const seeds = lineToks
@@ -1070,6 +1103,14 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
 
   const dialogue = script.lines.filter((l) => l.kind === 'dialogue');
   const toks = new Map(dialogue.map((l) => [l.id, lineTokens(l.text)]));
+  // a character's lines are on the track they were recorded on, or already on its character track;
+  // characters without a recording track are looked for everywhere
+  const searchTracks = (l: ScriptLine): string[] => {
+    const cast = lineTrack(script, l);
+    if (!cast) return [];
+    const role = roleTrack(script, l);
+    return role ? [cast, role] : [cast];
+  };
   let searched = 0;
   // long lines first: they are unmistakable
   for (const l of dialogue) {
@@ -1077,7 +1118,7 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
     if (!t.length) continue;
     searched++;
     if (t.length < 3) continue;
-    const r = search(t, lineTrack(script, l));
+    const r = search(t, searchTracks(l));
     if (r) record(l, r);
   }
   // short lines: only between the found lines around them (from the first take of the line
@@ -1102,7 +1143,7 @@ export function lineUpScript(project: Project, words: TimelineWord[]): LineUpRes
       }
     }
     if (lo === 0 && hi === Infinity) return;
-    const r = search(t, lineTrack(script, l), [lo, hi]);
+    const r = search(t, searchTracks(l), [lo, hi]);
     if (r) record(l, r);
   });
   return { found, occurrences, searched };
@@ -1277,11 +1318,13 @@ export function scriptSummary(project: Project): Array<Record<string, unknown>> 
   return script.lines.map((l, i) => {
     const p = placed.get(i);
     const track = lineTrack(script, l);
+    const role = roleTrack(script, l);
     return {
       kind: l.kind,
       ...(l.kind === 'scene' && headingLevel(l) < SCENE_LEVEL ? { act: true } : {}),
       ...(l.character ? { character: l.character } : {}),
       ...(track && names.has(track) ? { track: names.get(track) } : {}),
+      ...(role && names.has(role) && role !== track ? { characterTrack: names.get(role) } : {}),
       ...(l.note ? { note: l.note } : {}),
       text: l.text,
       ...(l.kind === 'dialogue' ? { recorded: !!l.recorded } : {}),

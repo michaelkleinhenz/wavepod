@@ -819,6 +819,15 @@ header .menubar { padding: 0; background: transparent; border: none; flex: none;
 .script-cast-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .script-cast-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .script-cast-row select { max-width: 180px; }
+.script-roles { margin-top: 6px; font-size: 12px; }
+.script-roles summary { cursor: pointer; color: var(--muted); }
+.script-roles-hint { margin: 4px 0 6px; font-size: 11px; line-height: 1.4; }
+.script-role-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) minmax(0, 1.6fr); align-items: center; gap: 4px 8px; margin: 6px 0; }
+.script-role-row .dot { width: 8px; height: 8px; border-radius: 50%; }
+.script-role-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.script-role-row select { min-width: 0; width: 100%; }
+.script-role-row select:nth-of-type(2) { grid-column: 2; }
+.script-role-row select:nth-of-type(3) { grid-column: 3; }
 .script-body { flex: 1; overflow: auto; padding: 6px 0 24px; user-select: none; }
 .script-empty { padding: 4px 14px; line-height: 1.5; }
 .script-empty code { color: var(--text); }
