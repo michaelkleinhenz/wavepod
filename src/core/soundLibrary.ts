@@ -242,3 +242,31 @@ export function moveFavourite(list: FavouriteSound[], from: number, by: number):
 export function favouriteEntries(list: FavouriteSound[]): LibraryEntry[] {
   return list.map((f) => ({ path: favouriteRef(f.path), size: 0, title: f.name, folder: soundFileName(f.path) }));
 }
+
+// ---------------------------------------------------------------- groups: sound effects and music
+
+/** The two groups the Sounds panel splits sounds into. */
+export type SoundGroup = 'sfx' | 'music';
+export const SOUND_GROUPS: SoundGroup[] = ['sfx', 'music'];
+
+/**
+ * A sound counts as music when "music" appears anywhere in its path (any case: a "Music" folder,
+ * "music_bed.wav", "Musicbox"); everything else is a sound effect. Library sounds are judged by
+ * their path inside the library folder, favourites by their full path.
+ */
+export function soundGroupOf(ref: string): SoundGroup {
+  return /music/i.test(favouritePathOf(ref) ?? ref) ? 'music' : 'sfx';
+}
+
+const groupCache = new WeakMap<LibraryEntry[], Record<SoundGroup, LibraryEntry[]>>();
+
+/** The entries split into their groups, order kept. Cached per array, so each group's search index is too. */
+export function groupSounds(entries: LibraryEntry[]): Record<SoundGroup, LibraryEntry[]> {
+  let g = groupCache.get(entries);
+  if (!g) {
+    g = { sfx: [], music: [] };
+    for (const e of entries) g[soundGroupOf(e.path)].push(e);
+    groupCache.set(entries, g);
+  }
+  return g;
+}

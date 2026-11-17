@@ -175,6 +175,17 @@ Keep your sound effects and atmospheres in a folder and search them from inside 
 
 **Fill the Selection (Loop)** repeats a sound over the selected time range with crossfades: ideal for room tone, wind, rain and other atmospheres.
 
+### SFX and Music
+
+The library splits your sounds into two groups, switched with **SFX** and **Music** next to the search box. Each button shows how many sounds are in its group.
+
+- A sound is **Music** when the word *music* appears anywhere in its path: in a folder name (*Music/*, *Background Music/*) or in the file name (*intro_music.wav*, *Musicbox.mp3*). Upper and lower case don't matter.
+- Everything else is **SFX**: sound effects, atmospheres, foley.
+- Searching looks in the group you are in. When the other group has matches too, the line under the search box says so, for example *· 3 in Music*: click it to switch.
+- The **★ Favourites** tab is split the same way, by the full path of each favourite's file.
+
+To file a sound as music, put it in a folder with *Music* in its name (or add *music* to its file name) and click **Rescan**. The word must be *music*: a folder called *Musik* or *Musique* stays in SFX.
+
 WAV, MP3, FLAC, Ogg, Opus, M4A and AIFF files are found. **Rescan** reads the folder again after you add sounds. Sounds you insert are copied into the episode, so it keeps working without the library.
 
 ### Favourites
@@ -183,7 +194,7 @@ The **★ Favourites** tab at the top of the sound library holds the sounds you 
 
 - **Add sounds…** adds audio files from anywhere on your computer; they don't have to be in the library folder.
 - In the **Library** tab, click the ☆ next to a sound (or right-click › **Add to Favourites**), or drag it onto the Favourites tab.
-- Listen, insert, drag onto a track and **Fill the Selection (Loop)** work just like in the library.
+- Listen, insert, drag onto a track and **Fill the Selection (Loop)** work just like in the library, and so do the [SFX and Music](#sfx-and-music) groups.
 - Right-click a favourite to **Rename…** it (`F2`), **Move Up** or **Move Down** in the list, or **Remove from Favourites** (`Delete`, or click its ★). The file itself is never deleted.
 - A favourite whose file was moved or deleted is crossed out with the path it was at.
 
