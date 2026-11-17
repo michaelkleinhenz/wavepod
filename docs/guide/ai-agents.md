@@ -59,7 +59,8 @@ Every change an agent makes is one undo step (`Ctrl+Z`), shows up in the FX pane
 | `list_filter_presets`, `apply_filter_preset`, `save_filter_preset` | Presets |
 | `list_impulse_responses`, `set_impulse_response` | Impulse responses for the Convolution reverb |
 | `set_automix` | Crosstalk removal on a track |
-| `set_track_automation` | Volume and pan automation |
+| `set_track_automation` | Volume and pan automation (angle and distance for voices on the 3D stage) |
+| `set_track_stage`, `set_stage_mode` | Place voices on the [3D stage](audio-drama.md#3d-stage-binaural) (angle, height, distance), binaural or speakers mix |
 | `set_track_stem` | Which stem a track goes to |
 | `match_voice` | Make one speaker's track sound like another's (Voice match: learns the tonal difference and sets the filter) |
 | `align_track` | Line a track up with another one by its content (separate recorders, double-enders), with clock drift corrected |

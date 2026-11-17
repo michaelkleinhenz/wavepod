@@ -1,11 +1,11 @@
 // The docked sidebar on the right of Record & Edit. Filters, transcript, sound library, script,
-// cameras and remote guests each have a tab in it; one shows at a time, next to the timeline
+// the 3D stage, cameras and remote guests each have a tab in it; one shows at a time, next to the timeline
 // rather than over it. Drag its left edge to make it wider or narrower (double-click: back to the
 // default width), and fold it to a thin strip for the full timeline width. Width, folded state and
 // the last tab are remembered on this computer.
 import { h } from './dom';
 
-export const SIDEBAR_TABS = ['fx', 'transcript', 'library', 'script', 'video', 'guests'] as const;
+export const SIDEBAR_TABS = ['fx', 'transcript', 'library', 'script', 'stage', 'video', 'guests'] as const;
 export type SidebarTab = (typeof SIDEBAR_TABS)[number];
 
 /** A panel that lives in a sidebar tab. */

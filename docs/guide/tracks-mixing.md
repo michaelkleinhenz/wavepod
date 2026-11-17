@@ -26,8 +26,8 @@ From left to right and top to bottom:
 | Input | The input channel(s) this track records from: one input, or a stereo pair. |
 | **FX** | Opens the track's filters. With filters it shows how many are on. See [Filters and effects](filters.md). |
 | Gain | Track volume in dB. Drag the slider, double-click it for 0 dB, or click the number to type a value. |
-| Pan | Left … right. Double-click to centre, or click the value and type `L 40`, `C` or `R 25`. |
-| **Auto** | Shows the track's volume or pan automation. See [Automation](#automation). |
+| Pan | Left … right. Double-click to centre, or click the value and type `L 40`, `C` or `R 25`. On a track placed on the [3D stage](audio-drama.md#3d-stage-binaural) it shows **3D** instead: click it to open the stage. |
+| **Auto** | Shows the track's volume or pan automation (volume, angle or distance on the 3D stage). See [Automation](#automation). |
 | **Takes** | Only on a track with takes: shows or hides its take lanes. See [Takes and comping](recording.md#takes-and-comping). |
 
 Right-click a track header to move the track into a folder, or to line it up with another track (**Align to other track…**, see [Aligning recordings](editing.md#aligning-recordings)).
@@ -51,6 +51,7 @@ Choose **Clips only** to hide the lane again; tracks with automation show a dot 
 - Volume automation works on top of the track gain, after the track's filters.
 - Pan automation replaces the track's pan while it has points; the pan control then shows *lane*.
 - Ripple cuts and moves take the points along.
+- A track on the [3D stage](audio-drama.md#3d-stage-binaural) has **Angle automation** and **Distance automation** instead of pan automation, to move the voice around the listener. **Clear angle automation** and **Clear distance automation** remove their points; taking the track off the stage removes them too.
 
 ## Track folders
 

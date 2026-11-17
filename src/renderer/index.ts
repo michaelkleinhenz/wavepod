@@ -75,6 +75,7 @@ import { CleanupDialog } from './cleanupDialog';
 import { transcripts } from './transcripts';
 import { RecordingAlertModal } from './recordingAlert';
 import { shortcutLetter } from './shortcutKey';
+import { StagePanel } from './stagePanel';
 import { VideoPanel, showCameraMenu, switchAtPlayhead } from './video/videoPanel';
 import { WatchThrough } from './video/watchThrough';
 import { importVideos } from './video/cameras';
@@ -123,6 +124,8 @@ async function main(): Promise<void> {
   const libraryPanel = new SoundLibraryPanel();
   const scriptPanel = new ScriptPanel();
   const videoPanel = new VideoPanel();
+  const stagePanel = new StagePanel();
+  window.addEventListener('wavepod:open-stage', (e) => stagePanel.openFor((e as CustomEvent<string | undefined>).detail));
   const watchThrough = new WatchThrough();
   videoPanel.onWatchThrough = () => watchThrough.open();
   videoPanel.onAutoDirect = () => openAutoDirect();
@@ -133,6 +136,7 @@ async function main(): Promise<void> {
   side.add('transcript', 'Transcript', 'Transcript: the episode as text; cut by deleting words (Shift+Ctrl+T)', transcriptPanel);
   side.add('library', 'Sounds', 'Sound library: search your sound effects, listen and insert them (Shift+Ctrl+B)', libraryPanel);
   side.add('script', 'Script', 'Script: every line by character, tick off what is recorded (Shift+Ctrl+J)', scriptPanel);
+  side.add('stage', 'Stage', 'Stage: place voices around the listener for a binaural 3D mix (Shift+Ctrl+P)', stagePanel);
   side.add('video', 'Cameras', 'Cameras: the program monitor and every camera (Shift+Ctrl+U)', videoPanel);
   side.add('guests', 'Guests', 'Remote guests: invite them, let them in, see their uploads (Shift+Ctrl+G)', guestsPanel);
   // A panel's shortcut or header button shows its tab, or folds the sidebar if the tab is showing.
@@ -144,6 +148,7 @@ async function main(): Promise<void> {
     } else side.toggle(id);
   };
   const openVideo = () => openTab('video');
+  const openStage = () => openTab('stage');
   const openScript = () => openTab('script');
   const openLibrary = () => openTab('library');
   const openTranscript = () => openTab('transcript');
@@ -463,6 +468,7 @@ async function main(): Promise<void> {
       case 'import-video': return void importVideos().then(() => store.project.cameras?.length && !videoPanel.isOpen && openVideo());
       case 'export-video': return void (!document.querySelector('.overlay') && exportDialog.open(undefined, true));
       case 'video': return openVideo();
+      case 'stage': return openStage();
       case 'watch-through': return void (!document.querySelector('.overlay') && watchThrough.toggle());
       case 'import-chapters': return void importChapterFile();
       case 'import-zencastr': return void importZencastrSession();

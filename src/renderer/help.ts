@@ -16,6 +16,8 @@ function currentContext(): HelpContext {
         ? 'library'
         : document.querySelector('.script-panel')
           ? 'script'
+          : document.querySelector('.sidebar .stage-panel')
+            ? 'stage'
           : document.querySelector('.video-panel')
             ? 'video'
             : document.querySelector('.sidebar .remote-panel')
