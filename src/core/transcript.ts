@@ -240,6 +240,19 @@ export function filesToTranscribe(project: Project, have: (file: string) => bool
   return out;
 }
 
+/**
+ * The parts of a file a partial transcript (one made from selections) doesn't cover yet, in
+ * project frames, to finish it without sending the covered parts again. The last span runs to
+ * the end of the file whatever its length (the worker cuts it there). Empty for a whole or no
+ * transcript.
+ */
+export function restToTranscribe(t: FileTranscript | null | undefined, projectRate: number): Array<[Frames, Frames]> {
+  if (!t?.spans) return [];
+  const scale = projectRate / (t.sampleRate || projectRate);
+  const covered = unionSpans(t.spans.map(([a, b]) => [Math.round(a * scale), Math.round(b * scale)] as [number, number]));
+  return subtractSpans([[0, Number.MAX_SAFE_INTEGER]], covered);
+}
+
 /** True if the transcript covers its whole file (not just the parts of a selection). */
 export function isWholeTranscript(t: FileTranscript | null | undefined): boolean {
   return !!t && !t.spans;

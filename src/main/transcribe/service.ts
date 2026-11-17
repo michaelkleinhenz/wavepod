@@ -3,7 +3,7 @@
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import type { FileTranscript, Project, TranscribeProgress, TranscriptionInfo, TranscriptionSettings, TranscriptionSettingsInput } from '../../shared/types';
-import { filesToTranscribe, isWholeTranscript, mergeTranscript, selectionToTranscribe } from '../../core/transcript';
+import { filesToTranscribe, isWholeTranscript, mergeTranscript, restToTranscribe, selectionToTranscribe } from '../../core/transcript';
 import { SCRIBE_MODELS, TRANSCRIPT_LANGUAGES, normalizeTranscriptionSettings } from '../../core/elevenlabs';
 import { deleteTranscript, loadTranscript, loadTranscripts, saveTranscript } from './store';
 import type { TranscribeJob } from './worker';
@@ -127,9 +127,14 @@ export class TranscriptionService {
     if (!apiKey) throw new Error('Add your ElevenLabs API key first: Settings › Transcription.');
     const project = this.host.project();
     const dir = this.host.dir();
-    const todo: Array<{ file: string; trackId: string; spans?: Array<[number, number]> }> = opts.range
+    const todo: Array<{ file: string; trackId: string; spans?: Array<[number, number]>; rest?: boolean }> = opts.range
       ? selectionToTranscribe(project, opts.range, (f) => loadTranscript(dir, f), opts.trackIds)
-      : filesToTranscribe(project, (f) => !opts.redo && isWholeTranscript(loadTranscript(dir, f)), opts.trackIds);
+      : filesToTranscribe(project, (f) => !opts.redo && isWholeTranscript(loadTranscript(dir, f)), opts.trackIds).map((t) => {
+          // a file lined up in parts before: only what those parts left out is sent
+          const rest = opts.redo ? [] : restToTranscribe(loadTranscript(dir, t.file), project.sampleRate);
+          return rest.length ? { ...t, spans: rest, rest: true } : t;
+        });
+    const finishing = new Set(todo.filter((t) => t.rest).map((t) => t.file));
     if (!todo.length) return { transcribed: 0, stopped: false };
     const names = new Map(project.tracks.map((t) => [t.id, t.name]));
     const job: TranscribeJob = {
@@ -155,7 +160,12 @@ export class TranscriptionService {
         else if (msg.type === 'file') {
           // the episode may have been switched meanwhile: the transcript belongs to the folder it started in
           // a selection's parts join what the file's transcript already has
-          const t = msg.transcript!.spans ? mergeTranscript(loadTranscript(dir, msg.transcript!.file), msg.transcript!) : msg.transcript!;
+          let t = msg.transcript!.spans ? mergeTranscript(loadTranscript(dir, msg.transcript!.file), msg.transcript!) : msg.transcript!;
+          // the rest of a file joined to its parts: now it's a whole-file transcript
+          if (finishing.has(t.file) && t.spans) {
+            const { spans: _done, ...whole } = t;
+            t = whole;
+          }
           saveTranscript(dir, t);
           transcribed++;
           if (this.host.dir() === dir) this.host.updated(t.file, t);

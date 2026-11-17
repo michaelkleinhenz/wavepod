@@ -293,9 +293,16 @@ export class ScriptPanel {
     this.lining = true;
     this.renderToolbar();
     try {
-      const words = await this.transcriptWords('Cutting around takes');
-      if (!words) return;
-      const r = lineUpScript(store.project, words);
+      // the transcript there is (maybe only of the parts lined up so far) is used as it is when it
+      // has every line; otherwise only what no transcript covers yet is transcribed
+      const t = transcripts();
+      await t.ensureLoaded();
+      let r = lineUpScript(store.project, t.words());
+      if (!ids.every((id) => r.occurrences.has(id)) && !t.complete) {
+        const words = await this.transcriptWords('Cutting around takes');
+        if (!words) return;
+        r = lineUpScript(store.project, words);
+      }
       const takes: LineOccurrence[] = ids.flatMap((id) => r.occurrences.get(id) ?? []);
       if (!takes.length) {
         toast(ids.length === 1 ? 'This line was not found in the transcript. Is its character on the right track?' : `None of the lines of ${what} were found in the transcript`);
@@ -691,7 +698,7 @@ export class ScriptPanel {
               disabled: busy,
               title: this.hadSelection
                 ? 'Find the lines in the selected part of the timeline and tick them off (transcribes only that part first)'
-                : 'Find every line in the transcript of the recording and tick it off (transcribes what is missing first). Select a part of the timeline to line up only that part.',
+                : 'Find every line in the transcript of the recording and tick it off (transcribes what is missing first). Select a part of the timeline, or some clips, to line up only that part.',
               onclick: () => void this.lineUp(),
             },
             busy ? h('span', { class: 'spinner' }) : null,
@@ -989,14 +996,36 @@ interface TimeSelection {
   trackIds: string[] | null;
 }
 
-/** The timeline's time selection, or null if there is none (or it's empty). */
+/**
+ * The timeline's time selection, or null if there is none (or it's empty). Selected clips count
+ * too: the time from the first to the end of the last, on their tracks.
+ */
 function timeSelection(): TimeSelection | null {
   const r = store.selection.range;
-  if (!r) return null;
+  if (!r) return clipSelection();
   const range: [number, number] = r[0] <= r[1] ? [r[0], r[1]] : [r[1], r[0]];
   if (range[1] - range[0] < 1) return null;
   const tracks = store.selection.rangeTracks;
   return { range, trackIds: tracks?.length ? [...tracks] : null };
+}
+
+/** The selected clips as a time selection, or null if no clips are selected. */
+function clipSelection(): TimeSelection | null {
+  const ids = store.selection.clipIds;
+  if (!ids.size) return null;
+  let from = Infinity;
+  let to = -Infinity;
+  const tracks = new Set<string>();
+  for (const t of store.project.tracks) {
+    for (const c of t.clips) {
+      if (!ids.has(c.id)) continue;
+      from = Math.min(from, c.start);
+      to = Math.max(to, c.start + c.length);
+      tracks.add(t.id);
+    }
+  }
+  if (!tracks.size || to <= from) return null;
+  return { range: [from, to], trackIds: [...tracks] };
 }
 
 function readFolded(): string[] {
