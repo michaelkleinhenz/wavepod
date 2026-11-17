@@ -4,6 +4,7 @@
 // letscast.fm, and show notes it already has are kept.
 import type { ExportProgress, LetsCastEpisodeDetails, LetsCastEpisodeInfo, LetsCastInfo, LetsCastParts, LetsCastPodcastInfo } from '../shared/types';
 import { parseEpisodeLink } from '../core/letscastPages';
+import type { ExportedMp3 } from '../core/exportStamp';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { api, store } from './store';
 
@@ -25,8 +26,10 @@ export class LetsCastDialog {
   private matched: string | null = null;
   /** Only the audio is ticked when the dialog opens. */
   private parts: LetsCastParts = { audio: true, details: false, showNotes: false, cover: false };
-  /** The MP3 the export dialog just wrote, uploaded as it is instead of rendering again. */
-  private mp3: string | undefined;
+  /** The exported MP3 to upload instead of rendering again: the one the export dialog just wrote, or the last whole-episode export. */
+  private exported: ExportedMp3 | null = null;
+  /** Render a new MP3 even though there is an exported one (ticked by itself when the export is out of date). */
+  private rerender = false;
 
   constructor() {
     this.overlay.addEventListener('mousedown', (e) => {
@@ -39,7 +42,8 @@ export class LetsCastDialog {
   }
 
   async open(mp3?: string): Promise<void> {
-    this.mp3 = mp3;
+    this.exported = mp3 ? { path: mp3, at: Date.now(), current: true } : null;
+    this.rerender = false;
     this.parts = { audio: !!mp3 || store.project.tracks.some((t) => t.clips.length), details: false, showNotes: false, cover: false };
     this.result = null;
     this.status = '';
@@ -48,6 +52,15 @@ export class LetsCastDialog {
     document.body.append(this.overlay);
     this.render();
     try {
+      if (!mp3) {
+        // the last export of the whole episode, if it is still there; out of date means render again
+        this.exported = await api()
+          .letscastExportedMp3()
+          .catch(() => null);
+        this.rerender = !!this.exported && !this.exported.current;
+        this.parts = { ...this.parts, audio: this.parts.audio || !!this.exported };
+        this.render();
+      }
       this.info = await api().letscastStatus();
       this.podcast = this.info.podcast;
       this.episode = '';
@@ -161,10 +174,11 @@ export class LetsCastDialog {
     this.busy = true;
     this.result = null;
     this.error = '';
-    this.status = parts.audio && !this.mp3 ? 'Rendering the MP3…' : 'Sending…';
+    const mp3 = this.mp3();
+    this.status = parts.audio && !mp3 ? 'Rendering the MP3…' : 'Sending…';
     this.render();
     try {
-      const r = await api().uploadToLetsCast(this.podcast, this.episode, parts, parts.audio ? this.mp3 : undefined);
+      const r = await api().uploadToLetsCast(this.podcast, this.episode, parts, parts.audio ? mp3 : undefined);
       this.result = r.url;
       this.status = '';
       if (!this.episode) {
@@ -184,6 +198,11 @@ export class LetsCastDialog {
       this.busy = false;
       this.render();
     }
+  }
+
+  /** The exported MP3 that is uploaded, or undefined to render one. */
+  private mp3(): string | undefined {
+    return this.exported && !this.rerender ? this.exported.path : undefined;
   }
 
   private render(): void {
@@ -247,8 +266,10 @@ export class LetsCastDialog {
     );
     const s = store.project.exportSettings;
     const m = store.project.metadata;
-    const hasAudio = !!this.mp3 || store.project.tracks.some((t) => t.clips.length);
-    const fileName = this.mp3 ? this.mp3.split(/[\\/]/).pop() : '';
+    const exported = this.exported;
+    const mp3 = this.mp3();
+    const hasAudio = !!exported || store.project.tracks.some((t) => t.clips.length);
+    const fileName = exported ? exported.path.split(/[\\/]/).pop() : '';
     const what = `${s?.mp3Bitrate ?? 128} kbps${s?.mono ? ' mono' : ''}${s?.normalize === false ? '' : `, ${String(s?.targetLufs ?? -16).replace('-', '−')} LUFS`}`;
     const yes = (v: boolean | undefined, on: string, off: string) => (v === undefined ? '' : v ? on : off);
     const details = [
@@ -321,7 +342,26 @@ export class LetsCastDialog {
       found,
       linkRow,
       h('h3', null, 'Send'),
-      part('audio', 'Audio', this.mp3 ? `the exported ${fileName}` : hasAudio ? `MP3, ${what}, as set in File › Export` : 'no audio yet', hasAudio),
+      part('audio', 'Audio', mp3 ? `the exported ${fileName}, as it is` : hasAudio ? `a new MP3, ${what}, as set in File › Export` : 'no audio yet', hasAudio),
+      exported && sends.audio
+        ? h(
+            'label',
+            { class: 'check letscast-rerender', style: 'margin-left: 24px' },
+            h('input', {
+              type: 'checkbox',
+              checked: this.rerender,
+              disabled: this.busy,
+              onchange: (e: Event) => {
+                this.rerender = (e.target as HTMLInputElement).checked;
+                this.render();
+              },
+            }),
+            h('span', null, 'Render a new MP3', h('span', { class: 'muted' }, ` · instead of uploading ${fileName}`)),
+          )
+        : null,
+      exported && !exported.current && sends.audio
+        ? h('p', { class: 'warning letscast-stale' }, `${exported.reason ?? 'The episode was changed after the export.'} ${this.rerender ? 'A new MP3 is rendered.' : `${fileName} is uploaded anyway.`}`)
+        : null,
       part('details', 'Episode details', details || 'none filled in (Chapters view)', !!details),
       part('showNotes', 'Show notes', notesThere ? 'the episode there has show notes already; they are kept' : notes ? `${notes.length} characters` : 'none filled in (Chapters view)', !!notes && !notesThere),
       part('cover', 'Episode cover', m.artwork ? 'the cover from the Chapters view' : 'no cover set', !!m.artwork),

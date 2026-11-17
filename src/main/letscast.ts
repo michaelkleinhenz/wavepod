@@ -9,6 +9,7 @@ import type { ExportOptions, ExportProgress, ExportResult, LetsCastInfo, LetsCas
 import { LETSCAST_BASE, LetsCastClient, editUrl, letscastUpdate, type LetsCastEpisodeUpdate } from '../core/letscast';
 import { DEFAULT_EXPORT_SETTINGS } from '../core/exportSettings';
 import { safeName } from '../core/exporter';
+import { EXPORT_STAMP_FILE, checkStamp, parseStamp, projectFingerprint, type ExportedMp3, type ExportStamp } from '../core/exportStamp';
 
 const PARTITION = 'persist:letscast';
 
@@ -98,6 +99,37 @@ export function letscastSignIn(parent: BrowserWindow | null): Promise<boolean> {
     });
     void win.loadURL(`${base()}/users/sign_in`);
   });
+}
+
+/** Remembers a whole-episode MP3 export in the project folder, so it can be uploaded without rendering again. */
+export function writeExportStamp(projectDir: string, project: Project, mp3: string): void {
+  try {
+    const st = fs.statSync(mp3);
+    const stamp: ExportStamp = { path: mp3, size: st.size, mtimeMs: st.mtimeMs, fingerprint: projectFingerprint(project), at: Date.now() };
+    fs.writeFileSync(path.join(projectDir, EXPORT_STAMP_FILE), JSON.stringify(stamp, null, 2));
+  } catch {
+    // a read-only project folder: the upload renders again
+  }
+}
+
+/** The last whole-episode MP3 export and whether it still matches the episode; null when there is none. */
+export function readExportStamp(projectDir: string, project: Project): ExportedMp3 | null {
+  let stamp: ExportStamp | null = null;
+  try {
+    stamp = parseStamp(JSON.parse(fs.readFileSync(path.join(projectDir, EXPORT_STAMP_FILE), 'utf8')));
+  } catch {
+    return null;
+  }
+  if (!stamp) return null;
+  let file: { size: number; mtimeMs: number } | null = null;
+  try {
+    const st = fs.statSync(stamp.path);
+    if (st.isFile()) file = { size: st.size, mtimeMs: st.mtimeMs };
+  } catch {
+    // gone
+  }
+  // a file that is gone can't be uploaded anyway: say nothing about it
+  return file ? checkStamp(stamp, project, file) : null;
 }
 
 export async function letscastSignOut(): Promise<void> {

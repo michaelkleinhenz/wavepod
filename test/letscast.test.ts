@@ -25,11 +25,12 @@ const EPISODES = `
 <div class="mt-4"><a href="https://letscast.fm/podcasts/tabulaludo-5d181655/episodes/999-review-the-last-kingdom/edit">Review: &quot;The Last Kingdom&quot;</a><p> 01.11.26 06:00 Uhr (Episode: 999) </p></div>
 <a href="https://letscast.fm/podcasts/tabulaludo-5d181655/episodes/new">Episode hinzufügen</a>`;
 
-function editPage(audio: string, blobId = ''): string {
+function editPage(audio: string, blobId = '', imageBlobId = ''): string {
   return `<html><head><meta name="csrf-token" content="TOKEN+/="></head><body>
 <form action="/podcasts/tabulaludo-5d181655/episodes/claude-test" method="post"><input type="hidden" name="_method" value="patch">
 <input class="input" type="text" value="Claude &amp; Test" name="episode[title]" id="episode_title">
 ${audio ? `<input value="${blobId}" autocomplete="off" type="hidden" name="episode[audio_blob_id]" id="episode_audio_blob_id" />` : ''}
+<input value="${imageBlobId}" autocomplete="off" type="hidden" name="episode[image_blob_id]" id="episode_image_blob_id">
 ${audio ? `<audio class='mt-6' controls preload='none'> <source src='${audio}?t=1' type='audio/mpeg'> </audio>` : ''}
 <input data-direct-upload-url="https://letscast.fm/media/direct_uploads" type="file" name="episode[audio]" id="episode_audio"></form></body></html>`;
 }
@@ -45,11 +46,12 @@ function multipart(body: string): Array<[string, string]> {
   return [...body.matchAll(/name="([^"]+)"\r\n\r\n([\s\S]*?)\r\n--/g)].map((m) => [m[1], m[2]]);
 }
 
-function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ url: string; fields: Array<[string, string]> }>; state: { showNotes: string; created: string }; close: () => Promise<void> }> {
+function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ url: string; fields: Array<[string, string]> }>; state: { showNotes: string; created: string; image: string }; close: () => Promise<void> }> {
   const seen: Seen[] = [];
   let audio = '';
   let uploads = 0;
-  const state = { showNotes: '', created: '' };
+  // image: the stored cover's blob id; like LetsCast.fm, a save without episode[image_blob_id] drops it
+  const state = { showNotes: '', created: '', image: 'img-1' };
   const forms: Array<{ url: string; fields: Array<[string, string]> }> = [];
   let stored: Buffer | null = null;
   const server = http.createServer((req, res) => {
@@ -79,7 +81,7 @@ function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ ur
         return res.end(
           (state.created ? `<div><a href="/podcasts/tabulaludo-5d181655/episodes/${state.created}/edit">Folge 441</a><p> 31.12.26 06:00 Uhr (Episode: 441) </p></div>` : '') + EPISODES,
         );
-      if (/^\/podcasts\/tabulaludo-5d181655\/episodes\/[^/]+\/edit$/.test(url)) return res.end(editPage(audio, `blob-${uploads}`));
+      if (/^\/podcasts\/tabulaludo-5d181655\/episodes\/[^/]+\/edit$/.test(url)) return res.end(editPage(audio, `blob-${uploads}`, state.image));
       if (url === '/media/direct_uploads' && req.method === 'POST') {
         if (req.headers['x-csrf-token'] !== 'TOKEN+/=') {
           res.statusCode = 422;
@@ -120,6 +122,9 @@ function mockLetsCast(): Promise<{ base: string; seen: Seen[]; forms: Array<{ ur
           return res.end(editPage(audio, `blob-${uploads}`));
         }
         if (form.includes('name="episode[audio]"')) audio = `/media/podcast/c5ef2401/episode/new${++uploads}.mp3`;
+        const fields = multipart(form);
+        const image = fields.find(([k]) => k === 'episode[image]')?.[1];
+        state.image = image ? `img-${image}` : (fields.find(([k]) => k === 'episode[image_blob_id]')?.[1] ?? '');
         res.statusCode = 302;
         res.setHeader('Location', '/podcasts/tabulaludo-5d181655/episodes/claude-test/edit');
         return res.end();
@@ -167,7 +172,8 @@ describe('LetsCast.fm', () => {
       { slug: 'claude-test', title: 'Claude Test', info: '31.12.26 12:00 Uhr (Episode: 888)', number: '888' },
       { slug: '999-review-the-last-kingdom', title: 'Review: "The Last Kingdom"', info: '01.11.26 06:00 Uhr (Episode: 999)', number: '999' },
     ]);
-    expect(parseEpisodePage(editPage(''))).toEqual({ csrf: 'TOKEN+/=', title: 'Claude & Test', audio: '', audioBlobId: '' });
+    expect(parseEpisodePage(editPage(''))).toEqual({ csrf: 'TOKEN+/=', title: 'Claude & Test', audio: '', audioBlobId: '', imageBlobId: '' });
+    expect(parseEpisodePage(editPage('x.mp3', 'b1', 'i1'))).toMatchObject({ audioBlobId: 'b1', imageBlobId: 'i1' });
     expect(parseEpisodePage(editPage('https://lcdn.letscast.fm/x.mp3')).audio).toBe('https://lcdn.letscast.fm/x.mp3');
   });
 
@@ -201,7 +207,9 @@ describe('LetsCast.fm', () => {
     const patch = mock.seen.find((s) => s.method === 'POST' && s.url.endsWith('/episodes/claude-test'))!;
     expect(patch.headers['content-type']).toMatch(/^multipart\/form-data/);
     const fields = [...patch.body.toString().matchAll(/name="([^"]+)"/g)].map((m) => m[1]);
-    expect(fields).toEqual(['_method', 'authenticity_token', 'episode[audio]']);
+    expect(fields).toEqual(['_method', 'authenticity_token', 'episode[image_blob_id]', 'episode[audio]']);
+    // the cover stays: the stored ids go along like the web form sends them
+    expect(mock.state.image).toBe('img-1');
   });
 
   it('formats dates and show notes the way LetsCast stores them', () => {
@@ -270,6 +278,7 @@ describe('LetsCast.fm', () => {
     expect(byUrl('/episodes/claude-test')).toEqual([
       [
         ['_method', 'patch'],
+        ['episode[image_blob_id]', 'img-1'],
         ['episode[image]', 'SIGNED-cover.jpg'],
         ['episode[title]', 'Folge 441'],
         ['episode[hidden]', '0'],

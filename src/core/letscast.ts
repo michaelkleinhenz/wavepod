@@ -150,6 +150,12 @@ export class LetsCastClient {
 
     const { fields, audioBlob } = await this.formFields(csrf, u, progress);
     if (fields.length) {
+      // the edit form always sends the ids of the stored audio and cover; without them LetsCast.fm
+      // drops the episode's cover (and maybe the audio), so they go along like the browser sends them
+      const keep: Array<[string, string]> = [];
+      if (before.audioBlobId) keep.push(['episode[audio_blob_id]', before.audioBlobId]);
+      if (before.imageBlobId) keep.push(['episode[image_blob_id]', before.imageBlobId]);
+      fields.unshift(...keep);
       progress({ phase: 'Saving the episode', fraction: 0.8 });
       await this.patch(ep, csrf, fields, 'episode');
     }

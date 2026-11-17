@@ -24,6 +24,8 @@ export interface LetsCastEpisodePage {
   audio: string;
   /** Id of the stored audio file (hidden episode[audio_blob_id]); changes with every upload. */
   audioBlobId: string;
+  /** Id of the stored episode cover (hidden episode[image_blob_id]), '' when it has none. */
+  imageBlobId: string;
 }
 
 /** Thrown when LetsCast answers with its sign-in page. */
@@ -122,12 +124,16 @@ export function parseEpisodePage(html: string): LetsCastEpisodePage {
   const title = [...html.matchAll(/<input\b[^>]*>/gi)].map((m) => m[0]).find((t) => attr(t, 'id') === 'episode_title');
   const audio = /<audio\b[^>]*>[\s\S]*?<\/audio>|<audio\b[^>]*>/i.exec(html);
   const src = audio ? [...audio[0].matchAll(/<(?:audio|source)\b[^>]*>/gi)].map((m) => attr(m[0], 'src')).find((v) => v) : null;
-  const blob = [...html.matchAll(/<input\b[^>]*>/gi)].map((m) => m[0]).find((t) => attr(t, 'name') === 'episode[audio_blob_id]');
+  const hidden = (name: string) => {
+    const t = [...html.matchAll(/<input\b[^>]*>/gi)].map((m) => m[0]).find((x) => attr(x, 'name') === name);
+    return t ? (attr(t, 'value') ?? '') : '';
+  };
   return {
     csrf: meta ? (attr(meta, 'content') ?? '') : '',
     title: title ? (attr(title, 'value') ?? '') : '',
     audio: src ? src.split('?')[0] : '',
-    audioBlobId: blob ? (attr(blob, 'value') ?? '') : '',
+    audioBlobId: hidden('episode[audio_blob_id]'),
+    imageBlobId: hidden('episode[image_blob_id]'),
   };
 }
 
