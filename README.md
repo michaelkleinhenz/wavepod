@@ -809,7 +809,8 @@ shows the actual error. Other causes of a failed sign-in: the Seller ID
 ID, the Tenant ID of a different directory, or the Entra application not
 having the **Manager** role. After fixing the secrets, **Re-run failed
 jobs** on the release run; the Store package is still there, no new tag
-needed.
+needed. The job runs on Windows because on Linux the CLI needs libsecret
+and a keyring daemon to store its credentials.
 
 ## Third-party components
 

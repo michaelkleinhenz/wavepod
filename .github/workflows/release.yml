@@ -113,7 +113,9 @@ jobs:
 
   store:
     name: Submit to the Microsoft Store
-    runs-on: ubuntu-latest
+    # Windows: on Linux the msstore CLI stores its credentials via libsecret, which needs
+    # libsecret-1.so.0 plus a running, unlocked keyring daemon; the runner image has neither.
+    runs-on: windows-latest
     needs: release
     if: vars.MSSTORE_PRODUCT_ID != '' && vars.MSSTORE_IDENTITY_NAME != '' && !contains(github.ref_name, '-')
     steps:
@@ -125,6 +127,7 @@ jobs:
       # --verbose: without it the CLI only prints "Ops, something doesn't seem to be right!" and
       # hides the actual sign-in error (wrong ID, expired key, missing Manager role).
       - name: Sign in to Partner Center
+        shell: bash
         run: msstore reconfigure --verbose --tenantId "$TENANT_ID" --sellerId "$SELLER_ID" --clientId "$CLIENT_ID" --clientSecret "$CLIENT_SECRET"
         env:
           TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
