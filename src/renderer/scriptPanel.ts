@@ -4,6 +4,8 @@
 // focused line at the playhead and moves on to the next open one. Acts and scenes fold away, and the
 // script opens in a window of its own (to share with an actor on a video call) that follows the panel.
 // Right-click a line (or a scene) to cut the track around every take of it the transcript holds.
+// Characters can have their own track with a voice and a room: Line up and Cut Around move their
+// lines there (character routing).
 import type { Project, ScriptLine, TimelineWord } from '../shared/types';
 import {
   SCRIPT_EXTENSIONS,
@@ -35,6 +37,18 @@ import {
   type LineOccurrence,
   type PlacedLine,
 } from '../core/script';
+import {
+  ROLE_ROOMS,
+  ROLE_VOICES,
+  characterRole,
+  ensureCharacterTrack,
+  ensureCharacterTracks,
+  hasCharacterTracks,
+  routeLines,
+  setCharacterRoom,
+  setCharacterTrack,
+  setCharacterVoice,
+} from '../core/characterRouting';
 import { BED_FADE_CHOICES, bedFadeSeconds, bedsStale, carryBeds, layBeds, removeBeds, setBedFade, setBedGain, setSceneBed, unplacedBeds } from '../core/ambience';
 import { formatTimestamp } from '../shared/time';
 import { importLibrarySound, pickLibrarySound } from './soundLibraryPanel';
@@ -130,6 +144,7 @@ export class ScriptPanel {
   private hiddenRows: boolean[] = [];
   private openOnly = load(OPEN_ONLY_KEY) === '1';
   private castOpen = false;
+  private rolesOpen = false;
   /** On screen in the sidebar. */
   private shown = false;
   private lining = false;
@@ -264,9 +279,14 @@ export class ScriptPanel {
       const words = await this.transcriptWords('Line up', sel);
       if (!words) return;
       const r = lineUpScript(store.project, words);
-      store.edit((p) => layBeds(applyLineUp(p, r)));
+      let moved = 0;
+      store.edit((p) => {
+        const res = routeLines(applyLineUp(p, r), [...r.occurrences.values()].flat());
+        moved = res.moved;
+        return layBeds(res.project);
+      });
       const multi = [...r.found.values()].filter((f) => (f.takes ?? 1) > 1).length;
-      const several = multi ? `, ${multi} with several takes` : '';
+      const several = `${multi ? `, ${multi} with several takes` : ''}${movedNote(moved)}`;
       toast(
         r.found.size
           ? sel
@@ -313,7 +333,9 @@ export class ScriptPanel {
         return;
       }
       const lines = ids.filter((id) => r.occurrences.has(id)).length;
-      const res = cutAroundTakes(store.project, takes);
+      const cut = cutAroundTakes(store.project, takes);
+      const routed = routeLines(cut.project, takes);
+      const res = { ...cut, project: routed.project };
       if (res.project !== store.project) store.edit(() => res.project);
       // one line: its takes are selected, to compare them or delete the bad ones
       if (ids.length === 1) {
@@ -322,7 +344,10 @@ export class ScriptPanel {
       }
       const n = takes.length;
       const found = ids.length === 1 ? `${n} take${n === 1 ? '' : 's'} of the line` : `${n} take${n === 1 ? '' : 's'} of ${lines} line${lines === 1 ? '' : 's'}`;
-      toast(res.cuts ? `Cut around ${found} (${res.cuts} cut${res.cuts === 1 ? '' : 's'}). Nothing was removed.` : `Found ${found}; the clips are already cut there`);
+      toast(
+        (res.cuts ? `Cut around ${found} (${res.cuts} cut${res.cuts === 1 ? '' : 's'}). Nothing was removed.` : `Found ${found}; the clips are already cut there`) +
+          (routed.moved ? ` ${movedNote(routed.moved).slice(2)}.` : ''),
+      );
     } catch (e) {
       toast(errorMessage(e), 'error');
     } finally {
@@ -629,6 +654,18 @@ export class ScriptPanel {
           title: 'Splits the tracks before and after each take of each line the transcript holds. Nothing is removed.',
           run: () => void this.cutAroundTakes(store.project.script!.lines.map((_, k) => k), 'the script'),
         },
+        {
+          label: 'Make Character Tracks',
+          enabled: has,
+          title: 'Gives every character its own track (named after it), to set a voice and a room on',
+          run: () => this.makeCharacterTracks(),
+        },
+        {
+          label: 'Move Lines to Character Tracks',
+          enabled: has && hasCharacterTracks(store.project),
+          title: 'Moves the clips that hold one character’s lines to that character’s track',
+          run: () => this.routeAll(),
+        },
         { kind: 'separator' },
         {
           label: 'Lay Ambience Beds Again',
@@ -655,6 +692,28 @@ export class ScriptPanel {
       ],
       r.left,
       r.bottom,
+    );
+  }
+
+  private makeCharacterTracks(): void {
+    let made = 0;
+    store.edit((p) => {
+      const r = ensureCharacterTracks(p);
+      made = r.created;
+      return r.project;
+    });
+    this.rolesOpen = true;
+    this.renderCast();
+    toast(made ? `Made ${made} character track${made === 1 ? '' : 's'}. Set a voice and a room for each under Character tracks.` : 'Every character already has a track');
+  }
+
+  private routeAll(): void {
+    const r = routeLines(store.project);
+    if (r.moved) store.edit(() => r.project);
+    toast(
+      r.moved
+        ? `Moved ${r.moved} clip${r.moved === 1 ? '' : 's'} to character tracks`
+        : 'No clips to move: a clip moves when it holds only one character’s found lines. Line up first, or Cut Around Every Take to split longer recordings.',
     );
   }
 
@@ -922,7 +981,79 @@ export class ScriptPanel {
         ),
       ),
     );
-    this.cast.replaceChildren(chips, details);
+    this.cast.replaceChildren(chips, details, this.renderRoles(chars, tracks));
+  }
+
+  /** Character routing: each character's own track, voice and room. */
+  private renderRoles(chars: ReturnType<typeof scriptCharacters>, tracks: Project['tracks']): HTMLElement {
+    const p = store.project;
+    const NEW = '+new';
+    const routed = chars.filter((c) => characterRole(p, c.key).trackId).length;
+    const pick = (label: string, title: string, value: string, options: HTMLOptionElement[], onchange: (v: string) => void) =>
+      h(
+        'select',
+        { title, 'aria-label': label, onchange: (e: Event) => onchange((e.target as HTMLSelectElement).value) },
+        ...options.map((o) => {
+          o.selected = o.value === value;
+          return o;
+        }),
+      );
+    const edit = (fn: (q: Project) => Project) => {
+      try {
+        store.edit(fn);
+      } catch (e) {
+        toast(errorMessage(e), 'error');
+      }
+    };
+    return h(
+      'details',
+      { class: 'script-roles', open: this.rolesOpen },
+      h(
+        'summary',
+        { onclick: (e: Event) => (this.rolesOpen = !(e.currentTarget as HTMLElement).parentElement!.hasAttribute('open')) },
+        routed ? `Character tracks: ${routed} of ${chars.length}` : 'Character tracks',
+      ),
+      h(
+        'p',
+        { class: 'script-roles-hint muted' },
+        'Give a character its own track with a voice and a room. Line up and Cut Around move its lines there.',
+      ),
+      ...chars.map((c) => {
+        const role = characterRole(p, c.key);
+        const own = tracks.find((t) => t.id === role.trackId);
+        return h(
+          'div',
+          { class: 'script-role-row' },
+          h('span', { class: 'dot', style: `background: ${own?.color ?? 'var(--muted)'}` }),
+          h('span', { class: 'name', title: c.name }, c.name),
+          pick(
+            `${c.name}: character track`,
+            `The track ${c.name}'s lines are moved to after Line up or Cut Around`,
+            role.trackId ?? '',
+            [
+              h('option', { value: '' }, '— stays on its track —'),
+              h('option', { value: NEW }, '+ New track'),
+              ...tracks.map((t) => h('option', { value: t.id }, t.name)),
+            ],
+            (v) => edit((q) => (v === NEW ? ensureCharacterTrack(setCharacterTrack(q, c.key, null), c.key).project : setCharacterTrack(q, c.key, v || null))),
+          ),
+          pick(
+            `${c.name}: voice`,
+            `A voice effect for ${c.name} on the character track (telephone, robot, giant…)`,
+            role.voice ?? '',
+            [h('option', { value: '' }, 'Natural voice'), ...ROLE_VOICES.map((v) => h('option', { value: v.id, title: v.description }, v.name))],
+            (v) => edit((q) => setCharacterVoice(q, c.key, v || null)),
+          ),
+          pick(
+            `${c.name}: room`,
+            `The room ${c.name} is in (Room & distance); set its Distance in the FX panel`,
+            role.room ?? '',
+            [h('option', { value: '' }, 'No room'), ...ROLE_ROOMS.map((v) => h('option', { value: v.id, title: v.description }, v.name))],
+            (v) => edit((q) => setCharacterRoom(q, c.key, v || null)),
+          ),
+        );
+      }),
+    );
   }
 
   private renderLines(): void {
@@ -1136,4 +1267,8 @@ function readFolded(): string[] {
   } catch {
     return [];
   }
+}
+
+function movedNote(moved: number): string {
+  return moved ? `, ${moved} clip${moved === 1 ? '' : 's'} moved to character tracks` : '';
 }

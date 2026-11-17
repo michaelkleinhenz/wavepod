@@ -549,10 +549,28 @@ export interface Script {
   lines: ScriptLine[];
   /** Character name (upper case) → the track their lines are recorded on. */
   cast: Record<string, string>;
+  /** Character name (upper case) → the character's own track, voice and room (character routing). */
+  roles?: Record<string, ScriptRole>;
   /** Ambience beds: act or scene heading (line id) → the atmosphere looped under it. */
   beds?: Record<string, SceneBed>;
   /** Crossfade between one scene's bed and the next, in seconds (default 3). */
   bedFade?: number;
+}
+
+/**
+ * Character routing: a character's own track, where its lines are moved after Line up or Cut
+ * Around, with a voice effect and a room set on that track's filter stack.
+ */
+export interface ScriptRole {
+  /** The character track. */
+  trackId?: string;
+  /** Voice effect id (VOICE_EFFECTS, not a place). */
+  voice?: string;
+  /** Room: a place effect id (VOICE_EFFECTS group "place"). */
+  room?: string;
+  /** Filters on the character track that the voice and the room added, so they can be swapped. */
+  voiceFx?: string[];
+  roomFx?: string[];
 }
 
 /** A scene's atmosphere (forest, tavern, rain): looped under the scene's lines on the ambience track. */

@@ -17,7 +17,8 @@ import { formatAzimuth, placeOnStage, removeFromStage, setStageMode, stageMode }
 import { compTake, pickTake, takeSpan, takeUsage } from '../takes';
 import { FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addFolder, folderOf, removeFolder, setTrackFolder, updateFolder } from '../folders';
 import { paragraphs, timelineWords } from '../transcript';
-import { scriptCharacters, scriptProgress, scriptSummary } from '../script';
+import { characterKey, scriptCharacters, scriptProgress, scriptSummary } from '../script';
+import { ROLE_ROOMS, ROLE_VOICES, ensureCharacterTrack, routeLines, rolesSummary, setCharacterRoom, setCharacterTrack, setCharacterVoice } from '../characterRouting';
 import { bedSummary } from '../ambience';
 import type { WordFilter } from '../wordLevels';
 import { formatTimestamp, uid } from '../../shared/time';
@@ -69,7 +70,7 @@ Built-in filter parameters use real units (Hz, dB, ms, LUFS); call list_filter_t
 
 Every filter can be set from a preset: list_filter_presets shows WavePod's factory presets (or a VST3 plug-in's own programs) and the user's saved presets; apply_filter_preset loads one; save_filter_preset stores a filter's settings for use in every episode.
 
-Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where. For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals. Recordings from separate recorders (one per speaker) are put in sync with align_track. Lines recorded several times are kept as takes: list_takes shows them, use_take plays a whole take or splices part of one into the comp. Video podcasts have cameras (list_cameras) whose pictures follow the audio edits; set_director_cuts chooses which camera is seen when (get_director shows the current switches), e.g. a close-up of whoever speaks in the transcript and the wide shot when several talk at once.`;
+Every change is one undo step in WavePod (Ctrl+Z), and the user sees it in the FX panel right away. A good starting point for a speech track is apply_voice_chain; check the result with measure_loudness. Speech tracks recorded in one room can be cleaned of crosstalk with set_automix. If the user has transcribed the episode, get_transcript returns it as speaker paragraphs with times; for audio dramas, get_script shows the imported script with which lines are recorded and where, and set_character gives a role its own track with a voice effect and a room (route_script_lines moves its lines there). For audio dramas, apply_voice_effect turns a voice into a telephone, radio, megaphone, robot, giant, small creature, ghost or a voice behind a wall, and its place-… effects put a voice into a room (kitchen, car, church, forest…); the Room & distance filter's distance parameter (metres) then moves it closer or further away. set_track_automation moves a voice across the stereo stage (pan) or rides a track's level (volume) over time. Big productions group their tracks in folders (e.g. Dialogue, SFX, Atmo, Music) with create_folder and move_tracks_to_folder; update_folder mutes, solos or turns a whole group up or down. set_track_stem sorts tracks into the dialogue, music and effects stems the user can export for broadcasters and festivals. Recordings from separate recorders (one per speaker) are put in sync with align_track. Lines recorded several times are kept as takes: list_takes shows them, use_take plays a whole take or splices part of one into the comp. Video podcasts have cameras (list_cameras) whose pictures follow the audio edits; set_director_cuts chooses which camera is seen when (get_director shows the current switches), e.g. a close-up of whoever speaks in the transcript and the wide shot when several talk at once.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -873,15 +874,71 @@ export function createWavePodTools(host: WavePodHost): McpTool[] {
         if (!script) return { imported: false, note: 'No script yet. The user can import one in WavePod: File › Import Script… (plain text, Fountain, Final Draft or PlotGod).' };
         let lines = scriptSummary(p);
         if (bool(args, 'open')) lines = lines.filter((l) => l.kind === 'scene' || (l.kind === 'dialogue' && !l.recorded));
-        const names = new Map(p.tracks.map((t) => [t.id, t.name]));
         return {
           imported: true,
           title: script.title,
           progress: scriptProgress(script),
-          characters: scriptCharacters(script).map((c) => ({ name: c.name, lines: c.lines, recorded: c.recorded, ...(script.cast[c.key] && names.has(script.cast[c.key]) ? { track: names.get(script.cast[c.key]) } : {}) })),
+          characters: rolesSummary(p),
           lines,
           ...(script.beds ? { ambience: bedSummary(p) } : {}),
         };
+      },
+    },
+    {
+      name: 'set_character',
+      description:
+        'Character routing for an audio drama script: gives a character its own track (the character track) with a voice effect and a room on its filter stack. ' +
+        'Line up and Cut Around Every Take in WavePod then move the character\'s lines there; route_script_lines does that for the lines found so far. ' +
+        'A new character track is named after the character and starts with a copy of the filters of the track the character is recorded on.',
+      inputSchema: obj(
+        {
+          character: { type: 'string', description: 'Character name as in the script (see get_script).' },
+          track: { type: 'string', description: '"new" for a track named after the character, a track id or name, or "" to stop routing the character. Left out: unchanged (a voice or room makes the track if needed).' },
+          voice: { type: 'string', enum: ['', ...ROLE_VOICES.map((e) => e.id)], description: 'Voice effect on the character track; "" for the natural voice.' },
+          room: { type: 'string', enum: ['', ...ROLE_ROOMS.map((e) => e.id)], description: 'Room (Room & distance preset) on the character track; "" for none.' },
+        },
+        ['character'],
+      ),
+      annotations: { title: 'Set character', ...EDIT },
+      run: (args) => {
+        let p = host.project();
+        const script = p.script;
+        if (!script) throw new ToolError('No script yet. The user can import one in WavePod: File › Import Script….');
+        const ref = str(args, 'character', true);
+        const c = scriptCharacters(script).find((x) => x.key === characterKey(ref));
+        if (!c) throw new ToolError(`No character "${ref}" in the script. Characters: ${scriptCharacters(script).map((x) => x.name).join(', ')}.`);
+        const track = args.track;
+        try {
+          if (typeof track === 'string') {
+            if (!track) p = setCharacterTrack(p, c.key, null);
+            else if (norm(track) === 'new') p = ensureCharacterTrack(setCharacterTrack(p, c.key, null), c.key).project;
+            else {
+              const t = resolveTarget(p, track).target;
+              if (t === MASTER) throw new ToolError('A character track must be a track, not the master bus.');
+              p = setCharacterTrack(p, c.key, t);
+            }
+          }
+          if (typeof args.voice === 'string') p = setCharacterVoice(p, c.key, args.voice || null);
+          if (typeof args.room === 'string') p = setCharacterRoom(p, c.key, args.room || null);
+        } catch (e) {
+          if (e instanceof ToolError) throw e;
+          throw new ToolError(e instanceof Error ? e.message : String(e));
+        }
+        host.apply(p, `Set up ${c.name}`);
+        return rolesSummary(host.project()).find((x) => x.name === c.name) ?? {};
+      },
+    },
+    {
+      name: 'route_script_lines',
+      description:
+        'Moves the clips that hold one character\'s found script lines to that character\'s track (set_character), at the same time. ' +
+        'A clip with lines of several characters, or much longer than its lines, stays where it is: cut it first (Cut Around Every Take in WavePod).',
+      inputSchema: obj({}),
+      annotations: { title: 'Route script lines', ...EDIT },
+      run: () => {
+        const r = routeLines(host.project());
+        if (r.moved) host.apply(r.project, `Moved ${r.moved} clip${r.moved === 1 ? '' : 's'} to character tracks`);
+        return { moved: r.moved };
       },
     },
     {
