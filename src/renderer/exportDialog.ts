@@ -3,21 +3,22 @@
 // the left (stems and the checks below them), format and loudness on the right, with the
 // loudness of the mix once analysed. The progress and the buttons span both columns.
 // While the mix renders, the progress bar is its waveform and the loudness so far runs beside it.
-import type { ExportProgress, ExportResult, ExportSettings, LiveLoudness, LoudnessReport } from '../shared/types';
+import type { AcxStats, ExportProgress, ExportResult, ExportSettings, LiveLoudness, LoudnessReport } from '../shared/types';
 import { clear, errorMessage, h, keepScroll, toast } from './dom';
 import { loudnessTiles, targetPicker } from './loudnessDialog';
 import { api, store } from './store';
 import { seek } from './actions';
-import { DEFAULT_EXPORT_SETTINGS, DEFAULT_VIDEO_EXPORT, MP3_BITRATES, VIDEO_RATES, VIDEO_SIZES, OPUS_BITRATES, PEAK_CEILINGS, normalizeExportSettings, targetForMono } from '../core/exportSettings';
+import { DEFAULT_EXPORT_SETTINGS, DEFAULT_VIDEO_EXPORT, MP3_BITRATES, VIDEO_RATES, VIDEO_SIZES, OPUS_BITRATES, PEAK_CEILINGS, normalizeExportSettings, targetForMono, withAcx } from '../core/exportSettings';
+import { ACX_PEAK_CEILING, ACX_RMS_TARGET, acxRangeNote, acxResults, predictAcx, type AcxFixes, type AcxResult } from '../core/acx';
 import { exportChecks, imageSize, type ImageSize } from '../core/exportChecks';
 import { formatTimestamp } from '../shared/time';
-import { baseName, cleanFileName, defaultExportName, exportJobs, joinExportPath, plannedFiles, rangeAvailable, rangeSpan, type ExportJob, type ExportRange } from '../core/exportPlan';
+import { baseName, chapterSpans, cleanFileName, defaultExportName, exportJobs, joinExportPath, plannedFiles, rangeAvailable, rangeSpan, type ExportJob, type ExportRange } from '../core/exportPlan';
 import { chapterWarningList } from './chaptersView';
 import { audibleTracks, updateTrack } from '../core/project';
 import { STEM_CHOICES, STEM_GROUPS, trackStem } from '../core/stems';
 import { folderOf } from '../core/folders';
 import type { Frames, Region, StemGroup, Track, VideoExportSettings } from '../shared/types';
-import { clipsEnd } from '../core/project';
+import { clipsEnd, projectLength } from '../core/project';
 import { videoSettings } from '../core/video';
 import { VideoCancelled, renderVideo, videoFrameSize } from './video/videoExport';
 
@@ -254,6 +255,10 @@ export class ExportDialog {
   private exported = false;
   private phase = '';
   private mix: LoudnessReport | null = null;
+  /** ACX check of each file the export would write (as measured, before the fixes), for these jobs. */
+  private acxCheck: { key: string; project: unknown; files: Array<{ name: string; stats: AcxStats }> } | null = null;
+  /** ACX figures of the files the last ACX export wrote. */
+  private acxWritten: Array<{ name: string; stats: AcxStats }> = [];
   /** The video of the export is being rendered (it can be cancelled), and its last picture. */
   private videoRunning = false;
   private videoCancel = false;
@@ -302,6 +307,8 @@ export class ExportDialog {
     }
     if (withVideo && store.project.cameras?.length && !this.opts.video) this.opts.video = this.defaultVideo();
     this.mix = null;
+    this.acxCheck = null;
+    this.acxWritten = [];
     this.exported = false;
     this.replacing = null;
     this.written = [];
@@ -389,7 +396,8 @@ export class ExportDialog {
           this.formatSection(),
           this.loudnessSection(),
           // only the mix matters for the export; per-track figures are in the Loudness dialog
-          this.mix ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, { lufs: o.targetLufs, ceiling: o.peakCeiling }, o.normalize)) : null,
+          o.acx ? this.acxSection() : null,
+          this.mix && !o.acx ? h('div', { class: 'export-loudness' }, h('h3', null, 'Loudness of the mix'), loudnessTiles(this.mix.stats, { lufs: o.targetLufs, ceiling: o.peakCeiling }, o.normalize)) : null,
         ),
       ),
       this.exported ? h('div', { class: 'export-progress' }, this.wave.el, this.videoRunning ? this.videoPreview : this.liveEl) : null,
@@ -449,12 +457,14 @@ export class ExportDialog {
         }, ...regions.map((r: Region, i) => h('option', { value: r.id, selected: r.id === chosenRegion }, `${String(i + 1).padStart(2, '0')} ${r.title || 'Region'}`))) as HTMLSelectElement)
       : null;
     const regionSpan = regions.find((r) => r.id === chosenRegion);
+    const chapters = chapterSpans(p).length;
     return section('Range',
       formRow('Export',
         radio('all', 'Whole episode', spanText(rangeSpan({ kind: 'all' }, p, null), sr), true, () => ({ kind: 'all' })),
         radio('selection', 'Selected range', sel && sel[1] > sel[0] ? spanText(sel, sr) : 'nothing selected', !!sel && sel[1] > sel[0], () => ({ kind: 'selection' })),
         radio('region', 'Region', regionSpan ? spanText([regionSpan.start, regionSpan.end], sr) : 'no regions yet', regions.length > 0, () => ({ kind: 'region', regionId: chosenRegion! }), regionSelect),
         radio('regions', 'Each region as its own file', regions.length ? `${regions.length} ${regions.length === 1 ? 'region' : 'regions'}, each normalised on its own` : 'no regions yet', regions.length > 0, () => ({ kind: 'regions' })),
+        radio('chapters', 'Each chapter as its own file', chapters ? `${chapters} ${chapters === 1 ? 'chapter' : 'chapters'}, cut at the chapter markers` : 'no chapter markers yet', chapters > 0, () => ({ kind: 'chapters' })),
       ),
     );
   }
@@ -488,7 +498,7 @@ export class ExportDialog {
         this.render();
       },
     });
-    const many = this.range.kind === 'regions';
+    const many = this.range.kind === 'regions' || this.range.kind === 'chapters';
     return section('File',
       formRow('File name', h('div', { class: 'export-name-row' }, nameInput,
         h('button', {
@@ -497,7 +507,7 @@ export class ExportDialog {
           disabled: this.busy || !this.nameTyped,
           onclick: () => { this.nameTyped = false; this.render(); },
         }, 'Reset')),
-        many ? h('div', { class: 'field-help' }, 'Each region adds its number and title: “Name - 01 Intro”.') : null),
+        many ? h('div', { class: 'field-help' }, `Each ${this.range.kind === 'chapters' ? 'chapter' : 'region'} adds its number and title: “Name - 01 Intro”.`) : null),
       formRow('Folder', h('div', { class: 'export-name-row' }, folderInput,
         h('button', { class: 'small', disabled: this.busy, onclick: () => void this.browse() }, 'Browse…'))),
       formRow('Writes', this.fileList(files)),
@@ -536,13 +546,14 @@ export class ExportDialog {
   /** Formats with their quality next to them, channels, and the extra files. */
   private formatSection(): HTMLElement {
     const o = this.opts;
+    const acx = !!o.acx;
     const fmt = (f: 'mp3' | 'wav' | 'flac' | 'opus', label: string, hint: string, extra?: HTMLElement | null) =>
       h('div', { class: 'export-format' },
-        h('label', { class: 'check', title: hint },
+        h('label', { class: 'check', title: acx ? 'ACX takes MP3 files only' : hint },
           h('input', {
             type: 'checkbox',
             checked: o.formats.includes(f),
-            disabled: this.busy,
+            disabled: this.busy || acx,
             onchange: (e: Event) => {
               const v = (e.target as HTMLInputElement).checked;
               o.formats = v ? [...new Set([...o.formats, f])] : o.formats.filter((x) => x !== f);
@@ -553,7 +564,7 @@ export class ExportDialog {
         o.formats.includes(f) ? extra ?? null : null,
       );
     const mp3Bitrate = h('select', { title: 'MP3 bitrate', onchange: (e: Event) => (o.mp3Bitrate = Number((e.target as HTMLSelectElement).value)) },
-      ...MP3_BITRATES.map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps${o.mono && b === 64 ? ' (like 128 in stereo)' : ''}`)));
+      ...MP3_BITRATES.filter((b) => !acx || b >= 192).map((b) => h('option', { value: String(b), selected: b === o.mp3Bitrate }, `${b} kbps${o.mono && b === 64 ? ' (like 128 in stereo)' : ''}${acx ? ' CBR, 44.1 kHz' : ''}`)));
     const opusBitrate = h('select', { title: 'Opus bitrate', onchange: (e: Event) => (o.opusBitrate = Number((e.target as HTMLSelectElement).value)) },
       ...OPUS_BITRATES.map((b) => h('option', { value: String(b), selected: b === (o.opusBitrate ?? 64) }, `${b} kbps${b === 64 && !o.mono ? ' (like MP3 at 128)' : ''}`)));
     const channels = h('select', {
@@ -571,12 +582,26 @@ export class ExportDialog {
     },
     h('option', { value: 'stereo', selected: !o.mono }, 'Stereo'),
     h('option', { value: 'mono', selected: !!o.mono }, 'Mono (half the size, for speech)'));
+    const target = h('select', {
+      disabled: this.busy,
+      title: 'Audible ACX: the audiobook platform of Audible and Amazon checks every file against its own technical rules',
+      onchange: (e: Event) => {
+        this.opts = withAcx(o, (e.target as HTMLSelectElement).value === 'acx');
+        this.acxWritten = [];
+        this.render();
+      },
+    },
+    h('option', { value: 'podcast', selected: !acx }, 'Podcast, streaming or archive'),
+    h('option', { value: 'acx', selected: acx }, 'Audible ACX (audiobook)'));
     return section('Format',
+      formRow('Publish to', target,
+        acx ? h('div', { class: 'field-help' }, 'MP3 at a constant 192 kbps or more and 44.1 kHz, as ACX asks. Mono or stereo, the same for every file.') : null),
       formRow('Formats',
         fmt('mp3', 'MP3', 'The usual podcast format, with ID3 chapters, tags and cover', mp3Bitrate),
-        fmt('flac', 'FLAC 24-bit', 'Lossless, about half the size of WAV, with chapters, tags and cover'),
-        fmt('opus', 'Opus', 'Very small files at good quality, with chapters, tags and cover', opusBitrate),
-        fmt('wav', 'WAV 24-bit', 'Uncompressed, for archiving or further processing'),
+        // ACX takes MP3 only: the other formats are left out rather than shown switched off
+        acx ? null : fmt('flac', 'FLAC 24-bit', 'Lossless, about half the size of WAV, with chapters, tags and cover'),
+        acx ? null : fmt('opus', 'Opus', 'Very small files at good quality, with chapters, tags and cover', opusBitrate),
+        acx ? null : fmt('wav', 'WAV 24-bit', 'Uncompressed, for archiving or further processing'),
       ),
       formRow('Channels', channels),
       store.project.cameras?.length ? this.videoRow() : null,
@@ -635,6 +660,17 @@ export class ExportDialog {
 
   private loudnessSection(): HTMLElement {
     const o = this.opts;
+    if (o.acx) {
+      const acx = o.acx;
+      return section('Loudness',
+        formRow('Level', h('span', { title: 'Each file is brought into ACX’s −23 to −18 dB RMS range on its own, and a limiter keeps the peaks under −3 dBFS' },
+          checkbox(`Level to ACX: ${ACX_RMS_TARGET} dB RMS, peaks under ${ACX_PEAK_CEILING} dBFS`, o.normalize, (v) => { o.normalize = v; this.render(); }, this.busy))),
+        formRow('Room tone', h('span', { title: 'Cuts or lengthens the room tone to 0.75 s before the first word and 2 s after the last, with room tone from the quietest half second of the file' },
+          checkbox('Fix room tone: 0.5–1 s at the start, 1–5 s at the end', acx.roomTone, (v) => { o.acx = { ...acx, roomTone: v }; this.render(); }, this.busy))),
+        formRow('',
+          h('button', { class: 'small', disabled: this.busy, title: 'Measure every file the export would write and check it against ACX’s requirements', onclick: () => void this.runAcxCheck() }, this.acxCheckValid() ? 'Check Again' : 'Run ACX Check')),
+      );
+    }
     return section('Loudness',
       formRow('Normalise', checkbox('Bring the mix to a loudness target', o.normalize, (v) => { o.normalize = v; this.render(); }, this.busy)),
       formRow('Target', targetPicker(o.targetLufs, (lufs) => { o.targetLufs = lufs; this.render(); }, !o.normalize || this.busy)),
@@ -698,7 +734,9 @@ export class ExportDialog {
   private checks(): HTMLElement | null {
     const chapters = this.opts.formats.includes('mp3') || this.opts.chapterFiles ? this.chapterNotes() : null;
     const cover = this.cover?.path === store.project.metadata.artwork ? this.cover?.size : undefined;
-    const found = exportChecks(store.project.metadata, this.opts, cover, this.mix?.stats);
+    // ACX reads no tags or cover from the files (they are entered on ACX), and checks levels its own way
+    const acx = !!this.opts.acx;
+    const found = acx ? [] : exportChecks(store.project.metadata, this.opts, cover, this.mix?.stats);
     const sr = store.sampleRate;
     const items = found.map((c) =>
       h('li', { class: 'warning' }, c.message,
@@ -715,7 +753,7 @@ export class ExportDialog {
       ),
     );
     if (!chapters && !items.length) {
-      return this.mix ? null : h('div', { class: 'export-notes' }, h('p', { class: 'muted' }, 'Analyse loudness to also check the mix for its level and for silence.'));
+      return this.mix || acx ? null : h('div', { class: 'export-notes' }, h('p', { class: 'muted' }, 'Analyse loudness to also check the mix for its level and for silence.'));
     }
     return h(
       'div',
@@ -723,7 +761,7 @@ export class ExportDialog {
       h('h3', null, 'Before you export'),
       chapters,
       items.length ? h('ul', { class: 'chapter-warnings' }, ...items) : null,
-      this.mix ? null : h('p', { class: 'muted' }, 'Analyse loudness to also check the mix for its level and for silence.'),
+      this.mix || acx ? null : h('p', { class: 'muted' }, 'Analyse loudness to also check the mix for its level and for silence.'),
     );
   }
 
@@ -769,7 +807,7 @@ export class ExportDialog {
       this.liveValues[key].textContent = fmtLive(live[key], key === 'truePeak' ? 'dBTP' : 'LUFS');
     }
     // colour against the target only for the normalised render, where it applies
-    const judged = o.normalize && p.phase === 'Rendering mix';
+    const judged = o.normalize && !o.acx && p.phase === 'Rendering mix';
     const off = Math.abs(live.integrated - o.targetLufs);
     this.liveTiles.integrated.className = `lu-tile ${judged && Number.isFinite(live.integrated) ? (off <= 1 ? 'ok' : off <= 2 ? 'warn' : 'bad') : ''}`;
     this.liveTiles.truePeak.className = `lu-tile ${judged && Number.isFinite(live.truePeak) ? (live.truePeak <= o.peakCeiling ? 'ok' : 'bad') : ''}`;
@@ -788,6 +826,105 @@ export class ExportDialog {
       this.busy = false;
       this.render();
     }
+  }
+
+  /** The parts of the mix the export would write as files, with a label each. */
+  private acxSpans(): Array<{ name: string; span: [number, number] }> {
+    const end = projectLength(store.project);
+    return exportJobs(this.range, store.project, store.selection.range, '').map((j, i, all) => ({
+      name: all.length > 1 ? `${String(i + 1).padStart(2, '0')} ${j.region || ''}`.trim() : baseName(cleanFileName(this.name()) || 'Mix'),
+      span: [j.start ?? 0, j.end ?? end] as [number, number],
+    }));
+  }
+
+  /** Identifies what an ACX check measured: the same parts, mono or stereo (and, checked apart, the same episode). */
+  private acxKey(): string {
+    return JSON.stringify([this.acxSpans().map((x) => x.span), !!this.opts.mono]);
+  }
+
+  private acxCheckValid(): boolean {
+    return !!this.acxCheck && this.acxCheck.project === store.project && this.acxCheck.key === this.acxKey();
+  }
+
+  private async runAcxCheck(): Promise<void> {
+    const parts = this.acxSpans();
+    const key = this.acxKey();
+    const project = store.project;
+    this.busy = true;
+    this.progressLabel.textContent = 'ACX check…';
+    this.render();
+    try {
+      const stats = await api().measureAcx(parts.map((x) => x.span), !!this.opts.mono);
+      this.acxCheck = { key, project, files: parts.map((x, i) => ({ name: x.name, stats: stats[i] })) };
+      this.progressLabel.textContent = '';
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      this.busy = false;
+      this.render();
+    }
+  }
+
+  private acxFixes(): AcxFixes {
+    return { leveling: this.opts.normalize, roomTone: !!this.opts.acx?.roomTone };
+  }
+
+  /**
+   * The ACX check: one row per file with RMS, peak, noise floor and room tone, green where it
+   * meets ACX's rules and red where it doesn't. Before the export, the figures are what the
+   * export will make of the mix (the measured ones are in the tooltips); after it, what was written.
+   */
+  private acxSection(): HTMLElement {
+    const written = this.acxWritten.length > 0 && !this.busy;
+    const fixes = this.acxFixes();
+    const checked = this.acxCheckValid() ? this.acxCheck!.files : null;
+    const note = acxRangeNote(this.range.kind, chapterSpans(store.project).length, store.project.regions?.length ?? 0);
+    const rows = written
+      ? this.acxWritten.map((f) => ({ name: f.name, results: acxResults(f.stats, fixes), raw: null as AcxResult[] | null }))
+      : (checked ?? []).map((f) => ({ name: f.name, results: acxResults(predictAcx(f.stats, fixes), fixes), raw: acxResults(f.stats) }));
+    const cols: Array<[AcxResult['id'], string]> = [['rms', 'RMS'], ['peak', 'Peak'], ['noise', 'Noise'], ['head', 'Start'], ['tail', 'End']];
+    const failed = rows.flatMap((r) => r.results.filter((x) => !x.ok));
+    const hints = [...new Map(failed.map((x) => [x.id, x])).values()];
+    const passed = rows.length > 0 && failed.length === 0;
+    const table = rows.length
+      ? h('div', { class: 'acx-table-wrap' },
+          h('table', { class: 'acx-table' },
+            h('thead', null, h('tr', null, h('th', null, 'File'), ...cols.map(([, label]) => h('th', null, label)))),
+            h('tbody', null,
+              ...rows.map((r) =>
+                h('tr', { class: r.results.some((x) => !x.ok) ? 'bad' : 'ok' },
+                  h('td', { class: 'acx-name', title: r.name }, r.name),
+                  ...cols.map(([id]) => {
+                    const x = r.results.find((y) => y.id === id)!;
+                    const before = r.raw?.find((y) => y.id === id);
+                    return h('td', { class: x.ok ? 'ok' : 'bad', title: before ? `Measured now: ${before.value}${x.hint ? `\n${x.hint}` : ''}` : (x.hint ?? '') }, x.value);
+                  }),
+                ),
+              ),
+            ),
+          ),
+        )
+      : null;
+    const verdict = rows.length
+      ? h('p', { class: `acx-verdict ${passed ? 'ok' : 'bad'}` },
+          passed
+            ? (written ? `All ${rows.length === 1 ? 'of the file' : `${rows.length} files`} meet ACX’s requirements.` : `With these settings, ${rows.length === 1 ? 'the file meets' : `all ${rows.length} files meet`} ACX’s requirements.`)
+            : `${rows.filter((r) => r.results.some((x) => !x.ok)).length} of ${rows.length} ${rows.length === 1 ? 'file misses' : 'files miss'} ACX’s requirements${written ? '' : ' even after the fixes'}:`)
+      : null;
+    return h('div', { class: 'export-notes acx-check' },
+      h('h3', null, written ? 'ACX check of the written files' : 'ACX check'),
+      note
+        ? h('p', { class: 'warning acx-range-note' }, note,
+            chapterSpans(store.project).length > 1 && !this.busy
+              ? h('button', { class: 'small link', onclick: () => this.setRange({ kind: 'chapters' }) }, 'Each chapter as its own file')
+              : null)
+        : null,
+      rows.length ? null : h('p', { class: 'muted' }, 'Run ACX Check to measure every file against ACX’s rules: RMS −23 to −18 dB, peaks at most −3 dBFS, noise floor at most −60 dB, 0.5–1 s of room tone at the start and 1–5 s at the end.'),
+      verdict,
+      table,
+      hints.length ? h('ul', { class: 'chapter-warnings' }, ...hints.map((x) => h('li', { class: 'warning' }, h('strong', null, `${x.label}: `), x.hint ?? ''))) : null,
+      rows.length && !written ? h('p', { class: 'muted' }, 'Figures as the export will write them; hover a value to see what the mix measures now.') : null,
+    );
   }
 
   /** Export clicked: asks first if files of the same name are there. */
@@ -867,12 +1004,14 @@ export class ExportDialog {
     try {
       const files: string[] = [];
       let last: ExportResult | null = null;
+      const acxWritten: Array<{ name: string; stats: AcxStats }> = [];
+      this.acxWritten = [];
       const video = this.videoOn() ? this.opts.video! : null;
       const { video: _video, ...audio } = this.opts;
       const audioFiles = audio.formats.length > 0 || audio.stems || audio.chapterFiles;
       this.videoCancel = false;
       for (const [i, job] of jobs.entries()) {
-        this.regionLabel = jobs.length > 1 ? `Region ${i + 1}/${jobs.length} “${job.region ?? ''}”: ` : '';
+        this.regionLabel = jobs.length > 1 ? `${this.range.kind === 'chapters' ? 'Chapter' : 'Region'} ${i + 1}/${jobs.length} “${job.region ?? ''}”: ` : '';
         this.wave.reset();
         // one export per region, each normalised on its own
         let jobFiles: string[] = [];
@@ -880,6 +1019,7 @@ export class ExportDialog {
           last = await api().exportProject({ ...audio, outputBase: job.outputBase, ...(job.start !== undefined ? { start: job.start, end: job.end } : {}) });
           jobFiles = last.files;
           files.push(...last.files);
+          if (last.acx) acxWritten.push({ name: jobs.length > 1 ? `${String(i + 1).padStart(2, '0')} ${job.region ?? ''}`.trim() : baseName(job.outputBase), stats: last.acx });
         }
         if (video && !this.videoCancel) {
           const file = await this.exportVideo(job, video, jobFiles.find((f) => f === `${job.outputBase}.wav`));
@@ -888,8 +1028,9 @@ export class ExportDialog {
       }
       this.regionLabel = '';
       this.written = files;
+      this.acxWritten = acxWritten;
       this.progressLabel.textContent = jobs.length > 1
-        ? `Done: ${jobs.length} regions, ${files.length} files`
+        ? `Done: ${jobs.length} ${this.range.kind === 'chapters' ? 'chapters' : 'regions'}, ${files.length} files`
         : `Done: ${files.length} ${files.length === 1 ? 'file' : 'files'}${last ? ` · ${exportSummary(last)}` : ''}`;
       toast('Export finished');
       if (this.reveal && files[0]) void api().revealFile(files[0]);

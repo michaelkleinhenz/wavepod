@@ -27,7 +27,8 @@ export class Mp3Encoder {
   private readonly lame: LameExports;
   private ref: number;
 
-  constructor(private readonly channels: 1 | 2, sampleRate: number, kbps: number) {
+  /** `outRate`: the MP3's sample rate when it differs from the input's (LAME resamples); 0 keeps it. */
+  constructor(private readonly channels: 1 | 2, sampleRate: number, kbps: number, outRate = 0) {
     compiled ??= new WebAssembly.Module(wasm);
     const instance = new WebAssembly.Instance(compiled, {
       wasi_snapshot_preview1: { proc_exit: (code: number) => { throw new Error(`MP3 encoder exited (${code})`); } },
@@ -43,13 +44,13 @@ export class Mp3Encoder {
     v.setUint32(p + 4, sampleRate, true);
     v.setInt32(p + 8, kbps, true);
     v.setFloat32(p + 12, -1, true);
-    v.setInt32(p + 16, 0, true);
+    v.setInt32(p + 16, outRate === sampleRate ? 0 : outRate, true);
     try {
       this.ref = this.lame.enc_init(p);
     } finally {
       this.lame.free(p);
     }
-    if (!this.ref) throw new Error(`MP3 encoder: cannot encode ${channels} channel(s) at ${sampleRate} Hz, ${kbps} kbps`);
+    if (!this.ref) throw new Error(`MP3 encoder: cannot encode ${channels} channel(s) at ${sampleRate} Hz, ${kbps} kbps${outRate ? ` to ${outRate} Hz` : ''}`);
   }
 
   /** Encodes `n` frames of float samples (-1…1, one array per channel); returns a copy of the MP3 bytes. */

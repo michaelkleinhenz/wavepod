@@ -12,7 +12,8 @@ export type ExportRange =
   | { kind: 'all' }
   | { kind: 'selection' }
   | { kind: 'region'; regionId: string }
-  | { kind: 'regions' };
+  | { kind: 'regions' }
+  | { kind: 'chapters' };
 
 /** One file set to render: the path without extension and the frames it covers (none: the whole episode). */
 export interface ExportJob {
@@ -60,6 +61,16 @@ export function baseName(p: string): string {
   return p.split(/[\\/]/).pop() ?? p;
 }
 
+/**
+ * The episode cut at its chapter markers, one part per chapter: [start, end) in frames and the
+ * title. The first chapter also takes whatever comes before its marker, so nothing is lost.
+ */
+export function chapterSpans(project: Project): Array<{ start: Frames; end: Frames; title: string }> {
+  const end = projectLength(project);
+  const marks = project.markers.filter((m) => m.kind === 'chapter' && m.position < end).sort((a, b) => a.position - b.position);
+  return marks.map((m, i) => ({ start: i === 0 ? 0 : m.position, end: marks[i + 1]?.position ?? end, title: m.title })).filter((c) => c.end > c.start);
+}
+
 /** The range still applies to the episode (a selection exists, the region wasn't deleted, there are regions). */
 export function rangeAvailable(range: ExportRange, project: Project, selection: [Frames, Frames] | null): boolean {
   switch (range.kind) {
@@ -71,6 +82,8 @@ export function rangeAvailable(range: ExportRange, project: Project, selection: 
       return !!project.regions?.some((r) => r.id === range.regionId);
     case 'regions':
       return (project.regions?.length ?? 0) > 0;
+    case 'chapters':
+      return chapterSpans(project).length > 0;
   }
 }
 
@@ -104,6 +117,8 @@ export function exportJobs(range: ExportRange, project: Project, selection: [Fra
       const r = project.regions!.find((x) => x.id === range.regionId)!;
       return [{ outputBase: base, start: r.start, end: r.end, region: r.title }];
     }
+    case 'chapters':
+      return chapterSpans(project).map((c, i) => ({ outputBase: regionOutputBase(base, i, cleanFileName(c.title)), start: c.start, end: c.end, region: c.title }));
     case 'regions':
       return project.regions!.map((r: Region, i) => ({ outputBase: regionOutputBase(base, i, r.title), start: r.start, end: r.end, region: r.title }));
     default:

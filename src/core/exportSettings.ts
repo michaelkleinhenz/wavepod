@@ -12,7 +12,7 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   chapterFiles: true,
 };
 
-export const MP3_BITRATES = [64, 96, 128, 160, 192, 256];
+export const MP3_BITRATES = [64, 96, 128, 160, 192, 256, 320];
 export const OPUS_BITRATES = [32, 48, 64, 96, 128];
 export const PEAK_CEILINGS = [-0.1, -1, -2, -3];
 
@@ -47,6 +47,18 @@ export function targetForMono(lufs: number, mono: boolean): number {
   return lufs;
 }
 
+/**
+ * Turns Audible ACX delivery on or off. On: MP3 only at 192 kbps or more, leveled to ACX, room
+ * tone fixed. Off: back to an ordinary MP3 export with the loudness target as it was.
+ */
+export function withAcx(s: ExportSettings, on: boolean): ExportSettings {
+  if (!on) {
+    const { acx: _acx, ...rest } = s;
+    return rest;
+  }
+  return { ...s, formats: ['mp3'], mp3Bitrate: Math.max(192, s.mp3Bitrate), normalize: true, acx: { roomTone: s.acx?.roomTone ?? true } };
+}
+
 const FORMATS = ['mp3', 'wav', 'flac', 'opus'] as const;
 
 /** Checks settings read from a project or template file; anything missing or wrong takes the default. */
@@ -70,6 +82,7 @@ export function normalizeExportSettings(raw: unknown): ExportSettings | undefine
     chapterFiles: typeof r.chapterFiles === 'boolean' ? r.chapterFiles : d.chapterFiles,
     ...(r.mono ? { mono: true } : {}),
     ...(normalizeVideoExport(r.video) ? { video: normalizeVideoExport(r.video)! } : {}),
+    ...(r.acx && typeof r.acx === 'object' ? { acx: { roomTone: (r.acx as { roomTone?: unknown }).roomTone !== false } } : {}),
   };
 }
 

@@ -970,6 +970,11 @@ export interface ExportOptions {
   mono?: boolean;
   /** Also an MP4 video of the cameras (video podcasts), with this mix as its sound. Rendered in the app window. */
   video?: VideoExportSettings;
+  /**
+   * Audible ACX audiobook delivery: MP3 only, at 192 kbps or more and 44.1 kHz; with `normalize`,
+   * leveled to −20 dB RMS with peaks held under −3 dBFS instead of a LUFS target.
+   */
+  acx?: AcxSettings;
   start?: Frames;
   end?: Frames;
 }
@@ -981,6 +986,30 @@ export interface VideoExportSettings {
   fps: number;
   quality: 'medium' | 'high' | 'very-high';
   codec: 'avc' | 'av1';
+}
+
+export interface AcxSettings {
+  /** Brings the room tone at the start (0.5–1 s) and end (1–5 s) of each file into ACX's range. */
+  roomTone: boolean;
+}
+
+/** What ACX checks in a file: levels in dB(FS), room tone and silence in seconds. */
+export interface AcxStats {
+  duration: number;
+  /** RMS of the whole file. */
+  rmsDb: number;
+  /** Highest sample peak, dBFS. */
+  peakDb: number;
+  /** RMS of the quietest 0.5 s that isn't digital silence. */
+  noiseFloorDb: number;
+  /** Room tone before the first word and after the last one. */
+  head: number;
+  tail: number;
+  /** Digital silence (exact zeros) at the very start and end. */
+  leadSilence: number;
+  trailSilence: number;
+  /** Digital silence somewhere between the first and last sound, e.g. a gap between clips. */
+  silentGaps: boolean;
 }
 
 /** The export dialog's choices, kept with the episode and its template so each show exports the same way. */
@@ -997,6 +1026,8 @@ export interface ExportResult {
   outputTruePeakDb?: number;
   /** Most the peak limiter turned down (dB, 0 or negative); 0 when the gain alone reached the target. */
   limiterReductionDb?: number;
+  /** ACX export: the ACX figures of the written mix. */
+  acx?: AcxStats;
 }
 
 export interface ExportProgress {

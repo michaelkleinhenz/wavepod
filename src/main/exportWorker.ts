@@ -2,7 +2,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import type { Clip, CleanupOptions, ExportOptions, Project, TimelineWord } from '../shared/types';
 import { scanCleanup } from '../core/cleanupScan';
-import { exportProject } from '../core/exporter';
+import { exportProject, measureAcx } from '../core/exporter';
 import { analyseClips, analyseProject } from '../core/analysis';
 import { learnMatch } from '../core/matchLearn';
 import { alignClips, alignToClips, stretchWav } from '../core/align';
@@ -14,7 +14,7 @@ import { setImpulseDir } from '../core/fx/convolution';
 import { setVoiceCleanWasm } from '../core/fx/voiceClean';
 
 interface Job {
-  kind: 'export' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav' | 'fuse' | 'match';
+  kind: 'export' | 'acx' | 'loudness' | 'clips' | 'align' | 'stretch' | 'cleanup' | 'importWav' | 'fuse' | 'match';
   /** stretch / importWav: absolute source and destination WAV (and the stretch factor); fuse: the destination. */
   src?: string;
   dest?: string;
@@ -41,6 +41,8 @@ interface Job {
   voiceCleanWasm?: string;
   /** importWav: the episode's sample rate. */
   sampleRate?: number;
+  /** acx: the parts of the mix (frames) to check, one file each. */
+  spans?: Array<[number, number]>;
 }
 
 const job = workerData as Job;
@@ -58,6 +60,9 @@ if (vstHost) setVstHost(vstHost);
 try {
   if (job.kind === 'export') {
     const result = exportProject(job.project, job.dir, job.opts!, (p) => parentPort!.postMessage({ type: 'progress', progress: p }));
+    parentPort!.postMessage({ type: 'done', result });
+  } else if (job.kind === 'acx') {
+    const result = measureAcx(job.project, job.dir, job.spans ?? [], job.mono, (f) => parentPort!.postMessage({ type: 'progress', progress: { phase: 'ACX check', step: 'analysing', fraction: f } }));
     parentPort!.postMessage({ type: 'done', result });
   } else if (job.kind === 'cleanup') {
     parentPort!.postMessage({ type: 'done', result: scanCleanup(job.project, job.dir, job.words ?? [], job.cleanup!) });

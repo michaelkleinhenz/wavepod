@@ -5,7 +5,7 @@ import { Worker } from 'node:worker_threads';
 import { RecordingAlerter, withAlertMark } from './recordingAlert';
 import { IPC, type AboutLink, type AppInfo, type InvokeMethod, type MenuCommand, type MenuModelItem, type MenuModelTop, type OpenedProject, type SaveState } from '../shared/api';
 import { acceleratorLabel, menuLabel } from '../core/menuText';
-import type { DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, RecordOptions, VstPluginRef } from '../shared/types';
+import type { AcxStats, DeviceConfig, ExportOptions, ExportResult, Fx, AuphonicSettingsInput, LoudnessReport, McpSettings, OscSettings, Project, RecordedTake, RecordOptions, VstPluginRef } from '../shared/types';
 import { prepareForEditing } from '../core/project';
 import { findProfile } from '../core/deviceProfiles';
 import { WavWriter, writeWavFile } from '../core/wav';
@@ -1088,6 +1088,8 @@ const handlers: Record<InvokeMethod, Handler> = {
     return res;
   },
   measureLoudness: (mixOnly?: boolean, mono?: boolean) => runWorker<LoudnessReport[]>({ kind: 'loudness', project: current.project, dir: current.dir, mixOnly: !!mixOnly, mono: !!mono }),
+  measureAcx: (spans: Array<[number, number]>, mono?: boolean) =>
+    runWorker<AcxStats[]>({ kind: 'acx', project: current.project, dir: current.dir, spans: Array.isArray(spans) ? spans : [], mono: !!mono }, (p) => send(IPC.exportProgress, p)),
   measureClips: (clipIds: string[]) => runWorker<LoudnessReport[]>({ kind: 'clips', project: current.project, dir: current.dir, clipIds }),
   learnMatch: (sourceClipIds: string[], referenceClipIds: string[]) => learnMatchIn(sourceClipIds, referenceClipIds),
   revealFile: (p: string) => shell.showItemInFolder(p),

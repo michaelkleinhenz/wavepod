@@ -542,6 +542,21 @@ label.radio.disabled { color: var(--muted); }
 .export-footer { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
 .export-footer .check { margin: 0; color: var(--muted); font-size: 12px; }
 .export-footer button.primary { min-width: 96px; }
+/* Audible ACX check: one row per file, values green when they meet ACX's rules, red when not */
+.acx-check { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
+.acx-check > h3 { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+.acx-check p { margin: 4px 0; font-size: 12px; }
+.acx-verdict.ok { color: #81c784; font-weight: 600; }
+.acx-verdict.bad { color: #e57373; font-weight: 600; }
+.acx-table-wrap { max-height: 168px; overflow-y: auto; margin: 6px 0; border: 1px solid var(--border); border-radius: 8px; }
+table.acx-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+table.acx-table th { position: sticky; top: 0; background: #121419; color: var(--muted); font-weight: 500; text-align: right; padding: 5px 8px; white-space: nowrap; }
+table.acx-table td { padding: 4px 8px; text-align: right; white-space: nowrap; border-top: 1px solid var(--border); }
+table.acx-table th:first-child, table.acx-table td.acx-name { text-align: left; }
+table.acx-table td.acx-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.acx-range-note button.link { margin-left: 6px; }
+table.acx-table td.ok { color: #81c784; }
+table.acx-table td.bad { color: #e57373; font-weight: 600; }
 /* narrow windows: one column again */
 @media (max-width: 860px) {
   .export-columns { grid-template-columns: minmax(0, 1fr); }

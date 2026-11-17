@@ -293,3 +293,7 @@ A single fluffed line doesn't need a whole new take of the scene: select it, arm
 4. Give each scene its atmosphere with [scene ambience beds](#scene-ambience-beds), or lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
 5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
 6. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).
+
+## Publishing on Audible
+
+Audio dramas and audiobooks go to Audible through ACX, which checks every file's level, peaks, noise and room tone. Set a chapter marker at the start of each chapter (and of the opening and closing credits), then export with **Publish to › Audible ACX (audiobook)** and **Each chapter as its own file**. See [Audible ACX](export.md#audible-acx-audiobooks).

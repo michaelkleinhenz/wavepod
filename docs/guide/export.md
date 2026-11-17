@@ -14,6 +14,7 @@ Under **Range**, pick the part of the episode. Each choice shows where it lies a
 | **Selected range** | Just the time range selected on the timeline (select it before opening the dialog). |
 | **Region** | One [region](chapters.md#regions), picked from the list next to it. |
 | **Each region as its own file** | Every region separately, each normalised on its own. |
+| **Each chapter as its own file** | The episode cut at its chapter markers, one file per chapter, each normalised on its own. Anything before the first chapter marker goes into the first file. Audiobooks need this for [Audible ACX](#audible-acx-audiobooks). |
 
 ### Exporting one region
 
@@ -27,7 +28,7 @@ The dialog opens with that region chosen and the file named after the episode an
 
 ## File name and folder
 
-**File name** is the name of the files without the extension. It starts as the episode title (plus the region's title for one region); type your own, and **Reset** goes back to the title. When you export each region as its own file, every file gets the region's number and title added: *Episode 12 - 01 Intro*, *Episode 12 - 02 Interview*.
+**File name** is the name of the files without the extension. It starts as the episode title (plus the region's title for one region); type your own, and **Reset** goes back to the title. When you export each region or chapter as its own file, every file gets its number and title added: *Episode 12 - 01 Intro*, *Episode 12 - 02 Interview*.
 
 **Folder** is where the files go: by default the episode's `export/` folder. Click **Browse…** to pick another one, or type a path. The folder is kept for the episode while WavePod is open.
 
@@ -55,7 +56,7 @@ Click **Export**. While it runs, the dialog shows the progress; when it is done,
 
 ### Your export settings are remembered
 
-When you export, WavePod saves your choices (formats, bitrates, channels, chapter files, stems, loudness target and ceiling) with the episode, so its next export starts the same way. A [template](episodes.md#templates) saved from the episode keeps them too, so every new episode of the show exports the way the show always does. An episode that was never exported starts with the settings of your last export on this computer, and the very first time with one MP3 at 128 kbps, normalised to −16 LUFS, with chapter files.
+When you export, WavePod saves your choices (formats, bitrates, channels, chapter files, stems, loudness target and ceiling, Audible ACX) with the episode, so its next export starts the same way. A [template](episodes.md#templates) saved from the episode keeps them too, so every new episode of the show exports the way the show always does. An episode that was never exported starts with the settings of your last export on this computer, and the very first time with one MP3 at 128 kbps, normalised to −16 LUFS, with chapter files.
 
 ## Loudness
 
@@ -102,7 +103,38 @@ Click **Analyse Loudness** and the mix is checked as well:
 - it is so quiet that normalising would raise it by more than 12 dB, and the room noise with it;
 - it has **dead air**: 5 seconds or more of silence. Click a time to close the dialog and put the playhead there.
 
+For an audiobook, **Run ACX Check** checks every file against Audible's requirements instead; see [Run the ACX check](#run-the-acx-check).
+
 Set the cover and episode details in the **Chapters** view. See [Chapters and markers](chapters.md#episode-details).
+
+## Audible ACX (audiobooks)
+
+ACX is the platform for publishing audiobooks on Audible, Amazon and Apple Books. It checks every uploaded file against its technical requirements and sends the book back if a file misses one. To export for it, set **Format › Publish to** to **Audible ACX (audiobook)**. WavePod then writes files the way ACX wants them:
+
+| ACX requirement | What WavePod does |
+| --- | --- |
+| MP3, constant bitrate of 192 kbps or more, 44.1 kHz | Only MP3 can be ticked, at 192, 256 or 320 kbps. Episodes at another sample rate are converted to 44.1 kHz. |
+| RMS level between −23 and −18 dB | **Level › Level to ACX** brings each file to −20 dB RMS. |
+| Peaks no higher than −3 dBFS | A limiter holds the peaks under −3.5 dBFS while leveling, so MP3 encoding can't push them over. |
+| 0.5 to 1 s of room tone at the start, 1 to 5 s at the end | **Room tone › Fix room tone at the start and end** cuts what is too long to 0.75 s before the first word and 2 s after the last, and lengthens what is too short with room tone looped from the quietest half second of the file. Dead digital silence at either end is replaced with room tone. |
+| Noise floor no higher than −60 dB | Checked, not fixed: see below. |
+| Each chapter in its own file, at most 120 minutes | Pick **Range › Each chapter as its own file** (or **Each region as its own file**). The dialog reminds you if you are about to export the whole book as one file. |
+
+Mono or stereo are both fine, as long as every file of the book is the same. The tag and cover checks are left out, since you enter those details on ACX.
+
+### Run the ACX check
+
+Click **Run ACX Check** to measure every file the export would write. The **ACX check** table under the two columns lists each file with its RMS, peak, noise floor and room tone at the start and end, in green where it meets ACX's rules and in red where it doesn't. The figures are what the export will make of the mix with your settings; hover a value to see what the mix measures now. Below the table, each problem comes with what to do about it.
+
+After the export, the table shows the figures of the files as written, so you know they pass before you upload them.
+
+What the export can't fix for you:
+
+- **Noise floor**: leveling turns the room noise up along with the voice. If the noise between words would end up over −60 dB, add the [Noise reduction](filters.md#built-in-filters) or [AI voice cleanup](filters.md#ai-voice-cleanup) filter to the narrator's track (or the Master), or record in a quieter room.
+- **Digital silence between clips**: gaps with no sound at all (not even room tone) sound unnatural, and ACX rejects them. Let the clips touch, or fill the gap with room tone.
+- **Files over 120 minutes**: split the chapter with another chapter marker or region.
+
+ACX also asks for opening and closing credits as files of their own and a retail sample of up to five minutes: set a chapter marker (or region) for each, and they are exported like the chapters.
 
 ## Send to Auphonic
 
