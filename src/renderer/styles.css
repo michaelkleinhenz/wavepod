@@ -800,7 +800,7 @@ header .menubar { padding: 0; background: transparent; border: none; flex: none;
 .script-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; padding-top: 8px; }
 .script-toolbar { display: flex; gap: 6px; padding: 4px 14px 8px; align-items: center; }
 .script-toolbar .spinner { width: 8px; height: 8px; }
-.script-scenes { flex: 1; min-width: 0; }
+.script-scenes { flex: 1; min-width: 0; padding: 3px 8px; font-size: 12px; }
 .script-more { flex: none; width: 28px; padding: 0; }
 .script-summary { padding: 0 14px 8px; font-size: 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
 .script-title { grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
