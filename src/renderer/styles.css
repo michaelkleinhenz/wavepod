@@ -54,6 +54,7 @@ header {
   border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 700; font-size: 15px; letter-spacing: 0.3px; white-space: nowrap; }
+.ruler-corner .brand { align-self: center; font-size: 17px; }
 .logo { color: var(--rec); }
 nav { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radius: 8px; }
 .tab { background: transparent; border: none; padding: 5px 10px; color: var(--muted); white-space: nowrap; }
@@ -207,7 +208,7 @@ table.markers td.actions { white-space: nowrap; text-align: right; width: 1%; }
 .toolbar .editmark { color: #ef9a9a; }
 .hint-keys { font-size: 11px; }
 .ruler-row { display: flex; border-bottom: 1px solid var(--border); }
-.ruler-corner { display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 8px 5px; background: var(--panel); border-right: 1px solid var(--border); font-size: 11px; flex-shrink: 0; }
+.ruler-corner { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 0 8px 5px 14px; background: var(--panel); border-right: 1px solid var(--border); font-size: 11px; flex-shrink: 0; }
 .ruler-canvas { display: block; cursor: pointer; }
 .tracks-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 body.panning, body.panning * { cursor: grabbing !important; }
@@ -632,7 +633,6 @@ input.value-edit {
 .menubar[hidden] { display: none; }
 /* the menus open the header row: no bar of their own, and the window title already names the app */
 header .menubar { padding: 0; background: transparent; border: none; flex: none; }
-header:has(.menubar:not([hidden])) .brand { display: none; }
 .menubar-title {
   background: transparent;
   border: 1px solid transparent;

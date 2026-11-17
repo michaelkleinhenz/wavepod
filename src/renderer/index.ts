@@ -237,7 +237,6 @@ async function main(): Promise<void> {
   const header = h(
     'header',
     null,
-    h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
     h('nav', null, tabs.setup, tabs.edit, tabs.chapters),
     h(
       'div',
