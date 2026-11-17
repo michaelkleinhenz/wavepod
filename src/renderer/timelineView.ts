@@ -186,7 +186,13 @@ export class TimelineView {
     const rulerRow = h(
       'div',
       { class: 'ruler-row' },
-      h('div', { class: 'ruler-corner', style: { width: `${HEADER_W}px` } }, h('span', { class: 'muted' }, 'Chapters ▸')),
+      h(
+        'div',
+        { class: 'ruler-corner', style: { width: `${HEADER_W}px` } },
+        // the app's logo sits in the free corner above the track headers, so the header row stays narrow
+        h('div', { class: 'brand' }, h('span', { class: 'logo' }, '◉'), ' WavePod'),
+        h('span', { class: 'muted' }, 'Chapters ▸'),
+      ),
       this.rulerCanvas,
     );
     const body = h('div', { class: 'tracks-body' }, this.headers, this.canvas);
