@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { addTrack, createProject, rippleDelete } from '../src/core/project';
-import { bareWord, filesToTranscribe, isFiller, isWholeTranscript, mergeTranscript, selectionToTranscribe, subtractSpans, unionSpans, paragraphs, timelineWords, transcriptPath, transcriptText, transcriptVtt, wordAt, wordsFromScribe, wordsRange } from '../src/core/transcript';
+import { bareWord, filesToTranscribe, isFiller, isWholeTranscript, mergeTranscript, restToTranscribe, selectionToTranscribe, subtractSpans, unionSpans, paragraphs, timelineWords, transcriptPath, transcriptText, transcriptVtt, wordAt, wordsFromScribe, wordsRange } from '../src/core/transcript';
 import { keytermList, normalizeTranscriptionSettings, scribeForm, transcribeWithScribe } from '../src/core/elevenlabs';
 import { pcmToWav, wavToSpeechPcm } from '../src/core/speechAudio';
 import { writeWavFile, parseWavHeader } from '../src/core/wav';
@@ -134,6 +134,15 @@ describe('transcribing a timeline selection', () => {
     expect(selectionToTranscribe(p, s(1, 3), have)).toEqual([]);
     // Ben 3-6 s: only 4-6 s (and its room) is new
     expect(selectionToTranscribe(p, s(3, 6), have)).toEqual([{ file: 'media/ben.wav', trackId: p.tracks[1].id, spans: [s(3, 7)] }]);
+  });
+
+  it('finishes a partial transcript by asking only for what its parts left out', () => {
+    const part = { ...tr('media/ben.wav', []), spans: [s(2, 4), s(8, 9)] };
+    expect(restToTranscribe(part, SR)).toEqual([s(0, 2), s(4, 8), [9 * SR, Number.MAX_SAFE_INTEGER]]);
+    // spans in the file's rate are counted in the project's
+    expect(restToTranscribe({ ...part, sampleRate: SR / 2, spans: [[SR, 2 * SR]] }, SR)).toEqual([s(0, 2), [4 * SR, Number.MAX_SAFE_INTEGER]]);
+    expect(restToTranscribe(tr('media/ben.wav', []), SR)).toEqual([]);
+    expect(restToTranscribe(null, SR)).toEqual([]);
   });
 
   it('adds the words of new parts to a partial transcript', () => {

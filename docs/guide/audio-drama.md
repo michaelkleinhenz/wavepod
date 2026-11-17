@@ -71,11 +71,11 @@ Lines don't have to be said word for word. Hesitations (*umm*, *uh*, *äh*) and 
 
 #### Lining up a part of the recording
 
-To line up only part of the recording, for example the scene you just recorded, select that time range on the timeline first (drag on the ruler, or across some tracks). The button then reads **Line up selection**: WavePod transcribes only that part of the recording, with a second of room on each side, and looks for the lines only there. Lines outside the selection stay as they are.
+To line up only part of the recording, for example the scene you just recorded, select that time range on the timeline first (drag on the ruler, or across some tracks), or select the clips that hold it. The button then reads **Line up selection**: WavePod transcribes only that part of the recording, with a second of room on each side, and looks for the lines only there. Lines outside the selection stay as they are.
 
-- Dragging across some tracks only looks at those tracks, so lines of characters on other tracks aren't found.
+- Dragging across some tracks only looks at those tracks, so lines of characters on other tracks aren't found. Selected clips work the same way: from the start of the first to the end of the last, on their tracks.
 - Parts that are transcribed already aren't sent again, so lining up the next scene only transcribes what's new.
-- The [transcript panel](transcript.md) shows the words of every part transcribed this way. **Transcribe** there still transcribes the whole episode, including the files only partly done.
+- The [transcript panel](transcript.md) shows the words of every part transcribed this way. **Transcribe** there finishes the episode: it sends only the parts no selection has covered yet, so nothing is transcribed twice.
 
 ### Cutting around every take
 
@@ -86,6 +86,8 @@ When you record a line several times in one go (without [loop recording](recordi
 - **⋯ › Cut Around Every Take of Every Line** does it for the whole script.
 
 Only cuts are made: nothing is removed, moved or faded, and the episode plays exactly as before. Delete the takes you don't want yourself afterwards (`Delete` on the selected clip, or a [ripple delete](editing.md#deleting-and-cutting) to close the gap). Each cut leaves a little room before and after a take, but never reaches into the words around it. Cutting again where the clips are already cut does nothing. Like Line up, it needs the [transcript](transcript.md), and the line's character on the right track.
+
+Cutting uses the transcript that's already there: after a **Line up selection**, cutting around the lines found in it sends nothing to be transcribed again. Only when a line isn't in the transcript yet are the parts of the recording that no transcript covers transcribed first, never the parts done already.
 
 ### Clip names from the script
 
