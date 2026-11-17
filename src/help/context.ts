@@ -8,7 +8,7 @@ export interface HelpContext {
   tab?: string | null;
   view: 'setup' | 'edit' | 'chapters';
   /** The side panel open in Record & Edit. */
-  panel?: 'fx' | 'transcript' | 'library' | 'script' | 'video' | 'guests' | null;
+  panel?: 'fx' | 'transcript' | 'library' | 'script' | 'stage' | 'video' | 'guests' | null;
   recording?: boolean;
 }
 
@@ -58,6 +58,7 @@ export function helpTopicFor(ctx: HelpContext): string {
   if (ctx.panel === 'transcript') return 'transcript';
   if (ctx.panel === 'library') return 'audio-drama/sound-library';
   if (ctx.panel === 'script') return 'audio-drama/script';
+  if (ctx.panel === 'stage') return 'audio-drama/3d-stage-binaural';
   if (ctx.panel === 'video') return 'video';
   if (ctx.panel === 'guests') return 'remote-guests';
   return ctx.recording ? 'recording' : 'timeline';

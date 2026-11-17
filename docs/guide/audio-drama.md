@@ -125,6 +125,26 @@ Picking a voice or a room makes the character track when there is none yet. The 
 - Click an act or scene heading, or pick it in **Jump to scene…**, to jump to the first recorded line of that act or scene. The list shows the progress of each, with the scenes indented under their act.
 - While playing, the line you hear is highlighted.
 
+### Scene ambience beds
+
+Every act or scene can have an atmosphere, such as a forest at night, a tavern or rain on a window. WavePod loops it under that part of the recording and crossfades it into the next scene's atmosphere by itself.
+
+1. Right-click a scene heading in the script panel › **Choose Ambience…**.
+2. The [Sounds](#sound-library) tab opens with *Ambience for "…"* on top. Listen as usual, then double-click a sound or press `Enter` (or right-click › **Choose This Sound**). `Esc` or **Cancel** leaves without one.
+3. The sound's name now shows on the heading, and the sound plays under the scene.
+
+Where a scene is on the timeline comes from its recorded lines: its bed starts a second before the scene's first line and lasts until the next scene starts. The last scene's bed runs on for two seconds after its last line. Between two scenes, both beds overlap by the crossfade (3 seconds unless you choose another one) with equal-power fades, so one place turns into the next. When a scene has no bed, the bed before it fades out where that scene starts.
+
+- A bed on an act plays under every scene of the act that has no bed of its own.
+- A scene with nothing recorded yet shows its bed with a dashed outline. The bed is placed once one of its lines is ticked off or found by **Line up**.
+- Beds are looped clips on an **Ambience** track, which is created the first time a bed is needed. It goes into an *Atmo* folder when the episode has one, and into the effects [stem](export.md#stems). If you already have a track named *Ambience*, the beds go there.
+- Click the sound's name on a heading, or right-click the heading, for **Change Ambience…**, the bed's volume (0 to −24 dB, −12 dB for a new bed) and **Remove Ambience**. Changing the clip gain of a bed on the timeline changes the bed's volume too.
+- **Line up**, ticking a line and importing a new draft lay the beds again. A new draft keeps the beds of headings whose text stayed the same.
+- After you move or cut the recording, the panel shows *Ambience beds no longer match the scenes*. Click **Lay again**, or use **⋯ › Lay Ambience Beds Again**.
+- **⋯ › Ambience crossfade** sets the crossfade between scenes: 1, 3, 6 or 10 seconds. **⋯ › Remove All Ambience Beds** takes them all away.
+
+Laying the beds again replaces the bed clips, so trims, moves or fades you made to them by hand are lost. For a one-off atmosphere that you shape yourself, use **Fill the Selection (Loop)** in the sound library instead. The sound is copied into the episode, like every sound you insert. `get_script` shows each bed and where it plays to AI agents.
+
 The **⋯** menu imports a new draft, ticks all lines off again or removes the script (the recording stays as it is). The script is saved with the episode. AI agents can read it with the `get_script` tool. See [AI agents (MCP)](ai-agents.md).
 
 The script, the sound library and the transcript share the right side of the window: opening one closes the others.
@@ -146,7 +166,28 @@ Put a voice effect on a whole track (a character who is always a robot) or on a 
 
 The **Places: room & distance** group puts a voice into a room with the **Room & distance** filter: close to the mic, living room, bedroom, small kitchen, bathroom, car, office, classroom, stairwell, basement, garage / warehouse, church, concert hall, cave, tunnel, forest, open field and street.
 
-Its **Distance** (in metres) moves the speaker away: the voice gets quieter, loses highs and bass, and the room takes over, as if the speaker walked away. Below 1 m it gets the bass of speaking close to the mic. Use [volume and pan automation](tracks-mixing.md#automation) or clip filters to have a character walk past.
+Its **Distance** (in metres) moves the speaker away: the voice gets quieter, loses highs and bass, and the room takes over, as if the speaker walked away. Below 1 m it gets the bass of speaking close to the mic. Use [volume and pan automation](tracks-mixing.md#automation) or clip filters to have a character walk past, or put the track on the [3D stage](#3d-stage-binaural), where the stage sets the distance.
+
+## 3D stage (binaural)
+
+The **Stage** tab of the sidebar (**View › Stage**, `Shift+Ctrl+P`) places each voice around the listener: in front or behind, left or right, above or below, near or far. Heard on headphones, the mix is **binaural**: a voice behind you sounds behind you, one above sounds above, and a character can walk around the listener.
+
+1. Tick a track in the list under the stage to put it **on the stage**. It starts where its pan was, at ear height, 1 m away, so it sounds as loud as before.
+2. **Drag its dot** on the stage. The head in the middle faces up: up is in front, down is behind. The rings are 1 m, 3 m and 10 m. In front, behind and the sides are sticky; hold `Alt` to move freely.
+3. Set **Angle**, **Height** and **Distance** with the sliders under the track, or click a value to type it: angles like `R 30`, `L 120`, `-45` or `behind`, distances like `2.5` (metres), heights in degrees (`30` is above ear level, `-20` below).
+
+A voice further away gets quieter, loses air and bass, the same way as with the Room & distance filter's distance. The track's pan and pan automation don't apply while it is on the stage: its pan control shows **3D** (click it to open the stage). Untick the track to pan it again.
+
+**Room & distance on a placed track:** the filter follows the stage's distance, so you set the distance only once, on the stage. The voice comes from its place, while the reflections and the reverb stay around the listener, as in a real room.
+
+**Moving voices:** a placed track's **Auto** menu has **Angle automation** and **Distance automation** (or click **Auto** next to the value under the stage). Draw a walk on the lane, for example from `L 90°` to `R 90°` for a character crossing in front of the listener. While a lane has points, the voice follows it in playback and on the stage (↻ next to its name), and dragging the voice on the stage sets a point at the playhead. The angle lane goes from 180° on the left (top) through the front (middle) to 180° on the right (bottom); to walk round behind the listener, put two points at the same time, one at `R 180°` and one at `L 180°`, which is the same place.
+
+**Headphones or Speakers:** the switch at the top of the stage chooses the mix. **Headphones** is binaural. **Speakers** pans each placed voice by its angle instead (a voice behind is folded to the sides) and keeps the distance, for a loudspeaker mix or a radio version. The setting is saved with the episode and used by playback and export alike, so export one version, switch, and export the other.
+
+> **Tip:** Binaural mixing is made for headphones; on loudspeakers it sounds a little wide and coloured. Most audio drama is heard on headphones today, but for a radio broadcaster export once more with **Speakers**.
+
+WavePod renders the direction with a model of the head (the time difference and head shadow between the ears, and the shading of the ear and shoulders for front, back and height), not with measured head recordings, so it moves smoothly and needs no extra files. Front and back are easiest to hear with voices that move.
+
 
 **Decay (RT60)** is how long the room's reverb takes to die away by 60 dB, in seconds, the figure acousticians measure rooms with. **Soft surfaces** make the highs die away sooner than that. The places use the decay times of real, furnished rooms, and keep the room well below the voice, as in film and radio drama:
 
@@ -247,8 +288,8 @@ A single fluffed line doesn't need a whole new take of the scene: select it, arm
 ## Typical audio drama setup
 
 1. **Track folders › Audio drama folders** creates Dialogue, SFX, Atmo and Music folders.
-2. Give each character a track in Dialogue, named like the character, with Room & distance for the scene's place. Or record on any tracks and let the script's [character tracks](#character-tracks) sort the lines onto a track per character, each with its voice and room.
+2. Give each character a track in Dialogue, named like the character, with Room & distance for the scene's place. Or record on any tracks and let the script's [character tracks](#character-tracks) sort the lines onto a track per character, each with its voice and room. For a headphone mix, put the characters on the [3D stage](#3d-stage-binaural).
 3. Import the script. Record each line in a loop (`Alt+Shift+R`), comp the best take and tick the line off with `Enter`, or let **Line up** find the lines afterwards. Fix single fluffed lines later with a [punch-in](recording.md#punch-in-re-record-one-line) (`Shift+R`).
-4. Lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
+4. Give each scene its atmosphere with [scene ambience beds](#scene-ambience-beds), or lay atmospheres from the sound library with **Fill the Selection (Loop)** on Atmo tracks.
 5. Tick **Duck under the other tracks** on the music to keep it under the dialogue.
 6. Export the mix and, for broadcasters or festivals, **Stems › Dialogue, music and effects** with an M&E mix. See [Exporting](export.md#stems).

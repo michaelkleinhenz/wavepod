@@ -5,9 +5,14 @@
 //    away sounds more and more "in the room".
 //  - Early reflections (a few discrete echoes off nearby walls) give the size and shape of a room;
 //    the late reverb tail (Freeverb network, see reverb.ts) gives its decay.
+//  - On a track placed on the 3D stage (Track.stage), the stage sets the distance and the direct
+//    sound is rendered at the voice's place (binaural.ts), while the room stays all around.
 import type { FxProcessor } from './processors';
 import { Biquad } from './biquad';
 import { Reverb } from './reverb';
+import type { StagePosition } from '../../shared/types';
+import { StageRenderer } from '../binaural';
+import { distanceBassDb, distanceGainDb, distanceHighCut } from './distance';
 
 /** Early reflection pattern: relative times (of the room's reflection span), gains and sides. */
 const TAPS = [
@@ -22,20 +27,7 @@ const TAPS = [
 ] as const;
 const TAP_NORM = 1 / Math.sqrt(TAPS.reduce((s, [, g]) => s + g * g, 0));
 
-/** Gain of the direct sound at a distance (m): about −4.5 dB per doubling beyond 1 m. */
-export function distanceGainDb(d: number): number {
-  return d <= 1 ? 0 : -15 * Math.log10(d);
-}
-
-/** High cut (Hz) of the direct sound at a distance, or 0 for none. */
-export function distanceHighCut(d: number): number {
-  return d <= 1.2 ? 0 : Math.max(1500, 20000 / Math.pow(d, 0.6));
-}
-
-/** Low shelf (dB at 250 Hz): proximity bass close up, thinner far away. */
-export function distanceBassDb(d: number): number {
-  return d < 1 ? Math.min(5, 3 * Math.log2(1 / d)) : -Math.min(6, 2 * Math.log2(d));
-}
+export { distanceBassDb, distanceGainDb, distanceHighCut };
 
 /** Span of the early reflections in ms for a room size in %. */
 const reflectionSpanMs = (size: number) => 3 + 0.9 * size;
@@ -58,13 +50,50 @@ export class Space implements FxProcessor {
   private wetL = new Float32Array(0);
   private wetR = new Float32Array(0);
   private key = '';
+  private params: Record<string, number> = {};
+  /** The voice's place on the 3D stage, when its track is placed there (see setStage). */
+  private stage: StagePosition | null = null;
+  private stageSpeakers = false;
+  private stageDist = NaN;
+  private renderer: StageRenderer | null = null;
   constructor(private sr: number) {
     this.reverb = new Reverb(sr);
     this.erBuf = new Float32Array(Math.ceil(0.35 * sr));
   }
 
   setParams(p: Record<string, number>): void {
-    const d = Math.max(0.1, p.distance ?? 1);
+    this.params = p;
+    this.apply();
+  }
+
+  /**
+   * Places the voice on the 3D stage (null: not placed). The stage's distance replaces the
+   * filter's own, and the direct sound comes from the voice's direction; reflections and reverb
+   * stay around the listener. Called by the mixer before every block.
+   */
+  setStage(pos: StagePosition | null, speakers = false): void {
+    if (!pos) {
+      if (this.stage) {
+        this.stage = null;
+        this.renderer = null;
+        this.stageDist = NaN;
+        this.apply();
+      }
+      return;
+    }
+    this.stage = pos;
+    this.stageSpeakers = speakers;
+    if (!this.renderer) this.renderer = new StageRenderer(this.sr);
+    // the room is only re-tuned when the distance changes by more than about 1 %
+    if (!(Math.abs(Math.log(pos.distance / this.stageDist)) < 0.01)) {
+      this.stageDist = pos.distance;
+      this.apply();
+    }
+  }
+
+  private apply(): void {
+    const p = this.params;
+    const d = Math.max(0.1, this.stage ? this.stageDist : p.distance ?? 1);
     const size = p.size ?? 40;
     const damping = p.damping ?? 50;
     // The gap between the direct sound and the first reflections shrinks as the source moves away.
@@ -143,6 +172,16 @@ export class Space implements FxProcessor {
       this.air.process(R, n, 1);
     }
     const g = this.direct;
+    if (this.stage && this.renderer) {
+      // the direct sound from the voice's place; distance level and air are already applied above
+      for (let i = 0; i < n; i++) mono[i] = (L[i] + R[i]) * 0.5 * g;
+      this.renderer.process(mono, L, R, n, this.stage, { speakers: this.stageSpeakers, distanceCues: false });
+      for (let i = 0; i < n; i++) {
+        L[i] += wetL[i];
+        R[i] += wetR[i];
+      }
+      return;
+    }
     for (let i = 0; i < n; i++) {
       L[i] = L[i] * g + wetL[i];
       R[i] = R[i] * g + wetR[i];
@@ -156,5 +195,6 @@ export class Space implements FxProcessor {
     this.erLp = [0, 0];
     this.air?.reset();
     this.bass?.reset();
+    this.renderer?.reset();
   }
 }

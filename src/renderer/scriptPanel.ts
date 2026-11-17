@@ -49,8 +49,10 @@ import {
   setCharacterTrack,
   setCharacterVoice,
 } from '../core/characterRouting';
+import { BED_FADE_CHOICES, bedFadeSeconds, bedsStale, carryBeds, layBeds, removeBeds, setBedFade, setBedGain, setSceneBed, unplacedBeds } from '../core/ambience';
 import { formatTimestamp } from '../shared/time';
-import { showContextMenu } from './contextMenu';
+import { importLibrarySound, pickLibrarySound } from './soundLibraryPanel';
+import { showContextMenu, type ContextMenuEntry } from './contextMenu';
 import { append, errorMessage, h, toast } from './dom';
 import { seek } from './actions';
 import { api, store } from './store';
@@ -58,6 +60,8 @@ import { sidebar } from './sidebar';
 import { transcripts } from './transcripts';
 
 const OPEN_ONLY_KEY = 'wavepod.scriptOpenOnly';
+/** Volumes the ambience menu offers (dB). */
+const BED_GAINS = [0, -6, -12, -18, -24];
 const FOLDED_KEY = 'wavepod.scriptFolded';
 const WINDOW_ZOOM_KEY = 'wavepod.scriptWindowZoom';
 /** The name window.open gives the script window; the main process lets only this one open. */
@@ -90,7 +94,7 @@ export async function importScriptFile(): Promise<boolean> {
       return false;
     }
     const had = !!store.project.script;
-    store.edit((p) => replaceScript(p, createScript(p, parsed, name)));
+    store.edit((p) => carryBeds(p.script, replaceScript(p, createScript(p, parsed, name))));
     const cast = scriptCharacters(store.project.script!);
     const onTracks = cast.filter((c) => store.project.script!.cast[c.key]).length;
     toast(`${had ? 'Updated' : 'Imported'} ${parsed.title}: ${n} line${n === 1 ? '' : 's'}, ${cast.length} character${cast.length === 1 ? '' : 's'}${onTracks ? ` (${onTracks} on their tracks)` : ''}`);
@@ -279,7 +283,7 @@ export class ScriptPanel {
       store.edit((p) => {
         const res = routeLines(applyLineUp(p, r), [...r.occurrences.values()].flat());
         moved = res.moved;
-        return res.project;
+        return layBeds(res.project);
       });
       const multi = [...r.found.values()].filter((f) => (f.takes ?? 1) > 1).length;
       const several = `${multi ? `, ${multi} with several takes` : ''}${movedNote(moved)}`;
@@ -378,6 +382,8 @@ export class ScriptPanel {
             title: `Splits the tracks before and after each take of every line of this ${kind} the transcript holds. Nothing is removed.`,
             run: () => void this.cutAroundTakes(inside, `this ${kind}`),
           },
+          { kind: 'separator' },
+          ...this.bedMenu(i),
         ],
         e.clientX,
         e.clientY,
@@ -413,8 +419,61 @@ export class ScriptPanel {
     const on = recorded ?? !l.recorded;
     if (on) {
       const take = takeAt(p, store.transport.position, undefined, lineTrack(script, l));
-      store.edit((q) => setLineRecorded(q, l.id, true, take));
-    } else store.edit((q) => setLineRecorded(q, l.id, false));
+      store.edit((q) => this.withBeds(setLineRecorded(q, l.id, true, take)));
+    } else store.edit((q) => this.withBeds(setLineRecorded(q, l.id, false)));
+  }
+
+  /** The beds follow ticked lines, except while recording (the take's clip doesn't exist yet). */
+  private withBeds(p: Project): Project {
+    return store.transport.state === 'recording' ? p : layBeds(p);
+  }
+
+  // ---------------------------------------------------------------- ambience beds
+
+  /** Opens the Sounds tab to choose the atmosphere of an act or scene. */
+  private async chooseBed(index: number): Promise<void> {
+    const heading = store.project.script?.lines[index];
+    if (!heading || heading.kind !== 'scene') return;
+    if (store.transport.state === 'recording') return toast('Stop recording before choosing an ambience');
+    const ref = await pickLibrarySound(`Ambience for “${heading.text}”`);
+    if (!ref) return;
+    try {
+      const sound = await importLibrarySound(ref);
+      const prev = store.project.script?.beds?.[heading.id];
+      store.edit((p) => setSceneBed(p, heading.id, { file: sound.file, length: sound.length, name: sound.name, gain: prev?.gain ?? -12 }));
+      const unplaced = unplacedBeds(store.project).has(heading.id);
+      toast(unplaced ? `${sound.name} set for ${heading.text}. It plays once a line of the scene is on the timeline.` : `${sound.name} loops under ${heading.text}`);
+      sidebar().show('script');
+    } catch (e) {
+      toast(`Could not use the sound: ${errorMessage(e)}`, 'error');
+    }
+  }
+
+  /** The ambience part of a heading's menu. */
+  private bedMenu(index: number): ContextMenuEntry[] {
+    const script = store.project.script;
+    const heading = script?.lines[index];
+    if (!script || !heading) return [];
+    const bed = script.beds?.[heading.id];
+    if (!bed) {
+      return [
+        {
+          label: 'Choose Ambience…',
+          title: 'An atmosphere (forest, tavern, rain) from the sound library that loops under this part and crossfades into the next',
+          run: () => void this.chooseBed(index),
+        },
+      ];
+    }
+    return [
+      { kind: 'header', label: `Ambience: ${bed.name}` },
+      { label: 'Change Ambience…', run: () => void this.chooseBed(index) },
+      ...BED_GAINS.map((g) => ({
+        label: g ? `Volume ${g} dB` : 'Volume 0 dB',
+        checked: Math.round(bed.gain) === g,
+        run: () => store.edit((p) => setBedGain(p, heading.id, g)),
+      })),
+      { label: 'Remove Ambience', run: () => store.edit((p) => setSceneBed(p, heading.id, null)) },
+    ];
   }
 
   /** Jumps to a line's take (and selects it, so Repeat loops it). */
@@ -584,6 +643,7 @@ export class ScriptPanel {
   private menu(e: MouseEvent): void {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const has = !!store.project.script;
+    const hasBeds = !!store.project.script?.beds;
     showContextMenu(
       [
         { label: has ? 'Import a New Draft…' : 'Import Script…', title: 'Lines that stay the same keep their recorded ticks', run: () => void importScriptFile() },
@@ -606,6 +666,21 @@ export class ScriptPanel {
           title: 'Moves the clips that hold one character’s lines to that character’s track',
           run: () => this.routeAll(),
         },
+        { kind: 'separator' },
+        {
+          label: 'Lay Ambience Beds Again',
+          enabled: hasBeds,
+          title: 'Puts each scene\'s ambience under where its lines are now, after moving or cutting the recording',
+          run: () => store.edit(layBeds),
+        },
+        { kind: 'header', label: 'Ambience crossfade' },
+        ...BED_FADE_CHOICES.map((s) => ({
+          label: `${s} s`,
+          enabled: hasBeds,
+          checked: bedFadeSeconds(store.project.script) === s,
+          run: () => store.edit((p) => setBedFade(p, s)),
+        })),
+        { label: 'Remove All Ambience Beds', enabled: hasBeds, run: () => store.edit(removeBeds) },
         { kind: 'separator' },
         { label: 'Show Only the Current Scene', enabled: has, title: 'Folds every other act and scene', run: () => this.foldToCurrent() },
         { label: 'Fold All Acts and Scenes', enabled: has, run: () => this.foldAll(true) },
@@ -724,6 +799,11 @@ export class ScriptPanel {
     const t = e.target as HTMLElement;
     const fold = t.closest<HTMLElement>('[data-fold]');
     if (fold) return this.toggleFold(Number(fold.dataset.fold));
+    const bed = t.closest<HTMLElement>('[data-bed]');
+    if (bed && !view.window) {
+      const r = bed.getBoundingClientRect();
+      return showContextMenu(this.bedMenu(Number(bed.dataset.bed)), r.left, r.bottom);
+    }
     const scene = t.closest<HTMLElement>('[data-scene]');
     if (scene) return this.jumpToScene(Number(scene.dataset.scene), view);
     const row = t.closest<HTMLElement>('[data-line]');
@@ -832,6 +912,14 @@ export class ScriptPanel {
         }),
         ' Open lines only',
       ),
+      ...(script.beds && bedsStale(store.project, this.placed)
+        ? [h(
+            'div',
+            { class: 'script-beds-stale' },
+            'Ambience beds no longer match the scenes. ',
+            h('button', { class: 'small', title: 'Puts each scene\'s ambience under where its lines are now', onclick: () => store.edit(layBeds) }, 'Lay again'),
+          )]
+        : []),
     );
   }
 
@@ -998,6 +1086,7 @@ export class ScriptPanel {
     const tracks = new Map(p.tracks.map((t) => [t.id, t]));
     const frag = document.createDocumentFragment();
     const scenes = new Map(scriptScenes(script).map((s) => [s.index, s]));
+    const unplaced = script.beds ? unplacedBeds(p, this.placed) : new Set<string>();
     script.lines.forEach((l: ScriptLine, i) => {
       if (this.hiddenRows[i]) return;
       if (l.kind === 'scene') {
@@ -1005,6 +1094,7 @@ export class ScriptPanel {
         const level = headingLevel(l);
         const folded = this.folded.has(l.id);
         const act = s?.level !== undefined;
+        const bed = script.beds?.[l.id];
         const head = h(
           'div',
           {
@@ -1025,6 +1115,17 @@ export class ScriptPanel {
             folded ? '▸' : '▾',
           ),
           h('span', { class: 'title' }, l.text),
+          bed
+            ? h(
+                'button',
+                {
+                  class: `script-bed${unplaced.has(l.id) ? ' unplaced' : ''}`,
+                  'data-bed': String(i),
+                  title: unplaced.has(l.id) ? `Ambience: ${bed.name}. It plays once a line of this ${act ? 'act' : 'scene'} is on the timeline.` : `Ambience: ${bed.name}, ${bed.gain} dB. Click to change.`,
+                },
+                bed.name,
+              )
+            : null,
           s?.lines ? h('span', { class: 'count' }, `${s.recorded}/${s.lines}`) : null,
         );
         view.rows.set(i, head);

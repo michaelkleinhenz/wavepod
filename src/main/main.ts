@@ -1408,6 +1408,7 @@ function buildMenu(): void {
         { label: 'Transcript', accelerator: 'Shift+CmdOrCtrl+T', click: menuSend('transcript') },
         { label: 'Sound Library', accelerator: 'Shift+CmdOrCtrl+B', click: menuSend('sound-library') },
         { label: 'Script', accelerator: 'Shift+CmdOrCtrl+J', click: menuSend('script') },
+        { label: 'Stage', accelerator: 'Shift+CmdOrCtrl+P', click: menuSend('stage') },
         { label: 'Video', accelerator: 'Shift+CmdOrCtrl+U', click: menuSend('video') },
         // W is handled in the window (single keys must not fire while typing), see MENU_KEY_HINTS
         { id: 'watch-through', label: 'Watch Through and Switch Cameras', click: menuSend('watch-through') },

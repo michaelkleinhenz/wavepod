@@ -1,14 +1,30 @@
 // Track automation: volume and pan lines over the timeline, with breakpoints in timeline frames.
 // Volume is in dB (interpolated in dB, applied after the track's filters together with its
 // gain); pan is -1 (left) .. 1 (right), interpolated linearly, and replaces the track's pan
-// while the lane has points. Ripple edits move the points along with the audio.
+// while the lane has points. Angle (degrees) and distance (metres) move a voice placed on the
+// 3D stage (stage.ts) and only apply to such tracks. Ripple edits move the points along with the audio.
 import type { AutomationLane, AutomationPoint, Frames, Project, Track } from '../shared/types';
 import { ENV_MAX_DB, ENV_MIN_DB, envAmp } from './envelope';
 
-export const AUTOMATION_LANES: AutomationLane[] = ['volume', 'pan'];
+export const AUTOMATION_LANES: AutomationLane[] = ['volume', 'pan', 'angle', 'distance'];
+/** Lanes that move a voice on the 3D stage. */
+export const STAGE_LANES: AutomationLane[] = ['angle', 'distance'];
+
+export function isAutomationLane(v: unknown): v is AutomationLane {
+  return typeof v === 'string' && (AUTOMATION_LANES as string[]).includes(v);
+}
 
 export function clampLaneValue(lane: AutomationLane, v: number): number {
-  return lane === 'pan' ? Math.max(-1, Math.min(1, v)) : Math.max(ENV_MIN_DB, Math.min(ENV_MAX_DB, v));
+  switch (lane) {
+    case 'pan':
+      return Math.max(-1, Math.min(1, v));
+    case 'angle':
+      return Math.max(-180, Math.min(180, v));
+    case 'distance':
+      return Math.max(0.3, Math.min(30, v));
+    default:
+      return Math.max(ENV_MIN_DB, Math.min(ENV_MAX_DB, v));
+  }
 }
 
 /** Index of the last point at or before `pos` (-1 if none). With equal positions, the later point wins. */
@@ -112,7 +128,7 @@ export function shiftAutomation(points: AutomationPoint[], from: Frames, delta: 
   return simplifyAutomation(out);
 }
 
-/** Applies `fn` to both lanes of a track (in place). */
+/** Applies `fn` to every lane of a track (in place). */
 export function mapTrackAutomation(track: Track, fn: (points: AutomationPoint[]) => AutomationPoint[]): void {
   const a = track.automation;
   if (!a) return;
@@ -161,7 +177,7 @@ export function normalizeAutomation(raw: unknown): Track['automation'] | undefin
     const pts = sortAutomation(lane, r[lane] as AutomationPoint[]);
     if (pts.length) out[lane] = pts;
   }
-  if (r.shown === 'volume' || r.shown === 'pan') out.shown = r.shown;
+  if (isAutomationLane(r.shown)) out.shown = r.shown;
   return Object.keys(out).length ? out : undefined;
 }
 

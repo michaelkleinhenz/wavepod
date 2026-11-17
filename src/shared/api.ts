@@ -113,6 +113,7 @@ export type MenuCommand =
   | 'import-campod'
   | 'export-video'
   | 'video'
+  | 'stage'
   | 'watch-through'
   | 'new-project'
   | 'open-project'

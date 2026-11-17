@@ -6,6 +6,7 @@ import { compTake, deleteTake, deleteUnusedTakes, flattenTakes, loopPass, pickTa
 import { DRAMA_FOLDERS, FOLDER_GAIN_MAX, FOLDER_GAIN_MIN, addDramaFolders, addFolder, audibleTracks, removeFolder, setTrackFolder, timelineRows, updateFolder, type TimelineRow } from '../core/folders';
 import { askName } from './nameDialog';
 import { addAutomationPoint, automationValueAt, formatPan, parsePan, setTrackAutomation, showTrackAutomation } from '../core/automation';
+import { DISTANCE_MAX, DISTANCE_MIN, formatAzimuth, formatDistance } from '../core/stage';
 import { showContextMenu } from './contextMenu';
 import { dbToGain, formatTick, formatTimestamp } from '../shared/time';
 import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/rippleMove';
@@ -89,8 +90,12 @@ const FX_BTN = { x: VOL_BTN.x + VOL_BTN.w + 4, y: VOL_BTN.y, w: 28, h: VOL_BTN.h
 /** Active filters a clip plays through besides its track's: its own and its group FX chain's. */
 const clipFxCount = (clip: Clip) => effectiveClipFx(store.project, clip)?.filter((f) => f.enabled).length ?? 0;
 /** Colours of the track automation lanes (the clip volume line is green). */
-const LANE_COLOR: Record<AutomationLane, string> = { volume: '#ffb74d', pan: '#82b1ff' };
-const LANE_NAME: Record<AutomationLane, string> = { volume: 'Volume', pan: 'Pan' };
+const LANE_COLOR: Record<AutomationLane, string> = { volume: '#ffb74d', pan: '#82b1ff', angle: '#b388ff', distance: '#4dd0e1' };
+const LANE_NAME: Record<AutomationLane, string> = { volume: 'Volume', pan: 'Pan', angle: 'Angle', distance: 'Distance' };
+/** Short names on the header's Auto button while a lane is shown. */
+const LANE_SHORT: Record<AutomationLane, string> = { volume: 'Vol', pan: 'Pan', angle: 'Ang', distance: 'Dist' };
+/** Distance lane scale: log, near at the top. */
+const DIST_LOG = Math.log(DISTANCE_MAX / DISTANCE_MIN);
 /** A take lane under its track (shown with the track's take lanes). */
 type TakeRow = { kind: 'take'; track: Track; take: Take; folder?: TrackFolder };
 /** A row of the timeline: a folder, a track, or one of a track's take lanes. */
@@ -906,6 +911,16 @@ export class TimelineView {
 
   /** Pan value (click to type) and slider; while the pan lane has points they follow it instead. */
   private panControls(t: Track): HTMLElement[] {
+    if (t.stage) {
+      // a voice on the 3D stage is placed there instead of panned
+      const label = h(
+        'button',
+        { class: 'pan-label stage-label', title: `On the 3D stage: ${formatAzimuth(t.stage.azimuth)}, ${formatDistance(t.stage.distance)}. Click to open the stage.`, onclick: () => window.dispatchEvent(new CustomEvent('wavepod:open-stage', { detail: t.id })) },
+        '3D',
+      );
+      const slider = h('input', { type: 'range', class: 'pan', min: '-100', max: '100', value: '0', disabled: true, title: 'Placed on the 3D stage: pan does not apply (View › Stage)' });
+      return [label, slider];
+    }
     const automated = !!t.automation?.pan?.length;
     const label = h(
       'span',
@@ -939,12 +954,13 @@ export class TimelineView {
   private automationButton(t: Track): HTMLElement {
     const shown = shownLane(t);
     const has = (lane: AutomationLane) => !!t.automation?.[lane]?.length;
-    const used = (['volume', 'pan'] as AutomationLane[]).filter(has);
+    const lanes: AutomationLane[] = t.stage ? ['volume', 'angle', 'distance'] : ['volume', 'pan'];
+    const used = lanes.filter(has);
     const btn = h(
       'button',
       {
         class: `fx-btn auto-btn${used.length ? ' active' : ''}${shown ? ` open lane-${shown}` : ''}`,
-        title: `Volume and pan automation${used.length ? ` (${used.map((l) => LANE_NAME[l].toLowerCase()).join(' and ')} automated)` : ''}`,
+        title: `${t.stage ? 'Volume, angle and distance' : 'Volume and pan'} automation${used.length ? ` (${used.map((l) => LANE_NAME[l].toLowerCase()).join(' and ')} automated)` : ''}`,
         onclick: (e: MouseEvent) => {
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
           const show = (lane: AutomationLane | null) => store.patch((p) => showTrackAutomation(p, t.id, lane));
@@ -952,18 +968,16 @@ export class TimelineView {
             [
               { kind: 'header', label: 'Show on the track' },
               { label: 'Clips only', checked: !shown, run: () => show(null) },
-              { label: `Volume automation${has('volume') ? ' •' : ''}`, checked: shown === 'volume', run: () => show('volume') },
-              { label: `Pan automation${has('pan') ? ' •' : ''}`, checked: shown === 'pan', run: () => show('pan') },
-              { kind: 'separator' },
-              { label: 'Clear volume automation', enabled: has('volume'), run: () => store.edit((p) => setTrackAutomation(p, t.id, 'volume', [])) },
-              { label: 'Clear pan automation', enabled: has('pan'), run: () => store.edit((p) => setTrackAutomation(p, t.id, 'pan', [])) },
+              ...lanes.map((lane) => ({ label: `${LANE_NAME[lane]} automation${has(lane) ? ' •' : ''}`, checked: shown === lane, run: () => show(lane) })),
+              { kind: 'separator' as const },
+              ...lanes.map((lane) => ({ label: `Clear ${LANE_NAME[lane].toLowerCase()} automation`, enabled: has(lane), run: () => store.edit((p) => setTrackAutomation(p, t.id, lane, [])) })),
             ],
             r.left,
             r.bottom + 2,
           );
         },
       },
-      shown ? (shown === 'volume' ? 'Vol' : 'Pan') : 'Auto',
+      shown ? LANE_SHORT[shown] : 'Auto',
     );
     return btn;
   }
@@ -1674,12 +1688,23 @@ export class TimelineView {
   /** Height of a lane value: the fader scale for volume, left at the top and right at the bottom for pan. */
   private yOfValue(lane: AutomationLane, v: number, ti: number): number {
     if (lane === 'volume') return this.yOfDb(v, ti);
-    return this.envTop(ti) + ((v + 1) / 2) * (this.envBottom(ti) - this.envTop(ti));
+    // angle: 180° left at the top, in front in the middle; distance: near at the top, far at the bottom (log)
+    const frac =
+      lane === 'angle' ? (v + 180) / 360 : lane === 'distance' ? Math.log(Math.max(DISTANCE_MIN, v) / DISTANCE_MIN) / DIST_LOG : (v + 1) / 2;
+    return this.envTop(ti) + frac * (this.envBottom(ti) - this.envTop(ti));
   }
 
   private valueOfY(lane: AutomationLane, y: number, ti: number): number {
     if (lane === 'volume') return this.dbOfY(y, ti);
     const frac = Math.max(0, Math.min(1, (y - this.envTop(ti)) / (this.envBottom(ti) - this.envTop(ti))));
+    if (lane === 'angle') {
+      const a = Math.round(frac * 360 - 180);
+      return Math.abs(a) <= 4 ? 0 : a;
+    }
+    if (lane === 'distance') {
+      const d = DISTANCE_MIN * Math.exp(frac * DIST_LOG);
+      return d < 10 ? Math.round(d * 10) / 10 : Math.round(d);
+    }
     const v = Math.round((frac * 2 - 1) * 100) / 100;
     // centre is sticky, so a voice can be put back in the middle exactly
     return Math.abs(v) <= 0.03 ? 0 : v;
@@ -1687,10 +1712,14 @@ export class TimelineView {
 
   /** Value of a lane without points: unity for volume, the track's fixed pan. */
   private laneFallback(t: Track, lane: AutomationLane): number {
+    if (lane === 'angle') return t.stage?.azimuth ?? 0;
+    if (lane === 'distance') return t.stage?.distance ?? 1;
     return lane === 'volume' ? 0 : t.pan;
   }
 
   private formatLaneValue(lane: AutomationLane, v: number): string {
+    if (lane === 'angle') return formatAzimuth(v);
+    if (lane === 'distance') return formatDistance(v);
     return lane === 'volume' ? formatDb(v) : formatPan(v);
   }
 
@@ -1707,7 +1736,7 @@ export class TimelineView {
     ctx.fillStyle = 'rgba(14,15,19,0.38)';
     ctx.fillRect(0, ti * TRACK_H, w, TRACK_H - 2);
     // guide: centre for pan, 0 dB for volume
-    const guide = lane === 'pan' ? this.yOfValue('pan', 0, ti) : this.yOfDb(0, ti);
+    const guide = lane === 'pan' || lane === 'angle' ? this.yOfValue(lane, 0, ti) : lane === 'distance' ? this.yOfValue(lane, 1, ti) : this.yOfDb(0, ti);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.setLineDash([3, 4]);
     ctx.beginPath();
@@ -1756,11 +1785,16 @@ export class TimelineView {
     ctx.textBaseline = 'top';
     const name = `${LANE_NAME[lane]} automation`;
     ctx.fillText(name, w - ctx.measureText(name).width - 6, ti * TRACK_H + 3);
-    if (lane === 'pan') {
+    if (lane === 'pan' || lane === 'angle' || lane === 'distance') {
+      const [hi, lo] = lane === 'pan' ? ['L', 'R'] : lane === 'angle' ? ['L 180°', 'R 180°'] : [formatDistance(DISTANCE_MIN), formatDistance(DISTANCE_MAX)];
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
-      ctx.fillText('L', 4, top - 1);
+      ctx.fillText(hi, 4, top - 1);
       ctx.textBaseline = 'bottom';
-      ctx.fillText('R', 4, bottom + 1);
+      ctx.fillText(lo, 4, bottom + 1);
+      if (lane === 'angle') {
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Front', 4, guide);
+      }
     }
     ctx.restore();
   }

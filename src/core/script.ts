@@ -3,7 +3,7 @@
 // (which track each character is recorded on), ticking lines off as recorded and finding each
 // line in the recording from the transcript ("Line up"). A recorded line is kept as a frame range
 // of its media file, like transcript words, so it stays found through every cut and move.
-import type { Frames, Project, Script, ScriptLine, ScriptRole, ScriptTake, TimelineWord, Track } from '../shared/types';
+import type { Frames, Project, SceneBed, Script, ScriptLine, ScriptRole, ScriptTake, TimelineWord, Track } from '../shared/types';
 import { uid } from '../shared/time';
 import { bareWord, isFiller } from './transcript';
 
@@ -445,13 +445,37 @@ export function normalizeScript(raw: unknown): Script | undefined {
       if (Object.keys(role).length) roles[characterKey(k)] = role;
     }
   }
-  return {
+  return normalizeBeds(s, {
     title: typeof s.title === 'string' ? s.title : 'Script',
     ...(typeof s.source === 'string' ? { source: s.source } : {}),
     lines,
     cast,
     ...(Object.keys(roles).length ? { roles } : {}),
-  };
+  });
+}
+
+/** Keeps the beds read from project.json usable: only those of headings that exist, with sane values. */
+export function normalizeBeds(raw: unknown, script: Script): Script {
+  const r = raw as { beds?: unknown; bedFade?: unknown } | undefined;
+  const ids = new Set(script.lines.filter((l) => l.kind === 'scene').map((l) => l.id));
+  const beds: Record<string, SceneBed> = {};
+  if (r?.beds && typeof r.beds === 'object') {
+    for (const [id, b] of Object.entries(r.beds as Record<string, Partial<SceneBed>>)) {
+      if (!ids.has(id) || !b || typeof b.file !== 'string' || !b.file || !Number.isFinite(b.length) || b.length! <= 0) continue;
+      beds[id] = {
+        file: b.file,
+        length: Math.round(b.length!),
+        name: typeof b.name === 'string' && b.name ? b.name : b.file.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, ''),
+        gain: Number.isFinite(b.gain) ? Math.max(-60, Math.min(24, b.gain!)) : 0,
+      };
+    }
+  }
+  const { beds: _b, bedFade: _f, ...rest } = script;
+  const out: Script = rest;
+  if (Object.keys(beds).length) out.beds = beds;
+  const fade = r?.bedFade;
+  if (typeof fade === 'number' && Number.isFinite(fade) && fade >= 0) out.bedFade = Math.min(30, fade);
+  return out;
 }
 
 // ---------------------------------------------------------------- characters and cast

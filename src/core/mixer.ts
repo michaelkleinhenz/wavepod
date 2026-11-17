@@ -15,6 +15,10 @@ import { fillAutomation, volumeAmp } from './automation';
 import { audibleTracks, projectLength } from './project';
 import { folderGainOf } from './folders';
 import { effectiveClipFx } from './fx/clipGroups';
+import type { Space } from './fx/space';
+import { StageRenderer } from './binaural';
+import { hasRoomFilter, stageAt, stageMode } from './stage';
+import type { StagePosition } from '../shared/types';
 
 export class ReaderCache {
   private readers = new Map<string, WavReader>();
@@ -108,6 +112,10 @@ export class Mixer {
   /** What each automixed track sounds like before its filters: the automix decides who speaks from this. */
   private amDetect: Float32Array[][] = [];
 
+  /** Binaural (3D stage) renderers of placed tracks: one per track path and per clip with filters. */
+  private stagers = new Map<string, { r: StageRenderer; next: number }>();
+  private stageMono = new Float32Array(0);
+
   private _project: Project;
   /** Tracks with their grouped clips' filters filled in (see withGroupFx), by the track passed in. */
   private resolved = new WeakMap<Track, Track>();
@@ -137,6 +145,8 @@ export class Mixer {
         this.clipChains.delete(id);
       }
     }
+    const staged = new Set(p.tracks.filter((t) => t.stage).flatMap((t) => [`t:${t.id}`, ...t.clips.map((c) => `c:${c.id}`)]));
+    for (const key of this.stagers.keys()) if (!staged.has(key)) this.stagers.delete(key);
     if (this.masterChain && !p.masterFx?.some((f) => f.enabled)) {
       this.masterChain.chain.dispose();
       this.masterChain = null;
@@ -442,12 +452,19 @@ export class Mixer {
     }
     if (this.pre[0].length < frames) this.pre = [new Float32Array(frames), new Float32Array(frames)];
     const [pl, pr] = this.pre;
+    // a voice on the 3D stage: where it is at the end of this block (the renderers glide there)
+    const staged = track.stage ? stageAt(track, position + frames) : null;
+    const speakers = stageMode(this.project) === 'speakers';
+    // a Room & distance filter on a placed track takes the stage's distance and renders the direct sound there
+    const placeRoom = (s: ChainState) => s.chain.eachActive('space', (proc) => (proc as Space).setStage(staged, speakers));
+    if (state) placeRoom(state);
     // clips with their own filters run through a chain of their own: track filters, then clip filters
     const fxClips = track.clips.filter((c) => hasActiveFx(c.fx));
     const plain = fxClips.length ? (c: Clip) => !hasActiveFx(c.fx) : undefined;
     let stereo: boolean;
     if (!state) stereo = this.renderRaw(track, position, frames, this.pre, plain);
     else stereo = this.runChain(state, position, frames, this.pre, (p, n, b) => this.renderRaw(track, p, n, b, plain));
+    if (staged && !hasRoomFilter(track.fx)) this.renderStage(`t:${track.id}`, position, frames, this.pre, staged, speakers);
     if (fxClips.length) {
       const tail = Math.round(CLIP_FX_TAIL_SECONDS * this.project.sampleRate);
       const end = position + frames;
@@ -458,13 +475,17 @@ export class Mixer {
         if (clip.start >= end || clip.start + clip.length + tail <= position) continue;
         const only = (c: Clip) => c === clip;
         const cs = this.clipChainState(track, clip);
+        placeRoom(cs);
         if (this.runChain(cs, position, frames, this.clipBuf, (p, n, b) => this.renderRaw(track, p, n, b, only))) stereo = true;
+        if (staged && !hasRoomFilter(cs.list)) this.renderStage(`c:${clip.id}`, position, frames, this.clipBuf, staged, speakers);
         for (let i = 0; i < frames; i++) {
           pl[i] += cl[i];
           pr[i] += cr[i];
         }
       }
     }
+    // a placed voice is already a positioned pair: no pan or balance on top
+    if (staged) stereo = true;
     // the folder's group volume adds to the track gain
     const g = dbToGain(track.gain + folderGainOf(this.project, track));
     const volPts = track.automation?.volume;
@@ -489,7 +510,7 @@ export class Mixer {
         const p = pan[i];
         if (p !== lastPan) {
           lastPan = p;
-          pg = stereo ? [Math.min(1, 1 - p), Math.min(1, 1 + p)] : panGains(p);
+          pg = staged ? [1, 1] : stereo ? [Math.min(1, 1 - p), Math.min(1, 1 + p)] : panGains(p);
         }
         const gi = g * vol[i];
         const l = pl[i] * gi * pg[0];
@@ -499,10 +520,11 @@ export class Mixer {
         if (this.metering) peak = Math.max(peak, Math.abs(l), Math.abs(r));
       }
     } else {
-      const [panL, panR] = panGains(track.pan);
+      const pan = staged ? 0 : track.pan;
+      const [panL, panR] = panGains(pan);
       // balance for stereo sources, pan law for mono ones
-      const gl = g * (stereo ? Math.min(1, 1 - track.pan) : panL);
-      const gr = g * (stereo ? Math.min(1, 1 + track.pan) : panR);
+      const gl = g * (stereo ? Math.min(1, 1 - pan) : panL);
+      const gr = g * (stereo ? Math.min(1, 1 + pan) : panR);
       for (let i = 0; i < frames; i++) {
         const l = pl[i] * gl;
         const r = (stereo ? pr[i] : pl[i]) * gr;
@@ -512,6 +534,22 @@ export class Mixer {
       }
     }
     if (this.metering) this.trackPeaks.set(track.id, Math.max(peak, this.trackPeaks.get(track.id) ?? 0));
+  }
+
+  /** Puts what `buf` holds (summed to mono) at the voice's place on the 3D stage, in place. */
+  private renderStage(key: string, position: number, frames: number, buf: Float32Array[], pos: StagePosition, speakers: boolean): void {
+    let s = this.stagers.get(key);
+    if (!s) {
+      s = { r: new StageRenderer(this.project.sampleRate), next: NaN };
+      this.stagers.set(key, s);
+    }
+    if (s.next !== position) s.r.reset();
+    s.next = position + frames;
+    if (this.stageMono.length < frames) this.stageMono = new Float32Array(frames);
+    const mono = this.stageMono;
+    const [l, r] = buf;
+    for (let i = 0; i < frames; i++) mono[i] = (l[i] + r[i]) * 0.5;
+    s.r.process(mono, l, r, frames, pos, { speakers, distanceCues: true });
   }
 
   /**

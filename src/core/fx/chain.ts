@@ -58,6 +58,11 @@ export class FxChain {
     this.latency = this.active.reduce((sum, s) => sum + s.proc.latency, 0);
   }
 
+  /** Calls `fn` with the processor of every switched-on filter of one type (e.g. to place Room & distance on the stage). */
+  eachActive(type: Fx['type'], fn: (proc: FxProcessor) => void): void {
+    for (const s of this.active) if (s.type === type) fn(s.proc);
+  }
+
   get empty(): boolean {
     return this.active.length === 0;
   }
