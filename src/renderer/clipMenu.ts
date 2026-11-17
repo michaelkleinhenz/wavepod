@@ -34,6 +34,7 @@ import { closeContextMenu, showContextMenu, type ContextMenuEntry } from './cont
 import { h, toast } from './dom';
 import { loudnessTarget, normalizeClips } from './loudnessDialog';
 import { store } from './store';
+import { ungroupClips } from '../core/fx/clipGroups';
 import { activeTakeAt, pickTake, takesAt } from '../core/takes';
 
 export interface ClipMenuOptions {
@@ -45,6 +46,8 @@ export interface ClipMenuOptions {
   zoomTo: (span: [number, number]) => void;
   /** Opens the loudness analysis (of the selection, which the menu has set to its clips). */
   openLoudness: () => void;
+  /** The clip's FX button: its filters, or with several clips selected their group FX chain. */
+  openFx: (clipId: string) => void;
 }
 
 const FADE_SECONDS = 0.25;
@@ -137,6 +140,17 @@ export function openClipMenu(o: ClipMenuOptions): void {
     { label: 'Reset clip gain', enabled: clips.some((c) => c.gain), run: () => edit((p) => setClipGain(p, ids, 0)) },
     { label: `Normalise to ${String(target.lufs).replace('-', '−')} LUFS`, accel: 'Alt+Shift+N', run: () => void normalizeClips([...ids]) },
     { label: 'Loudness analysis…', accel: 'Shift+Ctrl+L', run: o.openLoudness },
+    {
+      label: one ? (clips[0].fxGroup ? 'Group FX…' : 'Clip FX…') : 'Group FX…',
+      title: one ? 'Show the filters of this clip' : 'One filter chain for all selected clips',
+      run: () => o.openFx(o.clipId),
+    },
+    {
+      label: 'Remove from group FX',
+      enabled: clips.some((c) => c.fxGroup),
+      title: 'The group\'s filters no longer apply to the clip',
+      run: () => edit((p) => ungroupClips(p, ids)),
+    },
     ...takeEntries(o, one, recording),
     { kind: 'separator' },
     { kind: 'header', label: 'Sound design' },

@@ -14,6 +14,7 @@ import { fillEnvelope, isUnityEnvelope } from './envelope';
 import { fillAutomation, volumeAmp } from './automation';
 import { audibleTracks, projectLength } from './project';
 import { folderGainOf } from './folders';
+import { effectiveClipFx } from './fx/clipGroups';
 
 export class ReaderCache {
   private readers = new Map<string, WavReader>();
@@ -108,6 +109,8 @@ export class Mixer {
   private amDetect: Float32Array[][] = [];
 
   private _project: Project;
+  /** Tracks with their grouped clips' filters filled in (see withGroupFx), by the track passed in. */
+  private resolved = new WeakMap<Track, Track>();
 
   constructor(project: Project, readonly readers: ReaderCache) {
     this._project = project;
@@ -120,13 +123,14 @@ export class Mixer {
   /** Swaps in an edited project; filter state of tracks that still exist is kept. */
   set project(p: Project) {
     this._project = p;
+    this.resolved = new WeakMap();
     for (const [id, s] of this.trackChains) {
       if (!p.tracks.some((t) => t.id === id && t.fx?.some((f) => f.enabled))) {
         s.chain.dispose();
         this.trackChains.delete(id);
       }
     }
-    const fxClips = new Set(p.tracks.flatMap((t) => t.clips.filter((c) => hasActiveFx(c.fx)).map((c) => c.id)));
+    const fxClips = new Set(p.tracks.flatMap((t) => t.clips.filter((c) => hasActiveFx(effectiveClipFx(p, c))).map((c) => c.id)));
     for (const [id, s] of this.clipChains) {
       if (!fxClips.has(id)) {
         s.chain.dispose();
@@ -412,8 +416,24 @@ export class Mixer {
     return s;
   }
 
+  /**
+   * The track as it plays: a clip in a group FX chain (Project.clipFxGroups) carries its own filters
+   * followed by the group's, so each member runs the shared chain on its own. Cached per track object.
+   */
+  private withGroupFx(track: Track): Track {
+    const p = this._project;
+    if (!p.clipFxGroups?.length || !track.clips.some((c) => c.fxGroup)) return track;
+    let r = this.resolved.get(track);
+    if (!r) {
+      r = { ...track, clips: track.clips.map((c) => (c.fxGroup ? { ...c, fx: effectiveClipFx(p, c) } : c)) };
+      this.resolved.set(track, r);
+    }
+    return r;
+  }
+
   /** Adds one track (ignoring mute/solo) into `out`: clips, mute regions, volume line, filter stacks, gain and pan (automated or fixed). */
-  renderTrackInto(track: Track, position: number, frames: number, out: Float32Array[]): void {
+  renderTrackInto(input: Track, position: number, frames: number, out: Float32Array[]): void {
+    const track = this.withGroupFx(input);
     const state = this.chainState(this.trackChains.get(track.id), track.fx);
     if (state) this.trackChains.set(track.id, state);
     else if (this.trackChains.has(track.id)) {

@@ -32,6 +32,8 @@ export interface Clip {
   note?: string;
   /** Filter stack of this clip only, processed top to bottom after the track's filters. */
   fx?: Fx[];
+  /** The group FX chain (Project.clipFxGroups) this clip shares with other clips; runs after the clip's own filters. */
+  fxGroup?: string;
   /** Sound design: reverse, varispeed and loop. Not set on a clip that plays its file as recorded. */
   sound?: ClipSound;
   /** The take (Track.takes) this part of the comp was cut from. */
@@ -305,6 +307,12 @@ export interface MatchCurve {
 
 export type BitDepth = 16 | 24 | 32;
 
+/** A group FX chain: one filter stack whose settings apply to every clip that points to it. */
+export interface ClipFxGroup {
+  id: string;
+  fx: Fx[];
+}
+
 export interface Project {
   version: 1;
   name: string;
@@ -313,6 +321,8 @@ export interface Project {
   masterGain: number;
   /** Filter stack on the master bus, processed before the master gain. */
   masterFx?: Fx[];
+  /** Filter chains shared by several clips (Clip.fxGroup); each member runs the chain on its own. */
+  clipFxGroups?: ClipFxGroup[];
   /** Named time spans that can be exported as separate files. */
   regions?: Region[];
   tracks: Track[];

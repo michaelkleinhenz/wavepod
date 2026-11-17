@@ -576,6 +576,17 @@ button.primary.danger { background: #c62828; border-color: #c62828; }
 .speed-select.fast { border-color: var(--accent); color: var(--accent); }
 .fx-duck { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 6px 8px; background: #121419; border-radius: 6px; }
 .fx-duck select { width: 90px; }
+/* group FX chain: its member clips, and the note on a grouped clip's own filters */
+.fx-group { align-self: stretch; margin: 10px 14px 0; min-width: 0; overflow: hidden; padding: 6px 8px; background: #121419; border-radius: 6px; border-left: 3px solid #9fa8ff; }
+.fx-group-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.fx-group-head > button, .fx-group-member > button:not(.fx-group-name) { flex: none; }
+.fx-group-head > span { flex: 1; font-size: 11px; }
+.fx-group-list { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-x: hidden; overflow-y: auto; }
+.fx-group-member { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+.fx-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: inherit !important; text-decoration: none !important; }
+.fx-group-name:hover { text-decoration: underline !important; }
+.fx-group-note { align-self: stretch; display: flex; align-items: center; gap: 6px; margin: 10px 14px 0; padding: 6px 8px; background: #121419; border-radius: 6px; border-left: 3px solid #9fa8ff; font-size: 12px; }
+.fx-group-note > span { flex: 1; }
 .fx-automix { flex-wrap: wrap; }
 .fx-automix-hint { flex-basis: 100%; font-size: 11px; }
 .track-pick { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }

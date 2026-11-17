@@ -12,6 +12,7 @@ import { rippleMinDelta, rippleMove, rippleSet, type RippleSet } from '../core/r
 import { fitText, layoutMarkerLabels, type LabelLayout } from '../core/markerLabels';
 import { TRACK_COLORS, addTrack, moveClipsToTracks, removeTrack, updateClip, updateMarker, updateTrack } from '../core/project';
 import { projectLength } from '../core/project';
+import { clipGroup, effectiveClipFx } from '../core/fx/clipGroups';
 import { FADE_SHAPES, fadeCurve, type FadeShape } from '../core/dsp';
 import { fadesAt, overlapSpans, trackFades, type EffectiveFades } from '../core/crossfade';
 import { jingleMediaFile } from '../core/soundboard';
@@ -85,7 +86,8 @@ const VOL_BTN = { x: 4, y: 17, w: 26, h: 13 };
 const NAME_STRIP_PX = 18;
 /** The clip's filter button, right of the volume-line toggle. */
 const FX_BTN = { x: VOL_BTN.x + VOL_BTN.w + 4, y: VOL_BTN.y, w: 28, h: VOL_BTN.h };
-const clipFxCount = (clip: Clip) => clip.fx?.filter((f) => f.enabled).length ?? 0;
+/** Active filters a clip plays through besides its track's: its own and its group FX chain's. */
+const clipFxCount = (clip: Clip) => effectiveClipFx(store.project, clip)?.filter((f) => f.enabled).length ?? 0;
 /** Colours of the track automation lanes (the clip volume line is green). */
 const LANE_COLOR: Record<AutomationLane, string> = { volume: '#ffb74d', pan: '#82b1ff' };
 const LANE_NAME: Record<AutomationLane, string> = { volume: 'Volume', pan: 'Pan' };
@@ -2208,17 +2210,32 @@ export class TimelineView {
       ctx.fillText('Vol', bx + 6, by + VOL_BTN.h / 2 + 0.5);
     }
     // filter button, shown while hovering (and while the clip has filters or its panel is open)
+    // with several clips selected every selected clip shows it: it opens their shared group FX chain
     const fxCount = clipFxCount(clip);
     const fxOpen = this.isClipFxOpen(clip.id);
-    if ((this.hoverClipId === clip.id || fxCount > 0 || fxOpen) && g.w >= FX_BTN.x + FX_BTN.w + 8 && !this.drag) {
+    const grouped = !!clipGroup(store.project, clip);
+    const multi = selected && store.selection.clipIds.size > 1;
+    if ((this.hoverClipId === clip.id || fxCount > 0 || fxOpen || grouped || multi) && g.w >= FX_BTN.x + FX_BTN.w + 8 && !this.drag) {
       const bx = g.x + FX_BTN.x;
       const by = g.y + FX_BTN.y;
       const on = fxCount > 0;
-      ctx.fillStyle = fxOpen ? 'rgba(129,199,132,0.4)' : on ? 'rgba(129,199,132,0.22)' : 'rgba(15,16,20,0.45)';
+      // grouped clips get a blue-violet button, so the clips sharing a chain stand out
+      const rgb = grouped ? '159,168,255' : '129,199,132';
+      ctx.fillStyle = fxOpen ? `rgba(${rgb},0.4)` : on || grouped ? `rgba(${rgb},0.22)` : 'rgba(15,16,20,0.45)';
       ctx.fillRect(bx, by, FX_BTN.w, FX_BTN.h);
-      ctx.strokeStyle = on || fxOpen ? 'rgba(129,199,132,0.85)' : 'rgba(255,255,255,0.35)';
+      ctx.strokeStyle = on || fxOpen || grouped ? `rgba(${rgb},0.85)` : 'rgba(255,255,255,0.35)';
       ctx.strokeRect(bx + 0.5, by + 0.5, FX_BTN.w - 1, FX_BTN.h - 1);
-      ctx.fillStyle = on ? '#c8e6c9' : 'rgba(255,255,255,0.75)';
+      if (grouped) {
+        // a small corner mark: part of a group
+        ctx.fillStyle = `rgba(${rgb},0.95)`;
+        ctx.beginPath();
+        ctx.moveTo(bx + FX_BTN.w - 7, by);
+        ctx.lineTo(bx + FX_BTN.w, by);
+        ctx.lineTo(bx + FX_BTN.w, by + 7);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = grouped ? '#d5d9ff' : on ? '#c8e6c9' : 'rgba(255,255,255,0.75)';
       ctx.font = '9px system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       const label = on ? `FX ${fxCount}` : 'FX';
@@ -2707,9 +2724,16 @@ export class TimelineView {
         this.canvas.title = 'Drag to move the playhead';
         return;
       }
-      if (this.hitFxButton(x, y)) {
+      const fxHit = this.hitFxButton(x, y);
+      if (fxHit) {
         this.canvas.style.cursor = 'pointer';
-        this.canvas.title = 'Filters for this clip only (they run after the track\'s filters)';
+        const sel = store.selection.clipIds;
+        this.canvas.title =
+          sel.size > 1 && sel.has(fxHit.id)
+            ? `Group FX: one filter chain for the ${sel.size} selected clips`
+            : clipGroup(store.project, fxHit)
+              ? 'Group FX: the filter chain this clip shares with other clips'
+              : 'Filters for this clip only (they run after the track\'s filters)';
         return;
       }
       if (this.hitVolButton(x, y)) {
@@ -2810,6 +2834,7 @@ export class TimelineView {
         pageY: e.clientY,
         zoomTo: (span) => this.toggleZoomToSelection(span),
         openLoudness: () => this.onOpenLoudness(),
+        openFx: (clipId) => this.onOpenClipFx(clipId),
       });
     });
 

@@ -5,6 +5,7 @@ import { uid } from '../shared/time';
 import type { Chapter } from './chapters';
 import { insertIntoRegions, mergeRegions, rippleRegions } from './muteRegions';
 import { normalizeFx } from './fx/definitions';
+import { pruneClipFxGroups } from './fx/clipGroups';
 import { insertIntoRegionList, normalizeRegions, rippleDeleteRegions } from './regions';
 import { migrateTrackEnvelope, sortPoints } from './envelope';
 import { mapTrackAutomation, normalizeAutomation, shiftAutomation } from './automation';
@@ -70,6 +71,17 @@ function normalizeClip(c: Clip): Clip {
   };
 }
 
+/** Group FX chains: well-formed, only those clips still use, and no clip pointing to a missing one. */
+function normalizeClipFxGroups(p: Project): void {
+  const groups = Array.isArray(p.clipFxGroups)
+    ? p.clipFxGroups.filter((g) => g && typeof g.id === 'string' && g.id).map((g) => ({ id: g.id, fx: normalizeFxList(g.fx) }))
+    : [];
+  const pruned = pruneClipFxGroups({ ...p, clipFxGroups: groups });
+  p.tracks = pruned.tracks;
+  if (pruned.clipFxGroups?.length) p.clipFxGroups = pruned.clipFxGroups;
+  else delete p.clipFxGroups;
+}
+
 function takesOf(t: Track): Pick<Track, 'takes' | 'showTakes'> {
   const takes = normalizeTakes(t.takes, normalizeClip);
   return takes ? { takes, ...(t.showTakes ? { showTakes: true } : {}) } : {};
@@ -112,6 +124,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
   p.markers = (p.markers ?? []).map((m) => ({ ...m, id: m.id ?? uid('mrk'), kind: m.kind ?? 'chapter', title: m.title ?? '' }));
   p.soundboard = p.soundboard ?? [];
   p.masterFx = normalizeFxList(p.masterFx);
+  normalizeClipFxGroups(p);
   if (raw.regions !== undefined) p.regions = normalizeRegions(raw.regions);
   normalizeFolders(p);
   const script = normalizeScript(raw.script);

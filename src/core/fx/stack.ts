@@ -1,8 +1,9 @@
 // Editing filter stacks of tracks and the master bus. Pure: returns a new project.
 import type { Fx, FxType, Project } from '../../shared/types';
 import { createFx } from './definitions';
+import { findGroup, targetGroupId, withGroupList } from './clipGroups';
 
-/** A track id, 'master' for the master bus, or 'clip:<clip id>' for a single clip. */
+/** A track id, 'master' for the master bus, 'clip:<clip id>' for a single clip or 'group:<id>' for a group FX chain. */
 export type FxTarget = string;
 export const MASTER: FxTarget = 'master';
 const CLIP_PREFIX = 'clip:';
@@ -19,6 +20,8 @@ export function targetClipId(target: FxTarget): string | null {
 
 export function fxList(project: Project, target: FxTarget): Fx[] {
   if (target === MASTER) return project.masterFx ?? [];
+  const groupId = targetGroupId(target);
+  if (groupId !== null) return findGroup(project, groupId)?.fx ?? [];
   const clipId = targetClipId(target);
   if (clipId !== null) {
     for (const t of project.tracks) {
@@ -33,6 +36,8 @@ export function fxList(project: Project, target: FxTarget): Fx[] {
 /** Replaces the filter list of a target. */
 export function withList(project: Project, target: FxTarget, fn: (list: Fx[]) => Fx[]): Project {
   if (target === MASTER) return { ...project, masterFx: fn(project.masterFx ?? []) };
+  const groupId = targetGroupId(target);
+  if (groupId !== null) return withGroupList(project, groupId, fn);
   const clipId = targetClipId(target);
   if (clipId !== null) {
     return {

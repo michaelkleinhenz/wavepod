@@ -57,7 +57,8 @@ export function isSeamlessFuse(clips: readonly Clip[]): boolean {
   for (let i = 1; i < clips.length; i++) {
     const a = clips[i - 1];
     const b = clips[i];
-    if (!isSeamless(a, b) || a.fadeOut || b.fadeIn) return false;
+    // a group FX chain (or none) shared by both, so the joined clip sounds the same
+    if (!isSeamless(a, b) || a.fadeOut || b.fadeIn || a.fxGroup !== b.fxGroup) return false;
   }
   return clips.length >= 2;
 }
@@ -142,11 +143,14 @@ export function fuseSeamless(project: Project, ids: Iterable<string>): { project
  * How a rendered fuse is made: the clip gain is kept on the fused clip when all clips share it, and
  * so are the clip filters when all clips have the same ones; the rest is rendered into the file.
  */
-export function fusePlan(clips: readonly Clip[]): { gain: number; keepFx: boolean } {
+export function fusePlan(clips: readonly Clip[]): { gain: number; keepFx: boolean; keepGroup?: string } {
   const gains = new Set(clips.map((c) => c.gain));
   // the same filters with the same settings (filter ids differ between clips)
   const stacks = new Set(clips.map((c) => JSON.stringify(enabledFx(c).map(({ id: _id, ...f }) => f))));
-  return { gain: gains.size === 1 ? clips[0].gain : 0, keepFx: stacks.size === 1 && enabledFx(clips[0]).length > 0 };
+  // all in one group FX chain: the fused clip stays in it instead of baking the group's filters in
+  const groups = new Set(clips.map((c) => c.fxGroup));
+  const keepGroup = groups.size === 1 ? clips[0].fxGroup : undefined;
+  return { gain: gains.size === 1 ? clips[0].gain : 0, keepFx: stacks.size === 1 && enabledFx(clips[0]).length > 0, ...(keepGroup ? { keepGroup } : {}) };
 }
 
 /**
@@ -154,11 +158,12 @@ export function fusePlan(clips: readonly Clip[]): { gain: number; keepFx: boolea
  * gain and filters, the outer fades) are taken out, so they are not applied twice.
  */
 export function clipsToRender(clips: readonly Clip[], start: Frames, end: Frames): Clip[] {
-  const { gain, keepFx } = fusePlan(clips);
+  const { gain, keepFx, keepGroup } = fusePlan(clips);
   const { first, last } = outerClips(clips, start, end);
   return clips.map((c) => {
     const r: Clip = { ...c, gain: c.gain - gain };
     if (keepFx) delete r.fx;
+    if (keepGroup) delete r.fxGroup;
     if (c === first) r.fadeIn = 0;
     if (c === last) r.fadeOut = 0;
     return r;
@@ -170,7 +175,7 @@ export function applyRenderedFuse(project: Project, ids: Iterable<string>, file:
   const check = checkFuse(project, ids);
   if (!check.ok) return null;
   const { track, clips, start, end } = check;
-  const { gain, keepFx } = fusePlan(clips);
+  const { gain, keepFx, keepGroup } = fusePlan(clips);
   const fused: Clip = {
     id: uid('clp'),
     file,
@@ -181,6 +186,7 @@ export function applyRenderedFuse(project: Project, ids: Iterable<string>, file:
     ...outerFades(clips, start, end),
     ...fusedLabels(clips),
     ...(keepFx ? { fx: clips[0].fx!.map((f) => ({ ...f, id: uid('fx') })) } : {}),
+    ...(keepGroup ? { fxGroup: keepGroup } : {}),
   };
   return { project: replaceClips(project, track.id, new Set(clips.map((c) => c.id)), fused), clipId: fused.id };
 }
