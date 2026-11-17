@@ -2,7 +2,8 @@
 import type { Fx, FxMeter, FxType, ImpulseRef, VstParamInfo, VstPluginInfo } from '../shared/types';
 import type { ImpulseFile } from '../shared/api';
 import { FX_DEFINITIONS, fxDefinition, type FxParamSpec } from '../core/fx/definitions';
-import { MASTER, addFx, addVoiceChain, fxList, insertFx, moveFx, removeFx, replaceFx, targetClipId, updateFx, type FxTarget } from '../core/fx/stack';
+import { MASTER, addFx, addVoiceChain, clipTarget, fxList, insertFx, moveFx, removeFx, replaceFx, targetClipId, updateFx, type FxTarget } from '../core/fx/stack';
+import { clipGroup, findGroup, groupClips, groupMembers, groupTarget, targetGroupId, ungroupClips } from '../core/fx/clipGroups';
 import { presetEdited, presetKey, type FxPresetEntry } from '../core/fx/presets';
 import { createVstFx, visibleVstParams } from '../core/fx/vst';
 import { dynamicsCurve } from '../core/fx/ultraschallDynamics';
@@ -41,6 +42,11 @@ function impulseInfo(f: ImpulseFile): string {
 }
 
 /** Display name of a filter. */
+/** A clip's name as the timeline shows it (its file name when it has none). */
+function clipLabel(clip: { name?: string; file: string }): string {
+  return clip.name || clip.file.split('/').pop() || 'Clip';
+}
+
 function fxName(fx: Fx): string {
   return fx.type === 'vst3' ? (fx.plugin?.name ?? 'VST3 plug-in') : fxDefinition(fx.type).name;
 }
@@ -160,6 +166,38 @@ export class FxPanel {
     else this.open(target);
   }
 
+  /** What a clip's FX button opens: its group FX chain when it is in one, else its own filters. */
+  clipFxTarget(clipId: string): FxTarget {
+    const clip = findClip(store.project, clipId)?.clip;
+    const group = clip ? clipGroup(store.project, clip) : undefined;
+    return group ? groupTarget(group.id) : clipTarget(clipId);
+  }
+
+  /** True while the filters the clip's FX button opens are showing. */
+  isClipShown(clipId: string): boolean {
+    const shown = this.shownTarget;
+    return shown !== null && shown === this.clipFxTarget(clipId);
+  }
+
+  /**
+   * The FX button of a clip. With several clips selected (this one among them) it opens the group
+   * FX chain they share, making one or adding the others to it when needed (see groupClips).
+   */
+  clipButton(clipId: string): void {
+    const sel = store.selection.clipIds;
+    if (sel.size > 1 && sel.has(clipId)) {
+      const res = groupClips(store.project, sel);
+      if (res) {
+        if (res.action === 'open') return this.toggle(groupTarget(res.groupId));
+        store.edit(() => res.project);
+        const n = groupMembers(res.project, res.groupId).length;
+        toast(res.action === 'added' ? `Added to the group FX chain (${n} clips)` : `New group FX chain for ${n} clips`);
+        return this.open(groupTarget(res.groupId));
+      }
+    }
+    this.toggle(this.clipFxTarget(clipId));
+  }
+
   /** Re-renders when the stack changed from outside (undo, other edits), but not during slider drags. */
   refresh(): void {
     if (!this.visible || store.liveEditing || isEditingValue(this.el) || this.naming) return;
@@ -170,22 +208,47 @@ export class FxPanel {
       return;
     }
     const clipId = targetClipId(this.target);
-    if (clipId !== null ? !findClip(store.project, clipId) : this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target)) {
+    const groupId = targetGroupId(this.target);
+    const gone =
+      groupId !== null
+        ? !findGroup(store.project, groupId)
+        : clipId !== null
+          ? !findClip(store.project, clipId)
+          : this.target !== MASTER && !store.project.tracks.some((t) => t.id === this.target);
+    if (gone) {
       // its track or clip is gone: back to the list of tracks
       this.target = null;
       this.render();
       return;
     }
-    const key = JSON.stringify(fxList(store.project, this.target)) + this.title();
-    if (key !== this.structure) this.render();
+    if (this.structureKey(this.target) !== this.structure) this.render();
+  }
+
+  /** What the panel shows for a target; a change re-renders it. */
+  private structureKey(target: FxTarget): string {
+    const p = store.project;
+    const groupId = targetGroupId(target);
+    const clipId = targetClipId(target);
+    const members =
+      groupId !== null
+        ? groupMembers(p, groupId).map(({ clip }) => `${clip.id}:${clip.name ?? clip.file}:${clip.fx?.length ?? 0}`).join('|') + `|sel:${[...store.selection.clipIds].join(',')}`
+        : clipId !== null
+          ? (findClip(p, clipId)?.clip.fxGroup ?? '')
+          : '';
+    return JSON.stringify(fxList(p, target)) + this.title() + members;
   }
 
   private title(): string {
     if (this.target === MASTER) return 'Master';
+    const groupId = this.target ? targetGroupId(this.target) : null;
+    if (groupId !== null) {
+      const n = groupMembers(store.project, groupId).length;
+      return `Group FX · ${n} clip${n === 1 ? '' : 's'}`;
+    }
     const clipId = this.target ? targetClipId(this.target) : null;
     if (clipId !== null) {
       const hit = findClip(store.project, clipId);
-      return hit ? `${hit.track.name}: ${hit.clip.file.split('/').pop() ?? 'Clip'}` : '';
+      return hit ? `${hit.track.name}: ${clipLabel(hit.clip)}` : '';
     }
     return store.project.tracks.find((t) => t.id === this.target)?.name ?? '';
   }
@@ -240,7 +303,9 @@ export class FxPanel {
     const target = this.target;
     if (!target) return this.buildChooser();
     const list = fxList(store.project, target);
-    this.structure = JSON.stringify(list) + this.title();
+    this.structure = this.structureKey(target);
+    const groupId = targetGroupId(target);
+    const isTrack = target !== MASTER && targetClipId(target) === null && groupId === null;
     clear(this.el);
     this.meters.clear();
     const add = h(
@@ -272,7 +337,7 @@ export class FxPanel {
       h(
         'div',
         { class: 'fx-head' },
-        h('div', null, h('div', { class: 'fx-kicker' }, targetClipId(target) !== null ? 'Clip filters' : 'Filters'), h('h2', null, this.title())),
+        h('div', null, h('div', { class: 'fx-kicker' }, groupId !== null ? 'Group filters' : targetClipId(target) !== null ? 'Clip filters' : 'Filters'), h('h2', null, this.title())),
         h('button', { class: 'small fx-choose-btn', title: 'Show the filters of another track or the master bus', onclick: () => this.choose() }, 'All tracks'),
       ),
       h(
@@ -284,18 +349,106 @@ export class FxPanel {
         this.pasteMenu(target, list.length),
       ),
     );
-    if (target !== MASTER && targetClipId(target) === null) this.el.append(this.renderDuck(target), this.renderAutomix(target));
+    if (isTrack) this.el.append(this.renderDuck(target), this.renderAutomix(target));
+    if (groupId !== null) this.el.append(this.renderGroupMembers(groupId));
+    const ownClip = targetClipId(target);
+    if (ownClip !== null) {
+      const note = this.renderClipGroupNote(ownClip);
+      if (note) this.el.append(note);
+    }
     if (this.picker) this.el.append(this.renderPicker(target));
     const cards = h('div', { class: 'fx-list' });
     if (!list.length) {
       cards.append(h('p', { class: 'muted fx-empty' }, target === MASTER
             ? 'No filters on the master bus. A limiter here keeps the mix below a ceiling.'
-            : targetClipId(target) !== null
+            : groupId !== null
+              ? 'No group filters yet. They run on every clip of the group, each on its own, after the clip\'s own filters. Change them once and every clip follows.'
+              : targetClipId(target) !== null
               ? 'No filters on this clip yet. They run top to bottom on this clip only, after the track\'s filters.'
               : 'No filters yet. Filters run top to bottom, before the track gain and pan.'));
     }
     list.forEach((fx, i) => cards.append(this.card(target, fx, i, list.length)));
     this.el.append(cards);
+  }
+
+  /** The clips of a group FX chain, each with a button to take it out (and to open its own filters). */
+  private renderGroupMembers(groupId: string): HTMLElement {
+    const p = store.project;
+    const members = groupMembers(p, groupId);
+    const sel = store.selection.clipIds;
+    const joinable = [...sel].filter((id) => {
+      const c = findClip(p, id)?.clip;
+      return c && c.fxGroup !== groupId;
+    });
+    const remove = (ids: string[]) => {
+      this.edit((q) => ungroupClips(q, ids));
+      toast(ids.length === members.length ? 'Group FX chain removed' : ids.length === 1 ? 'Clip removed from the group FX chain' : `${ids.length} clips removed from the group FX chain`);
+    };
+    const row = ({ trackId, clip }: { trackId: string; clip: (typeof members)[number]['clip'] }) => {
+      const track = p.tracks.find((t) => t.id === trackId);
+      const own = clip.fx?.length ?? 0;
+      return h(
+        'div',
+        { class: 'fx-group-member' },
+        h('span', { class: 'fx-choose-dot', style: track ? `background:${track.color}` : '' }),
+        h(
+          'button',
+          {
+            class: 'link fx-group-name',
+            title: 'Select this clip on the timeline',
+            onclick: () => store.select({ clipIds: new Set([clip.id]), markerId: null }),
+          },
+          `${track?.name ?? ''}: ${clipLabel(clip)}`,
+        ),
+        own
+          ? h(
+              'button',
+              { class: 'small', title: 'This clip also has filters of its own, which run before the group\'s. Show them.', onclick: () => this.open(clipTarget(clip.id)) },
+              `Own FX ${own}`,
+            )
+          : null,
+        h('button', { class: 'small fx-group-remove', title: 'Take this clip out of the group FX chain: the group filters no longer apply to it', onclick: () => remove([clip.id]) }, 'Remove'),
+      );
+    };
+    return h(
+      'div',
+      { class: 'fx-group' },
+      h(
+        'div',
+        { class: 'fx-group-head' },
+        h('span', { class: 'muted' }, 'Clips in this group'),
+        joinable.length
+          ? h(
+              'button',
+              {
+                class: 'small',
+                title: 'Add the selected clips to this group FX chain',
+                onclick: () => this.edit((q) => ({ ...q, tracks: q.tracks.map((t) => ({ ...t, clips: t.clips.map((c) => (joinable.includes(c.id) ? { ...c, fxGroup: groupId } : c)) })) })),
+              },
+              `Add selected (${joinable.length})`,
+            )
+          : null,
+        members.length > 1
+          ? h('button', { class: 'small', title: 'Take every clip out and delete this group FX chain', onclick: () => remove(members.map((m) => m.clip.id)) }, 'Ungroup all')
+          : null,
+      ),
+      h('div', { class: 'fx-group-list' }, ...members.map(row)),
+    );
+  }
+
+  /** On a grouped clip's own filters: which group it is in, with a way there and out. */
+  private renderClipGroupNote(clipId: string): HTMLElement | null {
+    const clip = findClip(store.project, clipId)?.clip;
+    const group = clip ? clipGroup(store.project, clip) : undefined;
+    if (!clip || !group) return null;
+    const n = groupMembers(store.project, group.id).length;
+    return h(
+      'div',
+      { class: 'fx-group-note' },
+      h('span', null, `In a group FX chain with ${n - 1} other clip${n === 2 ? '' : 's'}; its filters run after these.`),
+      h('button', { class: 'small', onclick: () => this.open(groupTarget(group.id)) }, 'Group FX'),
+      h('button', { class: 'small', title: 'Take this clip out of the group FX chain', onclick: () => this.edit((q) => ungroupClips(q, [clipId])) }, 'Remove'),
+    );
   }
 
   /** Ducking for this track: quieter while the other tracks play (for the soundboard and music beds). */

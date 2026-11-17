@@ -229,6 +229,24 @@ Copies include VST3 state and the preset name, work across episodes, and each pa
 
 Hover a clip and click **FX** on it to give just that clip filters of its own. They run after the track's filters. Use them when one part of a track needs different treatment, for example a phone voice for one line, or one clip further away than the next.
 
+## Group FX
+
+A group FX chain is one filter stack shared by several clips, for example every line a character speaks through a radio, or all the clips of one interview recorded in another room.
+
+1. Select the clips: **Shift**+click them, or **Shift**+drag a rubber band over them. They can be on different tracks.
+2. Every selected clip now shows its **FX** button. Click it on any of them: the FX tab opens the clips' group FX chain.
+3. Add filters as usual. They apply to every clip of the group, and changing a setting changes it for all of them.
+
+Grouped clips show a blue **FX** button with a corner mark. Clicking **FX** on any of them later opens the group chain again, even with only that clip selected.
+
+- **Remove** next to a clip in the group's list takes that clip out: the group's filters no longer apply to it. **Ungroup all** takes every clip out and deletes the chain. The clip menu has **Remove from group FX** as well.
+- **Add selected** adds clips you have selected to the group. Selecting clips of one group together with clips in no group and clicking **FX** does the same.
+- Selecting clips from different groups (or with none) and clicking **FX** makes a new group for them. If they all have the same clip filters of their own, those move into the new group, so nothing sounds different.
+- A clip can still have filters of its own: they run first, then the group's (both after the track's filters). **Own FX** in the group's list opens them.
+- Each clip runs the chain on its own, so a reverb or echo rings out after each clip as with clip filters. Splitting, copying or duplicating a grouped clip keeps the copies in the group.
+
+Groups are saved with the episode, every change is one undo step, and the export renders them like any other filter.
+
 ## Master FX
 
 **Master** at the top of the FX tab's track list holds the filters on the whole mix (click **All tracks** in the FX tab to get to the list). A **Limiter** at the end keeps peaks below a ceiling. The master filters are applied to the export but not to stems.

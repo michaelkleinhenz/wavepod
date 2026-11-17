@@ -28,7 +28,7 @@ The clips must be on the same track with no other clip between them. Gaps betwee
 What happens to the audio:
 
 - Clips that simply continue each other, as after a split (same file, no jump, same clip gain, no fades or filters at the joint), are joined as they are. Nothing is rendered, and the volume line, fades and name stay as they were.
-- Anything else (clips from different files, a cut out of the middle, different clip gains, crossfades, volume lines, sound design such as reverse or speed) is rendered into one new file in the episode's `media` folder, named after the first clip with `-fused`. It sounds exactly like the clips did. The fade in of the first clip and the fade out of the last one stay editable on the fused clip, and so does the clip gain when all clips had the same one. Clip filters stay on the fused clip when every clip had the same ones; otherwise they are rendered in (an echo or reverb then stops at the end of the fused clip). The track's own filters, volume, pan and automation are not rendered in and keep working as before.
+- Anything else (clips from different files, a cut out of the middle, different clip gains, crossfades, volume lines, sound design such as reverse or speed) is rendered into one new file in the episode's `media` folder, named after the first clip with `-fused`. It sounds exactly like the clips did. The fade in of the first clip and the fade out of the last one stay editable on the fused clip, and so does the clip gain when all clips had the same one. Clip filters stay on the fused clip when every clip had the same ones, and so does a group FX chain all the clips are in; otherwise they are rendered in (an echo or reverb then stops at the end of the fused clip). The track's own filters, volume, pan and automation are not rendered in and keep working as before.
 - The fused clip takes the first name and colour among the clips, and all their notes. Transcribed words come along into the fused clip, so you don't need to transcribe it again; parts that were not transcribed yet stay to be transcribed.
 
 Your original recordings are not changed, and `Ctrl+Z` brings the separate clips back.
@@ -112,6 +112,8 @@ Pick a colour in the clip menu to mark clips, for example everything that still 
 ## Clip filters
 
 Hover a clip and click **FX** at its top to give that one clip its own filters, on top of the track's filters. A clip with filters shows **FX** and the number of filters. See [Filters and effects](filters.md#clip-filters).
+
+With several clips selected, each of them shows **FX**: clicking it gives them one shared **group FX** chain. See [Group FX](filters.md#group-fx).
 
 ## Dropping files on the timeline
 

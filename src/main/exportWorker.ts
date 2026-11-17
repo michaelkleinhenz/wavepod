@@ -47,7 +47,12 @@ const job = workerData as Job;
 if (job.impulseDir) setImpulseDir(job.impulseDir);
 if (job.voiceCleanWasm) setVoiceCleanWasm(job.voiceCleanWasm);
 // VST3 filters render through a host process of this worker's own
-const usesVst = job.kind !== 'clips' && job.kind !== 'match' && job.kind !== 'align' && job.kind !== 'stretch' && job.kind !== 'importWav' && [...(job.project.masterFx ?? []), ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])])].some((f) => f.type === 'vst3' && f.enabled);
+const allFx = [
+  ...(job.project.masterFx ?? []),
+  ...job.project.tracks.flatMap((t) => [...(t.fx ?? []), ...t.clips.flatMap((c) => c.fx ?? [])]),
+  ...(job.project.clipFxGroups ?? []).flatMap((g) => g.fx),
+];
+const usesVst = job.kind !== 'clips' && job.kind !== 'match' && job.kind !== 'align' && job.kind !== 'stretch' && job.kind !== 'importWav' && allFx.some((f) => f.type === 'vst3' && f.enabled);
 const vstHost = usesVst && job.vstExe && job.vstBridge ? new VstHostProcess(job.vstExe, job.vstBridge) : null;
 if (vstHost) setVstHost(vstHost);
 try {
