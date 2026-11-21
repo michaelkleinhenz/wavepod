@@ -10,6 +10,10 @@ app you install and start, with no Reaper underneath.
 · [User guide (wiki)](https://github.com/michaelkleinhenz/wavepod/wiki)
 · [Video tutorials](https://www.youtube.com/watch?v=IxKDB5dBFzI&list=PLXpr62VeW9pY)
 
+**Watch the trailer** to see WavePod in action:
+
+[![WavePod trailer on YouTube](https://img.youtube.com/vi/LhCUBlatZkQ/maxresdefault.jpg)](https://youtu.be/LhCUBlatZkQ)
+
 ![WavePod's timeline: one track per speaker, chapter markers and a soundboard track](site/img/timeline.png)
 
 ### What makes it different
